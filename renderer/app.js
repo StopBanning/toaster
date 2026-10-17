@@ -47,6 +47,7 @@ const analyser = (size) => {
 const fast = analyser(1024), mid = analyser(4096), slow = analyser(16384);
 const eng = createEngine({ fast, mid, slow, sampleRate: ac.sampleRate });
 eng.tape = createTape(); // the song as heard, for X
+eng.tape.who = () => songNames(currentSong());
 const view = createCodeView(LINE_IDS);
 const field = createField($('field'));
 // the camera as text (C's fourth setting): a layer of its own, over whichever background is picked
@@ -549,15 +550,23 @@ async function toggleHandLog() {
   if (file) flashStatus(handLog.on ? 'hand log on' : 'hand log saved');
 }
 
+// A song's names: for its files ("artist - title"), and for the first line of its code.
+function songNames(s) {
+  const one = (x) => String(x || '').replace(/\s+/g, ' ').trim();
+  return {
+    name: s?.title ? `${s.artist ? one(s.artist) + ' - ' : ''}${one(s.title)}` : one(state.label) || 'song',
+    about: s?.title ? `"${one(s.title)}"${s.artist ? ' by ' + one(s.artist) : ''}` : 'whatever was playing',
+  };
+}
+
 // X: the song so far, decompiled: a MIDI file (drums, bass, chords, lead) and the whole song as
 // Strudel code (every 4 bars, the different ones named, in order with arrange()), into
 // Music\Toaster.
 async function exportSong() {
   const song = eng.tape.song(eng.tempo.down);
   if (!song) { flashStatus('nothing to export yet: no beat found'); return; }
-  const s = currentSong(), one = (x) => String(x || '').replace(/\s+/g, ' ').trim();
-  const name = s?.title ? `${s.artist ? one(s.artist) + ' - ' : ''}${one(s.title)}` : one(state.label) || 'song';
-  const about = s?.title ? `"${one(s.title)}"${s.artist ? ' by ' + one(s.artist) : ''}` : 'whatever was playing';
+  // (named after the song it was: X just after a song ends exports that one)
+  const { name, about } = song.who || songNames(currentSong());
   const midi = songMidi(song, name), code = songStrudel(song, about);
   if (!window.nc?.saveSong) { flashStatus('exporting works in the app, not in a browser'); return; }
   const file = await window.nc.saveSong(name, midi, code);

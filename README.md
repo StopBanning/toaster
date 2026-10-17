@@ -78,6 +78,9 @@ then the caret goes back to fix it.
 - The filters sit on sliders, `.lpf(slider(850, 100, 4000))` (Strudel draws a slider in the code
   for that); a thin track under each shows where the value is in its range, and when the music's
   filter moves, the number slides there instead of being retyped, like dragging the slider.
+- A bass whose filter sweeps on the 8ths, triplets or 16ths (dubstep's wobble, riddim's pulse)
+  gets Strudel's filter LFO, locked to the bar: `.lpsync(8).lpdepth(3)` for the 8ths, with some
+  resonance and grit. The export writes it the same way.
 - When the chords pump under the kick (sidechain, in most house and EDM), the kick gets
   `.duck("2:3").duckdepth(.6)` and the bass line and chords go on orbits 2 and 3, the way you'd
   set that up in Strudel. The depth follows how far they dip.

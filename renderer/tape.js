@@ -5,20 +5,31 @@
 // for claps. Kept by beat, with the corrections the engine makes to its beat as it goes (a 16th
 // earlier or later, the bar starting on another beat) applied to all of it when it's written
 // out, so the whole song lines up with the beat as it ended up. A new tempo starts a new stretch
-// (the longest is exported); a new song starts over.
+// (the longest is exported); a new song starts over, keeping the song before (if it got 4 bars)
+// for X till the new one has 4 of its own: the time to export a song is often just after it ends,
+// and a few seconds of silence count as a new song.
 //
 // Written out two ways: a MIDI file (drums on channel 10, bass, chords and lead on tracks of their
 // own) to take into a DAW, and the whole song as Strudel code: every 4 bars as heard, each
 // different 4 bars written once as a named stack, played in order with arrange().
 import { NOTES } from './engine.js';
-import { stepParts } from './codegen.js';
+import { stepParts, wobble } from './codegen.js';
 
 const nameOf = (midi) => NOTES[((midi % 12) + 12) % 12].toLowerCase() + (Math.floor(midi / 12) - 1);
 
 export function createTape() {
-  let stretches = [], cur = null;
-  return {
-    reset() { stretches = []; cur = null; },
+  let stretches = [], cur = null, before = null;
+  const api = {
+    // who(): the song playing, { name, about } (set by the app), noted with each bar, so a song
+    // kept after it ended is still named after itself
+    who: null,
+    // A new song. down: where the bar started in the one that's ending.
+    reset(down = 0) {
+      const done = api.song(down);
+      if (done) before = done;
+      stretches = [];
+      cur = null;
+    },
     // The beat found (or found again at a new tempo): beats are numbered afresh, a new stretch.
     // down: where the bar started in the stretch before (its last word on that).
     lock(bpm, down) {
@@ -32,16 +43,22 @@ export function createTape() {
     shift(beats) { if (cur) cur.moved += beats; },
     // A bar starting at beat beat0 and the patterns playing in it: { id: [16 on/off] or null },
     // the lead's as { on, tok } (its notes, 0-11).
-    pattern(beat0, parts) { if (cur) cur.bars.push({ b: beat0 + cur.moved, parts }); },
-    harmony(beat0, chord, bass) {
-      if (cur) cur.harmony.push({ b: beat0 + cur.moved, chord: chord && { root: chord.root, third: chord.third, name: chord.name }, bass });
+    pattern(beat0, parts) {
+      if (!cur) return;
+      cur.bars.push({ b: beat0 + cur.moved, parts });
+      cur.who = api.who?.() || cur.who;
     },
-    // The longest stretch as bars from its first: { bpm, bars: [{ parts, chord, bass }] }, or null.
-    // down: where the bar starts now (for the stretch still going).
+    // wob: the bass's filter sweeps a beat in that bar (2, 3, 4), or 0 (engine.js: wobbleCheck)
+    harmony(beat0, chord, bass, wob = 0) {
+      if (cur) cur.harmony.push({ b: beat0 + cur.moved, chord: chord && { root: chord.root, third: chord.third, name: chord.name }, bass, wob });
+    },
+    // The longest stretch as bars from its first: { bpm, bars: [{ parts, chord, bass }], who }; the
+    // song before if this one hasn't 4 bars yet; or null. down: where the bar starts now (for the
+    // stretch still going).
     song(down) {
       let best = null;
       for (const st of stretches) if (!best || st.bars.length > best.bars.length) best = st;
-      if (!best || best.bars.length < 4) return null;
+      if (!best || best.bars.length < 4) return before;
       const d = best === cur ? down : best.down, off = best.moved;
       const map = new Map(), at = (bar) => { let x = map.get(bar); if (!x) map.set(bar, (x = { parts: {}, chord: null, bass: null })); return x; };
       // A bar recorded before the beat or bar line moved sits k 16ths off the final bar i;
@@ -62,13 +79,15 @@ export function createTape() {
         const x = at(Math.floor((r.b - off - d + 2) / 4)); // the bar its middle falls in
         if (r.chord) x.chord = r.chord;
         if (r.bass) x.bass = r.bass;
+        if (r.wob) x.wob = r.wob;
       }
       const keys = [...map.keys()], first = Math.min(...keys), last = Math.max(...keys);
       const bars = [];
       for (let b = first; b <= last; b++) bars.push(map.get(b) || { parts: {}, chord: null, bass: null });
-      return { bpm: best.bpm, bars };
+      return { bpm: best.bpm, bars, who: best.who || null };
     },
   };
+  return api;
 }
 
 // ---------------------------------------------------------------- MIDI
@@ -165,7 +184,10 @@ function blockCode(four) {
     // bars had the same one). A bar without one (or only the downbeat) has its note held all bar.
     const rhythm = four.map((b) => (b.parts.bass?.some((on, s) => on && s) ? barText(b.parts.bass.map((on) => (on ? 'x' : null))) : 'x'));
     const struct = rhythm.some((r) => r !== 'x') ? `.struct("${fourBars(rhythm)}")` : '';
-    lines.push(`note("${notes}")${struct}.s("sawtooth").lpf(800)`);
+    // (a wobble as most of the 4 bars had one, if at least two did)
+    const wobs = four.map((b) => b.wob || 0).filter(Boolean), count = (r) => wobs.filter((w) => w === r).length;
+    const wob = wobs.length >= 2 ? [3, 4].reduce((best, r) => (count(r) > count(best) ? r : best), 2) : 0;
+    lines.push(`note("${notes}")${struct}.s("sawtooth").lpf(${wob ? 400 : 800})${wobble(wob)}`);
   }
   if (four.some((b) => b.chord)) lines.push(`chord("${slots(four.map((b) => b.chord?.name ?? '~'))}").voicing().s("supersaw").lpf(2000).gain(.6)`);
   if (four.some((b) => b.parts.vox?.on.some(Boolean))) {

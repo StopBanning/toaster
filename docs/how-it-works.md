@@ -152,7 +152,20 @@ here would make this app AGPL/GPL too. Nothing from either is in here now.
 The bass line has its rhythm: the bar's note on the steps a bass note starts, written the Strudel
 way (`note("<f2 c2 g2 a2>").struct("[~ x]*4")`), lighting up as each note plays, and the bass
 blocks follow it. Notes that start right under a kick are found too, by the pitch changing
-underneath it.
+underneath it. The note is the lowest strong pitch heard (within 6 dB of the loudest between 35 and
+220 Hz), not the loudest: a riddim's or dubstep's growl is louder than its sub, and the loudest
+named its partials as the bass (g3 in a line of c#1).
+
+The bass's sound is listened to as well. Its brightness (its 150-2000 Hz against its 30-150 Hz)
+is followed 33 times a second, and once a bar the last 6 seconds of it are checked for movement
+on the beat's 8ths, triplets or 16ths: a filter swept at that rate, dubstep's wobble or riddim's
+pulse. It counts when that movement is 8 times its typical strength and 3 times the quarters'
+(a four-on-the-floor song's brightness moves with its kick, on the quarters), when it swings by a
+real amount, and when it's the filter: the mids moving while the low end holds (drums in the
+bass's range, and a bass line's own rhythm, move the low end too). Then the bass line gets
+Strudel's filter LFO, locked to the bar (`.lpsync(8).lpdepth(3).lpq(6).distort(.8)` for the
+8ths), live and in the export. On a riddim and a dubstep remix it came on in their drops; on a
+house song, a garage one and a 2-step one, never.
 
 It's a live reconstruction, not yet an exact transcription. Known gaps (measured with the checks
 above): a bass that plays the same note again under every kick (trap 808s) can't be told from the

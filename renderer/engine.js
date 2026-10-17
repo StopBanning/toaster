@@ -254,7 +254,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.onsets = [];
       this.taps = [];
       this.firstTap = null;
-      this.tape?.reset();
+      this.tape?.reset(this.tempo?.down); // (the bar's start in the song that's ending)
       // the whole spectrum's onset strength, frame by frame, for the last 11 seconds (fluxTempo)
       this.fluxT = [];
       this.fluxV = [];
@@ -310,6 +310,18 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.hhHit = { t: -10, step: -1 };
       this.knobAcc = { bass: 0, chords: 0, hh: 0, n: 0 };
       this.knobs = { bassLpf: 600, chordLpf: 2400, hhGain: 0.5, hhMax: 1e-9 };
+      // the bass's sound (bassBright, wobbleCheck): its brightness a moment at a time for the last
+      // 6 seconds (and its low end's and mids' levels), its deep sub and all of it over the bar;
+      // what it sounds like (wobble: 0, or how
+      // many filter sweeps a beat: 2 the 8ths, 3 triplets, 4 the 16ths; sub: deep sub's share of
+      // it), and the bars running that have agreed on a change of wobble
+      this.wobT = [];
+      this.wobV = [];
+      this.wobL = [];
+      this.wobM = [];
+      this.subAcc = { sub: 0, all: 0 };
+      this.bassSound = { wobble: 0, sub: 0 };
+      this.wobRun = { rate: 0, n: 0 };
       // sidechain pumping (pumpCheck): the 800-3000 Hz band's level for the last 2 seconds, kicks
       // waiting to be measured, how far it dipped under each (dB), whether it pumps and how deep
       this.bodyT = [];
@@ -598,6 +610,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     // The "slice" written in the code is the new note's pitch class.
     lead(t) {
       mid.getFloatFrequencyData(this.midDb);
+      this.bassBright(t, this.midDb);
       const db = this.midDb, prev = this.prevMidMag, [a, b] = this.leadBand;
       let flux = 0, best = 0, bestK = -1;
       // The bass note playing right now (this analysis is quick enough to catch a new one at
@@ -651,14 +664,25 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       b.fill(0);
 
       const bm = this.bassMap;
-      let peak = 0, peakMidi = 0;
+      let loud = 0;
       for (let i = 0; i < bm.idx.length; i++) {
         const d = db[bm.idx[i]];
         if (d <= -110) continue;
         const m = bm.w[i] * 10 ** (d / 20);
         b[bm.pc[i]] += m;
-        if (m > peak) { peak = m; peakMidi = bm.midi[i]; }
+        loud = Math.max(loud, 10 ** (d / 20));
       }
+      // The bass note now: the lowest strong peak (a peak in the spectrum within 6 dB of the
+      // loudest between 35 and 220 Hz), not the loudest. A riddim's or dubstep's growl is louder
+      // than its sub: the loudest named the growl's partials as the bass (g3 and ab3 in a line of
+      // c#1 and f1, on a riddim track); the lowest strong one is the note's own. Most bass lines
+      // are loudest at their lowest anyway, and don't change.
+      let lowI = -1;
+      for (let i = 0; i < bm.idx.length && lowI < 0; i++) {
+        const k = bm.idx[i], d = db[k];
+        if (d > -110 && d >= db[k - 1] && d >= db[k + 1] && 10 ** (d / 20) >= 0.5 * loud) lowI = i;
+      }
+      const peakMidi = lowI >= 0 ? bm.midi[lowI] : 0;
 
       // Notes come from tonal peaks only (like Essentia's HPCP): a bin counts if it is a local
       // maximum standing 8 dB above its neighbourhood. Drums and noise rarely do.
@@ -706,6 +730,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
           this.barBass[i] += (w * b[i]) / bx;
           this.beatBass[i] += (w * b[i]) / bx;
         }
+        // (and the lowest strong peak's note a full vote more: see above)
+        if (lowI >= 0) { this.barBass[bm.pc[lowI]] += w; this.beatBass[bm.pc[lowI]] += w; }
         this.bassMidi[peakMidi] += w;
         this.bassFrames++;
         this.bassF0 = 440 * 2 ** ((peakMidi - 69) / 12);
@@ -837,6 +863,82 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.tape.pattern(bar * 4 + this.tempo.down, parts);
     },
 
+    // The bass's brightness now (its 150-2000 Hz against its 30-150 Hz, as a log), while there's
+    // bass to speak of, and its deep sub (30-70 Hz) for the bar.
+    bassBright(t, db) {
+      const pow = (lo, hi) => { let e = 0; for (let k = Math.max(1, Math.round(lo / hzMid)); k < Math.round(hi / hzMid); k++) e += 10 ** (db[k] / 10); return e; };
+      const sub = pow(30, 70), low = pow(30, 150), mids = pow(150, 2000);
+      if (low < 1e-7) return;
+      this.wobT.push(t);
+      this.wobV.push(Math.log10((mids + 1e-12) / low));
+      this.wobL.push(Math.log10(low));
+      this.wobM.push(Math.log10(mids + 1e-12));
+      while (this.wobT.length && this.wobT[0] < t - 6) { this.wobT.shift(); this.wobV.shift(); this.wobL.shift(); this.wobM.shift(); }
+      this.subAcc.sub += sub;
+      this.subAcc.all += low + mids;
+    },
+
+    // Once a bar: does the bass wobble? A filter swept on the beat's 8ths, triplets or 16ths
+    // (dubstep's wobble, riddim's pulse) moves the bass's brightness at that rate, where a
+    // four-on-the-floor song's moves with its kick, on the quarters. The strength of that
+    // movement over the last 6 seconds at 1, 2, 3 and 4 a beat, against its typical strength from
+    // 0.5 to 16 Hz: a wobble when the strongest of the 8ths, triplets and 16ths is 8 times typical
+    // and 3 times the quarters' (measured on whole songs: riddim 69 at the 8ths against 9 at the
+    // quarters, dubstep 20 against 5; two house songs 72 and 311 at the 8ths against 409 and 766).
+    // And it must be the filter: the bass's mids swinging while its low end holds (the low end
+    // moving at most half as much, at that rate), by a real amount (0.15 of a log10 each way):
+    // drums in the bass's range and a bass line's own rhythm move the low end too (measured: on a
+    // garage song and a 2-step one, 0.7 to 6.5 times as much, where a riddim's and a dubstep
+    // remix's wobbles held it to 0.03 to 0.38). It comes or changes once two bars running agree, and goes once four do (a beat or two
+    // without one mid-drop isn't the drop ending). And how much of the bass is deep sub.
+    wobbleCheck() {
+      const T = this.tempo, ts = this.wobT, vs = this.wobV, a = this.subAcc;
+      if (a.all > 0) this.bassSound.sub = this.bassSound.sub * 0.7 + 0.3 * (a.sub / a.all);
+      this.subAcc = { sub: 0, all: 0 };
+      if (!T.locked || !(T.P > 0) || ts.length < 100 || ts[ts.length - 1] - ts[0] < 4) return;
+      // (evenly spaced, 33 a second, each the reading at or before it)
+      const dt = 1 / 33, n = Math.floor((ts[ts.length - 1] - ts[0]) / dt);
+      const even = (src) => {
+        const x = new Float32Array(n);
+        let j = 0;
+        for (let i = 0; i < n; i++) {
+          const at = ts[0] + i * dt;
+          while (j < ts.length - 1 && ts[j + 1] <= at) j++;
+          x[i] = src[j];
+        }
+        return x;
+      };
+      const x = even(vs);
+      const power = (y, f) => {
+        let mean = 0, re = 0, im = 0;
+        for (let i = 0; i < n; i++) mean += y[i] / n;
+        for (let i = 0; i < n; i++) {
+          const v = (y[i] - mean) * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1))), ph = 2 * Math.PI * f * i * dt;
+          re += v * Math.cos(ph);
+          im -= v * Math.sin(ph);
+        }
+        return re * re + im * im;
+      };
+      const strength = (f) => power(x, f);
+      const all = [];
+      for (let f = 0.5; f <= 16; f += 0.25) all.push(strength(f));
+      all.sort((p, q) => p - q);
+      const typical = all[all.length >> 1] || 1e-12, beat = 1 / T.P;
+      const quarters = strength(beat) / typical, faster = [2, 3, 4].map((k) => strength(k * beat) / typical);
+      let best = 0;
+      for (let k = 1; k < 3; k++) if (faster[k] > faster[best]) best = k;
+      const f = (best + 2) * beat, swing = (4 * Math.sqrt(strength(f))) / n;
+      const wobbles = faster[best] >= 8 && faster[best] >= 3 * quarters && swing >= 0.15 && power(even(this.wobL), f) <= 0.25 * power(even(this.wobM), f);
+      const rate = wobbles ? best + 2 : 0;
+      const R = this.wobRun;
+      if (rate === R.rate) R.n++;
+      else { R.rate = rate; R.n = 1; }
+      if (R.n >= (rate ? 2 : 4) && this.bassSound.wobble !== rate) {
+        this.bassSound.wobble = rate;
+        this.note(rate ? `wobble: the bass's filter sweeps on the ${{ 2: '8ths', 3: 'triplets', 4: '16ths' }[rate]}` : 'wobble stopped');
+      }
+    },
+
     newBar(ended) {
       // Patterns change only at bar lines, the way a live coder re-evaluates at the end of a cycle.
       // Separate on/off thresholds (hysteresis) stop steps flickering.
@@ -933,6 +1035,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     },
 
     harmonyBar(prevBar) {
+      this.wobbleCheck();
       let bassPc = -1, bmax = 0;
       const hasBass = this.bassFrames >= 0.25 * this.barFrames;
       if (hasBass) for (let i = 0; i < 12; i++) if (this.barBass[i] > bmax) { bmax = this.barBass[i]; bassPc = i; }
@@ -952,7 +1055,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         };
       }
       const t = nowSec();
-      this.tape?.harmony(prevBar * 4 + this.tempo.down, chord, midi > 0 ? midi : null);
+      this.tape?.harmony(prevBar * 4 + this.tempo.down, chord, midi > 0 ? midi : null, this.bassSound.wobble);
       if (midi > 0) this.bassSeen = t;
       if (chord) {
         this.chordSeen = t;

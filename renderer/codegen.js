@@ -112,6 +112,11 @@ function calm(id, on, bar) {
   return w.on;
 }
 
+// A bass whose filter sweeps on the 8ths, triplets or 16ths (rate: 2, 3, 4 a beat; dubstep's
+// wobble, riddim's pulse) as Strudel's filter LFO, locked to the bar (lpsync: sweeps a cycle),
+// swinging the cutoff 3 times its own each way, with some resonance and grit. '' for none.
+export const wobble = (rate) => (rate ? `.lpsync(${rate * 4}).lpdepth(3).lpq(6).distort(.8)` : '');
+
 export const LINE_IDS = ['title', 'tempo', 'scale', 'bd', 'sd', 'hhc', 'hho', 'bassline', 'chords', 'vox'];
 
 export function buildLines(eng, meta, t) {
@@ -164,7 +169,7 @@ export function buildLines(eng, meta, t) {
   const rhythm = onSteps && onSteps.some((x, s) => x && s) ? stepParts(onSteps) : null;
   const struct = rhythm ? [{ text: '").struct("' }, ...rhythm, { text: '")' }] : [{ text: '")' }];
   const orbit = (n) => (eng.ducking ? [{ text: `.orbit(${n})` }] : []);
-  out.bassline = bass ? [{ text: 'bassline: note("' }, ...bass, ...struct, { text: '.s("sawtooth").lpf(' }, slider(k.bassLpf, 100, 4000), { text: ')' }, ...orbit(2)] : plain('bassline: note("~").s("sawtooth")');
+  out.bassline = bass ? [{ text: 'bassline: note("' }, ...bass, ...struct, { text: '.s("sawtooth").lpf(' }, slider(k.bassLpf, 100, 4000), { text: ')' + wobble(eng.bassSound?.wobble) }, ...orbit(2)] : plain('bassline: note("~").s("sawtooth")');
   out.chords = chords ? [...line('chords: chord("', chords, '").voicing().s("supersaw").lpf('), slider(k.chordLpf, 200, 9000), { text: ')' }, ...orbit(3)] : plain('chords: chord("~").voicing()');
   const text = (parts) => parts.map((p) => p.text).join('');
   if (!bass) out.bassline = plain('// ' + text(out.bassline));
