@@ -5,6 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
 const { spawn, spawnSync } = require('node:child_process');
+const updates = require('./update.js');
 
 const mac = process.platform === 'darwin';
 
@@ -288,6 +289,17 @@ function setUpIpc() {
     return on;
   });
   ipcMain.handle('app:version', () => app.getVersion());
+  // Updates (update.js): the page asks once it has started (if its setting is on); on your yes
+  // the new copy is fetched, checked and readied, then the window closes (a recording finishes
+  // first) and the swap script takes over. Or the release's page, in the browser.
+  ipcMain.handle('update:check', () => updates.check().catch(() => null));
+  ipcMain.handle('update:install', async () => {
+    let last = -1;
+    await updates.install((p) => { if (p - last >= 0.01 || p >= 1) { last = p; win?.webContents.send('update:progress', p); } });
+    setTimeout(() => win?.close(), 300);
+    return true;
+  });
+  ipcMain.handle('update:page', () => shell.openExternal(updates.page()));
   ipcMain.handle('win:titlebar', (_e, color, symbolColor) => {
     try { win?.setTitleBarOverlay({ color, symbolColor }); } catch { /* not supported */ }
   });

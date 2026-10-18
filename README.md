@@ -30,6 +30,11 @@ click **Open Anyway**.
 
 Play some music: within a few seconds it finds the beat and starts typing. Press **?** for the keys.
 
+**Updates.** When a newer Toaster is out, it offers it a few seconds after it starts. On Windows,
+say yes and it downloads it, checks it against the checksum GitHub lists for it, closes, and opens
+again as the new version (your settings stay); on a Mac it opens the release's page. You can turn
+the check off in the help (?).
+
 ## Keys
 
 These are the keys as they come; every one can be changed in the help (**?**): click a key, press the one you want (a key that's taken swaps over). Esc, ? and F11 stay put.
@@ -108,8 +113,9 @@ More on all three in [docs/how-it-works.md](docs/how-it-works.md).
 Everything Toaster hears and sees stays on your machine. The sound is worked out in the app, and the
 camera (off until you press C) is looked at by the system's own face detector (Windows' face
 detector, or the Mac's Vision framework) and by Google's MediaPipe, both running on your machine.
-Nothing is uploaded. It reaches the internet for one thing only: strudel.cc when you press O (your
-browser opens it with the code in the link).
+Nothing is uploaded. It reaches the internet for two things only: GitHub, when it starts, to see
+whether there's a newer Toaster (turn that off in the help, under Updates), and strudel.cc when you
+press O (your browser opens it with the code in the link).
 
 ## Good to know
 

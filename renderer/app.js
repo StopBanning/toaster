@@ -100,6 +100,7 @@ const state = {
   camFx: 0, // the camera's effect (K), in CAM_FX
   worldLook: 'auto', // the worlds' look (A while they're on): auto, film, ascii, ink, risograph...
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
+  updates: true, // look for a newer Toaster when it starts (the help's setting)
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
   hushed: false, // every part muted and the picture dimmed (a raised fist, or Q)
   card: false, cardV: true, // the ID card in the wide layout, and in the vertical one (on there unless you turn it off)
@@ -111,7 +112,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'strength', 'blocks', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'worldLook', 'chromeCollage'];
+const SAVED = ['keys', 'strength', 'blocks', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage'];
 function loadSettings() {
   let saved = {};
   try {
@@ -483,6 +484,40 @@ function setCalm(on) {
   saveSettings();
 }
 $('calm').addEventListener('change', (e) => setCalm(e.target.checked));
+
+// Updates: the help's checkbox, and the offer of a newer Toaster (update.js in the main process
+// looks it up on GitHub): a few seconds after it starts, once, not over a recording. Update now:
+// it downloads, checks it, closes and opens again as the new one; or, where it can't (a Mac, a
+// copy it can't write beside), the release's page.
+function setUpdates(on) {
+  state.updates = on;
+  $('updates').checked = on;
+  saveSettings();
+}
+$('updates').addEventListener('change', (e) => setUpdates(e.target.checked));
+async function offerUpdate(u) {
+  if (!state.updates || !window.nc?.updateCheck) return;
+  u ||= await window.nc.updateCheck().catch(() => null);
+  if (!u) return;
+  if (rec.mr || !$('alerts').isConnected || $('alerts').childElementCount) { setTimeout(() => offerUpdate(u), 30000); return; }
+  xpAlert($('alerts'), {
+    title: 'toaster update', icon: 'info',
+    text: `Toaster ${u.version} is out (this one is ${u.current}). ${u.canInstall ? 'Update now? It downloads, then closes and opens again as the new one.' : 'Open its page to get it?'}`,
+    buttons: [u.canInstall ? 'Update now' : 'Open page', 'Later'],
+  });
+  $('alerts').querySelector('button').addEventListener('click', async () => {
+    if (!u.canInstall) { window.nc.updatePage(); return; }
+    flashStatus('downloading the update');
+    try {
+      await window.nc.updateInstall();
+      flashStatus(`opening Toaster ${u.version}`);
+    } catch (err) {
+      xpAlert($('alerts'), { title: 'toaster update', icon: 'warning', text: `The update didn't go through (${String(err?.message || err).replace(/^.*?Error: /, '')}), and nothing changed. Get it from its page instead?`, buttons: ['Open page', 'OK'] });
+      $('alerts').querySelector('button').addEventListener('click', () => window.nc.updatePage());
+    }
+  });
+}
+window.nc?.onUpdateProgress?.((p) => flashStatus(`downloading the update ${Math.round(p * 100)}%`));
 
 // The glass blob: over the code, under the card and the pop-ups.
 function setGlass(on) {
@@ -1247,6 +1282,8 @@ setBlocks(state.blocks);
 setOrb(state.orb);
 setGlass(state.glass);
 setCalm(state.calm);
+setUpdates(state.updates);
+setTimeout(() => offerUpdate(), 8000);
 applyCard();
 // the first time Toaster opens, a word on where to start (it's already listening to the PC)
 window.nc?.onFullScreen?.((on) => document.documentElement.classList.toggle('full', !!on));

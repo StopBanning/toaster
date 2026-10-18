@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('nc', {
   saveSong: (name, midi, code) => ipcRenderer.invoke('song:save', name, midi, code),
   // Drop clips (J): a finished clip, whole, into Videos\Toaster.
   saveClip: (buf, ext) => ipcRenderer.invoke('clip:save', buf, ext),
+  // Updates (update.js): a newer release, or null; on your yes, fetch it and restart into it; or
+  // its page in the browser. fn(fraction) as the download comes in.
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  updatePage: () => ipcRenderer.invoke('update:page'),
+  onUpdateProgress: (fn) => ipcRenderer.on('update:progress', (_e, p) => fn(p)),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),
   handLogAdd: (text) => ipcRenderer.invoke('handlog:add', text),
