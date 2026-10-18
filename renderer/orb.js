@@ -4,10 +4,12 @@
 // corner), orbit paths with their dots running round them, a staff the bass notes appear on as
 // they're played, a spiral galaxy, a network its signals run through on the hats, a field of waves
 // riding the spectrum, a sphere in slices that turn one a beat and then solve themselves (Thinking
-// Orbs' moves, MIT licence, see THIRD-PARTY-NOTICES), a globe's lines, a ring, an icosahedron,
+// Orbs' moves, MIT licence, see THIRD-PARTY-NOTICES), a globe's lines, a ring breathing in slow
+// lobes (Thinking Orbs' breathing), an icosahedron,
 // rings swelling with their bands of the spectrum, a burst of rays, ripples on a disc, and an
-// outline that changes shape on the bar. The kick breathes it out, the clap spins it, the hats send
-// a band of light round it, the bass swells the dots. Nearer dots are bigger and brighter. Drawn
+// outline that changes shape on the bar. The kick breathes it out and back (the field of waves, a
+// cloth, ripples and shivers instead), the clap spins it, the hats send a band of light round it,
+// the bass swells the dots. Nearer dots are bigger and brighter. Drawn
 // with WebGL: the dots move on the graphics card (the forms that move by themselves are worked out a
 // frame at a time and handed over). Timed off the beat clock like the blocks.
 const N = 2200;
@@ -46,14 +48,6 @@ const FORMS = {
     for (let i = 0; i < N; i++) {
       const cx = i % cols, cz = Math.floor(i / cols);
       p.set([((cx / (cols - 1)) * 2 - 1) * 1.35, 0, ((cz / (rows - 1)) * 2 - 1) * 0.9], i * 3);
-    }
-    return p;
-  },
-  ring() {
-    const p = new Float32Array(N * 3), g = (Math.sqrt(5) - 1) / 2;
-    for (let i = 0; i < N; i++) {
-      const u = (i / N) * TAU, v = ((i * g * 37) % 1) * TAU, R = 0.95, r = 0.13;
-      p.set([(R + r * Math.cos(v)) * Math.cos(u), r * Math.sin(v), (R + r * Math.cos(v)) * Math.sin(u)], i * 3);
     }
     return p;
   },
@@ -298,6 +292,30 @@ const DYN = {
       },
     };
   },
+  // breathing: a ring facing you, its outline slowly swelling round in three lobes and five, each
+  // of its lanes a little out of step with the next (Thinking Orbs' breathing ring: its sash's
+  // undulation moved onto the radius), the lobes coming round faster as the tempo rises and
+  // swelling further as the music gets louder, the band turning slowly
+  ring() {
+    const LANES = 7, SEGS = Math.floor(N / LANES), pos = new Float32Array(N * 3), lit = new Float32Array(N);
+    let loud = 0.5;
+    return {
+      pos, lit,
+      step(t, dt, m) {
+        let sum = 0;
+        for (let b = 0; b < 16; b++) sum += m.bands[b];
+        loud += (sum / 16 - loud) * Math.min(1, dt * 2);
+        const amp = 0.55 + 0.9 * clamp(loud, 0, 1), cy = Math.cos(m.yaw), sy = Math.sin(m.yaw), cp = Math.cos(m.pitch), sp = Math.sin(m.pitch);
+        for (let i = 0; i < N; i++) {
+          const w = i % LANES, lane = w - (LANES - 1) / 2, a = (Math.floor(i / LANES) / SEGS) * TAU + t * 0.24;
+          const wob = 0.16 * Math.sin(a * 3 - t * 1.7 + w * 0.22) + 0.07 * Math.sin(a * 5 + t * 1.1);
+          const rr = 0.86 * (1 + wob * amp) + lane * 0.022, dz = lane * 0.03, u = Math.cos(a) * rr, v = Math.sin(a) * rr;
+          // where the orb's turn and tilt bring it round to face you (as the shapes)
+          pos[i * 3] = cy * u + sp * sy * v - cp * sy * dz; pos[i * 3 + 1] = cp * v + sp * dz; pos[i * 3 + 2] = sy * u - sp * cy * v + cp * cy * dz;
+        }
+      },
+    };
+  },
 };
 // Thinking Orbs' puzzle moves: fourteen quarter turns of a slice half a unit thick; solveCycle
 // gives how far each has turned at a time (scrambling, then the same turns undone in reverse)
@@ -381,11 +399,12 @@ const ORDER = ['sphere', 'lattice', 'orbits', 'staff', 'galaxy', 'web', 'waves',
 const WAVY = { waves: 1 }; // forms whose dots ride the spectrum
 let PHRASE = 8; // bars a form holds
 const MORPH = 1.8; // seconds for the dots to flow to the next form
+const BREATH_W = 8; // the breath's spring (rad/s): out at its fullest 1/8 s after the kick
 
 const VERT = `
 attribute vec3 aFrom, aTo;
 attribute float aSeed, aLit;
-uniform float uMix, uTime, uKick, uKickAge, uClapAge, uHat, uBass, uScale, uWaveFrom, uWaveTo, uDot, uDpr, uSpan;
+uniform float uMix, uTime, uKick, uKickAge, uClapAge, uHat, uBass, uScale, uWaveFrom, uWaveTo, uDot, uDpr, uSpan, uBreath;
 uniform mat3 uRot;
 uniform vec2 uSize, uShift;
 uniform float uBands[16];
@@ -403,15 +422,17 @@ void main() {
   vec3 p = mix(aFrom, aTo, m);
   float w = mix(uWaveFrom, uWaveTo, m);
   p.y += w * (0.32 * band(p.x) - 0.1 + 0.05 * sin(p.x * 5.0 + p.z * 3.0 + uTime * 2.4));
-  // the kick: a springy ripple that runs out from the middle, overshoots and wobbles back (it's
-  // already most of the way out when it starts, so it lands on the hit rather than after it)
+  // The kick, on the field of waves (a cloth): a springy ripple that runs out from the middle,
+  // overshoots and wobbles back (it's already most of the way out when it starts, so it lands on
+  // the hit rather than after it), and the clap a quick shiver along each dot's way out. On a solid
+  // (the sphere and the rest) those read as lumps, every dot at its own place in the wobble: it
+  // breathes instead, all of it out and back at once, smoothly (uBreath: worked out per frame).
   float r = length(p), age = uKickAge - r * 0.09;
   float spring = age > 0.0 ? exp(-age * 6.0) * sin(age * 21.0 + 0.9) : 0.0;
-  // the clap: a quick shiver along each dot's way out
   float shiver = uClapAge < 0.6 ? exp(-uClapAge * 9.0) * sin(uClapAge * 70.0 + aSeed * 25.0) : 0.0;
-  p *= uScale * (1.0 + 0.12 * spring + 0.035 * shiver);
-  // and the dots never quite sit still
-  p += 0.012 * vec3(sin(uTime * 0.7 + aSeed * 53.0), cos(uTime * 0.9 + aSeed * 41.0), sin(uTime * 0.8 + aSeed * 29.0));
+  p *= uScale * (1.0 + mix(0.08 * uBreath, 0.12 * spring + 0.035 * shiver, w));
+  // and the dots never quite sit still (a solid's only just)
+  p += mix(0.005, 0.012, w) * vec3(sin(uTime * 0.7 + aSeed * 53.0), cos(uTime * 0.9 + aSeed * 41.0), sin(uTime * 0.8 + aSeed * 29.0));
   p = uRot * p;
   float d = 3.2 - p.z, persp = 3.2 / d;
   vec2 xy = p.xy * persp * uSpan;
@@ -441,6 +462,9 @@ export function createOrb(canvas) {
   const bands = new Float32Array(16), raw = new Float32Array(16); // the spectrum, smoothed (raw: this frame's)
   let form = null, from = null, mixAt = -9, changedAt = -9, flowFor = null, which = 0, last = 0, lastStep = null, heard = {}, phraseOf = null, since = 0, clock = 0;
   let kick = 0, kickAt = -9, clapAt = -9, hatTo = 0, hat = 0, yaw = 0, spin = 0, spinNow = 0, bass = 0, drawn = false;
+  // the breath: a spring damped just enough not to overshoot, each kick a push outward (out in an
+  // eighth of a second, back over half a second; kicks close together carry on from each other)
+  let breath = 0, breathV = 0;
   let kickHeard = -9, clapHeard = -9; // the last kick and clap, counted or run into the one before
   const hats = []; let hatN = 0; // the hats just gone (for the network's signals)
   // what the music is doing, for the forms that move by themselves
@@ -475,7 +499,7 @@ export function createOrb(canvas) {
     for (let i = 0; i < N; i++) seeds[i] = r();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.aSeed);
     gl.bufferData(gl.ARRAY_BUFFER, seeds, gl.STATIC_DRAW);
-    for (const name of ['uMix', 'uTime', 'uKick', 'uKickAge', 'uClapAge', 'uHat', 'uBass', 'uScale', 'uWaveFrom', 'uWaveTo', 'uDot', 'uDpr', 'uRot', 'uSize', 'uBands', 'uColor', 'uGlow', 'uSpan', 'uShift']) loc[name] = gl.getUniformLocation(prog, name);
+    for (const name of ['uMix', 'uTime', 'uKick', 'uKickAge', 'uClapAge', 'uHat', 'uBass', 'uScale', 'uWaveFrom', 'uWaveTo', 'uDot', 'uDpr', 'uRot', 'uSize', 'uBands', 'uColor', 'uGlow', 'uSpan', 'uShift', 'uBreath']) loc[name] = gl.getUniformLocation(prog, name);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     ready = true;
@@ -560,7 +584,7 @@ export function createOrb(canvas) {
       // and the hits that are right still land.
       const close = 22.5 / bpm; // a 16th and a half
       const fire = (id) => {
-        if (id === 'bd') { if (t - kickHeard > close) { kick = 1; kickAt = t; } kickHeard = t; }
+        if (id === 'bd') { if (t - kickHeard > close) { kick = 1; kickAt = t; breathV += BREATH_W * Math.E; } kickHeard = t; }
         else if (id === 'sd') { if (t - clapHeard > close) { spin = Math.max(spin, 1.1); clapAt = t; } clapHeard = t; }
         else { hatTo += TAU / 12; hats.push({ n: hatN++, at: t }); }
       };
@@ -593,6 +617,12 @@ export function createOrb(canvas) {
       }
       while (hats.length && t - hats[0].at > 0.6) hats.shift();
       kick *= Math.exp(-dt / 0.16);
+      // (in steps of at most a 120th of a second, so a slow frame can't make it ring)
+      for (let n = Math.ceil(dt * 120), k = 0; k < n; k++) {
+        const h = dt / n;
+        breathV += (-BREATH_W * BREATH_W * breath - 2 * BREATH_W * breathV) * h;
+        breath = clamp(breath + breathV * h, -0.3, 1.5);
+      }
       hat += (hatTo - hat) * Math.min(1, dt * 10);
       spin *= Math.exp(-dt * 2.2);
       // the clap's spin comes on over a tenth of a second rather than all at once: a whip round on
@@ -632,6 +662,7 @@ export function createOrb(canvas) {
       gl.uniform1f(loc.uMix, mix);
       gl.uniform1f(loc.uTime, t % 1000);
       gl.uniform1f(loc.uKick, kick);
+      gl.uniform1f(loc.uBreath, breath);
       gl.uniform1f(loc.uKickAge, Math.min(10, t - kickAt));
       gl.uniform1f(loc.uClapAge, Math.min(10, t - clapAt));
       gl.uniform1f(loc.uHat, ((hat % TAU) + TAU) % TAU - Math.PI);

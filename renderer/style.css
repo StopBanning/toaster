@@ -38,7 +38,8 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font); user-s
 /* the finger frame, portals and big eyes: over the ID card too (in the vertical layout the card sits where the
    camera is, and they went behind it), under the drop effect's pop-ups (#desk-front, later in the page) */
 #segcam, #lens, #portal { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
-/* a portal filling the picture goes behind the code, in place of the background */
+/* a portal filling the picture, or the camera's glass effect (K), goes behind the code, in place of
+   the background */
 body.portal-full #portal { z-index: 1; }
 #cam { opacity: .62; }
 /* the cut-out (K): just you, over the visuals (still under the code) */
@@ -105,6 +106,7 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords { opaci
 }
 .panel .cur, .panel .lab.on { background: var(--fg); color: var(--bg); }
 .panel .dim { color: var(--dim); }
+#roll.cut { visibility: hidden; } /* (no room for all of it: see fitRoll) */
 #sys { position: fixed; z-index: 2; top: 48px; right: 24px; margin: 0; font-size: calc(var(--size) * .58); }
 body.card-on #sys { right: 348px; }
 

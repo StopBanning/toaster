@@ -771,6 +771,64 @@
     return rows;
   }
 
+  // The kick band's sounds, for telling a kick from a bass note (on a riddim track the sub, pulsing
+  // every 8th, was taken for kicks; a trap 808 is both): each new sound there, measured in the frame
+  // it starts in, before lowDecide calls it a kick or a bass note (up to 90 ms later): how much the
+  // low band (40-130 Hz), the body (150-400), the click (2-6 kHz) and the top (6-12 kHz) rose, in dB
+  // averaged over their bins; what it was called; and what was played then. Each song's sounds,
+  // and the medians by what was played.
+  //   node tools/cdp.mjs run tools/checks.js "checks.lows(['trap', 'house'])"
+  async function lows(names = Object.keys(SONGS).filter((k) => !SONGS[k].talk && !SONGS[k].ambient), seed) {
+    const e = n.eng, songs = [], all = [];
+    const band = (lo, hi, a) => {
+      const i = Math.max(1, Math.round(lo / e.hzFast)), j = Math.min(a.length - 1, Math.round(hi / e.hzFast));
+      let s = 0;
+      for (let k = i; k <= j; k++) s += a[k];
+      return s / (j - i + 1);
+    };
+    for (const name of names) {
+      const b = await start(name, seed), spec = b.spec, rec = await record(), sounds = [];
+      const { frame, onset, bassHit } = e;
+      e.frame = function (t, audioT) {
+        const before = this.fastDb.slice(), had = this.lowPending;
+        frame.call(this, t, audioT);
+        if (this.lowPending && this.lowPending !== had) {
+          const rise = (lo, hi) => r1(band(lo, hi, this.fastDb) - band(lo, hi, before));
+          sounds.push({ t, s: r1(this.lowPending.s), low: rise(40, 130), body: rise(150, 400), click: rise(2000, 6000), top: rise(6000, 12000), called: null });
+        }
+      };
+      // (with lowDecide's readings: the pitch and its clarity in each half of the sound, and how
+      // loud the second half is against the first)
+      const read = (x, r) => { if (r) Object.assign(x, { af: r1(r.a.f), ar: +r.a.r.toFixed(2), bf: r1(r.b.f), br: +r.b.r.toFixed(2), ratio: +(r.b.rms / (r.a.rms || 1e-9)).toFixed(2) }); };
+      e.onset = function (id, t, ...rest) { if (id === 'bd') { const x = sounds.find((q) => q.t === t); if (x) { x.called = 'kick'; read(x, this.lowRead); } } return onset.call(this, id, t, ...rest); };
+      e.bassHit = function (t, ...rest) { const x = sounds.find((q) => q.t === t); if (x && !x.called) { x.called = 'bass'; read(x, this.lowRead); } return bassHit.call(this, t, ...rest); };
+      try {
+        await sleep(((spec.warm ?? 16) + (spec.secs ?? 16)) * 1000);
+      } finally {
+        Object.assign(e, { frame, onset, bassHit });
+        rec.stop();
+      }
+      // (as heardAs: the audio clock to when the sound was processed)
+      const ts = rec.ts.filter((s) => s[1] > 0), rendered = Math.min(...ts.map((s) => s[3] - s[2]));
+      for (const x of sounds) {
+        const at = x.t - rendered - 0.014, near = [...new Set(b.events.filter((ev) => Math.abs(ev.c - at) < 0.035).map((ev) => ev.id))].sort();
+        x.played = near.length ? near.join('+') : 'nothing';
+        x.song = name;
+        delete x.t;
+        all.push(x);
+      }
+      songs.push({ name, sounds: sounds.length, called: { kick: sounds.filter((x) => x.called === 'kick').length, bass: sounds.filter((x) => x.called === 'bass').length } });
+    }
+    const med = (xs) => { const a = xs.filter((v) => Number.isFinite(v)).sort((p, q) => p - q); return a.length ? a[a.length >> 1] : null; };
+    const byPlayed = {};
+    for (const x of all) (byPlayed[x.played] ||= []).push(x);
+    const summary = Object.fromEntries(Object.entries(byPlayed).map(([k, xs]) => [k, {
+      n: xs.length, calledKick: xs.filter((x) => x.called === 'kick').length, calledBass: xs.filter((x) => x.called === 'bass').length,
+      low: med(xs.map((x) => x.low)), body: med(xs.map((x) => x.body)), click: med(xs.map((x) => x.click)), top: med(xs.map((x) => x.top)), s: med(xs.map((x) => x.s)),
+    }]));
+    return { songs, summary, sounds: all };
+  }
+
   // What the app makes of whatever the PC is playing right now (system audio), over secs.
   async function listen(secs = 60) {
     if (n.state.source !== 'system') await n.useSystem();
@@ -966,5 +1024,5 @@
     return { kind, locks: out };
   }
 
-  window.checks = { loopback, beat, song, suite, verdict, listen, trace, lag, lockTime, probe, rings, chords, SONGS };
+  window.checks = { loopback, beat, song, suite, verdict, listen, lows, trace, lag, lockTime, probe, rings, chords, SONGS };
 })();

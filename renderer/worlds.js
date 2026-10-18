@@ -4,7 +4,7 @@
 // a sky above, and below an extreme close-up of a material (caramel, a leaf, marble, a wing,
 // lace, terracotta, dunes, a circuit board...) seen as a planet from low orbit, the foreground
 // soft the way a macro lens leaves it, gold dust in the air, grain over all of it. It cuts to the
-// next world on the kick (once a beat at most; once a bar with fewer flashes), and the song's
+// next world on the bar's first kick (once a bar; every other bar with fewer flashes), and the song's
 // title sits on the horizon a word or two at a time, the next piece each bar. When the kick
 // drops out, the film goes to its title card, dawn over a dark planet with the whole title, until
 // the kick comes back. The terminal world shows the code, the ledger keeps the song's bars, the
@@ -1146,6 +1146,9 @@ const FONT = 'Georgia, "Times New Roman", serif';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rgb = (hex) => [parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255];
 const darkSky = (sky) => parseInt(sky[0].slice(1, 3), 16) < 40;
+// a sky as dark as a night's, top and horizon both (a sunset's red horizon under a deep blue isn't)
+const luma = (hex) => { const [r, g, b] = rgb(hex); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const nightSky = (sky) => Math.max(luma(sky[0]), luma(sky[1])) < 0.3;
 // a seeded random number generator (mulberry32), so a song gets the same order of worlds again
 function seeded(seed) {
   let s = seed >>> 0;
@@ -1180,6 +1183,7 @@ export function createWorlds(canvas, wordsCanvas) {
   let shotNow = null, shotAt = 0, cutAt = -9, kickAt = -9, hit = 0, pulse = 0, last = 0, frame = 0;
   let deck = [], rnd = seeded(1), title = '', artist = '', parts = [], partI = 0, partAt = 0, barSeen = null;
   let calmNow = false, seenIds = []; // fewer flashes, as the last kick had it; the worlds shown lately (newest last)
+  let night = false; // night skies: every world's sky as dark as a night's (see shot)
   let card = true, cardAt = 0, codeText = '', codeAt = -9, ledgerRows = [], ledgerDirty = true, markFor = null;
   let boxOf = null; // where the code is on screen (from the app), for the words to keep clear of it
   // the look: chosen (auto, or one by name), the one printing now, since when; with auto, a drop
@@ -1471,7 +1475,20 @@ export function createWorlds(canvas, wordsCanvas) {
     // rising from behind the planet somewhere along the horizon at a tilt, its core low or high
     const own = seeded(Math.floor(s.t * 1e6) + s.v);
     s.seed = own() * 100;
-    if (w.i && (w.sky === SPACE || w.sky === BLACK) && own() < 0.6) {
+    // Night skies (or fewer flashes): a sky lighter than a night's goes as dark as one, its own
+    // colour kept as a hint (a twelfth of its light), with stars, an airglow some of the time and the
+    // galaxy's band as over the space-black worlds, no sun, and light words: so a cut never lights
+    // the whole screen. (From its own draws: the song's order of worlds stays as it was.)
+    const darkened = (night || calmNow) && w.i && !nightSky(w.sky);
+    if (darkened) {
+      s.sky = w.sky.map((c) => rgb(c).map((x) => x * 0.08));
+      s.sun = null;
+      s.text = 'light';
+      if (s.glow) s.glow[3] *= 0.6;
+      else if (own() < 0.4) s.glow = [...GLOWS[Math.floor(own() * GLOWS.length)], 0.2 + own() * 0.25];
+      s.stars = Math.max(s.stars, 0.002 + own() * 0.004);
+    }
+    if (w.i && (w.sky === SPACE || w.sky === BLACK || darkened) && own() < 0.6) {
       s.band = { x: (own() - 0.5) * 0.8, tilt: (own() < 0.5 ? -1 : 1) * (0.25 + own() * 0.9), core: -150 + own() * 650, k: 0.75 + own() * 0.35 };
       s.stars = Math.max(s.stars, 0.003);
     }
@@ -1538,7 +1555,7 @@ export function createWorlds(canvas, wordsCanvas) {
       }
       g.globalCompositeOperation = 'source-over';
     }
-    const ink = shotNow.w.text === 'dark' ? DARK_INK : LIGHT_INK;
+    const ink = (shotNow.text ?? shotNow.w.text) === 'dark' ? DARK_INK : LIGHT_INK;
     g.fillStyle = ink;
     g.textAlign = 'center';
     g.textBaseline = 'alphabetic';
@@ -1592,22 +1609,33 @@ export function createWorlds(canvas, wordsCanvas) {
   return {
     get broken() { return !ok; },
     get world() { return card ? 'dawn' : shotNow?.w.key; },
-    // a kick: the next world (at most once a beat, or a bar with fewer flashes), and its light
-    kick(s, t, calm, beat) {
+    // a kick: its light, and the next world if it's the bar's first (onOne; null before the beat
+    // is found): once a bar, or every other with fewer flashes. (A cut on every kick, once a beat,
+    // was too fast to see a world in, and with the cells look a mosaic of them torn up every half
+    // second.) Before the beat is found, about a bar apart; with no kick on the one for two bars
+    // (the bar lines off, a part without one), on the next kick then.
+    kick(s, t, calm, beat, onOne = null) {
       kickAt = t;
       calmNow = calm;
       hit = Math.max(hit, 0.5 + 0.5 * Math.min(1, s));
       if (!calm) pulse = Math.max(pulse, 0.5 + 0.5 * Math.min(1, s));
-      // never more than about three cuts a second, as the cuts background has it: a new world is
-      // a change of the whole screen's light, and faster can set off seizures (WCAG's flash limit)
-      const gap = Math.max(0.34, (calm ? 3.8 : 0.92) * beat);
-      if (card || !shotNow || t - cutAt >= gap) cut(t);
+      // (never more than about three cuts a second either way, as the cuts background has it: a new
+      // world is a change of the whole screen's light, and faster can set off seizures: WCAG's
+      // flash limit)
+      const gap = Math.max(0.34, (calm ? 8 : 4) * beat), since = t - cutAt;
+      if (card || !shotNow || (onOne && since >= 0.75 * gap) || (onOne === null && since >= 0.95 * gap) || since >= 2 * gap) cut(t);
     },
     // The look: 'auto' (film, and on a drop another for 8 bars) or one by name.
-    get look() { return lookPick; },
+    // (night: the auto look, with night skies: every world after the next cut keeps a sky as dark
+    // as a night's, see shot)
+    get look() { return night ? 'night' : lookPick; },
+    get night() { return night; },
     get lookNow() { return lookNow; },
-    get looks() { return ['auto', ...LOOKS.map((l) => l.key)]; },
-    setLook(key) { if (key === 'auto' || LOOKS.some((l) => l.key === key)) lookPick = key; },
+    get looks() { return ['auto', 'night', ...LOOKS.map((l) => l.key)]; },
+    setLook(key) {
+      if (key === 'night') { lookPick = 'auto'; night = true; }
+      else if (key === 'auto' || LOOKS.some((l) => l.key === key)) { lookPick = key; night = false; }
+    },
     // a drop: with auto, another look for 8 bars (not the one before)
     drop(t, bar) {
       if (lookPick !== 'auto' || bar === null) return;
@@ -1698,7 +1726,7 @@ export function createWorlds(canvas, wordsCanvas) {
       const L = [lx * ca - ly * sa, lx * sa + ly * ca, lz], Ln = Math.hypot(...L);
       const low = band(eng, 40, 200), level = Math.min(1, (eng.level || 0) * 6);
       const glow = shotNow.glow ? [shotNow.glow[0], shotNow.glow[1], shotNow.glow[2], shotNow.glow[3] * (0.75 + 0.5 * low)] : [0, 0, 0, 0];
-      const sun = w.sun ? [U / 2 + w.sun[0], Z - w.sun[1], w.sun[2], 1] : [0, 0, 0, 0];
+      const sun = w.sun && shotNow.sun !== null ? [U / 2 + w.sun[0], Z - w.sun[1], w.sun[2], 1] : [0, 0, 0, 0];
       const bd = shotNow.band, milky = bd ? [bd.k, bd.tilt, U / 2 + bd.x * U, bd.core] : [0, 0, 0, 0];
 
       gl.useProgram(worldProg);
@@ -1736,8 +1764,8 @@ export function createWorlds(canvas, wordsCanvas) {
       gl.uniform1f(loc.uFore, shotNow.fore);
       gl.uniform2f(loc.uDrift, ...(w.drift || [10, 0]));
       gl.uniform3f(loc.uLight, L[0] / Ln, L[1] / Ln, L[2] / Ln);
-      gl.uniform3f(loc.uSkyA, ...rgb(w.sky[0]));
-      gl.uniform3f(loc.uSkyB, ...rgb(w.sky[1]));
+      gl.uniform3f(loc.uSkyA, ...(shotNow.sky ? shotNow.sky[0] : rgb(w.sky[0])));
+      gl.uniform3f(loc.uSkyB, ...(shotNow.sky ? shotNow.sky[1] : rgb(w.sky[1])));
       gl.uniform1f(loc.uSkyH, Z * 1.8);
       gl.uniform1f(loc.uStars, w === DAWN ? 0.0035 : shotNow.stars); // the card's as it always was
       gl.uniform4f(loc.uSun, ...sun);

@@ -30,8 +30,8 @@ const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts']; // the backgrounds dr
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'];
 const DROPS = ['xp takeover', 'blue screen', 'off'];
-// The camera's effects (K): none, just you over the visuals, slit-scan, datamosh.
-const CAM_FX = ['none', 'cut-out', 'slit-scan', 'datamosh', 'windows'];
+// The camera's effects (K): none, just you over the visuals, slit-scan, datamosh, windows, glass.
+const CAM_FX = ['none', 'cut-out', 'slit-scan', 'datamosh', 'windows', 'glass'];
 // How strongly the ASCII background shows (A): a multiple of each theme's own strength (--field).
 const STRENGTHS = [['soft', 1], ['normal', 1.5], ['bold', 2.2]];
 
@@ -98,7 +98,7 @@ const state = {
   eyes: false, // the camera's third setting: big eyes over your face
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
   camFx: 0, // the camera's effect (K), in CAM_FX
-  worldLook: 'auto', // the worlds' look (A while they're on): auto, film, ascii, ink, risograph...
+  worldLook: 'auto', // the worlds' look (A while they're on): auto, night, film, ascii, ink, risograph...
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
@@ -323,7 +323,7 @@ function codeBox() {
   const panels = [];
   for (const el of document.querySelectorAll('#code .ln .txt, #code .panel')) {
     const r = el.getBoundingClientRect();
-    if (!r.width || !r.height) continue;
+    if (!r.width || !r.height || el.classList.contains('cut')) continue; // (the roll, hidden)
     top = Math.min(top, r.top);
     bottom = Math.max(bottom, r.bottom);
     right = Math.max(right, r.right);
@@ -388,7 +388,11 @@ eng.on.kick = (s) => {
   // the ones that punch the whole picture's light (the tunnel's flash, the warp, the camera's and
   // the card's glitches) sit out with fewer flashes on
   if (!state.calm) { tunnel.kick(s); warp.kick(s); cam.kick(s); card.kick(s); }
-  if (VISUALS[state.visual] === 'worlds') worlds.kick(s, nowSec(), state.calm, eng.tempo.P || 0.5);
+  if (VISUALS[state.visual] === 'worlds') {
+    // (whether it's the bar's first beat, a 16th either way; null before the beat is found)
+    const t = nowSec(), at = eng.placeAt(t);
+    worlds.kick(s, t, state.calm, eng.tempo.P || 0.5, at ? at.step === 15 || at.step <= 1 : null);
+  }
 };
 // Drop clips: the first two drops of each song (the ones that matter, without a long night of
 // a song that keeps dropping filling the disk). Turning them on again starts the count over.
@@ -399,6 +403,7 @@ eng.on.drop = () => {
   if (clipsThisSong < 2 && t - lastClipAt > 12 && clips.drop()) { clipsThisSong++; lastClipAt = t; flashStatus('✂ clipping the drop…'); }
   if (VISUALS[state.visual] === 'worlds') worlds.drop(t, eng.bar);
   if (VISUALS[state.visual] === 'chrome') chrome.splash(state.calm);
+  portal.drop(t, eng.tempo.P || 0.5); // (the glass: you, back in view for a beat)
   const mode = DROPS[state.drop];
   // a bar's length in seconds; half a second a beat if the tempo isn't known yet
   if (mode === 'xp takeover') takeover.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4);
@@ -528,7 +533,8 @@ function setGlass(on) {
 }
 
 // K: the camera's effect. The cut-out puts you over the visuals (the camera layer above them,
-// see-through round you); the others work on the picture as it is.
+// see-through round you); glass (the portals' look, drawn by them over the whole picture, in
+// colour) makes you clear, the room bent through you; the others work on the picture as it is.
 // The camera button: filled while it's on, with its look past the plain one, and its effect (K)
 // if there is one.
 function camLabel() {
@@ -542,6 +548,7 @@ function setCamFx(i, say) {
   cam.setFx(CAM_FX[i]);
   if (CAM_FX[i] === 'windows') asciiCam.clear(); // (the camera as text shows in the windows instead)
   document.body.classList.toggle('cam-cut', CAM_FX[i] === 'cut-out');
+  portal.glassFx = CAM_FX[i] === 'glass';
   if (say) flashStatus('camera effect: ' + CAM_FX[i] + (cam.on ? '' : ` (${K('cam')} turns the camera on)`));
   camLabel();
   saveSettings();
@@ -797,6 +804,14 @@ function renderRoll() {
   html += `<span class="dim">   ${chord ? 'chord ' + chord.name : 'listening for chords...'}</span>`;
   $('roll').innerHTML = html;
 }
+// The roll hangs below the last line. Where the code reaches too far down for it (the vertical
+// layout under the ID card or the camera, or a short window), the bottom of the window would cut
+// it in half, so it's hidden till there's room again. (Hidden, it keeps its place: whether it fits
+// doesn't change with it.)
+function fitRoll() {
+  const roll = $('roll'), r = roll.getBoundingClientRect();
+  roll.classList.toggle('cut', r.height > 0 && r.bottom > innerHeight + 1);
+}
 
 const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
 function renderFooter() {
@@ -1014,7 +1029,7 @@ function showLayers() {
 // second, and after 30 seconds 10 times, if the window isn't in front (it measured 16% of a core
 // drawing a still screen at 60). The next sound brings it straight back. Never while recording,
 // with the camera on or during a drop.
-let poolAt = 0, footerAt = 0, lastFrame = 0, windowShown = true;
+let poolAt = 0, rollAt = 0, footerAt = 0, lastFrame = 0, windowShown = true;
 let trackShown = ''; // the tracking trouble last told about (see draw)
 window.nc?.onWindowShown((shown) => { windowShown = shown; });
 function frameGap(t) {
@@ -1051,6 +1066,7 @@ function draw(now) {
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome');
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
   if (t - poolAt > 2) { poolAt = t; field.setPool($('code').textContent); }
+  if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
   if (cam.on) {
     // (the face is looked for while the finger frame is open too: a wink changes its filter)
@@ -1068,7 +1084,10 @@ function draw(now) {
     portal.draw(t, { ...where, hands: tracker.hands, video: cam.video, mask: tracker.mask, bar: eng.bar });
     if (portal.showing) lens.clear();
     else lens.draw(t, { ...where, hands: tracker.hands, eyes: tracker.eyes, bar: eng.bar });
-    if (portal.full !== document.body.classList.contains('portal-full')) document.body.classList.toggle('portal-full', portal.full);
+    // (behind the code: a window filling the picture, and the camera's glass effect, which is drawn
+    // on the portals' canvas over the whole picture: over the code, it hid it)
+    const under = portal.full || portal.glassFx;
+    if (under !== document.body.classList.contains('portal-full')) document.body.classList.toggle('portal-full', under);
     watchSigns(t);
     if (handLog.on) handLog.update(t, tracker.hands, { place: cam.place, rect: cam.rect, portal: portal.state, lens: lens.showing, sign: gestures.holding });
     if (state.eyes || windows) segcam.draw(t, { ...where, face: tracker.face, eyes: state.eyes, windows, frame: cam.frame, ascii: state.ascii });

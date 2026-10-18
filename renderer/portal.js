@@ -2,16 +2,20 @@
 // touching, and the tips of your thumbs, one pair above the other: a diamond or a heart works too,
 // and the code calls any of them the diamond) and a round window opens in it, showing what the
 // camera sees there through a look. Pull your hands apart and it grows between them; spread them
-// wide and hold them there a moment (its outline thickens) and it fills the picture, with you cut
-// out in front of it as you are. Pinch (thumb on index) and the next look spreads out from that
-// hand in a circle (a pinch while one is still spreading brings the one after). Once it fills the
+// wide and hold them there a moment (its outline thickens), or spread them on out past the
+// picture's sides, and it fills the picture, with you cut out in front of it as you are. Pinch
+// (thumb on index) and the next look spreads out from that hand in a circle (a pinch while one is
+// still spreading brings the one after). Once it fills the
 // picture, a swipe (one open hand held up a moment, then fast sideways) slides a look in after it:
 // swiped left, the next; right, the one before. Every 8 bars brings the next one too, from the
 // middle (once a look has had 4 seconds). Drop your hands and a window closes a moment later; once
 // it fills the picture it stays (so your hands are free) until you make the circle again (a looser
-// one than opens it does). The looks are the finger frame's (lens.js) and two of the reel's own:
-// x-ray (white edges, with echoes spreading out from the middle) and lilac (grainy, pale). Drawn
-// with WebGL. After cure.visual's TouchDesigner portals.
+// one than opens it does). Hold the circle on once it's closed, and the next window opens. The
+// looks: two of the reel's own, x-ray (white edges, with echoes spreading out from the middle) and
+// lilac (grainy, pale); three made for portals, glass (you gone clear, the room bent through you),
+// a kaleidoscope and a time tunnel; and the finger frame's (lens.js) boldest. Glass is also a
+// camera effect (K): over the whole picture, window or no window. Drawn with WebGL. After
+// cure.visual's TouchDesigner portals (and ttyproj's "Transparent Distortion" for the glass).
 import { FILTERS, KEYS, LOOK_GLSL, isPinch } from './lens.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -23,10 +27,15 @@ const ease = (k) => k * k * (3 - 2 * k);
 const size = (P) => dist(P[0], P[9]);
 const palm = (P) => [0, 5, 9, 13, 17].reduce((s, i) => [s[0] + P[i][0] / 5, s[1] + P[i][1] / 5], [0, 0]);
 
-// The looks, in the order they come round: the reel's x-ray and lilac, then the finger frame's
-// boldest (its own numbers for them; the portal's own two are numbered from 100).
-const LOOKS = ['xray', 'lilac', 'thermal', 'comic', 'sketch', 'keyframes', 'halftone', 'film', 'dither', 'negative'];
-const OWN = { xray: 100, lilac: 101 };
+// The looks, in the order they come round: the reel's x-ray and lilac, then the portals' own three
+// spread through the finger frame's boldest (its own numbers for those; the portals' own five are
+// numbered from 100).
+const LOOKS = ['xray', 'lilac', 'glass', 'thermal', 'comic', 'kaleido', 'sketch', 'keyframes', 'tunnel', 'halftone', 'film', 'rgb', 'dither', 'edges', 'negative', 'mosaic'];
+const OWN = { xray: 100, lilac: 101, kaleido: 102, tunnel: 103, glass: 104 };
+// The time tunnel: rings round the window's middle, each STEP frames kept further back than the one
+// inside it (a frame kept every other one drawn: 2/15 of a second a ring at 60 a second); the
+// middle is the camera now, the ring inside the outline over 3/4 of a second ago.
+const RINGS = 8, STEP = 4, LAYERS = (RINGS - 2) * STEP + 1;
 const ID = LOOKS.map((name) => OWN[name] ?? FILTERS.findIndex((f) => f.name === name));
 const pick = (k) => ((k % LOOKS.length) + LOOKS.length) % LOOKS.length;
 
@@ -37,6 +46,15 @@ const LOST = 1.2; // seconds a window held between the hands lasts without them
 // and 0.1 s it filled while still being grown; on real hands the widest spread was about 0.76)
 const WIDE = 0.7;
 const WIDE_HOLD = 0.35;
+// Spread wide (this much of the picture's width apart) and still spreading, with a palm within
+// SIDE of a side of the picture, and then that hand gone: the hands went on out past its sides,
+// and it fills. (Spread fast, they were out of the camera's sight before WIDE_HOLD was up, and
+// with no hands the window closed: on real hands, Oct 18.)
+const OUT_WIDE = 0.6, SIDE = 0.1;
+// The circle that closed a window held on this long after it's shut (seconds): the next opens.
+// (Closing one and holding the circle on for the next, it never came: the next needed the circle
+// let go and made again, so that a circle held a moment too long doesn't open one at once.)
+const REOPEN = 0.8;
 const WIPE = 0.4; // seconds the next look takes to spread over the window
 const FILL = 0.55; // seconds the window takes to fill the picture
 const SHUT = 0.35; // seconds it takes to close (from filling the picture, half as long again)
@@ -157,6 +175,17 @@ void main() {
 const PORTAL_GLSL = `
 #define P_XRAY ${OWN.xray}
 #define P_LILAC ${OWN.lilac}
+#define P_KALEIDO ${OWN.kaleido}
+#define P_TUNNEL ${OWN.tunnel}
+#define P_GLASS ${OWN.glass}
+#define T_RINGS ${RINGS}.0
+#define T_STEP ${STEP}.0
+uniform highp sampler2DArray hist;  // the time tunnel's frames of the camera, a layer each
+uniform float head;                 // the newest layer
+uniform float layers;               // how many there are
+uniform sampler2D mask;             // where you are (0-1), in the camera's frame, with its mipmaps
+uniform sampler2D plate;            // the room without you (premultiplied by alpha: seen there yet)
+uniform float reveal;               // the glass gone, you seen again (0-1): on the drop
 // x-ray: the edges glowing white (flaring on the kick) over the picture's light turned down and
 // over, so a lit wall goes dark and a face is all lines
 vec3 xray(vec2 p) {
@@ -182,10 +211,108 @@ vec3 lilac(vec2 p) {
   float v = smoothstep(0.06, 0.5, lum(at(p)) + g * 0.24);
   return mix(vec3(0.15, 0.1, 0.22), vec3(0.97, 0.93, 1.0), v);
 }
-vec3 portalLook(int f, vec2 p, vec2 uv) {
+// kaleidoscope: the picture folded into 6 mirrored wedges round the window's middle (c), the
+// wedge it takes facing up (where a face usually is), turning slowly, a touch faster on the kick
+vec3 kaleido(vec2 p, vec2 c) {
+  vec2 d = p - c;
+  float w = 6.2831853 / 6.0, a = mod(atan(d.y, d.x) + time * 0.2 + pulse * 0.08, w);
+  a = abs(a - 0.5 * w) - 0.25 * w - 1.5707963;
+  return at(c + length(d) * vec2(cos(a), sin(a)));
+}
+// time tunnel: rings round the window's middle (c, radius r), each a moment further back than the
+// one inside it (the middle is the camera now), so moving sends ripples out through time; the
+// older, a little dimmer; a fine line between rings, flashing white on the kick
+vec3 tunnel(vec2 p, vec2 c, float r) {
+  float k = length(p - c) / max(r, 1.0) * T_RINGS, i = min(floor(k), T_RINGS - 1.0);
+  vec3 col = i < 0.5 ? at(p) : texture(hist, vec3(tex(p), mod(head - (i - 1.0) * T_STEP + layers, layers))).rgb;
+  col *= 1.0 - 0.04 * i;
+  float d = abs(fract(k + 0.5) - 0.5) * r / T_RINGS; // to the nearest line between rings (CSS px)
+  float line = (1.0 - smoothstep(0.4, 1.4, d)) * step(0.5, k) * step(k, T_RINGS - 0.5);
+  return mix(col, vec3(pulse), line * (0.35 + 0.5 * pulse));
+}
+// where you are, blurred (lod: how far up its mipmaps: 3 is a soft hill, an eighth of its size)
+float you(vec2 t, float lod) { return textureLod(mask, t, lod).r; }
+// the room behind a point: the plate where it's been seen, else filled in from what's been seen
+// round about: blurs of the plate from a little way out to all of it, the nearer counting most,
+// divided by how much of each was seen (so a big patch never seen, behind you, still fills in
+// with the room's colours rather than you); the camera only before anything's been seen at all
+vec3 room(vec2 t) {
+  vec4 a = textureLod(plate, t, 0.0);
+  if (a.a > 0.98) return a.rgb / a.a;
+  vec4 b = textureLod(plate, t, 4.0) + 0.5 * textureLod(plate, t, 6.0) + 0.25 * textureLod(plate, t, 8.0) + 0.1 * textureLod(plate, t, 12.0);
+  vec3 fill = b.a > 1e-4 ? b.rgb / b.a : texture(cam, t).rgb;
+  return mix(fill, a.rgb / max(a.a, 1e-3), a.a);
+}
+// glass: you gone clear, the room behind you bent through your shape as through liquid glass (a
+// hill raised where you are: its slope bends the light, a ripple running over it, a sharper bend
+// on the kick), with light glinting off its curves and colour split a little at the edges. Round
+// you, the camera as it is.
+vec3 glass(vec2 p) {
+  vec2 t = tex(p);
+  // (glass wherever you are, to your very edge: the mask grown a little past you, not the soft
+  // hill, or a rim of you would show; the tracker's word on where you are comes a few frames late.
+  // Where that's none of you, the camera as it is, and none of the work below: most of the picture)
+  float m = smoothstep(0.1, 0.4, max(you(t, 0.0), max(you(t, 1.0), you(t, 2.0)))) * (1.0 - reveal);
+  if (m <= 0.0) return texture(cam, t).rgb;
+  float h = you(t, 3.0), d = 0.012;
+  vec2 g = vec2(you(t + vec2(d, 0.0), 3.0) - you(t - vec2(d, 0.0), 3.0), you(t + vec2(0.0, d), 3.0) - you(t - vec2(0.0, d), 3.0)) / (2.0 * d);
+  float w = sin(t.x * 38.0 + time * 2.3) * sin(t.y * 31.0 - time * 1.7);
+  vec2 off = (g * 0.02 + h * w * 0.01) * (1.0 + 0.7 * pulse);
+  vec3 bent = vec3(room(t + off * 1.08).r, room(t + off).g, room(t + off * 0.92).b);
+  // the theme's colour in the glass: its glints and edges, and a touch of it through its body (on a
+  // light theme, whose ink is dark, the glints stay white)
+  vec3 tint = light > 0.5 ? vec3(1.0, 0.98, 0.94) : mix(vec3(1.0, 0.98, 0.94), fg, 0.7);
+  if (light < 0.5) bent = mix(bent, bent * (0.75 + 0.5 * fg), 0.3);
+  vec3 n = normalize(vec3(-g * 0.3, 1.0));
+  float spec = pow(max(dot(n, normalize(vec3(-0.45, -0.55, 0.7))), 0.0), 24.0), edge = clamp(length(g) * 0.4, 0.0, 1.0);
+  vec3 c = bent * (1.0 - 0.15 * edge) + tint * (spec * 0.8 + edge * 0.1) * smoothstep(0.1, 0.5, h);
+  return mix(texture(cam, t).rgb, clamp(c, 0.0, 1.0), m);
+}
+vec3 portalLook(int f, vec2 p, vec2 uv, vec3 w) {
   if (f == P_XRAY) return xray(p);
   if (f == P_LILAC) return lilac(p);
+  if (f == P_KALEIDO) return kaleido(p, w.xy);
+  if (f == P_TUNNEL) return tunnel(p, w.xy, w.z);
+  if (f == P_GLASS) return glass(p);
   return look(f, p, uv);
+}`;
+
+// The time tunnel's frames: the camera copied into a layer of a texture array (at its size in the
+// array), as it is, so the looks find each moment where they find the camera's now.
+const COPY_V = `#version 300 es
+layout(location = 0) in vec2 pos;
+void main() { gl_Position = vec4(pos, 0.0, 1.0); }`;
+const COPY_F = `#version 300 es
+precision highp float;
+uniform sampler2D cam;
+uniform vec2 size;
+out vec4 color;
+void main() { color = texture(cam, gl_FragCoord.xy / size); }`;
+
+// The glass look's plate, the room without you: each frame, where you aren't (with a wide margin
+// round you: the tracker's word on where you are comes a frame or two late, and a moving hand
+// would leave itself behind), the camera eases in; where you are, the plate keeps what it saw
+// there last. Kept premultiplied, its alpha how much of that point has been seen at all (for
+// room()'s filling in).
+const PLATE_F = `#version 300 es
+precision highp float;
+uniform sampler2D cam;
+uniform sampler2D mask;
+uniform sampler2D plate;  // the plate so far
+uniform vec2 size;
+out vec4 color;
+void main() {
+  vec2 uv = gl_FragCoord.xy / size;
+  vec4 old = texture(plate, uv);
+  float you = max(textureLod(mask, uv, 0.0).r, max(textureLod(mask, uv, 2.0).r, textureLod(mask, uv, 3.0).r));
+  float bg = 1.0 - smoothstep(0.05, 0.2, you);
+  // (a point already seen takes in a change that big slowly: likely a hand going by before the
+  // tracker's caught up; and one not seen before counts as seen only after a few frames of it)
+  vec3 was = old.a > 0.0 ? old.rgb / old.a : vec3(0.0), cam1 = texture(cam, uv).rgb;
+  float keep = old.a > 0.5 ? (length(cam1 - was) < 0.12 ? 0.15 : 0.03) : 0.6;
+  vec3 now = mix(was, cam1, bg * keep);
+  float seen = min(1.0, old.a + 0.34 * bg);
+  color = vec4(now * seen, seen);
 }`;
 
 // A look in the window, the x-ray's with its echoes. Drawn once for the look now, and again for
@@ -209,7 +336,7 @@ void main() {
   float a = 1.0 - smoothstep(circ.z - 0.8, circ.z + 0.8, length(p - circ.xy));
   if (wipe.w > 0.0) a *= 1.0 - smoothstep(wipe.z - wipe.w, wipe.z + wipe.w, length(p - wipe.xy));
   if (a <= 0.0) discard;
-  vec3 c = portalLook(which, p, (p - rect.xy) / (rect.zw - rect.xy));
+  vec3 c = portalLook(which, p, (p - rect.xy) / (rect.zw - rect.xy), circ);
   if (which == P_XRAY) c = max(c, texture(echo, vec2(p.x / view.x, 1.0 - p.y / view.y)).rgb);
   color = vec4(c * a, a);
 }`;
@@ -258,9 +385,17 @@ void main() {
 }`;
 
 export function createPortal(canvas) {
-  let gl = null, paint = null, over = null, echoes = null, parallel = null, ready = false, broken = false;
+  let gl = null, paint = null, over = null, echoes = null, copy = null, plater = null, parallel = null, ready = false, broken = false;
   let vao = null, buf = null, camTex = null, maskTex = null, maskFor = null, maskAt = -9;
   let fbo = [], fboW = 0, fboH = 0, cur = 0, echoFresh = false;
+  // the time tunnel's frames (a texture array and the framebuffer that writes them), the newest,
+  // and whether they're all from now (they're filled afresh each time the tunnel comes back)
+  let hist = null, histW = 0, histH = 0, head = 0, histFresh = false, histTick = 0;
+  // the glass look's plate (two, each frame drawn from the other) and which is the newest; and the
+  // camera effect glass (the look over the whole picture) on or off
+  let plate = [], plateW = 0, plateH = 0, plateCur = 0, glassFx = false;
+  // the drop: when, and a beat's length then (the glass gives way to you for a beat, then comes back)
+  let dropAt = -99, dropBeat = 0.5;
   const quad = new Float32Array(12);
   // the window: 'shut', 'held' (between the hands), 'full' (filling the picture) or 'closing';
   // its middle and radius, and where the hands would have them
@@ -271,19 +406,23 @@ export function createPortal(canvas) {
   // when the hands have been spread wide; when it began to fill the picture or to close, and from
   // where
   let since = null, diaAt = -9, lastDia = null, freeSince = null, armed = false, needFree = false, seenAt = -9, wideSince = null, fullAt = 0, shutAt = 0, from = null;
+  // when the window last finished closing; when the two hands were last seen, their recent
+  // distances and palms, and whether then they were spreading wide with one at a side of the
+  // picture (going on out past it: see OUT_WIDE)
+  let shutDone = -9, pairAt = -9, spread = [], lastPair = null, outward = false;
   // the look, since when, the next one spreading out (and the one asked for meanwhile, to spread
   // out next), the pinches being held, the hands followed for swipes (and the tracker's last look)
   let which = -1, lookAt = 0, wipe = null, queued = null, pinches = [], lastBar = null, cutNow = 0;
   let swipes = createSwipes(), lastHands = null;
   let pulse = 0, keyset = 0, keyAt = -1e9, last = 0, drawn = false, shown = { R: 0, C: [0, 0] };
 
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; paint = over = echoes = null; fbo = []; });
-  canvas.addEventListener('webglcontextrestored', () => { ready = false; paint = over = echoes = null; fbo = []; });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; paint = over = echoes = copy = plater = hist = null; fbo = []; plate = []; });
+  canvas.addEventListener('webglcontextrestored', () => { ready = false; paint = over = echoes = copy = plater = hist = null; fbo = []; plate = []; });
 
   // (built in the background where the driver allows it, as the finger frame's are)
-  function program(fs) {
+  function program(fs, vs = VERT) {
     const p = gl.createProgram();
-    for (const [type, src] of [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, fs]]) {
+    for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
       const s = gl.createShader(type);
       gl.shaderSource(s, src);
       gl.compileShader(s);
@@ -299,10 +438,12 @@ export function createPortal(canvas) {
     paint = program(PAINT);
     over = program(OVER);
     echoes = program(ECHO);
+    copy = program(COPY_F, COPY_V);
+    plater = program(PLATE_F, COPY_V);
   }
-  const SHARED = ['size', 'cam', 'glyphs', 'box', 'texel', 'cardSize', 'corner', 'pulse', 'time', 'dpr', 'light', 'bg', 'fg', 'cell', 'keys', 'view'];
+  const SHARED = ['size', 'cam', 'glyphs', 'box', 'texel', 'cardSize', 'corner', 'pulse', 'time', 'dpr', 'light', 'bg', 'fg', 'cell', 'keys', 'view', 'hist'];
   function init() {
-    const all = [paint, over, echoes];
+    const all = [paint, over, echoes, copy, plater];
     if (parallel && all.some((p) => !gl.getProgramParameter(p.prog, parallel.COMPLETION_STATUS_KHR))) return false;
     for (const p of all) {
       if (!gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
@@ -310,9 +451,11 @@ export function createPortal(canvas) {
       }
     }
     const where = (p, names) => Object.fromEntries(names.map((k) => [k, gl.getUniformLocation(p.prog, k)]));
-    paint.loc = where(paint, [...SHARED, 'echo', 'rect', 'circ', 'wipe', 'which']);
+    paint.loc = where(paint, [...SHARED, 'echo', 'rect', 'circ', 'wipe', 'which', 'head', 'layers', 'mask', 'plate', 'reveal']);
     over.loc = where(over, [...SHARED, 'mask', 'rect', 'circ', 'cut', 'ring']);
     echoes.loc = where(echoes, [...SHARED, 'before', 'focus', 'grow', 'keep']);
+    copy.loc = where(copy, ['cam', 'size']);
+    plater.loc = where(plater, ['cam', 'mask', 'plate', 'size']);
     vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     buf = gl.createBuffer();
@@ -332,12 +475,22 @@ export function createPortal(canvas) {
     };
     maskTex = texture(2);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([0]));
+    // (with mipmaps: the glass look reads it blurred, from a few levels up)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     camTex = texture(0);
     // (the camera on 0, the ASCII glyphs the looks never use here on 1, the cut-out on 2, the
-    // echoes on 3)
-    for (const p of all) { gl.useProgram(p.prog); gl.uniform1i(p.loc.cam, 0); gl.uniform1i(p.loc.glyphs, 1); }
+    // echoes on 3, the time tunnel's frames on 4, the glass look's plate on 5)
+    for (const p of [paint, over, echoes]) { gl.useProgram(p.prog); gl.uniform1i(p.loc.cam, 0); gl.uniform1i(p.loc.glyphs, 1); gl.uniform1i(p.loc.hist, 4); }
+    gl.useProgram(copy.prog);
+    gl.uniform1i(copy.loc.cam, 0);
+    gl.useProgram(plater.prog);
+    gl.uniform1i(plater.loc.cam, 0);
+    gl.uniform1i(plater.loc.mask, 2);
+    gl.uniform1i(plater.loc.plate, 5);
     gl.useProgram(paint.prog);
     gl.uniform1i(paint.loc.echo, 3);
+    gl.uniform1i(paint.loc.mask, 2);
+    gl.uniform1i(paint.loc.plate, 5);
     gl.useProgram(over.prog);
     gl.uniform1i(over.loc.mask, 2);
     gl.useProgram(echoes.prog);
@@ -370,6 +523,61 @@ export function createPortal(canvas) {
     fboH = h;
     echoFresh = false;
   }
+  // the time tunnel's frames: the camera's picture at most 640 wide (about 23 MB; at a camera's
+  // 1280 x 720, 92), made when the tunnel first shows and let go when the window shuts. (Its middle
+  // is the camera itself, sharp; the rings round it are softer.)
+  function histFrames(vw, vh) {
+    const k = Math.min(1, 640 / vw), w = Math.max(1, Math.round(vw * k)), h = Math.max(1, Math.round(vh * k));
+    if (hist && histW === w && histH === h) return;
+    dropHist();
+    const tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, w, h, LAYERS);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    hist = { tex, fb: gl.createFramebuffer() };
+    histW = w;
+    histH = h;
+  }
+  function dropHist() {
+    if (hist) { gl.deleteTexture(hist.tex); gl.deleteFramebuffer(hist.fb); }
+    hist = null;
+    histFresh = false;
+  }
+  // the glass look's plates: the camera's picture at most 640 wide, with mipmaps (room() fills in
+  // from a blur of them), made when the look first shows (empty: nothing seen yet) and let go when
+  // the window shuts
+  function plates(vw, vh) {
+    const k = Math.min(1, 640 / vw), w = Math.max(1, Math.round(vw * k)), h = Math.max(1, Math.round(vh * k));
+    if (plate.length && plateW === w && plateH === h) return;
+    dropPlate();
+    plate = [0, 1].map(() => {
+      const tex = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      return { fb, tex };
+    });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    plateW = w;
+    plateH = h;
+    plateCur = 0;
+  }
+  function dropPlate() {
+    for (const f of plate) { gl.deleteFramebuffer(f.fb); gl.deleteTexture(f.tex); }
+    plate = [];
+  }
 
   const blank = () => {
     if (drawn && ready) { gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
@@ -377,6 +585,9 @@ export function createPortal(canvas) {
   };
   function open(t, dia, bar) {
     phase = 'held';
+    outward = false;
+    spread = [];
+    lastPair = null;
     which++;
     lookAt = t;
     c = dia.c.slice();
@@ -409,10 +620,21 @@ export function createPortal(canvas) {
     // moment to load the first time)?
     get showing() { return phase !== 'shut'; },
     get full() { return phase === 'full'; },
-    get wantsCut() { return phase === 'full' || (phase === 'held' && r > 0.18 * Math.min(innerWidth, innerHeight)); },
+    // A drop: the glass gives way to you for a beat, then comes back over half a beat.
+    drop(t, beat = 0.5) { dropAt = t; dropBeat = clamp(beat, 0.25, 1); },
+    // The camera effect glass (K): the glass look over the whole picture, with or without a window.
+    get glassFx() { return glassFx; },
+    set glassFx(on) { glassFx = !!on; if (!glassFx && phase === 'shut') { dropPlate(); blank(); } },
+    // (the glass look needs it whenever it shows: it's made from where you are)
+    get wantsCut() {
+      const glassy = glassFx || (phase !== 'shut' && (ID[pick(which)] === OWN.glass || (wipe && ID[pick(wipe.to)] === OWN.glass)));
+      return glassy || phase === 'full' || (phase === 'held' && r > 0.18 * Math.min(innerWidth, innerHeight));
+    },
     // for checking: what it's doing, the look, and the window on screen
     get state() { return { phase, look: LOOKS[pick(which)], next: wipe ? LOOKS[pick(wipe.to)] : null, from: wipe?.p ?? null, queued: !!queued, c: shown.C, r: shown.R, cut: cutNow }; },
-    clear() { blank(); phase = 'shut'; since = lastDia = freeSince = wideSince = wipe = queued = from = lastHands = null; diaAt = -9; needFree = false; pinches = []; swipes = createSwipes(); r = cutNow = 0; shown = { R: 0, C: [0, 0] }; },
+    // for previews: a look at once, without spreading out
+    jump(name) { const i = LOOKS.indexOf(name); if (i >= 0) { which = i; wipe = queued = null; lookAt = last; } },
+    clear() { blank(); dropHist(); dropPlate(); phase = 'shut'; since = lastDia = freeSince = wideSince = wipe = queued = from = lastHands = lastPair = null; diaAt = shutDone = pairAt = -9; needFree = outward = false; spread = []; pinches = []; swipes = createSwipes(); r = cutNow = 0; shown = { R: 0, C: [0, 0] }; },
     // a kick: the outline swells and the x-ray's edges flare, for a moment, and the keyframes
     // jump to their next colours (calm: gentler, and new colours at most every 2 seconds)
     kick(s, calm = false) {
@@ -457,6 +679,8 @@ export function createPortal(canvas) {
       // 0.2 s in the middle of a closing circle, and the window opened again at once)
       else if (t - diaAt > BLINK) { since = null; lastDia = null; freeSince ??= t; if (t - freeSince > 0.4) { armed = true; needFree = false; } }
       const made = lastDia && since !== null && t - since >= HOLD ? lastDia : null;
+      // (the circle that closed the last, held on REOPEN past its closing: the next window)
+      if (made && phase === 'shut' && needFree && t - shutDone >= REOPEN) needFree = false;
       if (made && phase === 'shut' && !needFree) open(t, made, bar);
       else if (made && armed && (phase === 'held' || phase === 'full')) close(t, made.c);
 
@@ -470,8 +694,23 @@ export function createPortal(canvas) {
           // spread wide (most of the picture's width apart) and held there, it fills the picture
           if (dist(a, b) > WIDE * rect.w) { wideSince ??= t; if (t - wideSince > WIDE_HOLD) { phase = 'full'; fullAt = t; wideSince = null; } }
           else wideSince = null;
+          pairAt = t;
+          const gap = dist(a, b), aSide = a[0] - rect.x < SIDE * rect.w, bSide = rect.x + rect.w - b[0] < SIDE * rect.w;
+          if (dia) spread = [];
+          else { spread.push([t, gap]); while (spread[0][0] < t - 0.3) spread.shift(); }
+          lastPair = { a, b, aSide, bSide };
+          outward = !dia && gap > OUT_WIDE * rect.w && gap - spread[0][1] >= 0.05 * rect.w && (aSide || bSide);
         }
-        if (t - seenAt > LOST) close(t, null);
+        // (spread wide with one at a side, then that hand gone a moment: on out past the sides, so
+        // it fills)
+        else if (outward && t - pairAt > BLINK) {
+          outward = false;
+          const p = seen.length ? palm(seen[0].P) : null;
+          if (!p || (dist(p, lastPair.a) < dist(p, lastPair.b) ? lastPair.bSide : lastPair.aSide)) {
+            phase = 'full'; fullAt = t; wideSince = null;
+          }
+        }
+        if (phase === 'held' && t - seenAt > LOST) close(t, null);
       }
       if (phase === 'held') {
         const k = 1 - Math.exp(-dt * 20);
@@ -532,7 +771,7 @@ export function createPortal(canvas) {
         C = lerp(from.C, from.to, k);
         R = from.R * (1 - k);
         cutNow = from.cut * (1 - k);
-        if (k >= 1) { phase = 'shut'; cutNow = 0; }
+        if (k >= 1) { phase = 'shut'; cutNow = 0; shutDone = t; }
       } else {
         // (you're cut out only while the tracker keeps finding where you are: its mask is null
         // once it's half a second old)
@@ -542,6 +781,7 @@ export function createPortal(canvas) {
             gl.bindTexture(gl.TEXTURE_2D, maskTex);
             gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, mask.w, mask.h, 0, gl.RED, gl.UNSIGNED_BYTE, mask.data);
+            gl.generateMipmap(gl.TEXTURE_2D);
             gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
             maskFor = mask;
           }
@@ -551,7 +791,10 @@ export function createPortal(canvas) {
         cutNow += (cutTo - cutNow) * (1 - Math.exp(-dt * 8));
       }
       shown = { R, C };
-      if (phase === 'shut' || R < 0.5) { blank(); return; }
+      // (the camera effect's glass is drawn over the whole picture, window or no window)
+      const inWindow = phase !== 'shut' && R >= 0.5;
+      if (phase === 'shut') { dropHist(); if (!glassFx) dropPlate(); }
+      if (!inWindow && !glassFx) { blank(); return; }
 
       // the camera's picture, and where its frame's corners are on screen (mirrored): the looks
       // find what's at a point through these, as the finger frame's do through its box
@@ -584,7 +827,7 @@ export function createPortal(canvas) {
       };
       gl.bindVertexArray(vao);
       gl.disable(gl.BLEND);
-      const now = ID[pick(which)], next = wipe ? ID[pick(wipe.to)] : -1;
+      const now = inWindow ? ID[pick(which)] : -1, next = inWindow && wipe ? ID[pick(wipe.to)] : -1;
 
       // the x-ray's echoes, while it shows (started afresh each time it comes back)
       if (now === OWN.xray || next === OWN.xray) {
@@ -608,6 +851,45 @@ export function createPortal(canvas) {
         cur = 1 - cur;
       } else echoFresh = false;
 
+      // the time tunnel's frames, while it shows: the camera kept every other frame drawn (into
+      // every layer at first, so the rings start out as now rather than empty)
+      if (now === OWN.tunnel || next === OWN.tunnel) {
+        histFrames(video.videoWidth || 1280, video.videoHeight || 720);
+        if (!histFresh || histTick++ % 2 === 0) {
+          gl.useProgram(copy.prog);
+          gl.uniform2f(copy.loc.size, histW, histH);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, hist.fb);
+          gl.viewport(0, 0, histW, histH);
+          const fill = histFresh ? [(head = (head + 1) % LAYERS)] : [...Array(LAYERS).keys()];
+          for (const l of fill) {
+            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, hist.tex, 0, l);
+            box(-1, -1, 1, 1); // (the copy's quad is in clip space)
+          }
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          histFresh = true;
+        }
+      } else histFresh = false;
+
+      // the glass look's plate, while it shows: the camera where you aren't eased into it, drawn
+      // from the plate before into the other one, whose mipmaps are then made. Only while the
+      // tracker says where you are: before its first word (the model loads) you'd go into it as
+      // part of the room.
+      if ((now === OWN.glass || next === OWN.glass || glassFx) && maskFor && t - maskAt < 0.6) {
+        plates(video.videoWidth || 1280, video.videoHeight || 720);
+        const was = plate[plateCur], into = plate[1 - plateCur];
+        gl.useProgram(plater.prog);
+        gl.uniform2f(plater.loc.size, plateW, plateH);
+        gl.activeTexture(gl.TEXTURE5);
+        gl.bindTexture(gl.TEXTURE_2D, was.tex);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, into.fb);
+        gl.viewport(0, 0, plateW, plateH);
+        box(-1, -1, 1, 1); // (in clip space, as the tunnel's copy)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, into.tex);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        plateCur = 1 - plateCur;
+      }
+
       // the look now over the window; the next inside the circle it spreads out in, over that; then
       // you (cut out) and the outline over both
       gl.viewport(0, 0, w, h);
@@ -620,13 +902,27 @@ export function createPortal(canvas) {
       gl.useProgram(paint.prog);
       shared(paint.loc);
       if (fbo.length) { gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, fbo[cur].tex); }
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, hist?.tex ?? null);
+      gl.uniform1f(paint.loc.head, head);
+      gl.uniform1f(paint.loc.layers, LAYERS);
+      gl.uniform1f(paint.loc.reveal, clamp(1 - (t - dropAt - dropBeat) / (dropBeat / 2), 0, 1) * (t >= dropAt ? 1 : 0));
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_2D, plate.length ? plate[plateCur].tex : null);
       gl.uniform4f(paint.loc.rect, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
-      gl.uniform3f(paint.loc.circ, C[0], C[1], R);
       gl.uniform4f(paint.loc.wipe, 0, 0, 0, 0);
-      gl.uniform1i(paint.loc.which, now);
-      clip(C[0] - R - 1, C[1] - R - 1, C[0] + R + 1, C[1] + R + 1);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      // the camera effect: the glass look over the whole picture (a window open draws over it)
+      if (glassFx) {
+        gl.uniform3f(paint.loc.circ, rect.x + rect.w / 2, rect.y + rect.h / 2, rect.w + rect.h);
+        gl.uniform1i(paint.loc.which, OWN.glass);
+        box(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
+      }
+      if (!inWindow) { gl.disable(gl.BLEND); gl.bindVertexArray(null); drawn = true; return; }
+      gl.uniform3f(paint.loc.circ, C[0], C[1], R);
+      gl.uniform1i(paint.loc.which, now);
+      clip(C[0] - R - 1, C[1] - R - 1, C[0] + R + 1, C[1] + R + 1);
       if (wipe) {
         // (quick at first, so a pinch shows at once)
         const k = 1 - (1 - clamp((t - wipe.at) / WIPE, 0, 1)) ** 3, soft = 6 + 0.04 * R;
@@ -640,7 +936,8 @@ export function createPortal(canvas) {
       shared(over.loc);
       gl.uniform4f(over.loc.rect, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
       gl.uniform3f(over.loc.circ, C[0], C[1], R);
-      gl.uniform1f(over.loc.cut, cutNow);
+      // (the glass look is you: not cut out over it, as you are)
+      gl.uniform1f(over.loc.cut, now === OWN.glass || next === OWN.glass ? 0 : cutNow);
       gl.uniform1f(over.loc.ring, lw);
       clip(C[0] - R - pad, C[1] - R - pad, C[0] + R + pad, C[1] + R + pad);
       gl.disable(gl.BLEND);

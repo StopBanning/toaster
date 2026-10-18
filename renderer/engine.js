@@ -148,24 +148,30 @@ function lowPass(sr, fc = 200, q = Math.SQRT1_2) {
 }
 
 // The low end of buf (the long analyser's samples, newest last) between `from` and `to` seconds
-// ago: through the low-pass filter c, thinned by dec, ready for lowPitch.
+// ago: through the low-pass filter c twice (4 poles: a riddim growl's harmonics, loud right up the
+// mids, came through 2 enough to hide the sub's pitch under them, and every sub note was taken for
+// a kick), thinned by dec, ready for lowPitch.
 function lowSlice(buf, sr, c, dec, from, to) {
   const N = buf.length, start = Math.max(0, Math.round(N - from * sr)), end = Math.min(N, Math.round(N - to * sr)), out = [];
-  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0, u1 = 0, u2 = 0, z1 = 0, z2 = 0;
   for (let i = Math.max(0, start - Math.round(0.02 * sr)); i < end; i++) { // start early so the filter settles
     const y = c.b0 * buf[i] + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
     x2 = x1; x1 = buf[i]; y2 = y1; y1 = y;
-    if (i >= start && (i - start) % dec === 0) out.push(y);
+    const z = c.b0 * y + c.b1 * u1 + c.b2 * u2 - c.a1 * z1 - c.a2 * z2;
+    u2 = u1; u1 = y; z2 = z1; z1 = z;
+    if (i >= start && (i - start) % dec === 0) out.push(z);
   }
   return out;
 }
 
-// Pitch (35-300 Hz; 0 if there's no clear one) and loudness of x, sampled at fs.
+// Pitch (28-300 Hz; 0 if there's no clear one) and loudness of x, sampled at fs. (Down to 28: a
+// riddim sub sits as low as C#1, 34.6 Hz, and below 35 there was no pitch to find, so a held sub
+// note counted as a kick.)
 function lowPitch(x, fs) {
   const n = x.length;
   let e = 0;
   for (const v of x) e += v * v;
-  const rms = Math.sqrt(e / n), lo = Math.floor(fs / 300), hi = Math.min(Math.floor(fs / 35), n - 8);
+  const rms = Math.sqrt(e / n), lo = Math.floor(fs / 300), hi = Math.min(Math.floor(fs / 28), n - 8);
   if (e <= 1e-12 || hi <= lo + 2) return { f: 0, rms, r: 0 };
   const r = new Float32Array(hi + 2);
   let max = 0;
@@ -218,7 +224,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     sr, hzFast, hzSlow,
     lag: slow.fftSize / 2 / sr, // the note analysis hears each moment about half a window late
     // all: every instrument's onsets together, for a tempo when the drums don't give one
-    band: { bd: fastBand(40, 130), sd: fastBand(1100, 5200), hh: fastBand(7000, 15000), all: fastBand(100, 11000), body: fastBand(800, 3000) },
+    band: { bd: fastBand(40, 130), sd: fastBand(1100, 5200), hh: fastBand(7000, 15000), all: fastBand(100, 11000), body: fastBand(800, 3000), thump: fastBand(150, 400), click: fastBand(2000, 6000) },
     leadBand: midBand(300, 2000),
     fastDb: new Float32Array(fast.frequencyBinCount),
     midDb: new Float32Array(mid.frequencyBinCount),
@@ -229,6 +235,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     dec: Math.max(1, Math.round(sr / 6000)), // the low end, thinned to ~6 kHz for its pitch
     lg: new Float32Array(fast.frequencyBinCount),
     prevLg: new Float32Array(fast.frequencyBinCount),
+    prevDb: new Float32Array(fast.frequencyBinCount),
     prevMidMag: new Float32Array(mid.frequencyBinCount),
     frameChroma: new Float32Array(12),
     frameBass: new Float32Array(12),
@@ -267,6 +274,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // the two readings have agreed, and on what (fluxUpdate). better: the drums' last 12 readings
       // since the lock, the tempo of each that a 3:2 tempo fits better, else 0 (tempoUpdate)
       this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [] };
+      this.repAt = -1;
+      this.repCache = new Map();
       this.kickB = new Float32Array(4);
       this.snareB = new Float32Array(4);
       this.changeB = new Float32Array(4);
@@ -365,6 +374,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       if (this.silent) { this.lastSilentAt = t; return; }
       if (wasSilent) {
         this.prevLg.fill(0);
+        this.prevDb.set(this.fastDb);
         this.prevMidMag.fill(0);
         // music starting after a silence: likely a song from its start (unless its first chord
         // was already heard)
@@ -372,6 +382,14 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       }
 
       const lg = this.lg, prev = this.prevLg, db = this.fastDb;
+      // how much the thump (150-400 Hz) and the click (2-6 kHz) rose since the frame before, in dB
+      // over their bins: a kick's attack lifts one or both (lowDecide: a kick on a bass note). Of the
+      // test songs' kicks on a held note, 38 of 40 rose over 10 dB in the thump or 6 in the click
+      // (an 808 has hardly any click); of a riddim sub's 147 pulses under its growl, 21. Both at
+      // once (8 and 3) kept only 30 of the kicks, and pop's and intro's kick lines lost a step.
+      const riseDb = ([a, b]) => { let r = 0; for (let k = a; k <= b; k++) r += Math.max(-160, db[k]) - Math.max(-160, this.prevDb[k]); return r / (b - a + 1); };
+      const thump = riseDb(this.band.thump), click = riseDb(this.band.click);
+      this.prevDb.set(db);
       for (let k = 0; k < lg.length; k++) lg[k] = db[k] > -160 ? Math.log1p(1000 * 10 ** (db[k] / 20)) : 0;
       const flux = ([a, b]) => {
         let s = 0;
@@ -430,7 +448,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       if (this.bassCheck && t - this.bassCheck.t >= 0.19) this.bassUnderKick(t);
       if (sBd) {
         this.on.kick(sBd);
-        this.lowPending = { t, s: sBd };
+        this.lowPending = { t, s: sBd, punch: thump > 10 || click > 6 };
       }
       // And a clap or snare is a burst of noise, so it lifts the top end with it: a guitar chop, a
       // keyboard stab or a sung note rises in this band alone (sdVsHh 10 and up), and lifts fewer of
@@ -485,19 +503,38 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
 
     // The sound in the kick band that started at p.t: a kick or a bass note. From the waveform
     // since then: a kick's pitch falls fast and it dies away; a bass note holds its pitch and
-    // rings on. Anything unclear counts as a kick.
+    // rings on. A sound whose pitch can't be read but whose low end holds up (the second half
+    // nearly as loud as the first, or louder) isn't a kick dying away either: a bass note (a riddim
+    // sub under its growl reads as one overtone, then another), or, with a kick's thump or click
+    // at its start, a kick on a note: both. (Measured: the test songs' kicks die to 0.58 of their
+    // start, their bass notes hold at 1.11; a riddim sub under a growl, 0.9 and up.) Anything else
+    // unclear counts as a kick.
     lowDecide(t) {
       const p = this.lowPending, span = Math.min(0.09, t - p.t);
       this.lowPending = null;
+      this.lowRead = null; // (what it read, for tools/checks.js)
       if (span >= 0.04) {
         slow.getFloatTimeDomainData(this.slowTime);
         const ago = t - p.t + 0.014; // where the hit is in the analyser's samples (it's heard ~14 ms late)
         const out = lowSlice(this.slowTime, sr, this.lp, this.dec, ago, ago - span);
         const half = out.length >> 1, fs = sr / this.dec;
         const a = lowPitch(out.slice(0, half), fs), b = lowPitch(out.slice(half), fs);
+        this.lowRead = { a, b };
         const steady = a.f > 0 && b.f > 0 && a.r > 0.7 && b.r > 0.7 && Math.abs(b.f / a.f - 1) < 0.08;
         if (steady && b.rms > 0.6 * a.rms) {
           this.bassHit(p.t, p.s, b.f);
+          return;
+        }
+        if (b.rms >= 0.9 * a.rms) {
+          // (no pitch rather than an overtone; and not the bass's own onset for the tempo: see below)
+          this.bassHit(p.t, p.s, b.r >= 0.7 ? b.f : a.r >= 0.7 ? a.f : 0, false);
+          // A kick on a note: a kick too (its note is placed already: none to look for under it).
+          // A note alone still counts for the timing (the tempo, the beat's place, the period) as
+          // the kick it was taken for until now: those read low-end hits there, and without them a
+          // dubstep remix at 140 went to 105 in its breakdown in 2 takes of 3. It isn't a kick in the
+          // kick's pattern, the bar lines or a drop.
+          if (p.punch) this.onset('bd', p.t, p.s);
+          else this.onsets.push({ t: p.t, id: 'bd', s: p.s });
           return;
         }
       }
@@ -1300,7 +1337,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         if (T.cand && near(bpm, T.cand)) { T.cand = T.cand * 0.7 + bpm * 0.3; T.candN++; }
         else { T.cand = bpm; T.candN = 1; }
         // a real tempo change has to hold for 3 seconds before the patterns get relearned
-        if (T.candN >= (T.locked ? 6 : 4) && (T.locked || this.repeats(t, T.cand) >= 0.35)) {
+        if (T.candN >= (T.locked ? 6 : 4) && (T.locked || this.repeats(t, T.cand) >= 0.35) && this.repeatsThere(t, T.cand)) {
           this.lockTo(t, T.cand, T.locked ? `tempo change ${T.bpm.toFixed(1)} -> ${T.cand.toFixed(1)}` : `tempo lock ${T.cand.toFixed(1)}`);
         }
       }
@@ -1336,10 +1373,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         T.better.push(better ? bpm : 0);
         if (T.better.length > 12) T.better.shift();
         const same = better ? T.better.filter((b) => b && near(b, bpm)) : [];
-        if (same.length >= 6) {
-          const mean = same.reduce((a, b) => a + b, 0) / same.length;
-          this.lockTo(t, mean, `tempo change ${T.bpm.toFixed(1)} -> ${mean.toFixed(1)} (the hits fit it better)`);
-        }
+        const mean = same.length >= 6 ? same.reduce((a, b) => a + b, 0) / same.length : 0;
+        if (mean && this.repeatsThere(t, mean)) this.lockTo(t, mean, `tempo change ${T.bpm.toFixed(1)} -> ${mean.toFixed(1)} (the hits fit it better)`);
       }
       if (T.locked) this.updatePhase(t);
     },
@@ -1357,8 +1392,11 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     // through the drum rules in two of four takes, there under 0.35. Worked out only when a lock is
     // about to happen.
     repeats(t, bpm) {
+      if (t !== this.repAt) { this.repAt = t; this.repCache.clear(); }
+      const key = Math.round(bpm * 1000);
+      if (this.repCache.has(key)) return this.repCache.get(key);
       const s = this.onsets.filter((o) => o.t > t - 8 && (o.id === 'bd' || o.id === 'sd' || o.id === 'hh'));
-      if (s.length < 4) return 0;
+      if (s.length < 4) { this.repCache.set(key, 0); return 0; }
       let best = -1, q16 = 0, phase = 0;
       for (let k = -25; k <= 25; k++) {
         const q = 15 / (bpm * (1 + k * 0.001));
@@ -1372,7 +1410,26 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       const at = (o) => Math.round((o.t - phase) / q16), sets = { bd: new Set(), sd: new Set(), hh: new Set() };
       for (const o of s) sets[o.id].add(at(o));
       const share = (gap) => s.filter((o) => { const k = at(o), S = sets[o.id]; return S.has(k + gap) || S.has(k - gap); }).length / s.length;
-      return Math.max(share(16), share(8));
+      const v = Math.max(share(16), share(8));
+      this.repCache.set(key, v);
+      return v;
+    },
+
+    // A change to 3:2, 2:3, 4:3 or 3:4 of the locked tempo (from the drums or the whole sound) also
+    // needs the hits to repeat at least as well in bars of the new tempo (repeats): dubstep's
+    // triplet wobbles and riddim's half-time hits read for seconds on end as a tempo 3/4 or 2/3 as
+    // fast (a dubstep remix at 140 went to 105 in its triplet wobbles, a riddim track at 141 to 95
+    // in its drop), but their bars repeat at their own tempo, not there; a wrong lock (a breakbeat
+    // at 2/3, house at 4/3) repeats better at the right one, so it still comes right.
+    // A tempo held 45 s or more takes a clear win (0.1 more) to leave: the scores can be close. The
+    // corrections of a wrong lock come early (Gypsy Woman 160 -> 120 at 0.444 against 0.417, 19 s
+    // after its lock; I Must Apologise 105 -> 157 at 0.742 against 0.730, after 23 s), while the
+    // dubstep remix's breakdown went from 140, held 83 s, to 105 at 0.718 against 0.692, for 40 s.
+    repeatsThere(t, bpm) {
+      const T = this.tempo;
+      const related = T.locked && [1.5, 2 / 3, 4 / 3, 3 / 4].some((r) => Math.abs(bpm / T.bpm - r) / r < 0.06);
+      const margin = t - (T.lockedAt ?? t) >= 45 ? 0.1 : 0;
+      return !related || this.repeats(t, bpm) >= this.repeats(t, T.bpm) + margin;
     },
 
     dense(t, bpm) {
@@ -1591,8 +1648,10 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         if (sameBeat(T.fbpm, T.bpm)) T.unclearN = 0;
         // A different tempo has to hold for 3 seconds and clearly beat the one we have, as with the
         // drums (tempoUpdate): a swung or shuffled song shows a pulse at 3:2 or 4:3 of its tempo
-        // too, and the readings would trade places (100, 133 and 150 bpm, back and forth).
-        else if (T.frun >= 6 && !drums && r.gain >= 1.3) this.lockTo(t, T.fbpm, `tempo change ${T.bpm.toFixed(1)} -> ${T.fbpm.toFixed(1)} (from the whole sound)`, r.beatAt);
+        // too, and the readings would trade places (100, 133 and 150 bpm, back and forth). At 3:2 or
+        // 4:3 of it, the hits have to repeat as well there too (repeatsThere): Gypsy Woman went
+        // 160 -> 120 -> 160 -> 120 this way in one take.
+        else if (T.frun >= 6 && !drums && r.gain >= 1.3 && this.repeatsThere(t, T.fbpm)) this.lockTo(t, T.fbpm, `tempo change ${T.bpm.toFixed(1)} -> ${T.fbpm.toFixed(1)} (from the whole sound)`, r.beatAt);
         return;
       }
       // held for 3 seconds: the reading from then and 3 in 5 since agree, and passed

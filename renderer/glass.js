@@ -275,7 +275,7 @@ export function createGlass(canvas, code) {
       if (was) { sx.setTransform(1, 0, 0, 1, 0, 0); sx.clearRect(was.x, was.y, was.w, was.h); grow(was); drawnAt.delete(el); }
       lineSeen.delete(el);
       const r = el.getBoundingClientRect();
-      if (!el.firstChild || !r.height || r.bottom < 0 || r.top > H) continue;
+      if (!el.firstChild || el.classList.contains('cut') || !r.height || r.bottom < 0 || r.top > H) continue;
       const X = Math.max(0, Math.floor(r.left * dpr)), Y = Math.max(0, Math.round(r.top * dpr));
       const b = { x: X, y: Y, w: Math.min(words.width, Math.ceil(r.right * dpr)) - X, h: Math.min(words.height, Math.round(r.bottom * dpr)) - Y };
       if (b.w <= 0 || b.h <= 0) continue;
