@@ -5,17 +5,19 @@
 // wide and hold them there a moment (its outline thickens), or spread them on out past the
 // picture's sides, and it fills the picture, with you cut out in front of it as you are. Pinch
 // (thumb on index) and the next look spreads out from that hand in a circle (a pinch while one is
-// still spreading brings the one after). Once it fills the
-// picture, a swipe (one open hand held up a moment, then fast sideways) slides a look in after it:
-// swiped left, the next; right, the one before. Every 8 bars brings the next one too, from the
-// middle (once a look has had 4 seconds). Drop your hands and a window closes a moment later; once
-// it fills the picture it stays (so your hands are free) until you make the circle again (a looser
-// one than opens it does). Hold the circle on once it's closed, and the next window opens. The
-// looks: two of the reel's own, x-ray (white edges, with echoes spreading out from the middle) and
-// lilac (grainy, pale); three made for portals, glass (you gone clear, the room bent through you),
-// a kaleidoscope and a time tunnel; and the finger frame's (lens.js) boldest. Glass is also a
-// camera effect (K): over the whole picture, window or no window. Drawn with WebGL. After
-// cure.visual's TouchDesigner portals (and ttyproj's "Transparent Distortion" for the glass).
+// still spreading brings the one after). Once it fills the picture, a swipe (one open hand held up
+// a moment, then fast sideways) slides a look in after it: swiped left, the next; right, the one
+// before. Every 8 bars brings the next one too, from the middle (once a look has had 4 seconds; the
+// skull stays). Drop your hands and a window closes a moment later; once it fills the picture it
+// stays (so your hands are free) until you make the circle again (a looser one than opens it does).
+// Hold the circle on once it's closed, and the next window opens. The looks: four made for portals,
+// the skull (an X-ray, your skull in it where your face is, turned as your head is: the first window
+// opened shows it, so make that one in front of your face), glass (you gone clear, the room bent
+// through you), a kaleidoscope and a time tunnel; two of the reel's own, x-ray (white edges, with
+// echoes spreading out from the middle) and lilac (grainy, pale); and the finger frame's (lens.js)
+// boldest. Glass is also a camera effect (K): over the whole picture, window or no window. Drawn
+// with WebGL. After cure.visual's TouchDesigner portals (and ttyproj's "Transparent Distortion" for
+// the glass, design4me__'s x-ray hover for the skull).
 import { FILTERS, KEYS, LOOK_GLSL, isPinch } from './lens.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -27,16 +29,45 @@ const ease = (k) => k * k * (3 - 2 * k);
 const size = (P) => dist(P[0], P[9]);
 const palm = (P) => [0, 5, 9, 13, 17].reduce((s, i) => [s[0] + P[i][0] / 5, s[1] + P[i][1] / 5], [0, 0]);
 
-// The looks, in the order they come round: the reel's x-ray and lilac, then the portals' own three
-// spread through the finger frame's boldest (its own numbers for those; the portals' own five are
-// numbered from 100).
-const LOOKS = ['xray', 'lilac', 'glass', 'thermal', 'comic', 'kaleido', 'sketch', 'keyframes', 'tunnel', 'halftone', 'film', 'rgb', 'dither', 'edges', 'negative', 'mosaic'];
-const OWN = { xray: 100, lilac: 101, kaleido: 102, tunnel: 103, glass: 104 };
+// The looks, in the order they come round: the skull, the reel's x-ray and lilac, then the portals'
+// own other three spread through the finger frame's boldest (its own numbers for those; the
+// portals' own six are numbered from 100).
+const LOOKS = ['skull', 'xray', 'lilac', 'glass', 'thermal', 'comic', 'kaleido', 'sketch', 'keyframes', 'tunnel', 'halftone', 'film', 'rgb', 'dither', 'edges', 'negative', 'mosaic'];
+const OWN = { xray: 100, lilac: 101, kaleido: 102, tunnel: 103, glass: 104, skull: 105 };
 // The time tunnel: rings round the window's middle, each STEP frames kept further back than the one
 // inside it (a frame kept every other one drawn: 2/15 of a second a ring at 60 a second); the
 // middle is the camera now, the ring inside the outline over 3/4 of a second ago.
 const RINGS = 8, STEP = 4, LAYERS = (RINGS - 2) * STEP + 1;
 const ID = LOOKS.map((name) => OWN[name] ?? FILTERS.findIndex((f) => f.name === name));
+// The skull: Khronos's glTF sample "ScatteringSkull" (Vladimir Petkovic, CC0), made lighter by
+// tools/skullmesh.mjs into models/skull.bin, in its own metres (y up, z out of its face). Its pivot,
+// between its eye sockets, goes between your eyes. It leans back (its chin 4 cm in front of the
+// bridge of its nose), so it's tilted forward about that, to look straight ahead as a face does.
+// Its size: mostly from your eyes to your chin (its own chin, the bone, is a little above the soft
+// chin the tracker finds: CHIN_K), the rest from your eyes' spacing (its sockets' is SEP). Measured
+// off a depth map of the mesh.
+const PIVOT = [0, 0.15, 0.08], TILT = (15 * Math.PI) / 180, SEP = 0.085, CHIN_K = 1.08, BY_CHIN = 0.7;
+const tilt = ([x, y, z]) => [x, y * Math.cos(TILT) - z * Math.sin(TILT), y * Math.sin(TILT) + z * Math.cos(TILT)];
+const CHIN = tilt([0 - PIVOT[0], 0.018 - PIVOT[1], 0.161 - PIVOT[2]]);
+// skull.bin: how many points and triangle corners, and the points' bounds (8 floats); the points (3
+// uint16 each, across the bounds), which way the surface faces at each (3 int8 each) and the
+// triangles (uint16), each part starting on a multiple of 4 bytes. Read as points about the pivot,
+// tilted, and their normals, tilted too.
+function readSkull(buf) {
+  const h = new Float32Array(buf, 0, 8), n = h[0], ni = h[1];
+  let off = 32;
+  const pos = new Uint16Array(buf, off, n * 3);
+  off += pos.byteLength + ((4 - (pos.byteLength % 4)) % 4);
+  const nor = new Int8Array(buf, off, n * 3);
+  off += n * 3 + ((4 - ((n * 3) % 4)) % 4);
+  const tris = new Uint16Array(buf, off, ni);
+  const P = new Float32Array(n * 3), N = new Float32Array(n * 3);
+  for (let i = 0; i < n * 3; i += 3) {
+    P.set(tilt([0, 1, 2].map((k) => h[2 + k] + (pos[i + k] / 65535) * (h[5 + k] - h[2 + k]) - PIVOT[k])), i);
+    N.set(tilt([nor[i] / 127, nor[i + 1] / 127, nor[i + 2] / 127]), i);
+  }
+  return { P, N, tris };
+}
 const pick = (k) => ((k % LOOKS.length) + LOOKS.length) % LOOKS.length;
 
 const HOLD = 0.15; // seconds a diamond is held before it opens a window (or closes one)
@@ -178,6 +209,7 @@ const PORTAL_GLSL = `
 #define P_KALEIDO ${OWN.kaleido}
 #define P_TUNNEL ${OWN.tunnel}
 #define P_GLASS ${OWN.glass}
+#define P_SKULL ${OWN.skull}
 #define T_RINGS ${RINGS}.0
 #define T_STEP ${STEP}.0
 uniform highp sampler2DArray hist;  // the time tunnel's frames of the camera, a layer each
@@ -197,6 +229,19 @@ vec3 xray(vec2 p) {
   float edge = clamp(length(vec2(gx, gy)) * 2.4 * (1.0 + 0.8 * pulse) - 0.06, 0.0, 1.0);
   float l = lum(texture(cam, t).rgb);
   return clamp(vec3(0.94, 0.97, 1.0) * (edge + (1.0 - l) * 0.22), 0.0, 1.0);
+}
+// skull: the picture as X-ray film, dark blue, its light and its edges glowing pale blue, faint grid
+// lines over the dark and scanlines rolling through; the skull is drawn over it (SKULL_F)
+vec3 skull(vec2 p) {
+  vec2 t = tex(p), s = texel * 1.5;
+  float l = lum(texture(cam, t).rgb);
+  float gx = lum(texture(cam, t + vec2(s.x, 0.0)).rgb) - lum(texture(cam, t - vec2(s.x, 0.0)).rgb);
+  float gy = lum(texture(cam, t + vec2(0.0, s.y)).rgb) - lum(texture(cam, t - vec2(0.0, s.y)).rgb);
+  float e = clamp(length(vec2(gx, gy)) * 3.5, 0.0, 1.0);
+  vec3 c = vec3(0.01, 0.03, 0.1) + vec3(0.05, 0.22, 0.65) * pow(l, 1.4) + vec3(0.45, 0.85, 1.0) * e;
+  vec2 g = abs(fract(p / 36.0) - 0.5);
+  c += vec3(0.05, 0.15, 0.35) * smoothstep(0.47, 0.5, max(g.x, g.y)) * (1.0 - l);
+  return clamp(c * (0.82 + 0.18 * sin(p.y * 1.8 + time * 6.0)), 0.0, 1.0);
 }
 // a grain for each pixel (p, in device pixels) and frame (k): an integer hash, as the sine one
 // draws diagonal stripes at large pixel numbers
@@ -274,6 +319,7 @@ vec3 portalLook(int f, vec2 p, vec2 uv, vec3 w) {
   if (f == P_KALEIDO) return kaleido(p, w.xy);
   if (f == P_TUNNEL) return tunnel(p, w.xy, w.z);
   if (f == P_GLASS) return glass(p);
+  if (f == P_SKULL) return skull(p);
   return look(f, p, uv);
 }`;
 
@@ -384,6 +430,47 @@ void main() {
   color = vec4(max(xray(vP) * 0.9, old), 1.0);
 }`;
 
+// The skull: its points turned as your head is, then seen straight on (no perspective: the turn
+// sells it), mirrored as the picture is, at its size on screen; its depth kept, for finding the
+// nearest of it.
+const SKULL_V = `#version 300 es
+layout(location = 0) in vec3 pos;  // a point of it: its own metres, about its pivot
+layout(location = 1) in vec3 nor;  // which way it faces there
+uniform mat3 turn;  // how your head is turned
+uniform float px;   // CSS pixels a metre
+uniform vec2 at;    // where its pivot goes (CSS pixels): between your eyes
+uniform vec2 size;  // the canvas (CSS pixels)
+out vec3 vN;
+out vec2 vP;
+void main() {
+  vec3 q = turn * pos;
+  vN = turn * nor;
+  vP = at - q.xy * px; // (the picture is mirrored, and its y is down)
+  gl_Position = vec4(vP.x / size.x * 2.0 - 1.0, 1.0 - vP.y / size.y * 2.0, clamp(-q.z * 2.0, -1.0, 1.0), 1.0);
+}`;
+// Lit as on X-ray film: brightest where it turns away from you (its edges, where an X-ray passes
+// through the most bone), blue going to white, a little brighter on the kick; only inside the
+// window (and inside the circle the look spreads out in, while it does). Added to the film's light.
+const SKULL_F = `#version 300 es
+precision highp float;
+in vec3 vN;
+in vec2 vP;
+out vec4 color;
+uniform vec4 rect;    // the camera's picture on screen: x0, y0, x1, y1 (CSS pixels)
+uniform vec3 circ;    // the window
+uniform vec4 wipe;    // only inside this circle (0: all)
+uniform float gain;   // how bright
+uniform float pulse;  // the kick
+void main() {
+  if (vP.x < rect.x || vP.y < rect.y || vP.x > rect.z || vP.y > rect.w) discard;
+  float a = 1.0 - smoothstep(circ.z - 0.8, circ.z + 0.8, length(vP - circ.xy));
+  if (wipe.w > 0.0) a *= 1.0 - smoothstep(wipe.z - wipe.w, wipe.z + wipe.w, length(vP - wipe.xy));
+  if (a <= 0.0) discard;
+  float g = pow(1.0 - abs(normalize(vN).z), 2.0);
+  vec3 c = mix(vec3(0.08, 0.35, 1.0), vec3(0.85, 0.98, 1.0), g) * (0.07 + 0.6 * g) * (1.0 + 0.5 * pulse);
+  color = vec4(c * gain * a, 0.0);
+}`;
+
 export function createPortal(canvas) {
   let gl = null, paint = null, over = null, echoes = null, copy = null, plater = null, parallel = null, ready = false, broken = false;
   let vao = null, buf = null, camTex = null, maskTex = null, maskFor = null, maskAt = -9;
@@ -396,6 +483,10 @@ export function createPortal(canvas) {
   let plate = [], plateW = 0, plateH = 0, plateCur = 0, glassFx = false;
   // the drop: when, and a beat's length then (the glass gives way to you for a beat, then comes back)
   let dropAt = -99, dropBeat = 0.5;
+  // the skull: its program, its mesh (fetched the first time it's wanted) and that on the graphics
+  // card; where it goes on screen (its pivot, CSS pixels a metre, its turn, when your face was last
+  // found) and how much of it shows (it fades in once your face is found, and out once it's lost)
+  let skuller = null, skullMesh = null, skullAsked = false, bone = null, fit = null, skullA = 0;
   const quad = new Float32Array(12);
   // the window: 'shut', 'held' (between the hands), 'full' (filling the picture) or 'closing';
   // its middle and radius, and where the hands would have them
@@ -416,8 +507,8 @@ export function createPortal(canvas) {
   let swipes = createSwipes(), lastHands = null;
   let pulse = 0, keyset = 0, keyAt = -1e9, last = 0, drawn = false, shown = { R: 0, C: [0, 0] };
 
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; paint = over = echoes = copy = plater = hist = null; fbo = []; plate = []; });
-  canvas.addEventListener('webglcontextrestored', () => { ready = false; paint = over = echoes = copy = plater = hist = null; fbo = []; plate = []; });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; paint = over = echoes = copy = plater = hist = skuller = bone = null; fbo = []; plate = []; });
+  canvas.addEventListener('webglcontextrestored', () => { ready = false; paint = over = echoes = copy = plater = hist = skuller = bone = null; fbo = []; plate = []; });
 
   // (built in the background where the driver allows it, as the finger frame's are)
   function program(fs, vs = VERT) {
@@ -432,7 +523,8 @@ export function createPortal(canvas) {
     return { prog: p };
   }
   function build() {
-    gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false });
+    // (with a depth buffer, for the skull's nearest surface)
+    gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: true });
     if (!gl) { broken = true; return; }
     parallel = gl.getExtension('KHR_parallel_shader_compile');
     paint = program(PAINT);
@@ -440,10 +532,11 @@ export function createPortal(canvas) {
     echoes = program(ECHO);
     copy = program(COPY_F, COPY_V);
     plater = program(PLATE_F, COPY_V);
+    skuller = program(SKULL_F, SKULL_V);
   }
   const SHARED = ['size', 'cam', 'glyphs', 'box', 'texel', 'cardSize', 'corner', 'pulse', 'time', 'dpr', 'light', 'bg', 'fg', 'cell', 'keys', 'view', 'hist'];
   function init() {
-    const all = [paint, over, echoes, copy, plater];
+    const all = [paint, over, echoes, copy, plater, skuller];
     if (parallel && all.some((p) => !gl.getProgramParameter(p.prog, parallel.COMPLETION_STATUS_KHR))) return false;
     for (const p of all) {
       if (!gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
@@ -456,6 +549,7 @@ export function createPortal(canvas) {
     echoes.loc = where(echoes, [...SHARED, 'before', 'focus', 'grow', 'keep']);
     copy.loc = where(copy, ['cam', 'size']);
     plater.loc = where(plater, ['cam', 'mask', 'plate', 'size']);
+    skuller.loc = where(skuller, ['turn', 'px', 'at', 'size', 'rect', 'circ', 'wipe', 'gain', 'pulse']);
     vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     buf = gl.createBuffer();
@@ -578,6 +672,83 @@ export function createPortal(canvas) {
     for (const f of plate) { gl.deleteFramebuffer(f.fb); gl.deleteTexture(f.tex); }
     plate = [];
   }
+  // the skull's mesh: fetched the first time it's wanted; and put on the graphics card once it's
+  // here (skullBuffers: whether it's there)
+  function wantSkull() {
+    if (skullAsked) return;
+    skullAsked = true;
+    fetch(new URL('./models/skull.bin', import.meta.url))
+      .then((res) => { if (!res.ok) throw new Error(`skull.bin: ${res.status}`); return res.arrayBuffer(); })
+      .then((buf) => { skullMesh = readSkull(buf); })
+      .catch((err) => console.error('portals: the skull', err));
+  }
+  function skullBuffers() {
+    if (bone || !skullMesh) return !!bone;
+    const v = gl.createVertexArray();
+    gl.bindVertexArray(v);
+    for (const [at, data] of [[0, skullMesh.P], [1, skullMesh.N]]) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(at);
+      gl.vertexAttribPointer(at, 3, gl.FLOAT, false, 0, 0);
+    }
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, skullMesh.tris, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    bone = { vao: v, count: skullMesh.tris.length };
+    return true;
+  }
+  // where the skull goes: between your eyes, turned as your head is, sized to your face (face: its
+  // points on the camera's frame; pose: how it's turned, MediaPipe's matrix, column by column;
+  // place: a point of the frame onto the screen), eased a little (the tracker's points jitter a
+  // pixel or two); and how much of it shows
+  function fitSkull(t, dt, face, pose, place) {
+    if (face && pose && face.length > 473) {
+      const turn = [pose[0], pose[1], pose[2], pose[4], pose[5], pose[6], pose[8], pose[9], pose[10]];
+      // (a line on the skull, from its pivot, turned and seen straight on: how long it looks, in metres)
+      const seen = ([x, y, z]) => Math.hypot(turn[0] * x + turn[3] * y + turn[6] * z, turn[1] * x + turn[4] * y + turn[7] * z);
+      const eyeL = place(face[468][0], face[468][1]), eyeR = place(face[473][0], face[473][1]), chin = place(face[152][0], face[152][1]);
+      const at = mid(eyeL, eyeR);
+      const px = BY_CHIN * (dist(chin, at) / Math.max(1e-3, seen(CHIN) * CHIN_K)) + (1 - BY_CHIN) * (dist(eyeL, eyeR) / Math.max(1e-3, seen([SEP, 0, 0])));
+      const k = !fit || t - fit.seen > 0.3 ? 1 : 1 - Math.exp(-dt / 0.035);
+      fit = k < 1 ? { at: lerp(fit.at, at, k), px: fit.px + (px - fit.px) * k, turn: fit.turn.map((x, i) => x + (turn[i] - x) * k), seen: t } : { at, px, turn, seen: t };
+    }
+    skullA += ((fit && t - fit.seen < 0.15 ? 1 : 0) - skullA) * (1 - Math.exp(-dt / 0.08));
+  }
+  // the skull over the look, added to its light, inside the window (C, R) and inside the circle w
+  // ([x, y, reach, soft edge]) while it spreads out: its every layer faint first (on X-ray film,
+  // bone's thickness adds up), then the nearest of it (found with the canvas's depth buffer) glowing
+  function drawSkull(W, H, rect, C, R, w) {
+    const L = skuller.loc;
+    gl.useProgram(skuller.prog);
+    gl.bindVertexArray(bone.vao);
+    gl.uniformMatrix3fv(L.turn, false, fit.turn);
+    gl.uniform1f(L.px, fit.px);
+    gl.uniform2f(L.at, fit.at[0], fit.at[1]);
+    gl.uniform2f(L.size, W, H);
+    gl.uniform4f(L.rect, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
+    gl.uniform3f(L.circ, C[0], C[1], R);
+    gl.uniform4fv(L.wipe, w || [0, 0, 0, 0]);
+    gl.uniform1f(L.pulse, pulse);
+    gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+    gl.uniform1f(L.gain, 0.25 * skullA);
+    gl.drawElements(gl.TRIANGLES, bone.count, gl.UNSIGNED_SHORT, 0);
+    gl.enable(gl.DEPTH_TEST);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.colorMask(false, false, false, false);
+    gl.drawElements(gl.TRIANGLES, bone.count, gl.UNSIGNED_SHORT, 0);
+    gl.colorMask(true, true, true, true);
+    gl.depthFunc(gl.LEQUAL);
+    gl.depthMask(false);
+    gl.uniform1f(L.gain, skullA);
+    gl.drawElements(gl.TRIANGLES, bone.count, gl.UNSIGNED_SHORT, 0);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    gl.disable(gl.DEPTH_TEST);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindVertexArray(vao);
+    gl.useProgram(paint.prog);
+  }
 
   const blank = () => {
     if (drawn && ready) { gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
@@ -613,6 +784,11 @@ export function createPortal(canvas) {
   const startWipe = (t, p, step = 1, r0 = 0, r1 = null) => { wipe = { p, at: t, to: which + step, r0, r1 }; };
   // (asked for while a look is still spreading: as soon as that's done)
   const askWipe = (t, ...how) => { if (wipe) queued = how; else startWipe(t, ...how); };
+  // whether the skull shows, or is about to (the next window opens on it, and hands are up)
+  const nearSkull = (t) => {
+    const is = (k) => ID[pick(k)] === OWN.skull;
+    return phase === 'shut' ? is(which + 1) && t - seenAt < 2 : is(which) || (!!wipe && is(wipe.to));
+  };
 
   return {
     // is a window open (or opening, or closing)? Filling the picture? And should the tracker find
@@ -628,13 +804,19 @@ export function createPortal(canvas) {
     // (the glass look needs it whenever it shows: it's made from where you are)
     get wantsCut() {
       const glassy = glassFx || (phase !== 'shut' && (ID[pick(which)] === OWN.glass || (wipe && ID[pick(wipe.to)] === OWN.glass)));
-      return glassy || phase === 'full' || (phase === 'held' && r > 0.18 * Math.min(innerWidth, innerHeight));
+      // (but not for the skull, which no one's cut out over, while it's all the window shows)
+      const skull = phase !== 'shut' && ID[pick(which)] === OWN.skull && !wipe;
+      return glassy || (!skull && (phase === 'full' || (phase === 'held' && r > 0.18 * Math.min(innerWidth, innerHeight))));
     },
-    // for checking: what it's doing, the look, and the window on screen
-    get state() { return { phase, look: LOOKS[pick(which)], next: wipe ? LOOKS[pick(wipe.to)] : null, from: wipe?.p ?? null, queued: !!queued, c: shown.C, r: shown.R, cut: cutNow }; },
+    // and the face, for the skull: while it shows, and while the hands are up when the next window
+    // opens on it (so the tracker's face model is ready by then)
+    get wantsFace() { return nearSkull(last); },
+    // for checking: what it's doing, the look, the window on screen, and the skull while it shows
+    // (its pivot on screen, CSS pixels a metre, how much of it shows)
+    get state() { return { phase, look: LOOKS[pick(which)], next: wipe ? LOOKS[pick(wipe.to)] : null, from: wipe?.p ?? null, queued: !!queued, c: shown.C, r: shown.R, cut: cutNow, skull: fit && skullA > 0.004 ? { at: fit.at, px: fit.px, shows: skullA } : null }; },
     // for previews: a look at once, without spreading out
     jump(name) { const i = LOOKS.indexOf(name); if (i >= 0) { which = i; wipe = queued = null; lookAt = last; } },
-    clear() { blank(); dropHist(); dropPlate(); phase = 'shut'; since = lastDia = freeSince = wideSince = wipe = queued = from = lastHands = lastPair = null; diaAt = shutDone = pairAt = -9; needFree = outward = false; spread = []; pinches = []; swipes = createSwipes(); r = cutNow = 0; shown = { R: 0, C: [0, 0] }; },
+    clear() { blank(); dropHist(); dropPlate(); phase = 'shut'; since = lastDia = freeSince = wideSince = wipe = queued = from = lastHands = lastPair = fit = null; diaAt = shutDone = pairAt = -9; needFree = outward = false; spread = []; pinches = []; swipes = createSwipes(); r = cutNow = skullA = 0; shown = { R: 0, C: [0, 0] }; },
     // a kick: the outline swells and the x-ray's edges flare, for a moment, and the keyframes
     // jump to their next colours (calm: gentler, and new colours at most every 2 seconds)
     kick(s, calm = false) {
@@ -644,8 +826,9 @@ export function createPortal(canvas) {
     },
     // hands: from the tracker; place(x, y): a camera point (0-1, not mirrored) on screen; rect:
     // where the camera's picture is on screen; video: the camera; mask: where a person is (from
-    // the tracker, or null); col: the theme's colours; bar: the bar number.
-    draw(t, { hands, place, rect, video, mask, col, bar }) {
+    // the tracker, or null); col: the theme's colours; bar: the bar number; face, pose: the face's
+    // points and how it's turned (the tracker's, while it looks for them), for the skull.
+    draw(t, { hands, place, rect, video, mask, col, bar, face, pose }) {
       if (broken || gl?.isContextLost()) return;
       if (!ready) {
         try {
@@ -668,6 +851,7 @@ export function createPortal(canvas) {
         return { P, views: hd.world ? [hd.world, P] : [P] };
       });
       if (seen.length) seenAt = t;
+      if (nearSkull(t)) wantSkull();
       const two = pairOf(seen);
       // (the finger frame may be open as the hands come round into the circle: the circle wins)
       const dia = two ? diamond(two[0].P, two[1].P, since !== null || (armed && (phase === 'held' || phase === 'full'))) : null;
@@ -721,18 +905,21 @@ export function createPortal(canvas) {
       // a new pinch: the next look spreads out from it (one made while a look is still spreading:
       // the one after, as soon as that's done). A pinch is new once the one held there has been
       // let go (thumb and index well apart, not just past the line), or not seen for 0.3 s (the
-      // tracker losing a hand for a frame or three isn't letting go).
+      // tracker losing a hand for a frame or three isn't letting go). With both hands seen, a hand
+      // letting go forgets only its own pinch: with the hands close (a window just opened), the
+      // other one's open fingers are within a hand of the pinch, and forgetting it there made one
+      // pinch bring two looks.
       if ((phase === 'held' || phase === 'full') && !dia) {
         const now = [];
-        for (const hd of two || seen.slice(0, 1)) {
-          const p = mid(hd.P[4], hd.P[8]), s = size(hd.P);
+        (two || seen.slice(0, 1)).forEach((hd, k) => {
+          const p = mid(hd.P[4], hd.P[8]), s = size(hd.P), who = two ? k : -1;
           if (!isPinch(hd.views)) {
-            if (dist(hd.P[4], hd.P[8]) > 0.45 * s) pinches = pinches.filter((q) => dist(q.p, p) > s);
-            continue;
+            if (dist(hd.P[4], hd.P[8]) > 0.45 * s) pinches = pinches.filter((q) => (q.who >= 0 && who >= 0 && q.who !== who) || dist(q.p, p) > s);
+            return;
           }
           if (!pinches.some((q) => dist(q.p, p) < s)) askWipe(t, p);
-          now.push({ p, t });
-        }
+          now.push({ p, t, who });
+        });
         pinches = [...pinches.filter((q) => t - q.t < 0.3 && !now.some((n) => dist(n.p, q.p) < 1)), ...now];
       } else pinches = [];
       // a swipe, once the window fills the picture (and not while the hands come round into the
@@ -746,9 +933,10 @@ export function createPortal(canvas) {
           askWipe(t, [went < 0 ? rect.x + rect.w + far : rect.x - far, rect.y + rect.h / 2], -went, far, far + rect.w + 60);
         }
       }
-      // and every 8 bars, from the middle (from the hand, it looked like a pinch answered late)
+      // and every 8 bars, from the middle (from the hand, it looked like a pinch answered late); not
+      // from the skull, which stays as long as it's held in front of you
       if ((phase === 'held' || phase === 'full') && bar !== null && bar !== undefined && bar !== lastBar) {
-        if (lastBar !== null && bar % 8 === 0 && !wipe && t - lookAt > 4) startWipe(t, c.slice());
+        if (lastBar !== null && bar % 8 === 0 && !wipe && t - lookAt > 4 && ID[pick(which)] !== OWN.skull) startWipe(t, c.slice());
         lastBar = bar;
       }
       if (wipe && t - wipe.at >= WIPE) {
@@ -793,7 +981,7 @@ export function createPortal(canvas) {
       shown = { R, C };
       // (the camera effect's glass is drawn over the whole picture, window or no window)
       const inWindow = phase !== 'shut' && R >= 0.5;
-      if (phase === 'shut') { dropHist(); if (!glassFx) dropPlate(); }
+      if (phase === 'shut') { dropHist(); if (!glassFx) dropPlate(); fit = null; skullA = 0; }
       if (!inWindow && !glassFx) { blank(); return; }
 
       // the camera's picture, and where its frame's corners are on screen (mirrored): the looks
@@ -825,9 +1013,13 @@ export function createPortal(canvas) {
         gl.bufferData(gl.ARRAY_BUFFER, quad, gl.DYNAMIC_DRAW);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
       };
+      const now = inWindow ? ID[pick(which)] : -1, next = inWindow && wipe ? ID[pick(wipe.to)] : -1;
+      // the skull, while it shows (once its mesh is here): where your face is now
+      const skullOn = (now === OWN.skull || next === OWN.skull) && skullBuffers();
+      if (skullOn) fitSkull(t, dt, face, pose, place);
+      else { fit = null; skullA = 0; }
       gl.bindVertexArray(vao);
       gl.disable(gl.BLEND);
-      const now = inWindow ? ID[pick(which)] : -1, next = inWindow && wipe ? ID[pick(wipe.to)] : -1;
 
       // the x-ray's echoes, while it shows (started afresh each time it comes back)
       if (now === OWN.xray || next === OWN.xray) {
@@ -923,6 +1115,7 @@ export function createPortal(canvas) {
       gl.uniform3f(paint.loc.circ, C[0], C[1], R);
       gl.uniform1i(paint.loc.which, now);
       clip(C[0] - R - 1, C[1] - R - 1, C[0] + R + 1, C[1] + R + 1);
+      if (skullOn && now === OWN.skull && fit && skullA > 0.004) drawSkull(W, H, rect, C, R, null);
       if (wipe) {
         // (quick at first, so a pinch shows at once)
         const k = 1 - (1 - clamp((t - wipe.at) / WIPE, 0, 1)) ** 3, soft = 6 + 0.04 * R;
@@ -931,13 +1124,15 @@ export function createPortal(canvas) {
         gl.uniform1i(paint.loc.which, next);
         const o = reach + soft;
         clip(Math.max(C[0] - R, wipe.p[0] - o) - 1, Math.max(C[1] - R, wipe.p[1] - o) - 1, Math.min(C[0] + R, wipe.p[0] + o) + 1, Math.min(C[1] + R, wipe.p[1] + o) + 1);
+        if (skullOn && next === OWN.skull && fit && skullA > 0.004) drawSkull(W, H, rect, C, R, [wipe.p[0], wipe.p[1], reach, soft]);
       }
       gl.useProgram(over.prog);
       shared(over.loc);
       gl.uniform4f(over.loc.rect, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
       gl.uniform3f(over.loc.circ, C[0], C[1], R);
-      // (the glass look is you: not cut out over it, as you are)
-      gl.uniform1f(over.loc.cut, now === OWN.glass || next === OWN.glass ? 0 : cutNow);
+      // (the glass look is you, and the skull's in you: you're not cut out over them, as you are)
+      const inYou = (f) => f === OWN.glass || f === OWN.skull;
+      gl.uniform1f(over.loc.cut, inYou(now) || inYou(next) ? 0 : cutNow);
       gl.uniform1f(over.loc.ring, lw);
       clip(C[0] - R - pad, C[1] - R - pad, C[0] + R + pad, C[1] + R + pad);
       gl.disable(gl.BLEND);

@@ -9,7 +9,7 @@ import { createHandSmoother } from './smooth.js';
 
 export function createTracker(on = 'gpu') {
   let worker = null, ready = false, busy = false, error = '', last = 0, seenAt = 0, cost = 0, handAt = 0;
-  let hands = [], face = null, eyes = null, mask = null, maskAt = 0;
+  let hands = [], face = null, pose = null, eyes = null, mask = null, maskAt = 0;
   // the hands' points, held steady (smooth.js)
   const steady = createHandSmoother();
   // If it fails to start (the models, the graphics card), it tries again: three more times, 3, 6
@@ -32,6 +32,7 @@ export function createTracker(on = 'gpu') {
       busy = false;
       hands = steady(data.hands, data.t);
       face = data.face;
+      pose = data.pose || null;
       eyes = data.eyes || null;
       if (hands.length) handAt = performance.now();
       if (data.mask) { mask = data.mask; maskAt = performance.now(); }
@@ -57,7 +58,7 @@ export function createTracker(on = 'gpu') {
       worker = null;
       ready = busy = false;
       hands = [];
-      face = mask = null;
+      face = pose = mask = null;
     },
     // Sends the camera's current frame along, unless one is still being looked at. wantFace,
     // wantCut: whether to find the face, and where a person is (the cut-out), too.
@@ -81,6 +82,9 @@ export function createTracker(on = 'gpu') {
     // the latest, if it's fresh (half a second): hands [{ side, points }], face [[x, y] x 478]
     get hands() { return performance.now() - seenAt < 500 ? hands : []; },
     get face() { return performance.now() - seenAt < 500 ? face : null; },
+    // how the head is turned (MediaPipe's facial transformation matrix: 4 x 4, column by column),
+    // with the face
+    get pose() { return performance.now() - seenAt < 500 ? pose : null; },
     // how shut each eye is, [left, right] 0-1, while the face is being looked for, if fresh
     get eyes() { return performance.now() - seenAt < 500 ? eyes : null; },
     // where a person is (0-255 a pixel, the camera's frame at 256 across), if fresh

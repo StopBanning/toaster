@@ -18,6 +18,12 @@ thinking-orbs, the Thinking Orbs engine (libraries.dev), in part, in renderer/or
   The orb's puzzle moves (the sphere's slices turning and solving), its outline shapes and
   its breathing ring.
 
+The skull in the portals' skull look, in renderer/models/skull.bin (made lighter by
+tools/skullmesh.mjs)
+  "ScatteringSkull" from the Khronos glTF Sample Assets: model by Vladimir Petkovic,
+  2025 (c) Adobe Inc. CC0 1.0 Universal (public domain).
+  From https://github.com/KhronosGroup/glTF-Sample-Assets
+
 JetBrains Mono (the typeface)
   Included in renderer/fonts; SIL Open Font License 1.1 (renderer/fonts/OFL.txt).
 
@@ -33,7 +39,11 @@ The ideas and looks it's after (none of their code is in Toaster, but for the or
   libraries.dev's Thinking Orbs (Jakub Antalik and Alexandr Brinza): the orb.
   Anthropic's launch film for Claude Opus 5.5 ("There's more to discover"): the worlds.
   rentalunit5's video-synth piece "Circulation": the cuts' mirrored text and tunnel.
+  3D spectrum analysers (a dial-up modem's handshake seen as terrain) and Chrome Music
+    Lab's Spectrogram (Google Creative Lab): the spectrogram's landscape.
   days_of_93's Days of Glitch, a visual mangler that cuts a picture into moving cells:
     the worlds' cells look.
   cure.visual's portals, made in TouchDesigner: the portals.
   ttyproj's "Transparent Distortion", made in TouchDesigner: the glass look.
+  design4me__'s x-ray hover, a Framer component that turns a head to a skull under the
+    cursor: the portals' skull look.

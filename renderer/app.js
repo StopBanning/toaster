@@ -62,7 +62,7 @@ const spiral = createSpiral($('vis')), wheel = createWheel($('vis')); // on the 
 const warp = createWarp($('warp'));
 const worlds = createWorlds($('worlds'), $('worldwords'));
 const chrome = createChrome($('chrome'));
-const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the boxes over it
+const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the pins over it
 const cuts = createCuts($('vis')); // on the tunnel's canvas too
 const punch = createPunchcard($('punch')); // its own layer, so it can sit on top of any background
 const cam = createWebcam($('cam'));
@@ -109,6 +109,7 @@ const state = {
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
   camFx: 0, // the camera's effect (K), in CAM_FX
   worldLook: 'auto', // the worlds' look (A while they're on): auto, night, film, ascii, ink, risograph...
+  spectroTheme: false, // the spectrogram in the theme's colours rather than the rainbow (A while it's on)
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
@@ -122,7 +123,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage'];
+const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme'];
 function loadSettings() {
   let saved = {};
   try {
@@ -153,6 +154,7 @@ function loadSettings() {
   state.card = state.card === true;
   state.cardV = state.cardV !== false;
   state.cardBig = state.cardBig === true;
+  state.spectroTheme = state.spectroTheme === true;
   // the keys you changed: kept if they're single keys not taken twice
   const keys = state.keys && typeof state.keys === 'object' ? state.keys : {};
   state.keys = {};
@@ -473,6 +475,12 @@ function nextWorldLook() {
 function toggleCollage() {
   state.chromeCollage = !state.chromeCollage;
   flashStatus('collage: ' + (state.chromeCollage ? 'on' : 'off'));
+  saveSettings();
+}
+// A, while the spectrogram is on: its colours, the rainbow or the theme's
+function toggleSpectroColours() {
+  state.spectroTheme = !state.spectroTheme;
+  flashStatus('colours: ' + (state.spectroTheme ? "the theme's" : 'rainbow'));
   saveSettings();
 }
 function setStrength(i, say) {
@@ -1094,7 +1102,7 @@ function draw(now) {
     worlds.draw(t, eng, { song: currentSong(), lines: Object.values(lineTexts()).filter(Boolean), played, chord: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', codeBox, col });
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
-  else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], offset: syncOffset(), calm: state.calm });
+  else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
@@ -1105,9 +1113,10 @@ function draw(now) {
   if (LAYER_ON.dotcam()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
   if (LAYER_ON.voxcam()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
   if (cam.on) {
-    // (the face is looked for while the finger frame is open too: a wink changes its filter)
+    // (the face is looked for while the finger frame is open too: a wink changes its filter; and for
+    // the portals' skull)
     const windows = CAM_FX[state.camFx] === 'windows';
-    tracker.update(cam.video, state.eyes || windows || takeover.active || lens.showing, ['cut-out', 'dots', 'voxels'].includes(CAM_FX[state.camFx]) || portal.wantsCut);
+    tracker.update(cam.video, state.eyes || windows || takeover.active || lens.showing || portal.wantsFace, ['cut-out', 'dots', 'voxels'].includes(CAM_FX[state.camFx]) || portal.wantsCut);
     // tracking that couldn't start is said (once, and again if it gives up), so the hand effects
     // not working isn't a mystery
     const trouble = tracker.error ? `${tracker.error}|${tracker.gaveUp}` : '';
@@ -1117,7 +1126,7 @@ function draw(now) {
     }
     const where = { place: cam.place, crop: cam.drawCrop, rect: cam.rect, col };
     // a portal, while one is open, stands in for the finger frame (and the hand signs)
-    portal.draw(t, { ...where, hands: tracker.hands, video: cam.video, mask: tracker.mask, bar: eng.bar });
+    portal.draw(t, { ...where, hands: tracker.hands, video: cam.video, mask: tracker.mask, bar: eng.bar, face: tracker.face, pose: tracker.pose });
     if (portal.showing) lens.clear();
     else lens.draw(t, { ...where, hands: tracker.hands, eyes: tracker.eyes, bar: eng.bar });
     // (behind the code: a window filling the picture, and the camera's glass effect, which is drawn
@@ -1180,7 +1189,7 @@ $('rename-form').addEventListener('submit', () => {
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'visual', key: 'v', run: () => setVisual((state.visual + 1) % VISUALS.length) },
-  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
+  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },

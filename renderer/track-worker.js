@@ -2,8 +2,9 @@
 // drawing on the page never wait for them. The page sends camera frames ({ frame: ImageBitmap,
 // t, face: wanted?, cut: wanted? }) and gets back where the hands and face are, in the frame's own
 // 0-1 coordinates (not mirrored): { hands: [{ side, points: [[x, y] x 21], world: [[x, y, z] x 21] }],
-// face: [[x, y] x 478], mask }. With cut, mask is where a person is, for the cut-out: { data: 0-255
-// a pixel, w, h }, the frame at 256 across.
+// face: [[x, y] x 478], pose, mask }. pose is how the head is turned: MediaPipe's facial
+// transformation matrix (4 x 4, column by column), with the face. With cut, mask is where a person
+// is, for the cut-out: { data: 0-255 a pixel, w, h }, the frame at 256 across.
 import { FilesetResolver, HandLandmarker, FaceLandmarker, ImageSegmenter } from '../node_modules/@mediapipe/tasks-vision/vision_bundle.mjs';
 
 const at = (path) => new URL(path, import.meta.url).href;
@@ -32,8 +33,8 @@ const ready = (async () => {
   hands = await make();
 })();
 function wantFace() {
-  // (with blendshapes: how shut each eye is, for a wink)
-  const make = (on) => FaceLandmarker.createFromOptions(filesFor('face-' + on), { ...options('face_landmarker.task', on), numFaces: 1, outputFaceBlendshapes: true });
+  // (with blendshapes: how shut each eye is, for a wink; and the head's turn, for the skull)
+  const make = (on) => FaceLandmarker.createFromOptions(filesFor('face-' + on), { ...options('face_landmarker.task', on), numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true });
   faceMaking ||= make(delegate)
     .catch((err) => { if (delegate === 'CPU') throw err; console.warn('face tracking on the graphics card failed, using the processor:', err); return make('CPU'); })
     .then((f) => { face = f; }, (err) => { faceError = String(err?.message || err); console.error('face tracking failed:', err); });
@@ -86,6 +87,7 @@ onmessage = async ({ data }) => {
         world: h.worldLandmarks[i]?.map((p) => [p.x, p.y, p.z]) || null,
       })),
       face: f ? f.map((p) => [p.x, p.y]) : null,
+      pose: f && fr.facialTransformationMatrixes?.[0] ? Array.from(fr.facialTransformationMatrixes[0].data) : null,
       eyes,
       mask,
       cutError: data.cut ? cutError : null,
