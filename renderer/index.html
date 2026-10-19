@@ -14,6 +14,8 @@
 <canvas id="worlds" aria-hidden="true"></canvas>
 <canvas id="worldwords" aria-hidden="true"></canvas>
 <canvas id="chrome" aria-hidden="true"></canvas>
+<canvas id="spectro" aria-hidden="true"></canvas>
+<canvas id="spectrobox" aria-hidden="true"></canvas>
 <canvas id="vis"></canvas>
 <canvas id="warp" aria-hidden="true"></canvas>
 <canvas id="field" aria-hidden="true"></canvas>
@@ -65,6 +67,7 @@
 <div id="card" hidden aria-label="Now-playing ID card"></div>
 
 <div id="desk-front" aria-hidden="true"><div class="wins"></div></div>
+<canvas id="storm" aria-hidden="true" hidden></canvas>
 <div id="alerts"></div>
 <div id="notice" hidden></div>
 <div id="err" hidden></div>
@@ -112,7 +115,7 @@
   <label class="calm"><input type="checkbox" id="updates" /><span><b>Updates</b>: when it starts, Toaster asks GitHub whether there's a newer version, and offers it if there is. Nothing else is sent.</span></label>
   <table>
     <tr class="sec"><th colspan="2">look</th></tr>
-    <tr data-act="visual"><td>V</td><td>background: spectrum, tunnel, spiral, pitch wheel, warp, cuts, worlds, chrome, rain, scope, off</td></tr>
+    <tr data-act="visual"><td>V</td><td>background: spectrum, tunnel, spiral, pitch wheel, warp, cuts, worlds, chrome, spectrogram, rain, scope, off</td></tr>
     <tr data-act="strength"><td>A</td><td>background strength; with worlds, their look: night (no light skies), film, ASCII, code, ink, risograph, cyanotype, receipt, thermal, night vision, CRT, VHS, quadtree, cells, auto; with chrome, the collage on or off</td></tr>
     <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen</td></tr>
     <tr data-act="orb"><td>R</td><td>orb: dots that take a new form every 8 bars, moved by the kick, clap and hats</td></tr>
@@ -126,7 +129,7 @@
     <tr data-act="tap"><td>Space</td><td>tap the beat (four taps) when it gets the tempo wrong</td></tr>
     <tr data-act="hush"><td>Q</td><td>hush every part; <kbd data-k="hush">Q</kbd> again or an open hand brings them back</td></tr>
     <tr data-act="drop"><td>D</td><td>fire the drop effect now</td></tr>
-    <tr data-act="dropfx"><td>B</td><td>drop effect: XP takeover, blue screen, off</td></tr>
+    <tr data-act="dropfx"><td>B</td><td>drop effect: XP takeover, blue screen, not responding, off</td></tr>
     <tr class="sec"><th colspan="2">save &amp; share</th></tr>
     <tr data-act="rec"><td>M</td><td>record the window with sound, into <span class="os-win">Videos\Toaster</span><span class="os-mac">Movies/Toaster</span> (for TikTok or Shorts, <kbd data-k="layout">L</kbd> first)</td></tr>
     <tr data-act="clips"><td>J</td><td>save the first two drops of each song as clips</td></tr>

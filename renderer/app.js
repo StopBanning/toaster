@@ -7,6 +7,7 @@ import { createOrb } from './orb.js';
 import { createDotCam } from './dotcam.js';
 import { createVoxCam } from './voxcam.js';
 import { createTakeover, createSysinfo, showBsod, xpAlert } from './fx.js';
+import { createStorm } from './storm.js';
 import { createCard } from './card.js';
 import { createGlass } from './glass.js';
 import { createTracker } from './tracking.js';
@@ -19,6 +20,7 @@ import { createSpiral, createWheel } from './rings.js';
 import { createWarp } from './warp.js';
 import { createWorlds } from './worlds.js';
 import { createChrome } from './chrome.js';
+import { createSpectro } from './spectro.js';
 import { createCuts } from './cuts.js';
 import { createTape, songMidi, songStrudel } from './tape.js';
 import { createClips } from './clips.js';
@@ -27,11 +29,11 @@ import { makeDemo } from './demo.js';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'rain', 'scope', 'off'];
+const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'rain', 'scope', 'off'];
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'];
-const DROPS = ['xp takeover', 'blue screen', 'off'];
+const DROPS = ['xp takeover', 'blue screen', 'not responding', 'off'];
 // The camera's effects (K): none, just you over the visuals, slit-scan, datamosh, windows, glass,
 // dots, voxels.
 const CAM_FX = ['none', 'cut-out', 'slit-scan', 'datamosh', 'windows', 'glass', 'dots', 'voxels'];
@@ -60,6 +62,7 @@ const spiral = createSpiral($('vis')), wheel = createWheel($('vis')); // on the 
 const warp = createWarp($('warp'));
 const worlds = createWorlds($('worlds'), $('worldwords'));
 const chrome = createChrome($('chrome'));
+const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the boxes over it
 const cuts = createCuts($('vis')); // on the tunnel's canvas too
 const punch = createPunchcard($('punch')); // its own layer, so it can sit on top of any background
 const cam = createWebcam($('cam'));
@@ -74,7 +77,9 @@ const sys = createSysinfo($('sys'), () => describeAudio());
 const card = createCard($('card'));
 const glass = createGlass($('glass'), $('code'));
 const orb = createOrb($('orb'));
-const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
+const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spectro', 'spectrobox', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
+const storm = createStorm($('storm')); // the drop effect "not responding"
+const STORM_LAYERS = [...LAYERS, $('glass')]; // (what its window shows: the backgrounds, and the glass blob over them)
 const lens = createLens($('lens')); // the finger frame
 const portal = createPortal($('portal')); // portals
 const segcam = createSegcam($('segcam')); // big eyes
@@ -136,7 +141,9 @@ function loadSettings() {
   if (name === 'orb' || name === 'scenes') { state.orb = true; state.visual = VISUALS.indexOf('off'); }
   else state.visual = Math.max(0, VISUALS.indexOf(name));
   if (!(state.theme in THEMES)) state.theme = 0;
-  if (!(state.drop in DROPS)) state.drop = 0;
+  // the drop effect too (older versions saved its number, in a list without "not responding")
+  const dropName = typeof saved.dropName === 'string' ? saved.dropName : ['xp takeover', 'blue screen', 'off'][saved.drop];
+  state.drop = Math.max(0, DROPS.indexOf(dropName));
   if (!Number.isFinite(state.syncTrim)) state.syncTrim = 0;
   if (!(state.strength in STRENGTHS)) state.strength = 1;
   if (!(state.camFx in CAM_FX)) state.camFx = 0;
@@ -174,6 +181,7 @@ function syncOffset() {
 function saveSettings() {
   const out = Object.fromEntries(SAVED.map((k) => [k, state[k]]));
   out.visualName = VISUALS[state.visual];
+  out.dropName = DROPS[state.drop];
   try { localStorage.setItem('now-coding', JSON.stringify(out)); } catch { /* ignore */ }
 }
 
@@ -414,8 +422,9 @@ eng.on.drop = () => {
   // a bar's length in seconds; half a second a beat if the tempo isn't known yet
   if (mode === 'xp takeover') takeover.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4);
   else if (mode === 'blue screen') showBsod($('bsod'), glitch);
+  else if (mode === 'not responding') storm.start(t, eng.tempo.locked ? eng.tempo.bpm : 0);
 };
-eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; };
+eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; };
 // A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js).
 eng.song = () => ({ known: !!currentSong(), playing: state.source === 'system' && !!state.winSong && !!state.winPlaying });
 
@@ -440,10 +449,11 @@ function setVisual(i) {
   state.visual = i;
   const mode = VISUALS[i];
   if (!FIELD_VIS.includes(mode)) field.clear();
-  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome]]) if (mode !== name) v.clear();
+  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spectrogram', spectro]]) if (mode !== name) v.clear();
   $('b-visual').textContent = mode + ' ▾';
   document.body.classList.toggle('worlds-on', mode === 'worlds');
   document.body.classList.toggle('chrome-on', mode === 'chrome');
+  document.body.classList.toggle('spectro-on', mode === 'spectrogram');
   applyStage();
   saveSettings();
 }
@@ -1033,6 +1043,8 @@ const LAYER_ON = {
   worlds: () => VISUALS[state.visual] === 'worlds',
   worldwords: () => VISUALS[state.visual] === 'worlds',
   chrome: () => VISUALS[state.visual] === 'chrome',
+  spectro: () => VISUALS[state.visual] === 'spectrogram',
+  spectrobox: () => VISUALS[state.visual] === 'spectrogram',
   field: () => FIELD_VIS.includes(VISUALS[state.visual]),
   asciicam: () => cam.on && state.ascii,
   orb: () => state.orb,
@@ -1054,7 +1066,7 @@ let poolAt = 0, rollAt = 0, footerAt = 0, lastFrame = 0, windowShown = true;
 let trackShown = ''; // the tracking trouble last told about (see draw)
 window.nc?.onWindowShown((shown) => { windowShown = shown; });
 function frameGap(t) {
-  if (rec.mr || cam.on || takeover.active) return 1000 / 61;
+  if (rec.mr || cam.on || takeover.active || storm.active) return 1000 / 61;
   const quiet = state.node ? t - eng.lastSound : Infinity;
   return quiet > 30 && !document.hasFocus() ? 1000 / 10.5 : quiet > 3 ? 1000 / 30.5 : 1000 / 61;
 }
@@ -1082,8 +1094,9 @@ function draw(now) {
     worlds.draw(t, eng, { song: currentSong(), lines: Object.values(lineTexts()).filter(Boolean), played, chord: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', codeBox, col });
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
+  else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], offset: syncOffset(), calm: state.calm });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
-  if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), stageRect());
+  if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
   if (t - poolAt > 2) { poolAt = t; field.setPool($('code').textContent); }
@@ -1116,6 +1129,7 @@ function draw(now) {
     if (state.eyes || windows) segcam.draw(t, { ...where, face: tracker.face, eyes: state.eyes, windows, frame: cam.frame, ascii: state.ascii });
   }
   glass.draw(t, eng, col, LAYERS);
+  storm.draw(t, eng, { layers: STORM_LAYERS, bg: `rgb(${col.bg})`, offset: syncOffset(), calm: state.calm });
   takeover.draw(t, grid, cam.frame, eng.bar, state.calm);
   if (t - footerAt > 0.125) { footerAt = t; renderFooter(); }
 }

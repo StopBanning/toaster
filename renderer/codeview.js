@@ -114,6 +114,11 @@ export function createCodeView(ids) {
   // else, so a hush sweeps straight down the code; the rest of the line's changes come after.
   const muted = (x) => x.startsWith('_');
   const toggles = (L) => !!L.shown && !L.shown.startsWith('//') && !L.target.startsWith('//') && muted(L.shown) !== muted(L.target);
+  // A line with something heard in it (not a // comment: a part not heard yet, the beat still
+  // being looked for). The song, its tempo and its key come before the parts, as a live coder
+  // sets them up first.
+  const heard = (L) => !!L.target && !L.target.trimStart().startsWith('//');
+  const HEAD = new Set(['title', 'tempo', 'scale']);
 
   function setTarget(L, parts) {
     L.glide = null; // typed from wherever a slide had got to
@@ -250,8 +255,13 @@ export function createCodeView(ids) {
     step(t) {
       if (t < typer.next) return;
       if (!typer.cur) {
-        // mutes and unmutes first, then the rest in order
-        const i = typer.queue.findIndex((q) => toggles(lines[q]));
+        // mutes and unmutes first, then lines with something heard in them (the song, tempo and
+        // key first), then the rest in order. (A song's first seconds type the whole template,
+        // comments, top to bottom; the beat, found after about 3 s, waited behind it, saying
+        // "finding the beat" for 10 to 12 s more.)
+        let i = typer.queue.findIndex((q) => toggles(lines[q]));
+        if (i < 0) i = typer.queue.findIndex((q) => HEAD.has(q) && heard(lines[q]));
+        if (i < 0) i = typer.queue.findIndex((q) => heard(lines[q]));
         const id = typer.queue.splice(Math.max(0, i), 1)[0];
         if (!id) return;
         const L = lines[id];
@@ -263,8 +273,9 @@ export function createCodeView(ids) {
       if (op === undefined) {
         typer.cur = null;
         // it changed while we typed: again, after the lines waiting (first, it could keep the
-        // others waiting for good: a line that changes every bar on a song with a lot going on)
-        if (L.shown !== L.target) typer.queue.push(L.id);
+        // others waiting for good: a line that changes every bar on a song with a lot going on),
+        // drawn without its caret meanwhile (one caret on screen, where the typing is)
+        if (L.shown !== L.target) { typer.queue.push(L.id); render(L); }
         else finish(L);
         typer.next = t + 0.05;
         return;
