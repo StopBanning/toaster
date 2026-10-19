@@ -95,7 +95,9 @@ then the caret goes back to fix it.
   before a method call and indented, the way you'd break up Strudel by hand.
 - Half-time music (dubstep, much of trap: the snare on 3 alone) is written the way its producer
   would: the bar starts two beats before the snare, the kick on 1 and the clap on 3, rather than
-  the claps read as a 4/4 backbeat a beat off.
+  the claps read as a 4/4 backbeat a beat off. A slow song heard at double its tempo (a ballad at
+  85 counted as 170, its backbeat landing once a bar) goes back to its own tempo, the snare on 2
+  and 4.
 
 ## Saving things
 

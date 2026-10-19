@@ -273,7 +273,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // at one tempo ({ t, bpm, conf, fit }), clear or not; agreeN, agreeBpm: how many times running
       // the two readings have agreed, and on what (fluxUpdate). better: the drums' last 12 readings
       // since the lock, the tempo of each that a 3:2 tempo fits better, else 0 (tempoUpdate)
-      this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, half: null, halfCand: 0, halfN: 0, halfOff: 0, halfSeen: false, ringTop: -Infinity, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [] };
+      this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, half: null, halfCand: 0, halfN: 0, halfOff: 0, halfSeen: false, halved: false, ringTop: -Infinity, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [] };
       this.repAt = -1;
       this.repCache = new Map();
       this.kickB = new Float32Array(4);
@@ -291,6 +291,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.ringT = [];
       this.ringV = [];
       this.ringBeat = null;
+      this.halveFor = null; // (half-time just found at a fast tempo: see halve)
       this.beatChroma = new Float32Array(12);
       this.prevBeatChroma = null;
       this.beatBass = new Float32Array(12);
@@ -818,6 +819,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
 
     clock(t) {
       const T = this.tempo;
+      // (before the beats are counted: halving starts their count over)
+      if (this.halveFor !== null) { const x = this.halveFor; this.halveFor = null; if (T.locked && T.half === x) this.halve(t, x); }
       if (!T.locked) {
         if (t - this.lastCol > 0.125) { this.lastCol = t; this.pushCol(); }
         return;
@@ -882,6 +885,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.halfTime();
       let best = T.half === null ? 0 : (T.half + 2) % 4, bestScore = -Infinity;
       for (let d = 0; d < 4 && T.half === null; d++) {
+        // (a halved tempo knows its backbeat: the bar can start on either kick, never on the snare)
+        if (T.halved && (d - T.down) % 2) continue;
         const score = K[d] + 0.5 * K[(d + 2) % 4] + S[(d + 1) % 4] + S[(d + 3) % 4] - 0.5 * (S[d] + S[(d + 2) % 4]) + 3 * H[d];
         if (score > bestScore + 1e-6) { bestScore = score; best = d; }
       }
@@ -973,8 +978,31 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         const clear = gap >= (T.halfSeen ? 2 : 3) && holds >= 1.5 && R[x] >= T.ringTop - 4.5 && R[(x + 2) % 4] >= Math.min(R[(x + 1) % 4], R[(x + 3) % 4]);
         T.halfN = clear ? (x === T.halfCand ? T.halfN + 1 : 1) : 0;
         T.halfCand = x;
-        if (T.halfN >= 4) { T.half = x; T.halfSeen = true; }
+        if (T.halfN >= 4) { T.half = x; T.halfSeen = true; if (T.bpm >= 150) this.halveFor = x; }
       }
+    },
+
+    // A slow song counted at double its tempo looks like half-time from here: its backbeat, on 2
+    // and 4, lands on 3 of each double-speed bar (Eyes Without a Face, its 85 bpm read as 171, the
+    // worlds cutting twice a bar; Oct 18). Half-time music proper runs its hats at the fast tempo
+    // (8ths and 16ths: two to four a beat), a slow song at its own (its 16ths read as 8ths: Eyes
+    // Without a Face 1.6 to 2.1 a beat at 171). So past 150 bpm, with fewer than two and a half hats
+    // a beat over the last 8 seconds, the tempo is halved: the beats are every other one, the
+    // kick's and the snare's (two apart, now one), and the bar starts on a kick.
+    halve(t, x) {
+      const T = this.tempo;
+      let hats = 0;
+      for (const o of this.onsets) if (o.id === 'hh' && o.t > t - 8) hats++;
+      if (hats / ((8 * T.bpm) / 60) >= 2.5) return;
+      // the latest of the kick's beats, which the new count runs from
+      let b = Math.floor(T.n0 + (t - T.t0) / T.P);
+      while ((((b - x - 2) % 4) + 4) % 4) b--;
+      const at = T.t0 + (b - T.n0) * T.P, bpm = T.bpm / 2;
+      this.lockTo(t, bpm, `tempo halved ${T.bpm.toFixed(1)} -> ${bpm.toFixed(1)} (a backbeat counted at double speed)`);
+      T.t0 = at;
+      T.n0 = 0;
+      T.down = 0;
+      T.halved = true;
     },
 
     // While the song is read as half-time: is t on the snare's beat ('snare') or the kick's, two
@@ -1621,6 +1649,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       T.half = null;
       T.halfN = T.halfOff = 0;
       T.halfSeen = false;
+      T.halved = false;
       T.ringTop = -Infinity;
       this.prevBeatChroma = this.prevBeatBass = null;
       this.resetClocks();
