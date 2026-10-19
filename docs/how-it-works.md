@@ -10,9 +10,10 @@ on Windows, or `Music/Toaster` on a Mac (named after the song and the time):
 
 - A MIDI file: drums on channel 10 (kick, clap, closed and open hat), the bass line, the chords
   and the lead line on tracks of their own, at the song's tempo. Drop it into a DAW.
-- The whole song as Strudel code: every 4 bars as heard, each different 4 bars written once as a
-  named `stack(...)` (A, B, C...), then played in order with `arrange([8, A], [4, B], ...)`. Open
-  strudel.cc, paste it in, ctrl+enter.
+- The whole song as Strudel code: cut into sections, each written once as a named `stack(...)`
+  (A, B, C...) as most of its bars played it, with the chords and lead left out when they don't
+  recur across the song, then played in order with `arrange([8, A], [4, B], ...)`; the MIDI file
+  stays bar by bar as heard. Open strudel.cc, paste it in, ctrl+enter.
 
 It's written from the same patterns the code on screen shows, bar by bar (steady patterns, not
 every hit the detectors fire on), with the bar's chord and bass note, so it has the same strengths

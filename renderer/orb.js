@@ -1,9 +1,10 @@
 // Orb: a cloud of soft dots in 3D, after libraries.dev's Thinking Orbs (Jakub Antalik and
 // Alexandr Brinza), grown into a background the music plays. It holds a form for 8 bars and at the
-// phrase every dot flows to its place in the next: a sphere, a crystal (a cube of dots on its
-// corner), orbit paths with their dots running round them, a staff the bass notes appear on as
-// they're played, a spiral galaxy, a network its signals run through on the hats, a field of waves
-// riding the spectrum, a sphere in slices that turn one a beat and then solve themselves (Thinking
+// phrase every dot flows to its place in the next: a sphere, a glitch ball (the dots fading into a
+// ball of neon streaks, after animoscillator's glitch orb: see glitchorb.js), a crystal (a cube of
+// dots on its corner), orbit paths with their dots running round them, a staff the bass notes
+// appear on as they're played, a spiral galaxy, a network its signals run through on the hats, a
+// field of waves riding the spectrum, a sphere in slices that turn one a beat and then solve themselves (Thinking
 // Orbs' moves, MIT licence, see THIRD-PARTY-NOTICES), a globe's lines, a ring breathing in slow
 // lobes (Thinking Orbs' breathing), an icosahedron,
 // rings swelling with their bands of the spectrum, a burst of rays, ripples on a disc, and an
@@ -12,6 +13,8 @@
 // the bass swells the dots. Nearer dots are bigger and brighter. Drawn
 // with WebGL: the dots move on the graphics card (the forms that move by themselves are worked out a
 // frame at a time and handed over). Timed off the beat clock like the blocks.
+import { createGlitch } from './glitchorb.js';
+
 const N = 2200;
 const TAU = Math.PI * 2;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -34,6 +37,8 @@ const FORMS = {
     }
     return p;
   },
+  // the glitch ball is drawn over a sphere of the dots, which fade out under it (see draw)
+  glitch() { return FORMS.sphere(); },
   galaxy() {
     const p = new Float32Array(N * 3), r = rng(9);
     for (let i = 0; i < N; i++) {
@@ -395,7 +400,7 @@ function reorder(order, p, lit, outP, outL) {
     outL[to] = lit ? lit[from] : 0;
   }
 }
-const ORDER = ['sphere', 'lattice', 'orbits', 'staff', 'galaxy', 'web', 'waves', 'puzzle', 'globe', 'ring', 'solid', 'bands', 'rays', 'ripple', 'shapes'];
+const ORDER = ['sphere', 'glitch', 'lattice', 'orbits', 'staff', 'galaxy', 'web', 'waves', 'puzzle', 'globe', 'ring', 'solid', 'bands', 'rays', 'ripple', 'shapes'];
 const WAVY = { waves: 1 }; // forms whose dots ride the spectrum
 let PHRASE = 8; // bars a form holds
 const MORPH = 1.8; // seconds for the dots to flow to the next form
@@ -449,11 +454,11 @@ void main() {
 const FRAG = `
 precision mediump float;
 uniform vec3 uColor;
-uniform float uGlow;
+uniform float uGlow, uFade;
 varying float vA;
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
-  float a = uGlow > 0.0 ? uGlow * vA * (1.0 - d) * (1.0 - d) : vA * (1.0 - smoothstep(0.45, 1.0, d));
+  float a = uFade * (uGlow > 0.0 ? uGlow * vA * (1.0 - d) * (1.0 - d) : vA * (1.0 - smoothstep(0.45, 1.0, d)));
   gl_FragColor = vec4(uColor * a, a);
 }`;
 
@@ -465,13 +470,15 @@ export function createOrb(canvas) {
   // the breath: a spring damped just enough not to overshoot, each kick a push outward (out in an
   // eighth of a second, back over half a second; kicks close together carry on from each other)
   let breath = 0, breathV = 0;
+  // the glitch ball (glitchorb.js) and how far it's come in (0 to 1)
+  let glitch = null, glitchA = 0;
   let kickHeard = -9, clapHeard = -9; // the last kick and clap, counted or run into the one before
   const hats = []; let hatN = 0; // the hats just gone (for the network's signals)
   // what the music is doing, for the forms that move by themselves
   const music = { now: 0, beats: 0, bars: 0, yaw: 0, pitch: 0, bands, hats, bass: null };
 
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; prog = null; });
-  canvas.addEventListener('webglcontextrestored', () => { ready = false; prog = null; });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; prog = null; glitch = null; });
+  canvas.addEventListener('webglcontextrestored', () => { ready = false; prog = null; glitch = null; });
 
   // the shader is built in the background where the driver allows it (see glass.js)
   function build() {
@@ -486,6 +493,7 @@ export function createOrb(canvas) {
       gl.attachShader(prog, s);
     }
     gl.linkProgram(prog);
+    glitch = createGlitch(gl, parallel);
   }
   function init() {
     if (parallel && !gl.getProgramParameter(prog, parallel.COMPLETION_STATUS_KHR)) return false;
@@ -499,7 +507,7 @@ export function createOrb(canvas) {
     for (let i = 0; i < N; i++) seeds[i] = r();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.aSeed);
     gl.bufferData(gl.ARRAY_BUFFER, seeds, gl.STATIC_DRAW);
-    for (const name of ['uMix', 'uTime', 'uKick', 'uKickAge', 'uClapAge', 'uHat', 'uBass', 'uScale', 'uWaveFrom', 'uWaveTo', 'uDot', 'uDpr', 'uRot', 'uSize', 'uBands', 'uColor', 'uGlow', 'uSpan', 'uShift', 'uBreath']) loc[name] = gl.getUniformLocation(prog, name);
+    for (const name of ['uMix', 'uTime', 'uKick', 'uKickAge', 'uClapAge', 'uHat', 'uBass', 'uScale', 'uWaveFrom', 'uWaveTo', 'uDot', 'uDpr', 'uRot', 'uSize', 'uBands', 'uColor', 'uGlow', 'uFade', 'uSpan', 'uShift', 'uBreath']) loc[name] = gl.getUniformLocation(prog, name);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     ready = true;
@@ -543,6 +551,7 @@ export function createOrb(canvas) {
     } else {
       form = { name, pos: (() => { const p = FORMS[name](); const out = new Float32Array(N * 3); reorder(alignOrder(p), p, null, out, new Float32Array(N)); return out; })(), lit: new Float32Array(N), wavy: WAVY[name] || 0 };
     }
+    if (name === 'glitch') glitch?.fresh();
     mixAt = from ? t : -9;
     changedAt = t;
     since = 0;
@@ -583,8 +592,9 @@ export function createOrb(canvas) {
       // neighbouring 16ths counts as one, and claps don't wind the spin up, so the orb stays smooth
       // and the hits that are right still land.
       const close = 22.5 / bpm; // a 16th and a half
-      const fire = (id) => {
-        if (id === 'bd') { if (t - kickHeard > close) { kick = 1; kickAt = t; breathV += BREATH_W * Math.E; } kickHeard = t; }
+      // (at: the 16th it's due on, on the beat grid)
+      const fire = (id, at) => {
+        if (id === 'bd') { if (t - kickHeard > close) { kick = 1; kickAt = t; breathV += BREATH_W * Math.E; glitch?.kick(at === undefined ? undefined : Math.floor(at / 16)); } kickHeard = t; }
         else if (id === 'sd') { if (t - clapHeard > close) { spin = Math.max(spin, 1.1); clapAt = t; } clapHeard = t; }
         else { hatTo += TAU / 12; hats.push({ n: hatN++, at: t }); }
       };
@@ -602,7 +612,7 @@ export function createOrb(canvas) {
         if (lastStep === null || step < lastStep || step - lastStep > 8) lastStep = step;
         for (let g = Math.floor(lastStep) + 1; g <= step; g++) {
           const s16 = ((g % 16) + 16) % 16;
-          for (const id of ['bd', 'sd', 'hhc', 'hho']) if (eng.v[id].shown?.[s16] && eng.present(id, t)) fire(id);
+          for (const id of ['bd', 'sd', 'hhc', 'hho']) if (eng.v[id].shown?.[s16] && eng.present(id, t)) fire(id, g);
         }
         lastStep = step;
       } else {
@@ -655,10 +665,27 @@ export function createOrb(canvas) {
       gl.viewport(0, 0, w, h);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
+      // its size (a third of the stage's smaller side: just inside the pitch wheel's ring)
+      const mix = clamp((t - mixAt) / MORPH, 0, 1), span = (rect ? Math.min(rect.w, rect.h) : Math.min(W, H)) * 0.34;
+      const lum = (c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+      // The glitch ball, under the dots: it comes in as they settle into the sphere (and they fade
+      // out), and goes again quickly as they set off for the next form. It's the dots' sphere as the
+      // eye sees it (its outline, in perspective, a little wider than the sphere) and breathes with it.
+      const gTo = form.name === 'glitch' ? smoothE(clamp((mix - 0.55) / 0.45, 0, 1)) : 0;
+      glitchA = gTo > glitchA ? Math.min(gTo, glitchA + dt / 0.3) : Math.max(gTo, glitchA - dt / 0.45);
+      const fade = glitchA > 0 && glitch?.ready ? smoothE(glitchA) : 0;
+      if (fade > 0) {
+        const R = 1 + 0.08 * breath, ink = lum(col.bg) > lum(col.fg) || !col.ink ? [0, 0, 0] : col.ink.map((c) => c / 255);
+        glitch.draw(dt, w, h, {
+          cx: (rect ? rect.x + rect.w / 2 : W / 2) * dpr, cy: (rect ? H - rect.y - rect.h / 2 : H / 2) * dpr,
+          radius: ((R * 3.2) / Math.sqrt(3.2 * 3.2 - R * R)) * span * dpr, spin: -yaw / TAU, time: t % 1000, alpha: 0.95 * fade, ink,
+        });
+        gl.useProgram(prog);
+      }
+      gl.uniform1f(loc.uFade, 1 - fade);
       const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
       // turn round the vertical, then tip toward you (column-major, as WebGL wants)
       gl.uniformMatrix3fv(loc.uRot, false, [cy, sp * sy, -cp * sy, 0, cp, sp, sy, -sp * cy, cp * cy]);
-      const mix = clamp((t - mixAt) / MORPH, 0, 1);
       gl.uniform1f(loc.uMix, mix);
       gl.uniform1f(loc.uTime, t % 1000);
       gl.uniform1f(loc.uKick, kick);
@@ -672,9 +699,8 @@ export function createOrb(canvas) {
       gl.uniform1f(loc.uWaveTo, form.wavy);
       gl.uniform1f(loc.uDpr, dpr);
       gl.uniform2f(loc.uSize, W, H);
-      // its size (a third of the stage's smaller side: just inside the pitch wheel's ring) and
-      // where its middle is, from the window's middle
-      gl.uniform1f(loc.uSpan, (rect ? Math.min(rect.w, rect.h) : Math.min(W, H)) * 0.34);
+      // its size and where its middle is, from the window's middle
+      gl.uniform1f(loc.uSpan, span);
       gl.uniform2f(loc.uShift, rect ? (rect.x + rect.w / 2 - W / 2) / (W / 2) : 0, rect ? (H / 2 - rect.y - rect.h / 2) / (H / 2) : 0);
       gl.uniform1fv(loc.uBands, bands);
       gl.uniform3f(loc.uColor, col.fg[0] / 255, col.fg[1] / 255, col.fg[2] / 255);
@@ -684,7 +710,6 @@ export function createOrb(canvas) {
         gl.vertexAttribPointer(loc[name], size, gl.FLOAT, false, 0, 0);
       }
       // a faint glow round the dots on dark themes, then the dots
-      const lum = (c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
       if (lum(col.bg) < lum(col.fg)) {
         gl.uniform1f(loc.uGlow, 0.07);
         gl.uniform1f(loc.uDot, 9);

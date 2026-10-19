@@ -2,6 +2,7 @@
 // wireframe tunnel like the Hardcore Software visualizers, Strudel-style floating punchcard
 // blocks, and the webcam tinted to the theme.
 import { VOICES } from './engine.js';
+import { createDominoes } from './dominoes.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 export const RAMP = ' .:-=+*#%@';
@@ -404,13 +405,15 @@ export function createTunnel(canvas) {
 const PCS = 'c c# d eb e f f# g ab a bb b'.split(' ');
 const AHEAD = 16; // steps visible on each side of the playhead (one bar)
 const ROW = { chords: 0, vox: 1, hho: 2, hhc: 3, sd: 4, bd: 5, bass: 6 };
+const ROWS = { ...ROW, n: 7 }; // (for the dominoes: the rows and how many)
 const WAITING = 0.42, LIT = 0.95, GHOST = 0.14; // how bright: a block, one crossing, one of a part that stopped
 
 export function createPunchcard(canvas) {
   const ctx = canvas.getContext('2d');
   const level = Object.fromEntries(Object.keys(ROW).map((k) => [k, 1])); // 1 playing .. 0 stopped
   let last = 0, vg = null, queuedTo = 0, moved = 0, blocks = [];
-  const reset = () => { vg = null; blocks = []; };
+  const dominoes = createDominoes();
+  const reset = () => { vg = null; blocks = []; dominoes.reset(); };
 
   // Is a part playing? Heard within its longest gap between hits plus two beats, so a missed
   // hit or two doesn't count as stopping.
@@ -450,7 +453,8 @@ export function createPunchcard(canvas) {
       }
       if (s !== 0) continue;
       if (slot?.chord && recent(eng.chordSeen)) {
-        for (const iv of [0, slot.chord.third, 7]) blocks.push({ lane: 'chords', g, len: 15.6, pc: (slot.chord.root + iv) % 12, lit: past && level.chords > 0.5 });
+        // (tone: which of the chord's notes, for the dominoes, which stand them one behind another)
+        [0, slot.chord.third, 7].forEach((iv, tone) => blocks.push({ lane: 'chords', g, len: 15.6, pc: (slot.chord.root + iv) % 12, tone, lit: past && level.chords > 0.5 }));
       }
     }
     queuedTo = Math.max(queuedTo, to);
@@ -461,13 +465,14 @@ export function createPunchcard(canvas) {
     get vg() { return vg; },
     get blocks() { return blocks; },
     // Turned off: drop the canvas's memory too.
-    clear() { canvas.width = canvas.height = 0; reset(); },
+    clear() { canvas.width = canvas.height = 0; reset(); dominoes.release(); },
     // offset (seconds) draws that far ahead, to make up for the time it takes to hear,
     // detect and draw a hit; the [ and ] keys tune it. chips: each block (and the playhead) on a
     // chip of the theme's panel colour, as the code's lines are over the worlds, whose pictures
-    // can be white enough (the receipt look, a bright planet) to hide white blocks.
-    draw(t, eng, col, offset = 0, chips = false) {
-      const [W, H] = fit(canvas);
+    // can be white enough (the receipt look, a bright planet) to hide white blocks. look: 'blocks',
+    // or 'dominoes' (dominoes.js), drawn at the screen's full resolution for their fine lines.
+    draw(t, eng, col, offset = 0, chips = false, look = 'blocks') {
+      const [W, H] = fit(canvas, look === 'dominoes' ? Math.min(2, devicePixelRatio || 1) : 1);
       const gap = t - last, dt = Math.min(0.1, gap || 0.016);
       last = t;
       const target = eng.stepAt(t + offset);
@@ -488,6 +493,7 @@ export function createPunchcard(canvas) {
         vg = target;
         moved = T.renumber;
         blocks = [];
+        dominoes.reset();
         queuedTo = Math.floor(vg) - AHEAD - 2;
       } else {
         // The engine renumbered its steps (new bar lines, a new tempo, the beat found on another
@@ -519,8 +525,13 @@ export function createPunchcard(canvas) {
       level.chords += ((eng.playing(eng.chordSeen, t) ? 1 : 0) - level.chords) * ease;
       queue(eng, t, Math.floor(vg + AHEAD + 1)); // made just past the right edge
       // Blocks leave once they've scrolled off the left edge.
-      if (blocks.length && blocks[0].g + blocks[0].len < vg - AHEAD - 1) blocks = blocks.filter((b) => b.g + b.len >= vg - AHEAD - 1);
+      // (marked gone as they leave: the dominoes mustn't lean a new one on a block that no longer moves with the clock)
+      if (blocks.length && blocks[0].g + blocks[0].len < vg - AHEAD - 1) blocks = blocks.filter((b) => b.g + b.len >= vg - AHEAD - 1 || ((b.gone = true), false));
 
+      if (look === 'dominoes') {
+        dominoes.draw(ctx, { blocks, vg, W, H, col, level, t, dt, ahead: AHEAD, rows: ROWS, sps: 4 / (T.P || 0.5) });
+        return;
+      }
       ctx.clearRect(0, 0, W, H);
       const fg = col.fg, stepW = W / (2 * AHEAD), laneH = H / 7, mid = W / 2;
       for (const b of blocks) {

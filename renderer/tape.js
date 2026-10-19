@@ -10,8 +10,9 @@
 // and a few seconds of silence count as a new song.
 //
 // Written out two ways: a MIDI file (drums on channel 10, bass, chords and lead on tracks of their
-// own) to take into a DAW, and the whole song as Strudel code: every 4 bars as heard, each
-// different 4 bars written once as a named stack, played in order with arrange().
+// own, bar by bar as heard) to take into a DAW, and the whole song as Strudel code: cut into
+// sections, each written once as a named stack as most of its bars played it (leaving the chords
+// or lead out when they don't recur), played in order with arrange().
 import { NOTES } from './engine.js';
 import { stepParts, wobble } from './codegen.js';
 
@@ -148,7 +149,171 @@ export function songMidi(song, title) {
 
 // ---------------------------------------------------------------- Strudel
 
+const DRUMS = ['bd', 'sd', 'hhc', 'hho'];
 const TOKEN = { bd: 'bd', sd: 'cp', hhc: 'hh', hho: 'oh' };
+const TOL = 0.35, MAXBARS = 16, CHORD_CONF = 0.6, LEAD_CONF = 0.5;
+
+const steps = (b, p) => {
+  const v = b.parts?.[p === 'bassrhythm' ? 'bass' : p];
+  return Array.from({ length: 16 }, (_, s) => !!v?.[s]);
+};
+const has = (b, p) => {
+  if (p === 'bass') return b.bass != null;
+  if (p === 'chords') return b.chord != null;
+  if (p === 'lead') return !!b.parts?.vox?.on?.some(Boolean);
+  return steps(b, p).some(Boolean);
+};
+const present = (block, p) => block.filter((b) => has(b, p)).length >= Math.ceil(block.length / 2);
+
+// The most common value (and how many times it came up), with ties broken by the first seen.
+function mostCommon(values) {
+  const counts = new Map();
+  for (const v of values) counts.set(v, (counts.get(v) || 0) + 1);
+  let best = null, top = 0;
+  for (const [v, c] of counts) if (c > top) { best = v; top = c; }
+  return top ? [best, top] : null;
+}
+
+// Per bar position in the 4-bar block: a step is on if it's on in at least half that position's
+// bars; a single bar repeated for all positions if that fits the section's bars about as well.
+function grid(byPos, p) {
+  const allb = byPos.flat();
+  const one = Array.from({ length: 16 }, (_, s) => allb.filter((b) => steps(b, p)[s]).length * 2 >= allb.length);
+  const four = byPos.map((pos) => (pos.length ? Array.from({ length: 16 }, (_, s) => pos.filter((b) => steps(b, p)[s]).length * 2 >= pos.length) : one.slice()));
+  const miss = (g) => byPos.reduce((sum, pos, j) => sum + pos.reduce((m, b) => {
+    const st = steps(b, p);
+    return m + g[j].reduce((d, on, s) => d + (st[s] !== on), 0);
+  }, 0), 0);
+  const g1 = byPos.map(() => one.slice());
+  return miss(g1) <= miss(four) + 0.5 * allb.length ? g1 : four;
+}
+
+function sectionLoop(blocks) {
+  const n = Math.max(...blocks.map((b) => b.length));
+  const byPos = Array.from({ length: n }, (_, j) => blocks.filter((blk) => j < blk.length).map((blk) => blk[j]));
+  const allb = blocks.flat();
+  const written = (p) => blocks.filter((blk) => present(blk, p)).length * 2 >= blocks.length;
+  const drums = {};
+  for (const p of DRUMS) if (written(p)) drums[p] = grid(byPos, p);
+  let bass = null, bassRhythm = null, wob = 0;
+  if (written('bass')) {
+    const overall = mostCommon(allb.filter((b) => b.bass != null).map((b) => b.bass));
+    bass = byPos.map((pos) => {
+      const c = mostCommon(pos.filter((b) => b.bass != null).map((b) => b.bass));
+      return c && c[1] * 2 >= pos.length ? c[0] : (overall ? overall[0] : null);
+    });
+    bassRhythm = grid(byPos, 'bassrhythm');
+    wob = mostCommon(allb.map((b) => b.wob || 0))[0];
+  }
+  // Chords and lead: votes at each bar position across the section's blocks; whether the song's
+  // chords or lead actually repeat enough to keep is decided across the whole song afterwards.
+  let cr = 0, cm = 0;
+  const ch = byPos.map((pos) => {
+    const names = pos.filter((b) => b.chord).map((b) => b.chord.name);
+    cr += names.length;
+    const c = mostCommon(names);
+    if (c) cm += c[1];
+    return c ? c[0] : null;
+  });
+  let lr = 0, lm = 0;
+  const ld = byPos.map((pos) => {
+    const bar = {};
+    for (let s = 0; s < 16; s++) {
+      const notes = [];
+      for (const b of pos) {
+        const v = b.parts?.vox;
+        if (v?.on?.[s]) notes.push(v.tok[s]);
+      }
+      lr += notes.length;
+      const c = mostCommon(notes);
+      if (c && c[1] * 2 >= pos.length) { bar[s] = c[0]; lm += c[1]; }
+    }
+    return bar;
+  });
+  return {
+    bars: n,
+    drums,
+    bassRhythm,
+    bass,
+    wob,
+    chords: null,
+    lead: null,
+    _chords: written('chords') ? ch : null,
+    _chordVotes: blocks.length >= 2 ? [cm, cr] : [0, 0],
+    _lead: written('lead') ? ld : null,
+    _leadVotes: blocks.length >= 2 ? [lm, lr] : [0, 0],
+  };
+}
+
+function mismatch(a, b) {
+  let diff = 0, tot = 0;
+  for (const p of [...DRUMS, 'bassrhythm']) {
+    const x = p === 'bassrhythm' ? a.bassRhythm : a.drums[p];
+    const y = p === 'bassrhythm' ? b.bassRhythm : b.drums[p];
+    for (let j = 0; j < a.bars; j++) {
+      for (let s = 0; s < 16; s++) {
+        const u = !!x?.[j]?.[s], v = !!y?.[j]?.[s];
+        if (u || v) tot++;
+        if (u !== v) diff++;
+      }
+    }
+  }
+  return diff / Math.max(1, tot);
+}
+
+function samePart(a, b) {
+  if (a.bars !== b.bars) return false;
+  if (DRUMS.filter((p) => p in a.drums).join(',') !== DRUMS.filter((p) => p in b.drums).join(',')) return false;
+  for (const k of ['bass', 'wob', 'chords', 'lead']) {
+    if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false;
+  }
+  return mismatch(a, b) <= TOL;
+}
+
+// Cuts the song into sections of up to 16 bars where the same instruments play, takes the pattern,
+// bass, chords and lead most of each section's bars played, drops chord or lead lines that never
+// repeat across the song (a growling bass misread as chords or lead), and reuses earlier parts when
+// a section returns.
+export function songSections(song) {
+  const bars = song.bars || [];
+  const blocks = [];
+  for (let i = 0; i < bars.length; i += 4) blocks.push(bars.slice(i, i + 4));
+  const sig = (blk) => [...['bd', 'sd', 'bass'].filter((p) => present(blk, p)), ...(present(blk, 'hhc') || present(blk, 'hho') ? ['hats'] : [])].join(',');
+  const raw = [];
+  let cur = [];
+  for (const blk of blocks) {
+    if (cur.length && (sig(blk) !== sig(cur[cur.length - 1]) || cur.length * 4 >= MAXBARS || blk.length !== cur[cur.length - 1].length)) {
+      raw.push(cur);
+      cur = [];
+    }
+    cur.push(blk);
+  }
+  if (cur.length) raw.push(cur);
+  const loops = raw.map(sectionLoop);
+  let cm = 0, cr = 0, lm = 0, lr = 0;
+  for (const L of loops) {
+    cm += L._chordVotes[0]; cr += L._chordVotes[1];
+    lm += L._leadVotes[0]; lr += L._leadVotes[1];
+  }
+  const chordConf = cr ? cm / cr : 0;
+  const leadConf = lr ? lm / lr : 0;
+  for (const L of loops) {
+    if (chordConf >= CHORD_CONF && L._chords && L._chords.some(Boolean)) L.chords = L._chords;
+    if (leadConf >= LEAD_CONF && L._lead && L._lead.some((b) => Object.keys(b).length > 0)) L.lead = L._lead;
+    delete L._chords; delete L._chordVotes; delete L._lead; delete L._leadVotes;
+  }
+  const parts = [], sections = [];
+  let start = 0;
+  for (let i = 0; i < loops.length; i++) {
+    const L = loops[i], len = raw[i].reduce((s, blk) => s + blk.length, 0);
+    let part = parts.findIndex((r) => samePart(r, L));
+    if (part < 0) { part = parts.length; parts.push(L); }
+    sections.push({ start, bars: len, part });
+    start += len;
+  }
+  return { sections, parts, chordConf, leadConf };
+}
+
 // Four values as <a b c d>, repeats written with ! (<e2!2 c2 d2>); one if they're all the same.
 function slots(values) {
   if (values.every((v) => v === values[0])) return values[0];
@@ -200,26 +365,50 @@ function blockCode(four) {
   return lines.length ? lines : null;
 }
 
+// Synthetic bars for a section's part, so blockCode writes it just as it wrote 4 raw bars.
+function partBars(P) {
+  return Array.from({ length: P.bars }, (_, j) => {
+    const parts = {};
+    for (const id of DRUMS) if (P.drums[id]) parts[id] = P.drums[id][j];
+    if (P.bassRhythm) parts.bass = P.bassRhythm[j];
+    if (P.lead) {
+      const m = P.lead[j];
+      parts.vox = { on: Array.from({ length: 16 }, (_, s) => s in m), tok: Array.from({ length: 16 }, (_, s) => m[s] ?? null) };
+    }
+    return {
+      parts,
+      chord: P.chords?.[j] ? { name: P.chords[j] } : null,
+      bass: P.bass ? P.bass[j] : null,
+      wob: P.wob,
+    };
+  });
+}
+
 export function songStrudel(song, about) {
-  const parts = new Map(), order = [];
-  for (let i = 0; i < song.bars.length; i += 4) {
-    const four = song.bars.slice(i, i + 4); // (the last may be shorter: as far as it was heard)
-    const code = blockCode(four);
-    const key = code ? code.join('\n') : '';
-    if (key && !parts.has(key)) parts.set(key, String.fromCharCode(65 + (parts.size % 26)) + (parts.size >= 26 ? Math.floor(parts.size / 26) : ''));
-    const name = key ? parts.get(key) : 'silence'; // (Strudel's own: nothing playing)
-    const prev = order[order.length - 1];
-    if (prev?.name === name) prev.bars += four.length;
-    else order.push({ name, bars: four.length });
+  const S = songSections(song);
+  const named = [], names = [];
+  for (const P of S.parts) {
+    const code = blockCode(partBars(P));
+    if (code) {
+      const name = String.fromCharCode(65 + (named.length % 26)) + (named.length >= 26 ? Math.floor(named.length / 26) : '');
+      named.push([name, code]);
+      names.push(name);
+    } else names.push('silence'); // (Strudel's own: nothing playing)
   }
-  if (!parts.size) return null;
+  if (!named.length) return null;
+  const order = [];
+  for (const sec of S.sections) {
+    const name = names[sec.part], prev = order[order.length - 1];
+    if (prev?.name === name) prev.bars += sec.bars;
+    else order.push({ name, bars: sec.bars });
+  }
   const out = [
-    `// ${about}, decompiled by toaster: the song as it heard it, every 4 bars, each different`,
-    '// 4 bars written once and named, then played in order. ctrl+enter plays it, ctrl+. stops.',
+    `// ${about}, decompiled by toaster: the song in sections, each written once as most of its`,
+    '// bars played it and named, then played in order. ctrl+enter plays it, ctrl+. stops.',
     `setcpm(${Math.round(song.bpm)}/4)`,
     '',
   ];
-  for (const [key, name] of parts) out.push(`const ${name} = stack(`, ...key.split('\n').map((l) => `  ${l},`), ')', '');
+  for (const [name, code] of named) out.push(`const ${name} = stack(`, ...code.map((l) => `  ${l},`), ')', '');
   out.push(`$: arrange(${order.map((o) => `[${o.bars}, ${o.name}]`).join(', ')})`);
   return out.join('\n') + '\n';
 }

@@ -93,7 +93,7 @@ function meshFace() {
 const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winKey: '', manual: null,
-  visual: 0, strength: 1, blocks: true, orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
+  visual: 0, strength: 1, blocks: true, blockLook: 'blocks', orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   eyes: false, // the camera's third setting: big eyes over your face
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
@@ -112,7 +112,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'strength', 'blocks', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage'];
+const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage'];
 function loadSettings() {
   let saved = {};
   try {
@@ -135,6 +135,7 @@ function loadSettings() {
   if (!Number.isFinite(state.syncTrim)) state.syncTrim = 0;
   if (!(state.strength in STRENGTHS)) state.strength = 1;
   if (!(state.camFx in CAM_FX)) state.camFx = 0;
+  if (!['blocks', 'dominoes'].includes(state.blockLook)) state.blockLook = 'blocks';
   if (!worlds.looks.includes(state.worldLook)) state.worldLook = 'auto';
   worlds.setLook(state.worldLook);
   state.card = state.card === true;
@@ -471,6 +472,14 @@ function setBlocks(on) {
   if (!on) punch.clear();
   $('b-blocks').classList.toggle('on', on);
   saveSettings();
+}
+// P: the punchcard blocks, then the dominoes (the same parts, each hit a domino the playhead
+// knocks over as it plays), then neither, in turn.
+function nextBlocks() {
+  if (!state.blocks) { state.blockLook = 'blocks'; setBlocks(true); }
+  else if (state.blockLook === 'blocks') { state.blockLook = 'dominoes'; saveSettings(); }
+  else setBlocks(false);
+  flashStatus('blocks: ' + (!state.blocks ? 'off' : state.blockLook === 'dominoes' ? 'dominoes' : 'punchcard'));
 }
 
 // The dot orb: a layer of its own, like the blocks, so it goes over any background (or none).
@@ -1063,7 +1072,7 @@ function draw(now) {
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), stageRect());
-  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome');
+  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
   if (t - poolAt > 2) { poolAt = t; field.setPool($('code').textContent); }
   if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
@@ -1119,7 +1128,7 @@ function showVisMenu(open) {
 $('b-visual').onclick = () => showVisMenu(visMenu.hidden);
 visMenu.onclick = (e) => { const b = e.target.closest('button'); if (b) { setVisual(+b.dataset.i); showVisMenu(false); } };
 addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closest('#vis-menu, #b-visual')) showVisMenu(false); }, true);
-$('b-blocks').onclick = () => setBlocks(!state.blocks);
+$('b-blocks').onclick = () => nextBlocks();
 $('b-cam').onclick = () => toggleCam();
 $('b-card').onclick = () => toggleCard();
 $('b-orb').onclick = () => setOrb(!state.orb);
@@ -1144,7 +1153,7 @@ const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'visual', key: 'v', run: () => setVisual((state.visual + 1) % VISUALS.length) },
   { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
-  { id: 'blocks', key: 'p', run: () => setBlocks(!state.blocks) },
+  { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
   { id: 'earlier', key: ']', run: () => nudgeSync(10) },

@@ -224,7 +224,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     sr, hzFast, hzSlow,
     lag: slow.fftSize / 2 / sr, // the note analysis hears each moment about half a window late
     // all: every instrument's onsets together, for a tempo when the drums don't give one
-    band: { bd: fastBand(40, 130), sd: fastBand(1100, 5200), hh: fastBand(7000, 15000), all: fastBand(100, 11000), body: fastBand(800, 3000), thump: fastBand(150, 400), click: fastBand(2000, 6000) },
+    band: { bd: fastBand(40, 130), sd: fastBand(1100, 5200), hh: fastBand(7000, 15000), all: fastBand(100, 11000), body: fastBand(800, 3000), thump: fastBand(150, 400), click: fastBand(2000, 6000), ring: fastBand(2000, 14000) },
     leadBand: midBand(300, 2000),
     fastDb: new Float32Array(fast.frequencyBinCount),
     midDb: new Float32Array(mid.frequencyBinCount),
@@ -273,12 +273,24 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // at one tempo ({ t, bpm, conf, fit }), clear or not; agreeN, agreeBpm: how many times running
       // the two readings have agreed, and on what (fluxUpdate). better: the drums' last 12 readings
       // since the lock, the tempo of each that a 3:2 tempo fits better, else 0 (tempoUpdate)
-      this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [] };
+      this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, half: null, halfCand: 0, halfN: 0, halfOff: 0, halfSeen: false, ringTop: -Infinity, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [] };
       this.repAt = -1;
       this.repCache = new Map();
       this.kickB = new Float32Array(4);
       this.snareB = new Float32Array(4);
       this.changeB = new Float32Array(4);
+      // the snare's ring on each beat of 4 and how well it holds (snareRing): the medians of the
+      // last 8 readings of each (ringH, holdH), how many beats each has been measured on, from the
+      // 2-14 kHz loudness of the last 1.2 seconds, frame by frame; ringBeat: the beat waiting to be
+      // measured
+      this.ringB = new Float32Array(4);
+      this.holdB = new Float32Array(4);
+      this.ringH = [[], [], [], []];
+      this.holdH = [[], [], [], []];
+      this.ringN = new Uint16Array(4);
+      this.ringT = [];
+      this.ringV = [];
+      this.ringBeat = null;
       this.beatChroma = new Float32Array(12);
       this.prevBeatChroma = null;
       this.beatBass = new Float32Array(12);
@@ -415,6 +427,11 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       let hhE = 0;
       for (let k = this.band.hh[0]; k <= this.band.hh[1]; k++) hhE += 10 ** (db[k] / 10);
       this.hhE = hhE;
+      let ringE = 0;
+      for (let k = this.band.ring[0]; k <= this.band.ring[1]; k++) ringE += 10 ** (db[k] / 10);
+      this.ringT.push(t);
+      this.ringV.push(10 * Math.log10(ringE + 1e-12));
+      if (this.ringT[0] < t - 1.2) { this.ringT.shift(); this.ringV.shift(); }
       let bodyE = 0;
       for (let k = this.band.body[0]; k <= this.band.body[1]; k++) bodyE += 10 ** (db[k] / 10);
       this.bodyT.push(t);
@@ -454,7 +471,10 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // keyboard stab or a sung note rises in this band alone (sdVsHh 10 and up), and lifts fewer of
       // its bins at once (measured on songs: claps 0.8 to 0.9 of them, those 0.65 to 0.75).
       const sSd = detectOnset(D.sd, fSd, t, this.sdCover > 0.72 && this.sdVsHh > 0.9 && this.sdVsHh < 10);
-      if (sSd) this.onset('sd', t, sSd);
+      // (in half-time the clap is the snare on beat 3: one heard anywhere else, the kick's click
+      // on 1 or the bass's growl through a drop, only the timing hears)
+      if (sSd && this.tempo.locked && this.tempo.half !== null && this.halfRole(t) !== 'snare') this.onsets.push({ t, id: 'sd', s: sSd });
+      else if (sSd) this.onset('sd', t, sSd);
       const sHh = detectOnset(D.hh, fHh, t, true);
       if (sHh) this.hhOnset(t, sHh);
       this.hhTrack(t);
@@ -532,13 +552,19 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
           // A note alone still counts for the timing (the tempo, the beat's place, the period) as
           // the kick it was taken for until now: those read low-end hits there, and without them a
           // dubstep remix at 140 went to 105 in its breakdown in 2 takes of 3. It isn't a kick in the
-          // kick's pattern, the bar lines or a drop.
-          if (p.punch) this.onset('bd', p.t, p.s);
+          // kick's pattern, the bar lines or a drop. In half-time, a held sound on the kick's beat
+          // is the kick on its sub, punch or not (dubstep's kick sweeps down into the sub and holds
+          // with it), and one on the snare's beat isn't a kick, punch or not (the punch is the
+          // snare's body, with the bass coming back in under it).
+          const role = this.halfRole(p.t);
+          if (role === 'kick' || (p.punch && role !== 'snare')) this.onset('bd', p.t, p.s);
           else this.onsets.push({ t: p.t, id: 'bd', s: p.s });
           return;
         }
       }
-      this.onset('bd', p.t, p.s);
+      // (in half-time, the snare's beat has no kick: that's its body)
+      if (this.halfRole(p.t) === 'snare') this.onsets.push({ t: p.t, id: 'bd', s: p.s });
+      else this.onset('bd', p.t, p.s);
       // what the low end was doing just before this kick (130-30 ms before), for bassUnderKick
       const ago = t - p.t + 0.014;
       slow.getFloatTimeDomainData(this.slowTime);
@@ -797,7 +823,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         return;
       }
       const beatF = T.n0 + (t - T.t0) / T.P, beat = Math.floor(beatF);
-      if (this.beat !== null && beat > this.beat) this.newBeat(beat);
+      if (this.ringBeat !== null && beatF >= this.ringBeat + 0.4 + 0.1 / T.P) { this.snareRing(this.ringBeat); this.ringBeat = null; }
+      if (this.beat !== null && beat > this.beat) { this.newBeat(beat); this.ringBeat = beat; }
       const barF = (beatF - T.down) / 4;
       const bar = Math.floor(barF), step = Math.floor((barF - bar) * 16);
       if (this.bar !== null && bar > this.bar) { this.newBar(this.bar); this.tapeBar(t, bar); }
@@ -852,8 +879,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     newBeat() {
       for (let i = 0; i < 4; i++) { this.kickB[i] *= 0.97; this.snareB[i] *= 0.97; this.changeB[i] *= 0.97; }
       const K = this.kickB, S = this.snareB, H = this.changeB, T = this.tempo;
-      let best = 0, bestScore = -Infinity;
-      for (let d = 0; d < 4; d++) {
+      this.halfTime();
+      let best = T.half === null ? 0 : (T.half + 2) % 4, bestScore = -Infinity;
+      for (let d = 0; d < 4 && T.half === null; d++) {
         const score = K[d] + 0.5 * K[(d + 2) % 4] + S[(d + 1) % 4] + S[(d + 3) % 4] - 0.5 * (S[d] + S[(d + 2) % 4]) + 3 * H[d];
         if (score > bestScore + 1e-6) { bestScore = score; best = d; }
       }
@@ -866,6 +894,98 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         T.down = best;
         T.downN = 0;
       }
+    },
+
+    // The snare at beat b: of the 2-14 kHz bursts starting within 0.4 of a beat of b (a rise of
+    // 6 dB on the 15-30 ms before), the one ringing loudest over 60 ms (its ring), and how well it
+    // holds: its loudness 30-90 ms in against its first 30 ms (a snare's or a clap's noise rings on;
+    // a kick's click, however loud, dies away at once). Looked for that widely so a beat placed a
+    // 16th off, as on a drop full of 16th-note growls, still finds the snare on its own beat. Kept
+    // per beat of 4 as the medians of the last 8 readings.
+    snareRing(b) {
+      const T = this.tempo, at = T.t0 + (b - T.n0) * T.P, w = 0.4 * T.P, ts = this.ringT, vs = this.ringV;
+      const ringAt = (i) => {
+        let e = 0, n = 0;
+        for (let j = i; j < ts.length && ts[j] < ts[i] + 0.06; j++) { e += 10 ** (vs[j] / 10); n++; }
+        return 10 * Math.log10(e / n);
+      };
+      let on = -1, ring = -Infinity;
+      for (let i = 2; i < ts.length; i++) {
+        if (ts[i] < at - w || ts[i] > at + w || vs[i] - Math.min(vs[i - 1], vs[i - 2]) < 6) continue;
+        const r = ringAt(i);
+        if (r > ring) { ring = r; on = i; }
+      }
+      if (on < 0) return;
+      // how well it holds: its loudness 30-90 ms in against its first 30 ms
+      const span = (a, z) => {
+        let e = 0, n = 0;
+        for (let j = on; j < ts.length && ts[j] < ts[on] + z; j++) if (ts[j] >= ts[on] + a) { e += 10 ** (vs[j] / 10); n++; }
+        return n ? 10 * Math.log10(e / n) : null;
+      };
+      const head = span(0, 0.03), tail = span(0.03, 0.09);
+      if (head === null || tail === null) return;
+      // (the medians of the last 8: one odd hit, a crash, doesn't count, and a drop coming in takes
+      // over in 5 bars where a slow average took 20 to forget a quiet intro)
+      const k = ((b % 4) + 4) % 4, median = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+      if (!this.ringN[k]) { this.ringH[k].length = 0; this.holdH[k].length = 0; }
+      this.ringH[k].push(ring);
+      this.holdH[k].push(tail - head);
+      if (this.ringH[k].length > 8) { this.ringH[k].shift(); this.holdH[k].shift(); }
+      this.ringB[k] = median(this.ringH[k]);
+      this.holdB[k] = median(this.holdH[k]);
+      this.ringN[k]++;
+      // In half-time this is the snare on beat 3: the clap there, if the clap detector placed none
+      // (a dubstep snare's distorted body can read as the bass, the hats or nothing). Only one
+      // ringing as it usually does, within 3 dB: not a fill's or a breakdown's quieter one.
+      if (T.half === k && ring >= this.ringB[k] - 3 && !(this.v.sd.last > ts[on] - 0.1 * T.P)) this.place('sd', ts[on], 1);
+    },
+
+    // Half-time (dubstep, trap): the snare on beat 3 alone, the kick on 1. Its claps don't fall
+    // between the kicks, so the bar line a 4/4 song's claps give lands a beat off. Told by the
+    // snare (snareRing, the last 8 bars), once each beat of 4 has been heard 8 times, with the
+    // drums going full tilt (the snare within 4.5 dB of the loudest it has rung, which fades 1 dB in
+    // 32 beats; a
+    // breakdown's lone sound on one beat isn't a snare):
+    // - one beat ringing out 3 dB over each of the others (2 once the song has shown it's
+    //   half-time: the beats can be counted afresh, or slip, and the snare turn up on another),
+    // - and holding on 1.5 dB better than the beat two from it, which in half-time is the kick's
+    //   click (a 4/4 song's other clap holds on as well, though one clap can ring out over the
+    //   other by 5 dB),
+    // - with that beat, the kick's, not the emptiest of the four (it has its kick: a 4/4 song's
+    //   bridge with two beats gone quiet isn't half-time),
+    // for 4 beats running. Then the bar starts two beats from the snare. That holds through 32 beats
+    // against it (another beat ringing out, or it standing out by under 0.5 dB, or holding on by
+    // under 0.75): a drop's fill or a quieter stretch doesn't throw it. (Measured on 3 dubstep
+    // songs and 4 others, live in the app and replayed from the sound.)
+    halfTime() {
+      const R = this.ringB, H = this.holdB, T = this.tempo;
+      if (Math.min(...this.ringN) < 8) { T.half = null; T.halfN = T.halfOff = 0; return; }
+      let x = 0;
+      for (let i = 1; i < 4; i++) if (R[i] > R[x]) x = i;
+      const gap = R[x] - Math.max(R[(x + 1) % 4], R[(x + 2) % 4], R[(x + 3) % 4]);
+      const holds = H[x] - H[(x + 2) % 4];
+      T.ringTop = Math.max(R[x], T.ringTop - 0.03);
+      if (T.half !== null) {
+        T.halfOff = x !== T.half || gap < 0.5 || holds < 0.75 ? T.halfOff + 1 : 0;
+        if (T.halfOff >= 32) { T.half = null; T.halfOff = 0; }
+      }
+      if (T.half === null) {
+        const clear = gap >= (T.halfSeen ? 2 : 3) && holds >= 1.5 && R[x] >= T.ringTop - 4.5 && R[(x + 2) % 4] >= Math.min(R[(x + 1) % 4], R[(x + 3) % 4]);
+        T.halfN = clear ? (x === T.halfCand ? T.halfN + 1 : 1) : 0;
+        T.halfCand = x;
+        if (T.halfN >= 4) { T.half = x; T.halfSeen = true; }
+      }
+    },
+
+    // While the song is read as half-time: is t on the snare's beat ('snare') or the kick's, two
+    // from it ('kick'), within 0.15 of a beat? Else null.
+    halfRole(t) {
+      const T = this.tempo;
+      if (!T.locked || T.half === null) return null;
+      const f = T.n0 + (t - T.t0) / T.P, b = Math.round(f);
+      if (Math.abs(f - b) > 0.15) return null;
+      const k = ((b % 4) + 4) % 4;
+      return k === T.half ? 'snare' : k === (T.half + 2) % 4 ? 'kick' : null;
     },
 
     // The step numbers moved back by `shift` (new bar lines, or the beat found on another 16th).
@@ -1496,6 +1616,12 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.kickB.fill(0);
       this.snareB.fill(0);
       this.changeB.fill(0);
+      this.ringN.fill(0);
+      this.ringBeat = null;
+      T.half = null;
+      T.halfN = T.halfOff = 0;
+      T.halfSeen = false;
+      T.ringTop = -Infinity;
       this.prevBeatChroma = this.prevBeatBass = null;
       this.resetClocks();
     },

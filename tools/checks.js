@@ -143,12 +143,32 @@
       s.stop(t + decay + 0.05);
     };
     return {
-      kick(t) {
+      kick(t, style) {
+        if (style === 'sub') {
+          // dubstep's: a long sweep into the sub, with a click on top
+          const g = gain(), o = osc('sine', 130, t, t + 0.5, g);
+          o.frequency.exponentialRampToValueAtTime(42, t + 0.08);
+          env(g, t, 0.002, 1, 0.45);
+          noiseHit(t, 'highpass', 4000, 0.35, 0.012);
+          return;
+        }
         const g = gain(), o = osc('sine', 150, t, t + 0.45, g);
         o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
         env(g, t, 0.002, 1, 0.38);
       },
-      snare(t) { noiseHit(t, 'bandpass', 1600, 0.9, 0.2); noiseHit(t + 0.012, 'bandpass', 1250, 0.6, 0.15); },
+      snare(t, style) {
+        if (style === 'big') {
+          // dubstep's: a body (a tone at 190 Hz), a wide burst of noise, and its room ringing on
+          // after it (as a real one's reverb does: a couple of dB down 30-90 ms in, not 20)
+          const g = gain(), o = osc('triangle', 190, t, t + 0.2, g);
+          o.frequency.exponentialRampToValueAtTime(160, t + 0.1);
+          env(g, t, 0.002, 0.6, 0.15);
+          noiseHit(t, 'highpass', 1200, 0.8, 0.22, 0.5);
+          noiseHit(t + 0.004, 'bandpass', 4000, 0.45, 0.9, 0.4);
+          return;
+        }
+        noiseHit(t, 'bandpass', 1600, 0.9, 0.2); noiseHit(t + 0.012, 'bandpass', 1250, 0.6, 0.15);
+      },
       rim(t) { noiseHit(t, 'bandpass', 2200, 0.7, 0.03, 4); const g = gain(); osc('triangle', 1700, t, t + 0.05, g); env(g, t, 0.001, 0.25, 0.03); },
       hat(t, open) { noiseHit(t, 'highpass', open ? 6500 : 8000, open ? 0.3 : 0.16, open ? 0.45 : 0.04); },
       shaker(t, accent) { noiseHit(t, 'highpass', 6000, accent ? 0.1 : 0.06, 0.03); },
@@ -160,7 +180,10 @@
       },
       bass(t, midi, dur, sound) {
         const g = gain();
-        if (sound === '808') {
+        if (sound === 'sub') {
+          osc('sine', hz(midi), t, t + dur + 0.05, g);
+          hold(g, t, 0.01, 0.55, dur, 0.04);
+        } else if (sound === '808') {
           const o = osc('sine', hz(midi) * 1.25, t, t + dur + 0.1, g);
           o.frequency.exponentialRampToValueAtTime(hz(midi), t + 0.05);
           hold(g, t, 0.005, 0.6, dur, 0.08);
@@ -273,6 +296,14 @@
       bass: { steps: [0, 3, 6, 11], sound: '808' }, chords: 'pad',
       lead: { 0: 'C#6', 3: 'A5', 6: 'F#5', 11: 'A5' }, leadSound: 'pluck',
     },
+    // half-time, as dubstep plays it: the kick on 1 (sitting on the sub, still held from the bar
+    // before), the snare on 3 (the sub coming back in with it), the hats between the beats. Its
+    // bar line is checked too (see verdict): the snare lands on 3, not on 2 and 4.
+    dubstep: {
+      bpm: 140, key: 'F minor', prog: ['Fm', 'Fm', 'Db', 'Eb'], barLine: true,
+      bd: [0], sd: [8], hhc: [2, 6, 10, 14], kick: 'sub', snare: 'big',
+      bass: { steps: [8], line: [-12], sound: 'sub', len: 10 }, chords: 'pad',
+    },
     dnb: {
       bpm: 174, key: 'E minor', prog: ['Em', 'C', 'G', 'D'],
       bd: [0, 10], sd: [4, 12], hhc: E8, hho: [6],
@@ -372,11 +403,11 @@
         if (bar >= (spec.drumsFrom || 0)) {
           if (spec.bd?.includes(s)) {
             const t = add(when(), 'kick');
-            x.kick(t);
+            x.kick(t, spec.kick);
             hits.push({ c: t, id: 'bd', step });
             if (spec0.pump) { const g = duck.gain; g.setValueAtTime(1, t); g.linearRampToValueAtTime(10 ** (-spec0.pump / 20), t + 0.012); g.setTargetAtTime(1, t + 0.06, 0.09); }
           }
-          if (spec.sd?.includes(s)) { const t = add(when(), 'snare'); x.snare(t); hits.push({ c: t, id: 'sd', step }); }
+          if (spec.sd?.includes(s)) { const t = add(when(), 'snare'); x.snare(t, spec.snare); hits.push({ c: t, id: 'sd', step }); }
           if (spec.rim?.includes(s)) { const t = add(when(), 'rim'); x.rim(t); hits.push({ c: t, id: 'sd', step }); }
           if (spec.rolls && bar % 2 === 1 && s >= 12) { if (s === 12) for (let k = 0; k < 6; k++) x.hat(add(when((k * 4 * sixteenth) / 6), 'hat'), false); }
           else if (spec.hhc?.includes(s)) x.hat(add(when(), 'hat'), false);
@@ -389,7 +420,7 @@
           const i = spec.bass.steps.indexOf(s);
           if (i >= 0) {
             const nextStep = spec.bass.steps[i + 1] ?? 16;
-            x.bass(add(when(), 'bass'), 36 + ch.root + (spec.bass.line?.[i % spec.bass.line.length] || 0), (nextStep - s) * sixteenth * 0.9, spec.bass.sound);
+            x.bass(add(when(), 'bass'), 36 + ch.root + (spec.bass.line?.[i % spec.bass.line.length] || 0), (spec.bass.len ?? nextStep - s) * sixteenth * 0.9, spec.bass.sound);
           }
         }
         if (ch && spec.chords && (spec.chordSteps ? spec.chordSteps.includes(s) : s === 0)) {
@@ -749,6 +780,10 @@
       if (hk && rel(hk) === pk) notes.push(`key ${hk}, the relative of ${pk}`);
       else fails.push(`key ${hk ?? 'none'} (played ${pk})`);
     }
+    // (the bar line is timed by the blocks: with them off, or the window not drawing, it can't be
+    // checked, and says so rather than passing)
+    if (SONGS[r.name]?.barLine && !r.alignment) notes.push('bar line not checked: no blocks drawn to time it by');
+    else if (SONGS[r.name]?.barLine && r.alignment.beatsOff !== 0) fails.push(`bar line ${r.alignment.beatsOff} beat(s) off`);
     const share = (s) => { const m = /^(\d+)\/(\d+)(?: \+(\d+) extra)?/.exec(s || ''); return m ? { found: +m[1], of: +m[2], extra: +(m[3] || 0) } : null; };
     for (const [part, min] of [['kick', LIMITS.kick], ['clap', LIMITS.clap]]) {
       const d = share(r.drums?.[part]);
