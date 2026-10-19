@@ -4,6 +4,8 @@ import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from 
 import { createCodeView } from './codeview.js';
 import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP } from './visuals.js';
 import { createOrb } from './orb.js';
+import { createDotCam } from './dotcam.js';
+import { createVoxCam } from './voxcam.js';
 import { createTakeover, createSysinfo, showBsod, xpAlert } from './fx.js';
 import { createCard } from './card.js';
 import { createGlass } from './glass.js';
@@ -30,8 +32,9 @@ const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts']; // the backgrounds dr
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'];
 const DROPS = ['xp takeover', 'blue screen', 'off'];
-// The camera's effects (K): none, just you over the visuals, slit-scan, datamosh, windows, glass.
-const CAM_FX = ['none', 'cut-out', 'slit-scan', 'datamosh', 'windows', 'glass'];
+// The camera's effects (K): none, just you over the visuals, slit-scan, datamosh, windows, glass,
+// dots, voxels.
+const CAM_FX = ['none', 'cut-out', 'slit-scan', 'datamosh', 'windows', 'glass', 'dots', 'voxels'];
 // How strongly the ASCII background shows (A): a multiple of each theme's own strength (--field).
 const STRENGTHS = [['soft', 1], ['normal', 1.5], ['bold', 2.2]];
 
@@ -60,6 +63,8 @@ const chrome = createChrome($('chrome'));
 const cuts = createCuts($('vis')); // on the tunnel's canvas too
 const punch = createPunchcard($('punch')); // its own layer, so it can sit on top of any background
 const cam = createWebcam($('cam'));
+const dotCam = createDotCam($('dotcam'));
+const voxCam = createVoxCam($('voxcam'));
 const tracker = createTracker(); // hands and face, while the camera is on
 const takeover = createTakeover({
   back: $('desk-back'), front: $('desk-front'),
@@ -69,7 +74,7 @@ const sys = createSysinfo($('sys'), () => describeAudio());
 const card = createCard($('card'));
 const glass = createGlass($('glass'), $('code'));
 const orb = createOrb($('orb'));
-const LAYERS = ['cam', 'worlds', 'worldwords', 'chrome', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
+const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
 const lens = createLens($('lens')); // the finger frame
 const portal = createPortal($('portal')); // portals
 const segcam = createSegcam($('segcam')); // big eyes
@@ -543,7 +548,8 @@ function setGlass(on) {
 
 // K: the camera's effect. The cut-out puts you over the visuals (the camera layer above them,
 // see-through round you); glass (the portals' look, drawn by them over the whole picture, in
-// colour) makes you clear, the room bent through you; the others work on the picture as it is.
+// colour) makes you clear, the room bent through you; dots and voxels redraw the picture on layers
+// of their own; the others work on the picture as it is.
 // The camera button: filled while it's on, with its look past the plain one, and its effect (K)
 // if there is one.
 function camLabel() {
@@ -558,6 +564,8 @@ function setCamFx(i, say) {
   if (CAM_FX[i] === 'windows') asciiCam.clear(); // (the camera as text shows in the windows instead)
   document.body.classList.toggle('cam-cut', CAM_FX[i] === 'cut-out');
   portal.glassFx = CAM_FX[i] === 'glass';
+  if (CAM_FX[i] !== 'dots') dotCam.clear();
+  if (CAM_FX[i] !== 'voxels') voxCam.clear();
   if (say) flashStatus('camera effect: ' + CAM_FX[i] + (cam.on ? '' : ` (${K('cam')} turns the camera on)`));
   camLabel();
   saveSettings();
@@ -746,8 +754,10 @@ function sizeCard() {
 new ResizeObserver(sizeCard).observe($('card'));
 addEventListener('resize', sizeCard);
 
-// In the vertical layout the camera sits in the top part of the frame.
+// In the vertical layout the camera sits in the top part of the frame, and the ID card, while it's
+// on, in its place.
 const camRect = () => (state.vertical ? { x: 0, y: 0, w: innerWidth, h: Math.round(innerHeight * 0.42) } : null);
+const camCovered = () => state.vertical && state.cardV;
 
 // The pitch wheel and the spiral are diagrams: behind the code they're lost. In the vertical layout
 // (without the card, which has the top) they get the top of the frame, as the camera does, and the
@@ -1015,7 +1025,9 @@ setInterval(() => {
 // Layers whose feature is off are taken out of the page: an empty full-window canvas still costs
 // the GPU every frame (measured: about 2% of a core for the four that used to stay up).
 const LAYER_ON = {
-  cam: () => cam.on && !state.ascii && CAM_FX[state.camFx] !== 'windows', // (still read for the ASCII camera and the windows, just not shown)
+  cam: () => cam.on && !state.ascii && !['windows', 'dots', 'voxels'].includes(CAM_FX[state.camFx]), // (still read for the ASCII camera, the windows, the dots and the voxels, just not shown)
+  dotcam: () => cam.on && !state.ascii && CAM_FX[state.camFx] === 'dots' && !camCovered(),
+  voxcam: () => cam.on && !state.ascii && CAM_FX[state.camFx] === 'voxels' && !camCovered(),
   vis: () => ON_VIS.includes(VISUALS[state.visual]),
   warp: () => VISUALS[state.visual] === 'warp',
   worlds: () => VISUALS[state.visual] === 'worlds',
@@ -1077,10 +1089,12 @@ function draw(now) {
   if (t - poolAt > 2) { poolAt = t; field.setPool($('code').textContent); }
   if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
+  if (LAYER_ON.dotcam()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
+  if (LAYER_ON.voxcam()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
   if (cam.on) {
     // (the face is looked for while the finger frame is open too: a wink changes its filter)
     const windows = CAM_FX[state.camFx] === 'windows';
-    tracker.update(cam.video, state.eyes || windows || takeover.active || lens.showing, CAM_FX[state.camFx] === 'cut-out' || portal.wantsCut);
+    tracker.update(cam.video, state.eyes || windows || takeover.active || lens.showing, ['cut-out', 'dots', 'voxels'].includes(CAM_FX[state.camFx]) || portal.wantsCut);
     // tracking that couldn't start is said (once, and again if it gives up), so the hand effects
     // not working isn't a mystery
     const trouble = tracker.error ? `${tracker.error}|${tracker.gaveUp}` : '';

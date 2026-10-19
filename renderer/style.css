@@ -31,7 +31,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none; }
 
-#cam, #worlds, #worldwords, #chrome, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #warp { opacity: .55; }
 #glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 #glass[hidden] { display: none; }
@@ -44,6 +44,8 @@ body.portal-full #portal { z-index: 1; }
 #cam { opacity: .62; }
 /* the cut-out (K): just you, over the visuals (still under the code) */
 body.cam-cut #cam { z-index: 1; opacity: .92; }
+#dotcam { z-index: 1; } /* (you as dots over the backgrounds, as the cut-out: its black is see-through) */
+#voxcam { opacity: .85; } /* (the voxels in the camera's place, under the backgrounds; a room, so solid) */
 #field { opacity: calc(var(--field) * var(--field-k, 1.5) * var(--hush, 1)); } /* --field-k: the strength you pick (A) */
 /* hushed (a raised fist, or Q): the picture dims, while the code mutes itself line by line */
 #worlds, #worldwords, #chrome, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s; }
@@ -243,7 +245,7 @@ body.vertical.card-on #cam { display: none; }
 /* the code, smaller, over the background; the header a strip to drag the window by */
 body.mini { --size: 11px; }
 body.mini #code { padding: 40px 14px 10px; }
-body.mini footer, body.mini #grid, body.mini #roll, body.mini #sys, body.mini #glass, body.mini header .appname { display: none !important; }
+body.mini footer, body.mini #grid, body.mini #roll, body.mini #sys, body.mini header .appname { display: none !important; }
 /* the ID card (N) in the mini player: the poster (the picture and the song, as the big card), as
    tall as the panel, at its right; the code stops short of it */
 body.mini #card { top: 34px; right: 10px; transform-origin: top right; transform: scale(var(--card-k, 1)); }

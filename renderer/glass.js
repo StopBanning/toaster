@@ -231,9 +231,16 @@ export function createGlass(canvas, code) {
     sx.setTransform(1, 0, 0, 1, 0, 0);
     sx.fillStyle = `rgb(${col.bg})`;
     sx.fillRect(0, 0, w, h);
+    // (in the order the page stacks them: the cut-out and the dots go up over the backgrounds)
+    const shown = [];
     for (const el of layers) {
       if (!el.width || el.hidden) continue;
-      sx.globalAlpha = +getComputedStyle(el).opacity;
+      const st = getComputedStyle(el);
+      if (st.display !== 'none') shown.push([el, +st.opacity, +st.zIndex || 0]);
+    }
+    shown.sort((a, b) => a[2] - b[2]);
+    for (const [el, opacity] of shown) {
+      sx.globalAlpha = opacity;
       sx.drawImage(el, 0, 0, w, h);
     }
     sx.globalAlpha = 1;
