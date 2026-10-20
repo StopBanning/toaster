@@ -21,15 +21,17 @@ import { createWarp } from './warp.js';
 import { createWorlds } from './worlds.js';
 import { createChrome } from './chrome.js';
 import { createSpectro } from './spectro.js';
+import { createScenery } from './scenery.js';
 import { createCuts } from './cuts.js';
 import { createTape, songMidi, songStrudel } from './tape.js';
 import { createClips } from './clips.js';
 import { makeDemo } from './demo.js';
+import { NEWS, newsSince } from './news.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'rain', 'scope', 'off'];
+const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'off'];
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'];
@@ -63,6 +65,7 @@ const warp = createWarp($('warp'));
 const worlds = createWorlds($('worlds'), $('worldwords'));
 const chrome = createChrome($('chrome'));
 const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the pins over it
+const scenery = createScenery($('scenery'));
 const cuts = createCuts($('vis')); // on the tunnel's canvas too
 const punch = createPunchcard($('punch')); // its own layer, so it can sit on top of any background
 const cam = createWebcam($('cam'));
@@ -77,7 +80,7 @@ const sys = createSysinfo($('sys'), () => describeAudio());
 const card = createCard($('card'));
 const glass = createGlass($('glass'), $('code'));
 const orb = createOrb($('orb'));
-const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spectro', 'spectrobox', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
+const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spectro', 'spectrobox', 'scenery', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
 const storm = createStorm($('storm')); // the drop effect "not responding"
 const STORM_LAYERS = [...LAYERS, $('glass')]; // (what its window shows: the backgrounds, and the glass blob over them)
 const lens = createLens($('lens')); // the finger frame
@@ -110,8 +113,10 @@ const state = {
   camFx: 0, // the camera's effect (K), in CAM_FX
   worldLook: 'auto', // the worlds' look (A while they're on): auto, night, film, ascii, ink, risograph...
   spectroTheme: false, // the spectrogram in the theme's colours rather than the rainbow (A while it's on)
+  sceneryTheme: false, // the scenery in the theme's two colours rather than its own (A while it's on)
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
+  seenVersion: '', // the version last opened, to tell what's new after an update
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
   hushed: false, // every part muted and the picture dimmed (a raised fist, or Q)
   card: false, cardV: true, // the ID card in the wide layout, and in the vertical one (on there unless you turn it off)
@@ -123,7 +128,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme'];
+const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -155,6 +160,7 @@ function loadSettings() {
   state.cardV = state.cardV !== false;
   state.cardBig = state.cardBig === true;
   state.spectroTheme = state.spectroTheme === true;
+  state.sceneryTheme = state.sceneryTheme === true;
   // the keys you changed: kept if they're single keys not taken twice
   const keys = state.keys && typeof state.keys === 'object' ? state.keys : {};
   state.keys = {};
@@ -451,7 +457,7 @@ function setVisual(i) {
   state.visual = i;
   const mode = VISUALS[i];
   if (!FIELD_VIS.includes(mode)) field.clear();
-  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spectrogram', spectro]]) if (mode !== name) v.clear();
+  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spectrogram', spectro], ['scenery', scenery]]) if (mode !== name) v.clear();
   $('b-visual').textContent = mode + ' ▾';
   document.body.classList.toggle('worlds-on', mode === 'worlds');
   document.body.classList.toggle('chrome-on', mode === 'chrome');
@@ -481,6 +487,12 @@ function toggleCollage() {
 function toggleSpectroColours() {
   state.spectroTheme = !state.spectroTheme;
   flashStatus('colours: ' + (state.spectroTheme ? "the theme's" : 'rainbow'));
+  saveSettings();
+}
+// A, while the scenery is on: its colours, its own or the theme's two
+function toggleSceneryColours() {
+  state.sceneryTheme = !state.sceneryTheme;
+  flashStatus('colours: ' + (state.sceneryTheme ? "the theme's" : 'its own'));
   saveSettings();
 }
 function setStrength(i, say) {
@@ -555,6 +567,33 @@ async function offerUpdate(u) {
   });
 }
 window.nc?.onUpdateProgress?.((p) => flashStatus(`downloading the update ${Math.round(p * 100)}%`));
+
+// What's new (news.js): after an update, once, a box with what came in since the version last
+// opened, each with its key (the first time Toaster opens, the welcome note instead); "Show in
+// help" opens the help at its top, where the last few versions' are kept. Not over a recording or
+// another message: it waits.
+const newsLine = (it) => [it.act ? K(it.act) : it.key, it.text];
+function showNews(news, version) {
+  if (rec.mr || $('alerts').childElementCount) { setTimeout(() => showNews(news, version), 30000); return; }
+  const items = news.flatMap((n) => n.items).map(newsLine);
+  xpAlert($('alerts'), {
+    title: 'toaster updated', icon: 'info',
+    text: news.length > 1 ? `New since you last opened Toaster (now ${version}):` : `New in ${version}:`,
+    list: items.length > 6 ? [...items.slice(0, 5), ['?', `and ${items.length - 5} more in the help`]] : items,
+    buttons: ['Show in help', 'OK'],
+  });
+  $('alerts').querySelector('button').addEventListener('click', () => { $('help').showModal(); $('news-head').scrollIntoView({ block: 'start' }); });
+  state.seenVersion = version;
+  saveSettings();
+}
+// the help's top: the last three versions' additions (the keys filled in by applyKeys)
+function newsRows() {
+  const rows = [`<tr class="sec" id="news-head"><th colspan="2">recently added</th></tr>`];
+  for (const n of NEWS.slice(0, 3)) for (const it of n.items) {
+    rows.push(`<tr class="news"><td>${it.act ? `<span data-k="${it.act}"></span>` : esc(it.key)}</td><td>${esc(it.text)} <span class="vtag">${n.version}</span></td></tr>`);
+  }
+  $('help').querySelector('table tbody').insertAdjacentHTML('afterbegin', rows.join(''));
+}
 
 // The glass blob: over the code, under the card and the pop-ups.
 function setGlass(on) {
@@ -1053,6 +1092,7 @@ const LAYER_ON = {
   chrome: () => VISUALS[state.visual] === 'chrome',
   spectro: () => VISUALS[state.visual] === 'spectrogram',
   spectrobox: () => VISUALS[state.visual] === 'spectrogram',
+  scenery: () => VISUALS[state.visual] === 'scenery',
   field: () => FIELD_VIS.includes(VISUALS[state.visual]),
   asciicam: () => cam.on && state.ascii,
   orb: () => state.orb,
@@ -1103,6 +1143,7 @@ function draw(now) {
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
+  else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1] });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
@@ -1189,7 +1230,7 @@ $('rename-form').addEventListener('submit', () => {
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'visual', key: 'v', run: () => setVisual((state.visual + 1) % VISUALS.length) },
-  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
+  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? toggleSceneryColours() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
@@ -1333,10 +1374,16 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
 window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, setOrb, setGlass, toggleLayout, toggleCard, showMenu };
 
-// the version, in the menu and the help
-window.nc?.version?.().then((v) => { for (const el of document.querySelectorAll('.ver')) el.textContent = 'v' + v; });
+// the version, in the menu and the help; and what's new since the version last opened
+window.nc?.version?.().then((v) => {
+  for (const el of document.querySelectorAll('.ver')) el.textContent = 'v' + v;
+  const news = state.firstRun ? [] : newsSince(state.seenVersion, v);
+  if (news.length) setTimeout(() => showNews(news, v), 3500);
+  else if (state.seenVersion !== v) { state.seenVersion = v; saveSettings(); }
+});
 
 loadSettings();
+newsRows();
 $('b-rec').dataset.title = `Record a video of the window, with the sound, into ${onMac() ? 'Movies/Toaster' : 'Videos\\Toaster'}`;
 applyKeys();
 applyTheme();

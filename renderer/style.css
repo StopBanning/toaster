@@ -31,7 +31,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none; }
 
-#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spectro, #spectrobox, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spectro, #spectrobox, #scenery, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #warp { opacity: .55; }
 #glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 #glass[hidden] { display: none; }
@@ -48,20 +48,20 @@ body.cam-cut #cam { z-index: 1; opacity: .92; }
 #voxcam { opacity: .85; } /* (the voxels in the camera's place, under the backgrounds; a room, so solid) */
 #field { opacity: calc(var(--field) * var(--field-k, 1.5) * var(--hush, 1)); } /* --field-k: the strength you pick (A) */
 /* hushed (a raised fist, or Q): the picture dims, while the code mutes itself line by line */
-#worlds, #worldwords, #chrome, #spectro, #spectrobox, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s; }
+#worlds, #worldwords, #chrome, #spectro, #spectrobox, #scenery, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s; }
 body.hushed { --hush: .3; }
 /* the camera as text (a layer of its own, over the background) stands out more than an ASCII
    background does */
 #asciicam { opacity: calc(var(--field) * 3.2 * var(--hush, 1)); }
 body.hushed #vis, body.hushed #orb, body.hushed #punch { opacity: .3; }
 body.hushed #warp { opacity: .17; }
-body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spectro, body.hushed #spectrobox { opacity: .3; }
+body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery { opacity: .3; }
 /* over the worlds (and the chrome, and the spectrogram) the code sits on the ID card's panel colour
    (navy on the blue theme), not the theme's own, which fights the picture's colours */
 body.worlds-on, body.chrome-on, body.spectro-on { --line-bg: color-mix(in srgb, var(--ink) 70%, transparent); }
-/* the worlds (and the spectrogram) over the camera: you show through them (with the cut-out you're
-   in front of them) */
-body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spectro { opacity: .6; }
+/* the worlds (and the spectrogram, and the scenery) over the camera: you show through them (with the
+   cut-out you're in front of them) */
+body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery { opacity: .6; }
 
 /* ---------- code ---------- */
 #code {
@@ -330,6 +330,10 @@ html.darwin.full header { padding-left: 12px; }
 .xp-frame { background: #ece9d8; }
 .xp-msg { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px 6px 12px; }
 .xp-msg p { margin: 3px 0 0; max-width: 300px; line-height: 1.45; }
+/* (what's new: a line a thing, its key first) */
+.xp-list { margin: 8px 0 0; padding: 0; list-style: none; max-width: 330px; }
+.xp-list li { display: flex; gap: 8px; margin: 4px 0; line-height: 1.4; }
+.xp-list kbd { flex: none; min-width: 18px; height: 16px; padding: 0 4px; font: bold 10px Tahoma, sans-serif; line-height: 15px; text-align: center; border: 1px solid #8c8a7e; border-radius: 3px; background: #fff; box-shadow: inset 0 -1px #d6d0c5; }
 .xp-btns { display: flex; justify-content: center; gap: 6px; padding: 12px 12px 12px; }
 .xp button, .xp button:hover, .xp button:focus-visible {
   min-width: 75px; height: 23px; padding: 0 10px; font: 11px Tahoma, "Segoe UI", sans-serif; color: #000;
@@ -432,6 +436,7 @@ dialog button.key { font-weight: 700; min-width: 2.2em; padding: 1px 6px; }
 dialog button.key.waiting { background: var(--fg); color: var(--bg); }
 dialog kbd { font: inherit; font-weight: 700; }
 dialog .keys-note { color: var(--dim); font-size: 12px; }
+dialog .vtag { color: var(--dim); font-size: 11px; margin-left: 4px; }
 dialog tr.sec th { text-align: left; padding: 12px 0 4px; color: var(--dim); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; font-size: 11px; }
 dialog form { text-align: right; margin-top: 14px; }
 #rename-form { display: grid; gap: 10px; text-align: left; }

@@ -45,8 +45,9 @@ const CAMS = [
 // The little computer screens glow green or white, one after the other.
 const SCREENS = [{ bg: '#010a03', fg: '#3dff76' }, { bg: '#020b45', fg: '#e8eeff' }].map((c) => ({ bg: hex(c.bg), fg: hex(c.fg) }));
 
-// An XP (Luna) window. kind: 'box' (message box: icon, text, buttons), 'cam', or 'notepad'.
-function xpWindow({ title, kind = 'box', icon, text, buttons = ['OK'], w = 240, h = 150 }) {
+// An XP (Luna) window. kind: 'box' (message box: icon, text, buttons; list: lines under the text,
+// each [key, what]), 'cam', or 'notepad'.
+function xpWindow({ title, kind = 'box', icon, text, list = null, buttons = ['OK'], w = 240, h = 150 }) {
   const el = document.createElement('div');
   el.className = 'xp';
   const controls = kind === 'box' ? '<i class="x"></i>' : '<i class="min"></i><i class="max"></i><i class="x"></i>';
@@ -54,7 +55,8 @@ function xpWindow({ title, kind = 'box', icon, text, buttons = ['OK'], w = 240, 
   if (kind === 'cam') body = `<div class="xp-cam"><canvas width="${w}" height="${h}"></canvas></div>`;
   else if (kind === 'notepad') body = '<div class="xp-menu"><span>File</span><span>Edit</span><span>Format</span><span>View</span><span>Help</span></div><pre class="xp-note"></pre>';
   else {
-    body = `<div class="xp-msg"><i class="xp-icon ${icon}"></i><p>${esc(text)}</p></div>`
+    const said = list ? `<div><p>${esc(text)}</p><ul class="xp-list">${list.map(([k, t]) => `<li><kbd>${esc(k)}</kbd><span>${esc(t)}</span></li>`).join('')}</ul></div>` : `<p>${esc(text)}</p>`;
+    body = `<div class="xp-msg"><i class="xp-icon ${icon}"></i>${said}</div>`
       + `<div class="xp-btns">${buttons.map((b, i) => `<button tabindex="-1" class="${i === 0 ? 'def' : ''}">${esc(b)}</button>`).join('')}</div>`;
   }
   el.innerHTML = `<div class="xp-title"><span>${esc(title)}</span><span class="xp-ctl">${controls}</span></div><div class="xp-frame">${body}</div>`;
@@ -90,9 +92,9 @@ function miniBsod() {
 }
 
 // A real message for the user, as an XP message box in the middle of the screen.
-export function xpAlert(layer, { title = 'toaster.exe', icon = 'error', text, buttons = ['OK'] }) {
+export function xpAlert(layer, { title = 'toaster.exe', icon = 'error', text, list = null, buttons = ['OK'] }) {
   layer.innerHTML = '';
-  const el = xpWindow({ title, icon, text, buttons });
+  const el = xpWindow({ title, icon, text, list, buttons });
   for (const b of el.querySelectorAll('button, .xp-ctl i')) {
     b.tabIndex = 0;
     b.addEventListener('click', () => el.remove());
