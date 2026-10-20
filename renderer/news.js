@@ -4,6 +4,12 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.7',
+    items: [
+      { act: 'strength', text: 'with the scenery on, its scenes: the lake, the sea, a campfire, the snow under the aurora, the city in the rain, a garden in blossom, a waterfall; auto picks a new one each song' },
+    ],
+  },
+  {
     version: '0.4.6',
     items: [
       { act: 'visual', text: 'scenery, the calm one: a landscape in ASCII, night under the Milky Way or day on paper, a toaster fishing on the lake' },

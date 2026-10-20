@@ -114,6 +114,7 @@ const state = {
   worldLook: 'auto', // the worlds' look (A while they're on): auto, night, film, ascii, ink, risograph...
   spectroTheme: false, // the spectrogram in the theme's colours rather than the rainbow (A while it's on)
   sceneryTheme: false, // the scenery in the theme's two colours rather than its own (A while it's on)
+  sceneryScene: 'auto', // and its scene (A too): auto (a new one each song), or one by name
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
   seenVersion: '', // the version last opened, to tell what's new after an update
@@ -128,7 +129,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'seenVersion'];
+const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -161,6 +162,7 @@ function loadSettings() {
   state.cardBig = state.cardBig === true;
   state.spectroTheme = state.spectroTheme === true;
   state.sceneryTheme = state.sceneryTheme === true;
+  if (!['auto', ...scenery.scenes].includes(state.sceneryScene)) state.sceneryScene = 'auto';
   // the keys you changed: kept if they're single keys not taken twice
   const keys = state.keys && typeof state.keys === 'object' ? state.keys : {};
   state.keys = {};
@@ -233,6 +235,7 @@ function freshStart(top = false) {
   glitch();
   clipsThisSong = 0;
   lastClipAt = -99;
+  nextAutoScene();
 }
 
 // System audio: main.js answers this request with the machine's loopback, so there's no picker.
@@ -432,7 +435,7 @@ eng.on.drop = () => {
   else if (mode === 'blue screen') showBsod($('bsod'), glitch);
   else if (mode === 'not responding') storm.start(t, eng.tempo.locked ? eng.tempo.bpm : 0);
 };
-eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; };
+eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; nextAutoScene(); };
 // A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js).
 eng.song = () => ({ known: !!currentSong(), playing: state.source === 'system' && !!state.winSong && !!state.winPlaying });
 
@@ -489,11 +492,25 @@ function toggleSpectroColours() {
   flashStatus('colours: ' + (state.spectroTheme ? "the theme's" : 'rainbow'));
   saveSettings();
 }
-// A, while the scenery is on: its colours, its own or the theme's two
-function toggleSceneryColours() {
-  state.sceneryTheme = !state.sceneryTheme;
-  flashStatus('colours: ' + (state.sceneryTheme ? "the theme's" : 'its own'));
+// A, while the scenery is on: the next scene (auto, a new one each song; then each by name), and
+// after the last, auto again in the theme's two colours rather than its own
+const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls' };
+function nextScene() {
+  const all = ['auto', ...scenery.scenes];
+  if (state.sceneryTheme) { state.sceneryTheme = false; state.sceneryScene = 'auto'; }
+  else if (state.sceneryScene === all[all.length - 1]) { state.sceneryTheme = true; state.sceneryScene = 'auto'; }
+  else state.sceneryScene = all[all.indexOf(state.sceneryScene) + 1];
+  flashStatus('scene: ' + (SCENE_NAMES[state.sceneryScene] || state.sceneryScene) + (state.sceneryTheme ? ", in the theme's colours" : ''));
   saveSettings();
+}
+// with auto, the scene shown: a new one each song, in turn (from one picked at random at the start)
+let autoScene = Math.floor(Math.random() * 64), autoSceneAt = -99;
+const sceneShown = () => (state.sceneryScene === 'auto' ? scenery.scenes[autoScene % scenery.scenes.length] : state.sceneryScene);
+function nextAutoScene() {
+  const t = nowSec();
+  if (t - autoSceneAt < 20) return; // (a new source and the engine can both say so, for one song)
+  autoSceneAt = t;
+  autoScene++;
 }
 function setStrength(i, say) {
   state.strength = i;
@@ -1143,7 +1160,7 @@ function draw(now) {
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
-  else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1] });
+  else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown() });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
@@ -1230,7 +1247,7 @@ $('rename-form').addEventListener('submit', () => {
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'visual', key: 'v', run: () => setVisual((state.visual + 1) % VISUALS.length) },
-  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? toggleSceneryColours() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
+  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
