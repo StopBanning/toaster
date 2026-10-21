@@ -108,6 +108,7 @@ const state = {
   winSong: null, winKey: '', manual: null,
   visual: 0, strength: 1, blocks: true, blockLook: 'blocks', orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
+  codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
   eyes: false, // the camera's third setting: big eyes over your face
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
   camFx: 0, // the camera's effect (K), in CAM_FX
@@ -129,7 +130,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
+const SAVED = ['keys', 'codeHidden', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -169,6 +170,7 @@ function loadSettings() {
   const used = new Set();
   for (const [id, k] of Object.entries(keys)) if (typeof k === 'string' && k && !used.has(k)) { state.keys[id] = k; used.add(k); }
   state.glass = state.glass === true;
+  state.codeHidden = state.codeHidden === true;
 }
 
 // How far ahead (seconds) to draw the blocks so they land when you hear the beat. The beat clock
@@ -541,6 +543,14 @@ function setOrb(on) {
   state.orb = on;
   if (!on) orb.clear();
   $('b-orb').classList.toggle('on', on);
+  saveSettings();
+}
+
+// Z: the code hidden, just the visuals, for Toaster as a visualizer. It's still written underneath,
+// so Z again shows it as it stands.
+function setCodeHidden(on) {
+  state.codeHidden = on;
+  document.body.classList.toggle('nocode', on);
   saveSettings();
 }
 
@@ -1162,7 +1172,7 @@ function draw(now) {
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
-  else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown() });
+  else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
@@ -1273,10 +1283,11 @@ const ACTIONS = [
   { id: 'theme', key: 't', run: () => nextTheme() },
   { id: 'name', key: 'e', run: () => renameSong() },
   { id: 'hide', key: 'h', run: () => document.body.classList.toggle('clean') },
+  { id: 'code', key: 'z', run: () => { setCodeHidden(!state.codeHidden); flashStatus(state.codeHidden ? `code hidden: ${K('code')} shows it` : 'code shown'); } },
   { id: 'full', key: 'f', run: () => window.nc?.toggleFullscreen() },
 ];
 // the footer's list of keys, in this order: [actions..., what it says]
-const FOOTER = [['visual', 'visual'], ['strength', 'strength'], ['theme', 'theme'], ['orb', 'orb'], ['blocks', 'blocks'], ['glass', 'glass'], ['card', 'card'], ['cam', 'cam'], ['camfx', 'cam fx'], ['tap', 'tap'], ['hush', 'hush'], ['drop', 'drop now'], ['dropfx', 'drop fx'], ['rec', 'rec'], ['clips', 'drop clips'], ['export', 'export'], ['strudel', 'strudel'], ['layout', 'layout'], ['mini', 'mini'], ['hide', 'hide'], ['full', 'full'], ['machine', 'machine'], ['source', 'source'], ['name', 'name'], ['later', 'earlier', 'sync']];
+const FOOTER = [['visual', 'visual'], ['strength', 'strength'], ['theme', 'theme'], ['orb', 'orb'], ['blocks', 'blocks'], ['glass', 'glass'], ['card', 'card'], ['cam', 'cam'], ['camfx', 'cam fx'], ['tap', 'tap'], ['hush', 'hush'], ['drop', 'drop now'], ['dropfx', 'drop fx'], ['rec', 'rec'], ['clips', 'drop clips'], ['export', 'export'], ['strudel', 'strudel'], ['layout', 'layout'], ['mini', 'mini'], ['code', 'hide code'], ['hide', 'hide'], ['full', 'full'], ['machine', 'machine'], ['source', 'source'], ['name', 'name'], ['later', 'earlier', 'sync']];
 const RESERVED = new Set(['escape', '?', '/', 'f11', 'tab', 'enter', 'shift', 'control', 'alt', 'meta', 'capslock', 'contextmenu']);
 const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
@@ -1412,6 +1423,7 @@ setCamFx(state.camFx);
 setBlocks(state.blocks);
 setOrb(state.orb);
 setGlass(state.glass);
+setCodeHidden(state.codeHidden);
 setCalm(state.calm);
 setUpdates(state.updates);
 setTimeout(() => offerUpdate(), 8000);

@@ -1479,9 +1479,17 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // readings can't keep trading places. (Double or half never does: some beats, like drum &
       // bass, score about the same both ways, and switching back and forth would be worse.) A
       // tempo you tapped stays until the song changes or you tap again.
+      // Once locked, a change of tempo can also come from readings whose grid the hits fit less
+      // than a lock needs (0.18 rather than 0.25), as long as they're as sure of it and beat the
+      // tempo held by half again: in a DJ mix the new song plays over the end of the old one, and
+      // its hits fit untidily for a while. Crossfades between songs 9 to 27% apart in tempo were
+      // followed about 2.5 s sooner, and a recorded mix going from 133 to 139.6 at all (it never
+      // did in the 7 s left of it); on the logs of 42 songs and 19 test songs nothing else moved
+      // (Oct 20).
+      const changing = T.locked && conf >= 0.82 && fit >= 0.18 && dense && gain >= 1.5;
       if (T.locked && (T.tapped || near(bpm, T.bpm) || octave(bpm, T.bpm) || atEdge || gain < 1.3)) {
         T.candN = 0; // same beat; fine-tuning happens in updatePhase from the hits themselves
-      } else if (clear) {
+      } else if (clear || changing) {
         if (T.cand && near(bpm, T.cand)) { T.cand = T.cand * 0.7 + bpm * 0.3; T.candN++; }
         else { T.cand = bpm; T.candN = 1; }
         // a real tempo change has to hold for 3 seconds before the patterns get relearned
@@ -1796,11 +1804,20 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       else { T.fbpm = r.bpm; T.frun = 1; }
       const drums = t - T.clearAt < 1.5;
       if (T.locked) {
-        // (a twentieth of the way each half second: the reading still wobbles a little, and a
-        // tempo that followed it a fifth of the way wandered with it; real drift, a band speeding
-        // up, is followed over about ten seconds)
+        // A reading straight on, within 3.5% of the tempo, is followed (a twentieth of the way each
+        // half second: the reading still wobbles a little, and a tempo that followed it a fifth of
+        // the way wandered with it; real drift, a band speeding up, is followed over about ten
+        // seconds). It's the same beat within 3.5% at double or half too, but isn't followed from
+        // there: those readings are rougher, and the grid wandered with them (the quiet test song's
+        // hats came out half missed, Oct 21). Further off, double or half or not, it's another
+        // tempo. Counted as the same beat within 6% at double and half, a lock that came out 4.6%
+        // off kept it all song: We Will Rock You (81) locked at 154.8 on its first readings, then
+        // read a steady 81 (162 doubled), and the beat drifted off its grid (Oct 20).
+        let fb = T.fbpm;
+        while (fb < T.bpm / 1.42) fb *= 2;
+        while (fb > T.bpm * 1.42) fb /= 2;
         if (Math.abs(T.fbpm - T.bpm) / T.bpm < 0.035) this.setPeriod(t, T.bpm + 0.05 * (T.fbpm - T.bpm), false);
-        if (sameBeat(T.fbpm, T.bpm)) T.unclearN = 0;
+        if (Math.abs(fb - T.bpm) / T.bpm < 0.035) T.unclearN = 0;
         // A different tempo has to hold for 3 seconds and clearly beat the one we have, as with the
         // drums (tempoUpdate): a swung or shuffled song shows a pulse at 3:2 or 4:3 of its tempo
         // too, and the readings would trade places (100, 133 and 150 bpm, back and forth). At 3:2 or

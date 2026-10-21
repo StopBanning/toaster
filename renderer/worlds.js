@@ -11,6 +11,9 @@
 // engraving has the title cut into it.
 import { LOOKS, blueNoise, onePart } from './worldlooks.js';
 import { RAMP } from './visuals.js';
+// how long a look's program has been done before it's shown (ms): the graphics driver's own
+// finishing of a shader new to it, about half a second, over by then (as the scenery has it)
+const SETTLE_MS = 1500;
 const VERT = `#version 300 es
 in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -1174,7 +1177,7 @@ export function pieces(text) {
 }
 
 export function createWorlds(canvas, wordsCanvas) {
-  let gl = null, ok = false, worldProg, postProg, loc = {}, post = {}, fbo = null, fboTex = null, fw = 0, fh = 0;
+  let gl = null, par = null, jobs = null, ok = false, worldProg, postProg, loc = {}, post = {}, fbo = null, fboTex = null, fw = 0, fh = 0;
   // the galaxy's band, drawn once a shot at half the size (smooth enough), and what it was drawn for
   let skyFbo = null, skyTex = null, skyFor = null;
   const tex = {}; // the code, the ledger and the engraving's mark, as pictures the shader reads
@@ -1190,6 +1193,7 @@ export function createWorlds(canvas, wordsCanvas) {
   // brings another look for 8 bars
   let lookPick = 'auto', lookNow = 'film', lookAt = 0, lookTill = null, lookAuto = 'film', colours = { bg: [0, 0, 0], fg: [255, 255, 255] };
   const lookProgs = new Map(), lookPics = {};
+  let looksStarted = false; // every look's program started (the first time the worlds draw)
   let fbo2 = null, fbo2Tex = null, gridText = null, gridAt = -9;
   // the code as a grid of characters, for the code look: read in order, round and round
   const GRID = [96, 40], gridPic = makeCanvas(1);
@@ -1214,21 +1218,33 @@ export function createWorlds(canvas, wordsCanvas) {
   });
 
   function makeCanvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return c; }
-  const compile = (src, type) => {
-    const s = gl.createShader(type);
-    gl.shaderSource(s, src);
-    gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
-    return s;
-  };
-  const program = (frag) => {
-    const pr = gl.createProgram();
-    gl.attachShader(pr, compile(VERT, gl.VERTEX_SHADER));
-    gl.attachShader(pr, compile(frag, gl.FRAGMENT_SHADER));
+  // A program, started now and compiled in the background where the driver can (on an empty
+  // shader cache, a new install's first start or the first after a graphics driver update, the
+  // world's takes about a minute, and waited for it held the whole window up that long); ready()
+  // says it's done (throwing if it failed), and nothing may ask it anything before (that would wait
+  // for it); settled() says it's been done a while (the driver finishing a new shader on its own
+  // threads for a moment after, a draw then waiting for it).
+  const programLater = (frag) => {
+    const pr = gl.createProgram(), vs = gl.createShader(gl.VERTEX_SHADER), fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(vs, VERT);
+    gl.compileShader(vs);
+    gl.shaderSource(fs, frag);
+    gl.compileShader(fs);
+    gl.attachShader(pr, vs);
+    gl.attachShader(pr, fs);
     gl.bindAttribLocation(pr, 0, 'aPos');
     gl.linkProgram(pr);
-    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
-    return pr;
+    let doneAt = 0, linked = false;
+    const done = () => doneAt || (!par || gl.getProgramParameter(pr, par.COMPLETION_STATUS_KHR) ? (doneAt = performance.now()) : 0);
+    const ready = () => {
+      if (linked) return true;
+      if (!done()) return false;
+      if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getShaderInfoLog(fs) || gl.getProgramInfoLog(pr));
+      linked = true;
+      return true;
+    };
+    const settled = () => ready() && (!par || performance.now() - doneAt > SETTLE_MS);
+    return { pr, ready, settled };
   };
   function picture(unit, wrap) {
     const t = gl.createTexture();
@@ -1247,24 +1263,33 @@ export function createWorlds(canvas, wordsCanvas) {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
   }
+  // The context, its pictures, and both programs started (finish() when they're done)
   function build() {
     ok = false;
+    jobs = null;
     gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: false });
     if (!gl) return;
-    try {
-      worldProg = program(WORLD);
-      postProg = program(POST);
-    } catch (err) { console.error('worlds:', err); return; }
+    par = gl.getExtension('KHR_parallel_shader_compile');
+    jobs = { world: programLater(WORLD), post: programLater(POST) };
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    loc = Object.fromEntries(['uRes', 'uScale', 'uCircle', 'uT', 'uWorld', 'uVar', 'uBlend', 'uFore', 'uDrift', 'uLight', 'uSkyA', 'uSkyB', 'uSkyH', 'uStars', 'uSun', 'uGlow', 'uBand', 'uSkySeed', 'uPass', 'uQuilt', 'uQuiltIds', 'uPrevWorld', 'uCutSeed', 'uAge', 'uBeat', 'uCalm', 'uZoom', 'uAct', 'uHit', 'uTexCode', 'uTexLedger', 'uTexMark', 'uTexSky'].map((k) => [k, gl.getUniformLocation(worldProg, k)]));
-    post = Object.fromEntries(['uSrc', 'uRes', 'uApex', 'uScale', 'uDof', 'uFrame'].map((k) => [k, gl.getUniformLocation(postProg, k)]));
     tex.code = picture(0, gl.CLAMP_TO_EDGE);
     tex.ledger = picture(1, gl.REPEAT);
     tex.mark = picture(2, gl.REPEAT);
+  }
+  // Both programs settled: their places and pictures set, and the worlds can draw. False till then,
+  // and for good if either failed.
+  function finish() {
+    try {
+      if (!jobs || !jobs.world.settled() || !jobs.post.settled()) return false;
+    } catch (err) { console.error('worlds:', err); jobs = null; return false; }
+    worldProg = jobs.world.pr;
+    postProg = jobs.post.pr;
+    loc = Object.fromEntries(['uRes', 'uScale', 'uCircle', 'uT', 'uWorld', 'uVar', 'uBlend', 'uFore', 'uDrift', 'uLight', 'uSkyA', 'uSkyB', 'uSkyH', 'uStars', 'uSun', 'uGlow', 'uBand', 'uSkySeed', 'uPass', 'uQuilt', 'uQuiltIds', 'uPrevWorld', 'uCutSeed', 'uAge', 'uBeat', 'uCalm', 'uZoom', 'uAct', 'uHit', 'uTexCode', 'uTexLedger', 'uTexMark', 'uTexSky'].map((k) => [k, gl.getUniformLocation(worldProg, k)]));
+    post = Object.fromEntries(['uSrc', 'uRes', 'uApex', 'uScale', 'uDof', 'uFrame'].map((k) => [k, gl.getUniformLocation(postProg, k)]));
     gl.useProgram(worldProg);
     gl.uniform1i(loc.uTexCode, 0);
     gl.uniform1i(loc.uTexLedger, 1);
@@ -1306,10 +1331,13 @@ export function createWorlds(canvas, wordsCanvas) {
     [skyFbo, skyTex] = target(Math.ceil(W / 2), Math.ceil(H / 2), 7);
     skyFor = null;
   }
-  // a look's program, built the first time it's used, with the pictures it needs
+  // a look's program, started the first time it's asked for (every look's when the worlds first
+  // draw), with the pictures it needs; null till it's settled, the worlds drawn without the look
+  // meanwhile (on a song's first drop it's long settled, so the look comes in right on it)
   function lookProg(look) {
     let p = lookProgs.get(look.key);
-    if (p) return p;
+    if (p?.prog) return p;
+    if (p) return p.job.settled() ? useLook(p) : null;
     for (const need of look.needs || []) {
       if (lookPics[need]) continue;
       if (need === 'noise') {
@@ -1344,7 +1372,13 @@ export function createWorlds(canvas, wordsCanvas) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       }
     }
-    const prog = program(look.whole ? look.frag : onePart(look.frag)), locs = new Map();
+    p = { job: programLater(look.whole ? look.frag : onePart(look.frag)), prog: null, at: null };
+    lookProgs.set(look.key, p);
+    return p.job.settled() ? useLook(p) : null;
+  }
+  // a look's program settled: its places and pictures set, the first time it's used
+  function useLook(p) {
+    const prog = p.job.pr, locs = new Map();
     const at = (name) => { if (!locs.has(name)) locs.set(name, gl.getUniformLocation(prog, name)); return locs.get(name); };
     gl.useProgram(prog);
     gl.uniform1i(at('uSrc'), 3);
@@ -1353,12 +1387,12 @@ export function createWorlds(canvas, wordsCanvas) {
     gl.uniform1i(at('uCode'), 6);
     gl.uniform2f(at('uGrid'), GRID[0], GRID[1]);
     gl.uniform1f(at('uCount'), RAMP.length);
-    p = { prog, at };
-    lookProgs.set(look.key, p);
+    p.prog = prog;
+    p.at = at;
     return p;
   }
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ok = false; });
-  canvas.addEventListener('webglcontextrestored', () => { fbo = fboTex = fbo2 = fbo2Tex = skyFbo = skyTex = skyFor = null; lookProgs.clear(); for (const k in lookPics) delete lookPics[k]; build(); });
+  canvas.addEventListener('webglcontextrestored', () => { fbo = fboTex = fbo2 = fbo2Tex = skyFbo = skyTex = skyFor = null; lookProgs.clear(); looksStarted = false; for (const k in lookPics) delete lookPics[k]; build(); });
   build();
 
   // The pictures the shader reads. The terminal: the code as it is now, green on black, the parts'
@@ -1661,7 +1695,12 @@ export function createWorlds(canvas, wordsCanvas) {
     },
     // info: the song ({ title, artist }), the code's lines, the bar, what played in it
     draw(t, eng, info) {
-      if (!ok) return;
+      if (!ok && !finish()) return;
+      // every look's program started the first time the worlds draw, in the background
+      if (!looksStarted && par) {
+        looksStarted = true;
+        for (const l of LOOKS) if (l.frag) try { lookProg(l); } catch (err) { console.error('worlds look:', l.key, err); }
+      }
       boxOf = info.codeBox || null;
       const dt = Math.min(0.1, Math.max(0, t - last));
       last = t;
@@ -1788,7 +1827,12 @@ export function createWorlds(canvas, wordsCanvas) {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       const look = LOOKS.find((l) => l.key === lookNow) || LOOKS[0];
-      gl.bindFramebuffer(gl.FRAMEBUFFER, look.frag ? fbo2 : null);
+      // (the look's program, or none till it's settled: see lookProg)
+      let lp = null;
+      if (look.frag) {
+        try { lp = lookProg(look); } catch (err) { console.error('worlds look:', look.key, err); lookPick = lookNow = 'film'; }
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, lp ? fbo2 : null);
       gl.viewport(0, 0, W, H);
       gl.useProgram(postProg);
       gl.activeTexture(gl.TEXTURE3);
@@ -1799,52 +1843,48 @@ export function createWorlds(canvas, wordsCanvas) {
       gl.uniform1f(post.uDof, card ? 0 : w.dof ? 1 : 0.35);
       gl.uniform1f(post.uFrame, frame % 1000);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-      if (look.frag) {
-        let lp = null;
-        try { lp = lookProg(look); } catch (err) { console.error('worlds look:', look.key, err); lookPick = lookNow = 'film'; }
-        if (lp) {
-          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-          gl.viewport(0, 0, W, H);
-          gl.useProgram(lp.prog);
-          gl.activeTexture(gl.TEXTURE3);
-          gl.bindTexture(gl.TEXTURE_2D, fbo2Tex);
-          if (lookPics.noise) { gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, lookPics.noise); }
-          if (lookPics.glyphs) { gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, lookPics.glyphs); }
-          if (lookPics.codegrid) {
-            const text = info.lines.join('\n');
-            if (text !== gridText && t - gridAt > 1) { gridText = text; gridAt = t; paintGrid(info.lines); upload(6, lookPics.codegrid, gridPic); }
-            gl.activeTexture(gl.TEXTURE6);
-            gl.bindTexture(gl.TEXTURE_2D, lookPics.codegrid);
-          }
-          gl.uniform2f(lp.at('uRes'), W, H);
-          gl.uniform1f(lp.at('uScale'), C);
-          // the look on one part: the planet, or the sky when the code sits over the planet (a
-          // tall window), so the code's own lines stay clear of it (the horizon where the push has
-          // it: the circle scaled about the apex)
-          if (!look.whole) {
-            const box = boxOf?.(), overPlanet = box && (box.top + box.bottom) / 2 > Z * (innerWidth / 1920) * zoom;
-            gl.uniform4f(lp.at('uPart'), W / 2, H - (Z + Rd * push) * C, Rd * push * C, overPlanet ? -1 : 1);
-          }
-          const seed = (hashText(title || 'toaster') % 997) + 1;
-          if (look.riso) {
-            // a print's plates never sit quite in register
-            const r = seeded(seed);
-            gl.uniform4f(lp.at('uMis'), (r() - 0.5) * 6, (r() - 0.5) * 6, (r() - 0.5) * 6, (r() - 0.5) * 6);
-            gl.uniform2f(lp.at('uMisY'), (r() - 0.5) * 6, (r() - 0.5) * 6);
-            gl.uniform3f(lp.at('uPort'), 0, 0, 0);
-            gl.uniform1f(lp.at('uSeed'), seed % 30);
-            gl.uniform1f(lp.at('uPitch'), 7);
-            gl.uniform1f(lp.at('uModel'), 0);
-          } else {
-            gl.uniform1i(lp.at('uSeed'), seed);
-            gl.uniform1f(lp.at('uTime'), t - lookAt);
-            gl.uniform1i(lp.at('uFrame'), frame);
-            for (const [name, v] of Object.entries(look.set || {})) { if (Array.isArray(v)) gl.uniform2f(lp.at(name), v[0], v[1]); else gl.uniform1f(lp.at(name), v); }
-            gl.uniform3f(lp.at('uBg'), colours.bg[0] / 255, colours.bg[1] / 255, colours.bg[2] / 255);
-            gl.uniform3f(lp.at('uFg'), colours.fg[0] / 255, colours.fg[1] / 255, colours.fg[2] / 255);
-          }
-          gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (lp) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, W, H);
+        gl.useProgram(lp.prog);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, fbo2Tex);
+        if (lookPics.noise) { gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, lookPics.noise); }
+        if (lookPics.glyphs) { gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, lookPics.glyphs); }
+        if (lookPics.codegrid) {
+          const text = info.lines.join('\n');
+          if (text !== gridText && t - gridAt > 1) { gridText = text; gridAt = t; paintGrid(info.lines); upload(6, lookPics.codegrid, gridPic); }
+          gl.activeTexture(gl.TEXTURE6);
+          gl.bindTexture(gl.TEXTURE_2D, lookPics.codegrid);
         }
+        gl.uniform2f(lp.at('uRes'), W, H);
+        gl.uniform1f(lp.at('uScale'), C);
+        // the look on one part: the planet, or the sky when the code sits over the planet (a
+        // tall window), so the code's own lines stay clear of it (the horizon where the push has
+        // it: the circle scaled about the apex)
+        if (!look.whole) {
+          const box = boxOf?.(), overPlanet = box && (box.top + box.bottom) / 2 > Z * (innerWidth / 1920) * zoom;
+          gl.uniform4f(lp.at('uPart'), W / 2, H - (Z + Rd * push) * C, Rd * push * C, overPlanet ? -1 : 1);
+        }
+        const seed = (hashText(title || 'toaster') % 997) + 1;
+        if (look.riso) {
+          // a print's plates never sit quite in register
+          const r = seeded(seed);
+          gl.uniform4f(lp.at('uMis'), (r() - 0.5) * 6, (r() - 0.5) * 6, (r() - 0.5) * 6, (r() - 0.5) * 6);
+          gl.uniform2f(lp.at('uMisY'), (r() - 0.5) * 6, (r() - 0.5) * 6);
+          gl.uniform3f(lp.at('uPort'), 0, 0, 0);
+          gl.uniform1f(lp.at('uSeed'), seed % 30);
+          gl.uniform1f(lp.at('uPitch'), 7);
+          gl.uniform1f(lp.at('uModel'), 0);
+        } else {
+          gl.uniform1i(lp.at('uSeed'), seed);
+          gl.uniform1f(lp.at('uTime'), t - lookAt);
+          gl.uniform1i(lp.at('uFrame'), frame);
+          for (const [name, v] of Object.entries(look.set || {})) { if (Array.isArray(v)) gl.uniform2f(lp.at(name), v[0], v[1]); else gl.uniform1f(lp.at(name), v); }
+          gl.uniform3f(lp.at('uBg'), colours.bg[0] / 255, colours.bg[1] / 255, colours.bg[2] / 255);
+          gl.uniform3f(lp.at('uFg'), colours.fg[0] / 255, colours.fg[1] / 255, colours.fg[2] / 255);
+        }
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
       }
 
       // the words go on a canvas of their own, at the screen's resolution

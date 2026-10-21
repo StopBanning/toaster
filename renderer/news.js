@@ -4,6 +4,17 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.10',
+    items: [
+      { act: 'code', text: 'hide the code: just the visuals, for Toaster as a visualizer; the scenery opens out into the room' },
+      { act: 'strength', text: "the lighthouse stands straight, its two beams sweeping round, a flare on each bar's one" },
+      { act: 'strength', text: "halloween's jack-o'-lanterns carved and lit from inside, its bats with glinting eyes" },
+      { act: 'strength', text: 'the sharks: a bait ball circles the float, and on the drop they charge it' },
+      { act: 'strength', text: 'the waterfall redone: streams that pump with the kicks and swell on the drop, an aurora over it at night, mirrored in the pool' },
+      { key: 'tempo', text: 'the beat follows a DJ mix into the next song sooner, and a lock that came out a few percent off gets put right' },
+    ],
+  },
+  {
     version: '0.4.9',
     items: [
       { act: 'strength', text: 'the sharks hunt where you can see them: when the drop hits they stay on screen, round the float' },

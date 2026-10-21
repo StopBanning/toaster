@@ -16,6 +16,9 @@
 // ink and its colour) into two small pictures, then the glyphs drawn from a sheet in the app's font.
 
 const PX = 10; // a cell's height (CSS pixels)
+// how long a scene's program has been done before a switch shows it (ms): the graphics driver's own
+// finishing of a shader new to it, about half a second for the bigger scenes, over by then
+const SETTLE_MS = 1500;
 // The land, in units of the window's height: each range's base, tallest peak, how far apart its
 // peaks come and its ink; the lake's far and near shores; how many cells a beat each layer glides
 // (meadow, near, mid, far, clouds); where the sun (or the moon) is, as shares of the width and
@@ -41,7 +44,7 @@ const CITY_TALL = { ...TALL, lake: [0.2, 0.1], toaster: { x: 0.55, y: -0.6, on: 
 const GARDEN_WIDE = { ...WIDE, lake: [0.3, 0.05], sun: [0.58, 0.83], band: [0.2, 0.7, 0.12, 0.3], toaster: { x: 0.66, y: 0, on: 'bridge' } };
 const GARDEN_TALL = { ...TALL, lake: [0.26, 0.05], sun: [0.86, 0.905], band: [0.1, 1.0, 0.1, 0.3], toaster: { x: 0.62, y: 0, on: 'bridge' } };
 // the falls: far.x is the lip; mid the hills behind it; lake the pool's far edge and its near bank
-const FALLS_WIDE = { ...WIDE, far: [0.66, 0, 0, 0.3], mid: [0.68, 0.07, 0.3, 0.3], lake: [0.24, 0.04], sun: [0.8, 0.86], band: [0.75, 1.3, 0.13, 0.3], toaster: { x: 0.66, y: 0.5, on: 'tube' }, cool: true };
+const FALLS_WIDE = { ...WIDE, far: [0.62, 0, 0, 0.3], mid: [0.64, 0.07, 0.3, 0.3], lake: [0.24, 0.04], sun: [0.8, 0.86], band: [0.75, 1.3, 0.13, 0.3], toaster: { x: 0.66, y: 0.5, on: 'tube' }, cool: true };
 const FALLS_TALL = { ...TALL, far: [0.54, 0, 0, 0.3], mid: [0.56, 0.06, 0.3, 0.3], lake: [0.2, 0.035], sun: [0.86, 0.905], band: [0.6, 1.3, 0.12, 0.3], toaster: { x: 0.7, y: 0.45, on: 'tube' }, cool: true };
 // halloween: moon its centre (a share of the width, a height) and radius (the sun there too); lake the
 // hill's top behind the graves and the graveyard's front; its own paper (a purple night, a dusk)
@@ -57,6 +60,13 @@ const HALLOWEEN_TALL = { ...TALL, ...HALLOWEEN_LOOK, far: [0.22, 0, 0, 0.3], lak
 const SHARKS_LOOK = { far: [0, 0, 0, 0.3], lake: [1, 0], band: [5, 1.57, 0.1, 0.3], tint: [0.78, 0.9, 1.0], toneN: [0.0, 0.2, 0.22], toneD: [-0.09, -0.055, -0.04], paperN: [[3, 9, 22], [6, 20, 42]], paperD: [[112, 200, 208], [148, 216, 212]] };
 const SHARKS_WIDE = { ...WIDE, ...SHARKS_LOOK, toaster: { x: 0.7, y: 0.3, on: 'float' } };
 const SHARKS_TALL = { ...TALL, ...SHARKS_LOOK, toaster: { x: 0.6, y: 0.15, on: 'float' } };
+// With the code hidden (Z), what changes where the code kept room: the sharks' float comes to the
+// middle (they circle it); in a tall window, where the code fills the top two thirds, Halloween's moon
+// rises into the middle, the toaster flying across it. (wide, tall: null if nothing changes)
+const OPEN = {
+  sharks: [{ toaster: { x: 0.5, y: 0.45, on: 'float' } }, { toaster: { x: 0.5, y: 0.42, on: 'float' } }],
+  halloween: [null, { moon: [0.5, 0.56, 0.22], sun: [0.5, 0.56], toaster: { x: 0.66, y: 0.6, on: 'broom' } }],
+};
 const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL] };
 const SPEED = [1, 0.5, 0.25, 0.12, 0.2];
 // the glyphs the scene draws with (the first, blank, is nothing there)
@@ -66,17 +76,20 @@ const GLYPHS = {
   VEE: 'v', TRI: '▲', TRIO: '△', LIGHT: '░', MEDIUM: '▒', DARK: '▓', HATCH: '╱', HATCHB: '╲', DBL: '═', LINE: '─',
   SPARK: '✦', BULLET: '•', QUOTE: '"', LT: 'T', LA: 'A', LS: 'S', LESS: '<', MORE: '>', LP2: 'P', LE: 'E', LN: 'N', LH: 'H', LL: 'L', LR: 'R', LI: 'I',
   HASH: '#', DOLLAR: '$', SEMI: ';', SMALLI: 'i', SMALLX: 'x', EIGHT: '8', GRAVE: '`',
+  VLINE: '│', VHEAVY: '┃', HHEAVY: '━',
 };
 const SHEET = Object.values(GLYPHS);
 const DEFS = Object.keys(GLYPHS).map((k, i) => `#define G_${k} ${i}`).join('\n');
-// The jack-o'-lanterns' art, as the shader's constant arrays: each cell the glyph's place on the sheet
-// plus 64 times its part (1 its outline, 2 its carved face, 3 its stem, 4 its body)
-const PUMPKIN_ART = [[["        _|_        ", "        sss        "], ["    .-'     '-.    ", "    ooobbbbbooo    "], ["  .'  /\\   /\\  '.  ", "  oobbffbbbffbboo  "], [" (       ^       ) ", " obbbbbbbfbbbbbbbo "], ["  \\  \\/\\/\\/\\/\\  /  ", "  obbfffffffffbbo  "], ["   '-._______.-'   ", "   ooooooooooooo   "]], [["    |    ", "    s    "], [" .-' '-. ", " ooobooo "], ["( ▲   ▲ )", "obfbbbfbo"], [" '\\/\\/\\' ", " offfffo "]], [["    |,   ", "    ss   "], [" .-' '-. ", " ooobooo "], ["( o   o )", "obfbbbfbo"], [" '.\\_/.' ", " oofffoo "]]];
-function pumpkinArrays() {
+// Halloween's art (the jack-o'-lanterns; the big bats' wings up, level and down), as the shader's
+// constant arrays: each cell the glyph's place on the sheet plus 64 times its part (1 an outline, 2 lit:
+// a carved hole, a bat's eye; 3 a stem; 4 inside: a pumpkin's body, a bat's head)
+const PUMPKIN_ART = [[["          _)_          ", "          sss          "], ["     .-'~~~|~~~'-.     ", "     ooooooooooooo     "], ["   .'(( (( | )) ))'.   ", "   oobbbbbbbbbbbbboo   "], ["  /((  /\\ ( ) /\\  ))\\  ", "  obbbbffbbbbbffbbbbo  "], [" |((( /__\\(|)/__\\ )))| ", " obbbbffffbbbffffbbbbo "], [" |((((   (/_\\)   ))))| ", " obbbbbbbbfffbbbbbbbbo "], ["  \\((\\/\\/\\/\\/\\/\\/\\))/  ", "  obbfffffffffffffbbo  "], ["   '.(( \\/\\/\\/\\ )).'   ", "   oobbbfffffffbbboo   "], ["      '-._____.-'      ", "      ooooooooooo      "]], [["     _|,     ", "     sss     "], ["  .-'~|~'-.  ", "  ooooooooo  "], [" /(( o|o ))\\ ", " obbbfbfbbbo "], ["|(((  ^  )))|", "obbbbbfbbbbbo"], [" \\(( \\_/ ))/ ", " obbbfffbbbo "], ["  '-.___.-'  ", "  ooooooooo  "]], [["     _|_     ", "     sss     "], ["  .-'~|~'-.  ", "  ooooooooo  "], [" /(\\\\ | //)\\ ", " obffbbbffbo "], ["|(( (( )) ))|", "obbbbbbbbbbbo"], [" \\( \\/\\/\\ )/ ", " obbfffffbbo "], ["  '-.___.-'  ", "  ooooooooo  "]]];
+const BAT_ART = [[["\\.                 ./", "oo                 oo"], [" \\`-._  /\\_/\\  _.-'/ ", " ooooo  ooooo  ooooo "], ["  `-._`( o o )'_.-'  ", "  oooooobfbfboooooo  "], ["       `\\ v /'       ", "       ooboboo       "]], [["        /\\_/\\        ", "        ooooo        "], [" ._.-.-( o o )-.-._. ", " ooooooobfbfbooooooo "], [" \\/\\/\\/ \\ v / \\/\\/\\/ ", " oooooo obobo oooooo "], ["                     ", "                     "]], [["        /\\_/\\        ", "        ooooo        "], ["    _.-( o o )-._    ", "    oooobfbfboooo    "], ["  ./ /\\_\\ v /_/\\ \\.  ", "  oo ooooboboooo oo  "], [" /_/             \\_\\ ", " ooo             ooo "]]];
+function artArrays(name, art) {
   const part = { o: 1, f: 2, s: 3, b: 4 };
-  return PUMPKIN_ART.map((rows, k) => {
-    const cells = rows.flatMap(([art, roles]) => [...art].map((c, i) => (c === ' ' && roles[i] !== 'b' ? 0 : SHEET.indexOf(c === ' ' ? '\u2591' : c) + 64 * (part[roles[i]] || 0))));
-    return `const int PK${k}[${cells.length}] = int[${cells.length}](${cells.join(', ')});`;
+  return art.map((rows, k) => {
+    const cells = rows.flatMap(([a, roles]) => [...a].map((c, i) => (part[roles[i]] ? SHEET.indexOf(c) + 64 * part[roles[i]] : 0)));
+    return `const int ${name}${k}[${cells.length}] = int[${cells.length}](${cells.join(', ')});`;
   }).join('\n');
 }
 
@@ -583,8 +596,8 @@ void main() {
 }`;
 
 // The sea: a lighthouse on a cliff, waves rolling in to a beach, islands far out (lake.x: the
-// horizon; lake.y: the shore). The beam turns once every 2 bars and flashes at you on the bar's
-// first beat; the waves roll in one every 2 beats; a kick throws foam up the beach.
+// horizon; lake.y: the shore). Its two beams turn once every 2 bars, one flashing at you on each
+// bar's first beat; the waves roll in one every 2 beats; a kick throws foam up the beach.
 const SEA = `
 // the headland's top at x: rising from the right edge to a crown under the lighthouse, then a
 // rounded shoulder falling to the sea about a third of the way in; jagged a little (on the right,
@@ -596,6 +609,11 @@ float cliffTop(float x, float aspect) {
   float fall = 1.0 - smoothstep(0.17, 0.35, a);
   float top = lake.y + (crown - lake.y) * rise * pow(fall, 0.6);
   return top + 0.014 * (vn(x * 23.0) - 0.5) * fall + 0.007 * (vn(x * 91.0) - 0.5);
+}
+// a beam's glyph by its direction on the screen (a, radians), the cells being taller than wide
+int beamGlyph(float a) {
+  float c = mod(atan(sin(a) / ch, cos(a) / cw), 3.14159265);
+  return c < 0.3927 || c > 2.7489 ? G_LINE : c < 1.1781 ? G_SLASH : c < 1.9635 ? G_BAR : G_BACK;
 }
 void main() {
   vec2 cell = floor(gl_FragCoord.xy);
@@ -635,28 +653,32 @@ void main() {
   // its top; the lighthouse on it
   float ct = cliffTop(X, aspect);
   float wide = clamp((aspect - 0.56) / 1.22, 0.0, 1.0);       // (0 in a tall window, 1 in a wide one)
-  float lx = 0.84 * aspect, lb = cliffTop(lx, aspect), LH = mix(0.11, 0.17, wide);
-  vec2 lamp = vec2(lx, lb + LH + 0.016);
   // the lighthouse: a tapering tower, white with red bands, a railed gallery, the lantern, its roof
+  // (on a column's middle, each part an odd number of cells across, so it stands straight; oc: the
+  // columns from its middle; gr: the gallery's row, the lantern on the row above it, the roof above)
+  float lc = floor(0.84 * aspect / cw), lx = (lc + 0.5) * cw, lb = cliffTop(lx, aspect), LH = mix(0.11, 0.17, wide);
+  float oc = cell.x - lc, gr = floor((1.0 - lb - LH) / ch);
+  vec2 lamp = vec2(lx, 1.0 - (gr - 0.5) * ch);
+  float flare = day ? 0.0 : smoothstep(0.86, 1.0, abs(cos(sea.x)));      // (a beam facing you)
   {
     float u = (Y - lb) / LH;
-    if (u > 0.0 && u < 1.0) {
-      float hw = mix(0.017, 0.011, u) * mix(0.85, 1.0, wide);
-      if (abs(X - lx) < hw) {
-        bool edge = abs(X - lx) > hw - cw;
+    if (u > 0.0 && row > gr) {
+      float k = max(1.0, floor(mix(0.017, 0.011, u) * mix(0.85, 1.0, wide) / cw + 0.25));
+      if (abs(oc) <= k) {
         bool band = fract(u * 4.2) < 0.38;
         vec3 c = band ? P(rgb(190.0, 70.0, 80.0), rgb(200.0, 60.0, 60.0)) : P(rgb(206.0, 210.0, 232.0), rgb(120.0, 120.0, 140.0));
-        put(edge ? (X < lx ? G_SLASH : G_BACK) : G_DARK, 1.0, c * (X < lx ? 1.0 : 0.82));
+        put(abs(oc) == k ? (oc < 0.0 ? G_SLASH : G_BACK) : G_DARK, 1.0, c * (oc > 0.0 ? 0.82 : 1.0));
         return;
       }
     }
-    float top = lb + LH;
-    if (Y >= top && Y < top + ch && abs(X - lx) < 0.022) { put(G_DBL, 1.0, P(rgb(150.0, 152.0, 176.0), rgb(60.0, 60.0, 80.0))); return; }
-    if (Y >= top + ch && Y < top + 0.032 && abs(X - lx) < 0.012) {
-      put(abs(X - lx) > 0.012 - cw ? G_BAR : G_DARK, 1.0, P(rgb(255.0, 226.0, 140.0), rgb(255.0, 196.0, 90.0)) * (day ? 0.9 : 0.85 + 0.15 * glow));
+    float kt = max(1.0, floor(0.011 * mix(0.85, 1.0, wide) / cw + 0.25));
+    if (row == gr && abs(oc) <= kt + 1.0) { put(G_DBL, 1.0, P(rgb(150.0, 152.0, 176.0), rgb(60.0, 60.0, 80.0))); return; }
+    if (row == gr - 1.0 && abs(oc) <= 1.0) {
+      put(oc == 0.0 ? G_DARK : G_BAR, 1.0, oc == 0.0 ? P(rgb(255.0, 226.0, 140.0), rgb(255.0, 196.0, 90.0)) * (day ? 0.9 : 0.85 + 0.15 * glow + 0.3 * flare) : P(rgb(150.0, 152.0, 176.0), rgb(60.0, 60.0, 80.0)));
       return;
     }
-    if (Y >= top + 0.032 && Y < top + 0.032 + ch * 1.2 && abs(X - lx) < 0.014 - (Y - top - 0.032) * 0.8) { put(G_CARET, 1.0, P(rgb(110.0, 60.0, 70.0), rgb(90.0, 40.0, 40.0))); return; }
+    if (row == gr - 2.0 && abs(oc) <= 1.0) { put(oc == 0.0 ? G_DARK : (oc < 0.0 ? G_SLASH : G_BACK), 1.0, P(rgb(150.0, 64.0, 74.0), rgb(110.0, 44.0, 44.0))); return; }
+    if (row == gr - 3.0 && oc == 0.0) { put(G_CARET, 1.0, P(rgb(150.0, 64.0, 74.0), rgb(110.0, 44.0, 44.0))); return; }
   }
   if (Y < ct) {
     float d = ct - Y;
@@ -755,20 +777,46 @@ void main() {
     }
   }
 
-  // --- the beam, at night: a long wedge of light swung round, longest side-on, and a flash of glow
-  // round the lantern as it turns to face you
+  // --- the beams, at night: two, back to back, swung round, seen from the beach in perspective: the
+  // one turned away from you dips toward the horizon, shortening; the one turned toward you sweeps
+  // up across the sky, widening; as one comes round to face you the lantern flares
   if (!day) {
-    float sn = sin(sea.x), cs = cos(sea.x);
     vec2 r = vec2(X, Y) - lamp;
-    float len = 1.4 * abs(sn);
-    if (r.x * sn > 0.0 && abs(r.x) < len) {
-      float spread = 0.006 + abs(r.x) * 0.07;
-      float a = (1.0 - smoothstep(spread * 0.4, spread, abs(r.y))) * (1.0 - abs(r.x) / len);
-      if (a > 0.08 && h0 < 0.35 + 0.65 * a) { put(a > 0.6 ? G_LINE : (a > 0.3 ? G_DASH : G_MID), 0.3 + 0.6 * a, rgb(255.0, 232.0, 160.0)); return; }
+    float cx = 0.5 * aspect, best = 0.0;
+    int bg = 0;
+    for (int i = 0; i < 2; i++) {
+      float th = sea.x + 3.14159265 * float(i), dx = sin(th), dz = -cos(th);      // (dz below 0: toward you)
+      // (its line on the screen: from the lamp toward where it vanishes on the horizon, or away from
+      // there when it's coming toward you, seen from not far below the lamp so it tilts only a little;
+      // t how far along that from the lamp, d how far off it; k how far out along the beam and z how
+      // far from you, in units of the lighthouse's distance)
+      vec2 g = vec2(1.1 * dx - (lamp.x - cx) * dz, -0.25 * (lamp.y - horizon) * dz);
+      float gl = length(g);
+      if (gl < 1e-5) continue;
+      vec2 u = g / gl;
+      float t = dot(r, u), d = abs(r.x * u.y - r.y * u.x), den = gl - t * dz;
+      if (t <= 0.0 || den <= 0.0) continue;
+      float k = t / den, z = 1.0 + k * dz;
+      if (z < 0.08) continue;
+      // (its half width there on the screen; fading as it goes, and where it would rear up steeply,
+      // nearly at you: the flare's there instead)
+      float w = (0.006 + 0.07 * k) / z;
+      float a = (1.0 - smoothstep(0.4 * w, w, d)) * exp(-0.8 * k) * mix(0.55, 1.0, max(0.0, -dz)) * smoothstep(0.15, 0.5, z) * (1.0 - smoothstep(0.35, 0.75, abs(u.y)));
+      if (a > best) { best = a; bg = beamGlyph(atan(u.y, u.x)); }
     }
-    float fl = smoothstep(0.88, 1.0, cs);
-    float rr = length(vec2(r.x, r.y * 1.3));
-    if (fl > 0.05 && rr < 0.09 * fl && h0 < 0.7 * fl * (1.0 - rr / (0.09 * fl))) { put(rr < 0.03 ? G_STAR : G_MID, 0.5 + 0.5 * fl, rgb(255.0, 240.0, 190.0)); return; }
+    // (its core solid, its edges thinning out)
+    if (best > 0.45 || (best > 0.2 && h0 < 1.6 * best) || (best > 0.1 && h0 < best)) { put(best > 0.45 ? bg : (best > 0.2 ? G_MID : G_DOT), 0.3 + 0.65 * best, rgb(255.0, 232.0, 160.0)); return; }
+    // (the flare: rays out of the lantern, across and up, and a glow round it)
+    if (flare > 0.02) {
+      float oy = row - (gr - 1.0), n = flare * 0.13 / cw;
+      int g = 0;
+      if (oy == 0.0 && abs(oc) <= n) g = G_LINE;
+      else if (oc == 0.0 && oy < 0.0 && -oy <= n * 0.3) g = G_BAR;
+      else if (abs(oc) == -oy && -oy <= n * 0.25) g = oc > 0.0 ? G_SLASH : G_BACK;
+      if (g != 0) { put(g, 0.5 + 0.5 * flare, rgb(255.0, 240.0, 190.0)); return; }
+      float rr = length(r * vec2(1.0, 1.3));
+      if (rr < 0.07 * flare && h0 < 0.6 * flare * (1.0 - rr / (0.07 * flare))) { put(G_MID, 0.5 + 0.5 * flare, rgb(255.0, 240.0, 190.0)); return; }
+    }
   }
 
   sky(cell, X, Y, h0, horizon, horizon + 0.02);
@@ -1218,7 +1266,8 @@ void main() {
   if (!day) {
     float up, a = aurora(vec2(X, Y), footA, up);
     if (a > 0.1 && length(vec2(X, Y) - sunAt) > 0.085) {
-      int g = a > 0.5 || (a > 0.3 && up < 0.3) ? G_BAR : a > 0.28 ? G_COLON : a > 0.17 ? G_TICK : G_DOT;
+      // (its rays drawn in lines that meet from row to row, heavier where it's brightest)
+      int g = a > 0.95 ? G_VHEAVY : a > 0.5 || (a > 0.3 && up < 0.3) ? G_VLINE : a > 0.28 ? G_COLON : a > 0.17 ? G_TICK : G_DOT;
       put(g, clamp(0.35 + 0.65 * a, 0.0, 1.0), auroraCol(up) * (0.8 + 0.3 * min(a, 1.0)));
       return;
     }
@@ -1874,10 +1923,12 @@ void main() {
 // leaps from the pool every 8 bars and on a drop; the toaster floats in the pool on an inner tube.
 // By day a rainbow stands in the spray; at night, a moonbow.
 const FALLS = `
-// the falls' half width at y: narrow at the lip, widening as it falls
+// the falls swelling after a drop (and every 8 bars): 1 then, fading over a few seconds
+float surge() { return leap.w > 0.5 ? exp(-max(leap.x, 0.0) * 0.6) : 0.0; }
+// the falls' half width at y: narrow at the lip, widening as it falls, wider in a surge
 float fallW(float y) {
   float u = clamp((farL.x - y) / (farL.x - lake.x), 0.0, 1.0);
-  return mix(0.06, 0.1, u);
+  return mix(0.07, 0.115, u) * (1.0 + 0.12 * surge());
 }
 // how far out from the falls' middle the rock starts on a side (s: -1 left, 1 right), at y: just
 // outside the water, jutting here and there, opening out toward the pool
@@ -1906,6 +1957,41 @@ vec4 blocks(vec2 p, out vec2 n) {
   n = normalize(c2 - c1);
   return vec4(c1, h2(g1 + 5.0), dot((c1 + c2) * 0.5 - p, n));
 }
+// a strand of the falls, column col, fallen fall (0 at the lip, 1 at the pool, along the square root
+// of the drop: stretching and quickening on the way down, as under gravity): below 0 none, else how
+// thick (layer 0 the front, 1 the sheet behind it, dimmer and slower)
+float strand(float col, float fall, float flow, int layer) {
+  float cs = h1(col * (layer == 0 ? 1.3 : 2.9) + (layer == 0 ? 0.0 : 5.0));
+  return vn(fall * (layer == 0 ? 10.0 + 5.0 * cs : 6.0 + 3.0 * cs) - flow * (layer == 0 ? 0.8 + 0.5 * cs : 0.45 + 0.3 * cs) + cs * 40.0);
+}
+// the aurora (as over the snow): curtains of light hanging from two ribbons folded across the sky,
+// drifting with the music, flaring on a kick, each column a ray. Its light at p (0-1+), and how far up
+// its curtain (0 at its foot, 1 at its top)
+float aurora(vec2 p, float foot0, out float up) {
+  float best = 0.0, ph = sea.z * 0.05 + time * 0.02;
+  up = 0.0;
+  for (int i = 0; i < 2; i++) {
+    float fi = float(i), x = p.x * (1.0 + 0.5 * fi) + fi * 3.7 + 1.3;
+    float a1 = x * 2.1 + ph * 2.0, a2 = x * 5.3 - ph * 3.1;
+    float foot = foot0 + fi * 0.08 + 0.06 * sin(a1) + 0.03 * sin(a2) + 0.008 * sin(x * 13.0 + time * 0.5);
+    float fold = min(1.0, abs(0.147 * cos(a1) + 0.186 * cos(a2)) * 2.5);
+    float hgt = (0.2 + 0.16 * vn(x * 3.0 + ph)) * (1.0 - 0.3 * fi);
+    float s = (p.y - foot) / hgt;
+    if (s < 0.0 || s > 1.0) continue;
+    float ray = vn(x * 110.0 + time * (0.3 + 1.4 * fly) + fi * 50.0);
+    ray = 0.2 + 0.8 * ray * ray * (0.5 + 0.5 * vn(x * 23.0 - time * 0.2));
+    float a = 2.3 * ray * exp(-s * 1.9) * (1.0 - s * s) * (0.35 + 0.65 * vn(x * 1.6 + ph * 5.0)) * (0.65 + 0.6 * fold)
+            * (0.65 + 0.45 * glow + 0.4 * sea.w * exp(-s * 5.0)) * (1.0 - 0.35 * fi) * 0.72;   // (a backdrop here, under the falls)
+    if (a > best) { best = a; up = s; }
+  }
+  return best;
+}
+// its colour up the curtain: pale green-white at the foot, green, teal, then violet at the top
+vec3 auroraCol(float s) {
+  return s < 0.08 ? mix(rgb(190.0, 255.0, 214.0), rgb(70.0, 236.0, 150.0), max(s, 0.0) / 0.08)
+       : s < 0.55 ? mix(rgb(70.0, 236.0, 150.0), rgb(60.0, 190.0, 170.0), (s - 0.08) / 0.47)
+       : mix(rgb(60.0, 190.0, 170.0), rgb(214.0, 92.0, 230.0), min(1.0, (s - 0.55) / 0.3));
+}
 void main() {
   vec2 cell = floor(gl_FragCoord.xy);
   float row = grid.y - 1.0 - cell.y, H = view.y;
@@ -1915,17 +2001,26 @@ void main() {
   float h0 = h2(cell + 17.0);
   float aspect = view.x / H, wide = clamp((aspect - 0.56) / 1.22, 0.0, 1.0);
   float cx = 0.5 * aspect, lip = farL.x, pool = lake.x, dx = abs(X - cx), sd = X < cx ? -1.0 : 1.0;
-  float fw = fallW(Y), flow = sea.z;
+  float fw = fallW(Y), flow = sea.z, footA = lip + 0.12;
   vec3 white = P(rgb(214.0, 230.0, 255.0), rgb(96.0, 140.0, 206.0)), blue = P(rgb(110.0, 146.0, 220.0), rgb(130.0, 176.0, 226.0));
   vec3 moss = P(rgb(70.0, 150.0, 104.0), rgb(76.0, 140.0, 64.0)), fern = P(rgb(90.0, 170.0, 110.0), rgb(90.0, 156.0, 70.0));
 
   // --- the mist at the falls' foot, drifting up, billowing on each kick; spray glinting in it when
   // the hats are busy; a rainbow standing in it by day, a moonbow at night
-  float mr = length(vec2((X - cx) / 0.17, (Y - pool - 0.01) / 0.1));
+  float sg = surge(), ka = sea.w > 0.02 ? -log(sea.w) / 4.0 : 9.0;      // (the surge; how long since the kick, s)
+  // (the spray: a burst of drops thrown up from the foot on each kick, arcing over and falling back)
+  if (ka < 0.9) {
+    for (int k = 0; k < 16; k++) {
+      float fk = float(k), a = (h1(fk * 3.1) - 0.5) * 2.6, sp = 0.2 + 0.25 * h1(fk * 7.7);
+      vec2 pp = vec2(cx + (h1(fk * 1.7) - 0.5) * fallW(pool) * 2.0, pool + 0.004) + vec2(sin(a), cos(a)) * sp * ka - vec2(0.0, 0.75 * ka * ka);
+      if (pp.y > pool - 0.01 && abs(X - pp.x) < cw * 0.5 && abs(Y - pp.y) < ch * 0.5) { put(ka < 0.15 ? G_STAR : (ka < 0.45 ? G_TICK : G_DOT), 1.0 - 0.8 * ka, white); return; }
+    }
+  }
+  float mr = length(vec2((X - cx) / (0.18 + 0.05 * sg), (Y - pool - 0.01) / (0.1 + 0.04 * sg + 0.02 * sea.w)));
   float mist = 0.0;
-  if (mr < 1.7) {
-    float n = fbm(vec2(X * 8.0 + time * 0.04, Y * 13.0 - time * 0.45));
-    mist = smoothstep(1.7, 0.15, mr) * (0.34 + 0.45 * sea.w + 0.15 * glow) * (0.55 + 0.9 * n);
+  if (mr < 1.8) {
+    float n = fbm(vec2(X * 6.0 + 0.4 * sin(time * 0.13), Y * 9.0 - time * 0.32));
+    mist = smoothstep(1.8, 0.2, mr) * (0.34 + 0.4 * sea.w + 0.35 * sg + 0.12 * glow) * (0.5 + 0.9 * n);
     // the bow: an arc over the foot, red outside to violet in
     vec2 bc = vec2(cx + 0.02, pool - 0.08);
     float R = mix(0.17, 0.23, wide), br = (length((vec2(X, Y) - bc) * vec2(0.85, 1.0)) - R) / 0.04;
@@ -1942,9 +2037,10 @@ void main() {
     }
     float glint = h2(cell + floor(time * 9.0));
     if (glint > 0.992 - 0.03 * fly * smoothstep(1.4, 0.3, mr)) { put(glint > 0.998 ? G_SPARK : G_TICK, 1.0, P(rgb(240.0, 246.0, 255.0), rgb(120.0, 160.0, 220.0))); return; }
+    // (fine drops in it, and a soft glow on the paper, here and on the pool under it)
     if (h0 < mist * 0.75) {
-      tone = day ? 0.3 * mist : 0.25 * mist;
-      put(h0 < mist * 0.3 ? G_COLON : (h0 < mist * 0.55 ? G_MID : G_DOT), 0.4 + 0.4 * mist, P(rgb(190.0, 206.0, 240.0), rgb(140.0, 160.0, 196.0)));
+      tone = (day ? 0.5 : 0.42) * min(1.0, mist);
+      put(h0 < mist * 0.3 ? G_COLON : (h0 < mist * 0.55 ? G_MID : G_DOT), 0.4 + 0.45 * min(1.0, mist), P(rgb(196.0, 212.0, 244.0), rgb(150.0, 170.0, 206.0)));
       return;
     }
   }
@@ -1978,11 +2074,14 @@ void main() {
     return;
   }
 
-  // --- the pool: churning white at the falls' foot, the current spreading out from it in rings
-  // that move on the beats, ripples on the kicks, the falls drawn down it, boulders at its sides
+  // --- the pool: foam churning out from the falls' foot and drifting off across it in trails,
+  // ripples on the kicks, boulders at its sides; on its surface the falls mirrored, broken by the
+  // ripples, the current's rings moving on the beats, the moon's (or the sun's) path, and at night the
+  // aurora's light
   if (Y < pool) {
-    tone = day ? 0.3 : 0.05;
-    float footW = fallW(pool) * 1.3;
+    tone = max(day ? 0.3 : 0.05, (day ? 0.5 : 0.42) * min(1.0, mist));
+    // (the white water churning at the falls' foot, wider on a kick and in a surge)
+    float footW = fallW(pool) * 1.3 * (1.0 + 0.25 * sea.w + 0.3 * sg);
     float mound = pool - 0.03 * (1.0 - smoothstep(0.0, footW * 1.6, dx)) - 0.006 * vn(X * 60.0 + time * 4.0);
     if (dx < footW * 1.7 && Y > mound - 0.012 && Y > pool - 0.045) {
       float k = h2(cell + floor(time * 14.0));
@@ -2017,37 +2116,76 @@ void main() {
         }
       }
     }
-    // the falls drawn down the water, broken
-    if (dx < fallW(pool) * 1.2 && Y > pool - 0.1 && vn2(vec2(X * 50.0, row + time * 6.0)) > 0.4) { put(G_APPROX, 0.6, blue); return; }
+    float dd = pool - Y, rip2 = 0.004 * sin(Y * 150.0 + time * 1.9) + 0.003 * sin(Y * 61.0 - time * 1.1);
+    // (foam drifting off from the foot in trails, out across the pool, thinning as it goes)
+    {
+      float ang = atan(dd * 3.0, X - cx), rad = length(vec2((X - cx) * 0.6, dd * 2.2));
+      float tr = vn2(vec2(ang * 7.0, rad * 30.0 - time * 0.9)) * (1.0 - smoothstep(0.08, 0.45, rad));
+      if (tr > 0.62 - 0.08 * sea.w && rad > 0.04) { put(tr > 0.72 ? G_TILDE : G_DASH, 0.4 + 0.5 * (tr - 0.55), mix(blue, white, 0.6)); return; }
+    }
+    // (the falls mirrored in the water, its strands dimmer, broken by the ripples)
+    {
+      float ym = pool + dd * 1.15, xr = X + rip2;
+      float e = abs(xr - cx) / fallW(ym);
+      if (e < 1.0 && ym < lip && mod(row, 4.0) > 0.5) {
+        float fall = sqrt(clamp((lip - ym) / (lip - pool), 0.0, 1.0));
+        float v = strand(floor(xr / cw), fall, flow, 0), dens = (1.0 - e * e * 0.7) * 0.55 * (1.0 - dd / (pool - lake.y));
+        if (v < dens) { put(dens - v > 0.2 ? G_VLINE : G_TILDE, 0.3 + 0.35 * (dens - v), mix(blue, white, 0.35)); return; }
+      }
+    }
+    // (at night the aurora's light on the water, its rays mirrored, broken by the ripples)
+    if (!day) {
+      float up, a = aurora(vec2(X + rip2 * 2.0, footA + 0.05 + dd * 0.6), footA, up);
+      if (a > 0.4 && mod(row + floor(h0 * 3.0), 3.0) > 0.5) { put(G_VLINE, 0.25 + 0.4 * min(1.0, a), auroraCol(up) * 0.85); return; }
+    }
     // the current: rings spreading out from the foot, moving on the beats
     float rr = length(vec2((X - cx) * 0.55, (Y - pool) * 2.6));
     float ring = fract(rr * 9.0 - flow * 0.5);
     if (ring < 0.12 && vn2(vec2(X * 20.0, row)) > 0.35) { put(ring < 0.06 ? G_TILDE : G_DASH, 0.55, blue); return; }
-    float path = abs(X - sunAt.x) - 0.01 - 0.05 * (pool - Y) / (pool - lake.y);
+    float path = abs(X + rip2 - sunAt.x) - 0.01 - 0.05 * (pool - Y) / (pool - lake.y);
     float tw = h2(vec2(cell.x, row) + floor(time * 2.0));
     if (path < 0.0 && tw > (day ? 0.62 : 0.5)) { put(tw > 0.92 ? G_STAR : G_DASH, 0.85, P(rgb(242.0, 236.0, 208.0), rgb(255.0, 216.0, 140.0))); return; }
     put(h0 < 0.06 ? G_DASH : 0, 0.4, P(rgb(50.0, 74.0, 140.0), rgb(90.0, 140.0, 200.0)));
     return;
   }
 
-  // --- the falls: strands of water pouring from the lip, each column its own, streaking down on
-  // the beats, brightest at the middle, ragged at the edges, curving over at the lip
-  if (dx < fw + cw && Y < lip + ch) {
+  // --- the falls: strands of water pouring from the lip, each column its own, a dimmer sheet behind
+  // them, streaking down faster as they fall, brightest at the middle, fraying at the edges, the brink
+  // glassy as it curves over; a surge of white racing down on each kick, the whole falls swelling in
+  // a surge
+  if (dx < fw + 3.0 * cw && Y < lip + ch) {
     float e = dx / fw;                                         // (0 at the middle, 1 at the edge)
-    if (Y > lip - 2.0 * ch) {                                 // the lip: the water swelling as it curves over
-      if (e < 1.0) { put(e > 0.86 ? (X < cx ? G_LP : G_RP) : (Y > lip - ch ? (h0 < 0.5 ? G_TILDE : G_APPROX) : G_DBL), 1.0, white); return; }
+    if (Y > lip - 2.0 * ch) {                                 // the brink: the river's surface, then a glassy line
+      if (e < 1.0) { put(e > 0.86 ? (X < cx ? G_LP : G_RP) : (Y > lip - ch ? (h0 < 0.5 ? G_TILDE : G_APPROX) : G_HHEAVY), 1.0, Y > lip - ch || e > 0.86 ? white : P(rgb(236.0, 244.0, 255.0), rgb(150.0, 190.0, 240.0))); return; }
     } else {
-      float col = cell.x, sp = 3.0 + 1.6 * h1(col * 1.3);
-      float v = vn(row * 0.35 / sp * 4.0 - flow * sp * 1.4 + h1(col) * 40.0);
-      float dens = (1.0 - e * e * 0.7) * (0.75 + 0.3 * glow);
+      float col = cell.x, fall = sqrt(clamp((lip - Y) / (lip - pool), 0.0, 1.0));
+      float v = strand(col, fall, flow, 0);
+      float pulse = ka < 0.8 ? exp(-pow((fall - ka * 1.9) / 0.09, 2.0)) * (1.0 - ka) : 0.0;
+      float dens = (1.0 - e * e * 0.7) * (0.72 + 0.3 * glow + 0.25 * sg) + 0.5 * pulse;
+      // (just under the brink the water's glassy still, before it breaks into strands)
+      dens += 0.5 * smoothstep(0.12, 0.0, fall);
       if (e < 1.0 && v < dens) {
-        tone = day ? 0.35 : 0.3;
+        tone = (day ? 0.35 : 0.3) + 0.25 * pulse;
         float b = dens - v;
-        int g = b > 0.45 ? G_BAR : (b > 0.25 ? G_COLON : (b > 0.1 ? G_TICK : G_DOT));
-        put(g, 0.55 + 0.45 * min(1.0, b * 2.0), mix(blue, white, clamp(1.1 - e, 0.0, 1.0)));
+        // (a full ramp: unbroken lines where a strand's thickest, then the broken texture of | : ' .
+        // the falls always had, so it keeps its fine grain between and round the streams)
+        int g = b > 0.5 ? G_VHEAVY : (b > 0.34 ? G_VLINE : (b > 0.22 ? G_BAR : (b > 0.12 ? G_COLON : (b > 0.05 ? G_TICK : G_DOT))));
+        put(g, 0.55 + 0.45 * min(1.0, b * 2.0), mix(mix(blue, white, clamp(1.15 - e, 0.0, 1.0)), P(rgb(250.0, 252.0, 255.0), rgb(200.0, 220.0, 250.0)), pulse));
         return;
       }
-      if (e < 1.0 + cw / fw) { tone = day ? 0.2 : 0.12; put(h0 < 0.3 ? G_TICK : 0, 0.5, blue); return; }
+      // (the sheet behind: dimmer, slower strands where the front ones part)
+      if (e < 1.0) {
+        float v2 = strand(col, fall, flow, 1);
+        if (v2 < 0.3 * (1.0 - e * e)) { tone = day ? 0.28 : 0.22; put(G_VLINE, 0.35, mix(blue, white, 0.2) * 0.85); return; }
+        tone = day ? 0.25 : 0.18;
+        put(0, 0.0, blue);
+        return;
+      }
+      // (its edges fraying into drops, drifting down and out)
+      if (e < 1.0 + 3.0 * cw / fw) {
+        float dr = h2(vec2(col, floor(fall * 34.0 - flow * 1.2)));
+        if (dr < 0.18 * (1.0 - (e - 1.0) * fw / (3.0 * cw)) * (0.5 + 0.5 * fall)) { tone = day ? 0.15 : 0.1; put(dr < 0.1 ? G_COMMA : (dr < 0.2 ? G_TICK : G_DOT), 0.6, mix(blue, white, 0.4)); return; }
+      }
     }
   }
 
@@ -2076,6 +2214,8 @@ void main() {
         vec2 nn;
         vec4 bl = blocks(vec2(X + sd * 3.1, Y), nn);
         vec3 shadow = P(rgb(50.0, 52.0, 92.0), rgb(120.0, 88.0, 70.0));
+        // (at night the aurora's light on the rock just under the tops)
+        if (!day) { float up, aurL = aurora(vec2(X, footA + 0.02), footA, up) * (1.0 - smoothstep(0.0, 0.14, dTop)); ink = mix(ink, auroraCol(0.15), min(0.45, aurL * 0.5)); }
         float ext = 0.5 * (abs(nn.x) * cw + abs(nn.y) * ch);         // (a cell's half reach across the crack)
         bool mine = dot(nn, vec2(0.38, -0.92)) > 0.0;                 // (each crack drawn from one side)
         if (bl.w < ext && mine) {
@@ -2098,9 +2238,10 @@ void main() {
         // drips running down the wet rock beside the falls
         float dp = fract(time * 1.3 + h1(cell.x * 2.7)) * 12.0 - mod(row, 12.0);
         if (e < 0.05 && dp > 0.0 && dp < 0.9 && h1(cell.x * 5.1) < 0.35) { put(G_TICK, 0.9, blue); return; }
-        // lit along its top (catching the light), shaded toward its foot; the gorge darker
+        // lit along its top (catching the light), shaded toward its foot; the gorge darker, and right
+        // by the falls dark and wet, little on it but the drips
         float shade = clamp(0.5 - 0.5 * v + 0.5 * into + 0.25 * (bl.z - 0.5), 0.0, 1.0);
-        float dens = day ? 0.05 + 0.42 * shade * shade : 0.08 + 0.6 * shade * shade;
+        float dens = (day ? 0.05 + 0.42 * shade * shade : 0.08 + 0.6 * shade * shade) * (0.6 + 0.4 * smoothstep(0.0, 0.07, e));
         if (h0 < dens) {
           int g = shade > 0.72 ? (day ? (h0 < dens * 0.45 ? G_COLON : G_LIGHT) : (h0 < dens * 0.45 ? G_MEDIUM : G_LIGHT)) : shade > 0.45 ? (h0 < dens * 0.5 ? G_COLON : G_DOT) : (mod(cell.x + row, 2.0) < 1.0 ? (sd < 0.0 ? G_HATCHB : G_HATCH) : G_TICK);
           put(g, 0.75, mix(ink, shadow, shade));
@@ -2112,10 +2253,10 @@ void main() {
     }
     // pines along the tops, out from the falls
     if (dx > 0.1) {
-      float S = cw * 5.0, k = floor(X / S), tx = (k + 0.5 + 0.5 * (h1(k * 1.3) - 0.5)) * S;
-      float th = (0.03 + 0.06 * h1(k * 2.7)) * (0.6 + 0.6 * smoothstep(0.1, 0.6, abs(tx - cx))), tb = rockTop(abs(tx - cx), tx < cx ? -1.0 : 1.0) - 0.004;
+      float S = cw * 5.0, kk = floor(X / S), tx = (kk + 0.5 + 0.5 * (h1(kk * 1.3) - 0.5)) * S;
+      float th = (0.03 + 0.06 * h1(kk * 2.7)) * (0.6 + 0.6 * smoothstep(0.1, 0.6, abs(tx - cx))), tb = rockTop(abs(tx - cx), tx < cx ? -1.0 : 1.0) - 0.004;
       float n = 3.0 + floor(th * 30.0), pw = pineW((Y - tb) / th, th * 0.34, n);
-      if (h1(k * 9.1) < 0.85 && abs(X - tx) < pw) {
+      if (h1(kk * 9.1) < 0.85 && abs(X - tx) < pw) {
         bool lf = abs(X - cw - tx) >= pw, rt = abs(X + cw - tx) >= pw;
         put(lf && rt ? G_CARET : lf ? G_SLASH : rt ? G_BACK : (h0 < 0.5 ? G_TRI : G_CARET), 0.95, P(rgb(40.0, 100.0, 80.0), rgb(40.0, 100.0, 60.0)));
         return;
@@ -2123,16 +2264,30 @@ void main() {
     }
   }
 
-  // --- above the lip: the river running back between the hills, narrowing; the hills behind
+  // --- above the lip: the river running back between the hills, narrowing, its ripples coming on
+  // toward the brink; the hills behind
   if (Y < lip + 0.05 && Y >= lip) {
     float rw = fallW(lip) * (1.0 - (Y - lip) / 0.05);
-    if (dx < rw) { put(h0 < 0.4 ? G_TILDE : (h0 < 0.7 ? G_DASH : 0), 0.7, white); return; }
+    if (dx < rw) {
+      float rp = fract((Y - lip) * 70.0 + flow * 0.6 + 0.3 * vn(X * 40.0));
+      put(rp < 0.4 ? G_TILDE : (rp < 0.7 ? G_DASH : 0), 0.7, white);
+      return;
+    }
   }
   {
     vec4 pk = peak(1, X);
     if (Y < pk.x) {
       bool edge = pk.x - Y < ch;
       put(edge ? (h0 < 0.5 ? G_UNDER : G_DASH) : (h0 < 0.3 ? G_COLON : (h0 < 0.4 ? G_DOT : 0)), 0.6, P(rgb(56.0, 64.0, 110.0), rgb(120.0, 140.0, 170.0)));
+      return;
+    }
+  }
+  // --- the aurora at night, over it all, in front of the stars (they show through its gaps)
+  if (!day) {
+    float up, a = aurora(vec2(X, Y), footA, up);
+    if (a > 0.12 && length(vec2(X, Y) - sunAt) > 0.085) {
+      int g = a > 0.95 ? G_VHEAVY : a > 0.5 || (a > 0.3 && up < 0.3) ? G_VLINE : a > 0.28 ? G_COLON : a > 0.17 ? G_TICK : G_DOT;
+      put(g, clamp(0.35 + 0.65 * a, 0.0, 1.0), auroraCol(up) * (0.8 + 0.3 * min(a, 1.0)));
       return;
     }
   }
@@ -2184,18 +2339,33 @@ int treeAt(vec2 p, vec2 T, float sc, out float inside) {
   if (best < -1.0) { inside = 1.0; return G_DARK; }
   return abs(bsl) > 2.4 ? G_BAR : (abs(bsl) < 0.4 ? G_UNDER : (bsl > 0.0 ? G_SLASH : G_BACK));
 }
-// the jack-o'-lanterns' art (see PUMPKIN_ART): kind 0 the big one, 1 and 2 the small ones. The glyph
-// at column o, row r from its top left (0 if none); part 1 its outline, 2 its face, 3 its stem, 4 its
-// body
-${pumpkinArrays()}
+// the art (see PUMPKIN_ART, BAT_ART): the glyph at column o, row r from its top left (0 if none), and
+// its part: 1 an outline, 2 lit, 3 a stem, 4 inside. Jack-o'-lantern kind 0 the big one, 1 and 2 the
+// small ones; a big bat's wings f: 0 up, 1 level, 2 down
+${artArrays('PK', PUMPKIN_ART)}
+${artArrays('BAT', BAT_ART)}
 int pumpkinAt(int kind, int o, int r, out int part) {
   part = 0;
-  int w = kind == 0 ? 19 : 9, h = kind == 0 ? 6 : 4;
+  int w = kind == 0 ? 23 : 13, h = kind == 0 ? 9 : 6;
   if (o < 0 || o >= w || r < 0 || r >= h) return 0;
   int i = r * w + o;
   int v = kind == 0 ? PK0[i] : (kind == 1 ? PK1[i] : PK2[i]);
   part = v / 64;
   return v - part * 64;
+}
+int batArt(int f, int o, int r, out int part) {
+  part = 0;
+  if (o < 0 || o >= 21 || r < 0 || r >= 4) return 0;
+  int i = r * 21 + o;
+  int v = f == 0 ? BAT0[i] : (f == 1 ? BAT1[i] : BAT2[i]);
+  part = v / 64;
+  return v - part * 64;
+}
+// where bat k is at time t: its loops round the moon, a wobble on them
+vec2 batPath(float fk, float t, vec2 mc, float R) {
+  float sp = 0.14 + 0.1 * h1(fk * 1.9), ph = fk * 2.1;
+  return mc + R * vec2(0.1 + cos(t * sp + ph) * (1.05 + 0.3 * h1(fk * 3.7)) + 0.1 * sin(t * sp * 3.1 + fk),
+                       0.08 + sin(t * sp * 1.6 + ph * 1.3) * (0.5 + 0.3 * h1(fk * 7.3)) + 0.07 * sin(t * sp * 4.3 + fk * 2.0));
 }
 // a gravestone, the column of its left side and the row of its foot at at; its kind: 0 a headstone
 // (RIP), 1 a small one, 2 a cross. Its glyph at the cell (0 if none); face 1 on its face
@@ -2238,12 +2408,12 @@ const vec4 STONES[11] = vec4[11](
   vec4(0.3, 0.55, 0.6, 1.0), vec4(0.4, 0.61, 0.66, 2.0), vec4(0.7, 0.69, 0.58, 0.0), vec4(0.84, 0.75, 0.64, 1.0),
   vec4(0.18, 0.84, 0.6, 0.0), vec4(0.56, 0.95, 0.66, 2.0), vec4(0.04, 0.42, 0.62, 2.0));
 // the jack-o'-lanterns: x tall, x wide, foot (its bottom row), -
-const vec4 PUMPS[3] = vec4[3](vec4(0.22, 0.63, 0.025, 1.0), vec4(0.4, 0.72, 0.025, 1.0), vec4(0.76, 0.55, 0.03, 1.0));
+const vec4 PUMPS[3] = vec4[3](vec4(0.22, 0.63, 0.025, 1.0), vec4(0.4, 0.73, 0.025, 1.0), vec4(0.76, 0.4, 0.03, 1.0));
 // where jack-o'-lantern i's art sits: its left column, its top row, its width, its height (0 wide if
 // it's left out: the small ones in a small window)
 vec4 pumpkinBox(int i, float aspect, float wide) {
   vec4 pk = PUMPS[i];
-  float w = i == 0 ? 19.0 : 9.0, h = i == 0 ? 6.0 : 4.0;
+  float w = i == 0 ? 23.0 : 13.0, h = i == 0 ? 9.0 : 6.0;
   if (i > 0 && view.y < 520.0) return vec4(0.0);
   return vec4(floor(mix(pk.x, pk.y, wide) * aspect / cw) - floor(w / 2.0), floor((1.0 - pk.z) / ch) - (h - 1.0), w, h);
 }
@@ -2299,25 +2469,29 @@ void main() {
     }
   }
 
-  // --- the jack-o'-lanterns at the front: their faces lit from inside (flickering, flaring on each
-  // kick, brighter with the loudness); by day unlit
+  // --- the jack-o'-lanterns at the front: solid, ribbed, their faces carved and lit from inside
+  // (flickering, flaring on each kick, brighter with the loudness); by day unlit
   for (int i = 0; i < 3; i++) {
     vec4 bx = pumpkinBox(i, aspect, wide);
     if (bx.z == 0.0) continue;
     int part;
     int g = pumpkinAt(i, int(cell.x - bx.x), int(row - bx.y), part);
-    if (part == 4) { put(0, 0.0, vec3(0.0)); return; }                   // (its body: dark, in the candle's glow)
-    if (part != 0) {
-      // (the candle inside: flickering, flaring on the kick, brighter with the loudness)
+    if (part == 0) continue;
+    vec3 skin = P(rgb(240.0, 122.0, 34.0), rgb(206.0, 90.0, 24.0));
+    if (part == 3) { put(g, 1.0, P(rgb(120.0, 140.0, 70.0), rgb(90.0, 80.0, 40.0))); return; }     // (its stem)
+    if (part == 2) {
+      // (a carved hole, the candle's light in it: flickering, flaring on the kick, brighter with the
+      // loudness)
       float fl = 0.82 + 0.18 * sin(time * 11.0 + float(i) * 2.0) * sin(time * 6.7 + float(i));
       vec3 lit = mix(rgb(255.0, 150.0, 40.0), rgb(255.0, 236.0, 150.0), clamp(0.35 + 0.5 * sea.w + 0.2 * glow, 0.0, 1.0)) * fl;
-      vec3 c = part == 3 ? P(rgb(120.0, 140.0, 70.0), rgb(90.0, 80.0, 40.0))
-             : part == 2 ? (day ? rgb(70.0, 34.0, 24.0) : lit)
-             : P(rgb(236.0, 116.0, 32.0), rgb(206.0, 90.0, 24.0));
-      if (part == 2 && !day) tone = 0.22 * fl;                          // (a glow in the carved holes)
-      put(g, 1.0, c);
+      // (the light deep orange round the hole's edges, the cuts in it yellow-white)
+      tileC = day ? rgb(56.0, 26.0, 20.0) : mix(rgb(255.0, 118.0, 18.0), lit, 0.5) * (0.8 + 0.2 * fl); tileA = 1.0;
+      put(g, 1.0, day ? rgb(130.0, 60.0, 30.0) : mix(lit, rgb(255.0, 248.0, 220.0), 0.6));
       return;
     }
+    if (part == 4) { tileC = P(rgb(92.0, 34.0, 12.0), rgb(156.0, 66.0, 26.0)); tileA = 1.0; }     // (its body, solid; its ribs on it)
+    put(g, 1.0, skin);
+    return;
   }
 
   // --- the bare tree at the edge, its limbs reaching across the moon: black against it, rimmed off it
@@ -2392,17 +2566,27 @@ void main() {
     return;
   }
 
-  // --- bats fluttering round the moon (more of them out when the hats are busy), wings up and down
-  // twice a beat: black against it, dim off it
-  for (int k = 0; k < 8; k++) {
+  // --- bats flitting round the moon: two big near ones, their wings beating once a beat (up, level,
+  // down, level), their eyes glinting at night; small ones further off (more of them out when the hats
+  // are busy), twice a beat: black against the moon, dim off it
+  for (int k = 0; k < 7; k++) {
     float fk = float(k);
-    if (h1(fk * 5.3 + 2.0) > 0.3 + 0.7 * fly) continue;
-    float sp = 0.2 + 0.18 * h1(fk * 1.9), ph = fk * 2.1;
-    vec2 b = mc + vec2(0.15 + cos(time * sp + ph) * (1.05 + 0.3 * h1(fk * 3.7)), 0.1 + sin(time * sp * 1.6 + ph * 1.3) * (0.5 + 0.35 * h1(fk * 7.3))) * R;
-    float o = cell.x - floor(b.x / cw), big = k < 3 ? 3.0 : 1.0;
-    if (row == floor((1.0 - b.y) / ch) && abs(o) <= big) {
+    if (k > 1 && h1(fk * 5.3 + 2.0) > 0.25 + 0.75 * fly) continue;
+    vec2 b = batPath(fk, time, mc, R);
+    if (k < 2) {
+      float wb = fract(sea.z + h1(fk * 9.1));
+      int part;
+      int g = batArt(wb < 0.25 ? 0 : (wb < 0.5 || wb >= 0.75 ? 1 : 2), int(cell.x - floor(b.x / cw) + 10.0), int(row - floor((1.0 - b.y) / ch) + 1.0), part);
+      if (part == 0) continue;
+      if (part == 2) { if (r < 1.0) tone = 0.0; put(g, 1.0, day ? SIL : rgb(255.0, 176.0, 70.0)); return; }
+      if (r < 1.0) { tone = part == 4 ? 0.0 : mtone; put(g, 1.0, SIL); }
+      else put(g, 0.9, P(rgb(130.0, 116.0, 160.0), rgb(48.0, 28.0, 38.0)));
+      return;
+    }
+    float o = cell.x - floor(b.x / cw);
+    if (row == floor((1.0 - b.y) / ch) && abs(o) <= 1.0) {
       bool up = fract(sea.z * 2.0 + h1(fk * 9.1)) < 0.5;
-      int g = o == 0.0 ? G_VEE : (abs(o) == 1.0 ? (big > 1.0 ? G_CARET : (up ? G_CARET : G_DASH)) : (abs(o) == 2.0 ? (o < 0.0 ? G_LP : G_RP) : ((o < 0.0) == up ? G_BACK : G_SLASH)));
+      int g = o == 0.0 ? G_VEE : (up ? G_CARET : G_DASH);
       if (r < 1.0) { tone = mtone; put(g, 1.0, SIL); }
       else put(g, 0.9, P(rgb(130.0, 116.0, 160.0), rgb(48.0, 28.0, 38.0)));
       return;
@@ -2643,9 +2827,9 @@ void main() {
     if (B.z < B.x || q.x < B.x || q.x > B.z || q.y < B.y || q.y > B.w) continue;
     if (sharkAt(k, q)) { tone = 0.8; break; }
   }
-  // --- the fish: a dash each, brighter nearer, glinting as they turn or flee
+  // --- the fish: a stroke each, along its way, brighter nearer, glinting as they turn or flee
   if (lf.r > 0.0) {
-    put(G_DASH, 0.45 + 0.55 * lf.r, day ? mix(rgb(70.0, 120.0, 132.0), rgb(24.0, 62.0, 76.0), lf.r) : mix(rgb(70.0, 96.0, 150.0), rgb(220.0, 232.0, 255.0), lf.r));
+    put(lineGlyph(lf.a * 3.14159), 0.45 + 0.55 * lf.r, day ? mix(rgb(70.0, 120.0, 132.0), rgb(24.0, 62.0, 76.0), lf.r) : mix(rgb(70.0, 96.0, 150.0), rgb(220.0, 232.0, 255.0), lf.r));
     return;
   }
   // --- a splash of bubbles where a fish was caught
@@ -2714,8 +2898,8 @@ void main() {
   float gi = c.r;
   vec2 f = (p - cell * cellPx) / cellPx;
   float cov = gi > 0.5 ? texture(sheet, (vec2(mod(gi, perRow), floor(gi / perRow)) + f) * slot / sheetSize).a : 0.0;
-  // (a tile fills its cell but for a hair along its top and left, where the grid's drawn)
-  bool rim = f.x * cellPx.x * dpr < 1.0 || f.y * cellPx.y * dpr < 1.0;
+  // (a tile fills its cell, but for a hair along its top and left where there's a grid drawn)
+  bool rim = gridK > 0.0 && (f.x * cellPx.x * dpr < 1.0 || f.y * cellPx.y * dpr < 1.0);
   vec3 col;
   if (own > 0.5) {
     float y = p.y / (H / dpr);
@@ -2866,9 +3050,13 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
 // little fish (a dash each) shoal about: each keeps its room, lines up with its school and keeps to
 // it (a bait ball milling round its middle), sees all but straight behind it, and swims mostly level;
 // they flee a shark to whichever side of its path they're on, the alarm running through the school,
-// and flinch from the float on each kick. On a drop (and every 8 bars, with the toast) the sharks get
-// hungry and hunt: the nearest fish ahead of them, the strays sooner than those in a crowd; a caught
-// fish leaves a splash of bubbles and comes back later with a new school swimming in from an edge.
+// and flinch from the float on each kick. A bait ball shelters under the float, milling round it,
+// bursting a little on each kick and drawing back in. On a drop (and every 8 bars, with the toast) the
+// sharks get hungry: they charge the bait ball, each straight through from its own side and back for
+// another pass, a catch at a time, the water boiling white where they cut through, till it's scattered
+// (or gone: then they hunt the nearest fish ahead of them, the strays sooner than those in a crowd). A
+// caught fish leaves a splash of bubbles and comes back later with a new school swimming in from an
+// edge; the bait ball's come back to it, and it re-forms under the float.
 // Where anything swims it stirs the water (a cell at a time, spreading and fading).
 const SPINE = 16, SEA_STEP = 1 / 60;
 const SHARK_KINDS = [
@@ -2911,6 +3099,11 @@ function newSea(cols, rows, cw, ch, aspect, fx, fy) {
     sea.sharks.push({ ...k, id: i + 1, L, ring, dir, nodes, head, speed: 0.04, phase: between(0, 6.28), turn: 0, wander: 0, prey: null, look: 0 });
   });
   const total = within(Math.round(n / 80), 60, 220);
+  // (the bait ball under the float, its own: back to it when nothing's after it)
+  for (let j = 0; j < 70; j++) {
+    const a = Math.random() * 2 * Math.PI, r = 0.06 + 0.03 * Math.random(), sc = SCHOOLS[0];
+    sea.fish.push({ x: fx + Math.cos(a) * r * 1.3, y: fy + Math.sin(a) * r, vx: -Math.sin(a) * sc.cruise, vy: Math.cos(a) * sc.cruise, kind: 0, alarm: 0, alive: true, back: 0, turn: 0, near: between(0.55, 1), mill: 1, home: true });
+  }
   while (sea.fish.length < total) {
     const kind = Math.floor(Math.random() * SCHOOLS.length), sc = SCHOOLS[kind];
     const size = Math.min(Math.round(between(sc.n[0], sc.n[1])), total - sea.fish.length);
@@ -2941,17 +3134,24 @@ function stepSea(sea, m) {
     sea.head[b] = i;
     sea.count[b]++;
   });
+  // (the bait ball: where its fish are, while there are enough of them to call it one)
+  let bx = 0, by = 0, bn = 0;
+  for (const f of sea.fish) if (f.alive && f.home) { bx += f.x; by += f.y; bn++; }
+  sea.ball = bn >= 8 ? { x: bx / bn, y: by / bn, n: bn } : null;
   swimFish(sea, dt, m, bc, br, bucket);
   swimSharks(sea, dt, m, bucket);
   stirSea(sea, dt, m);
   // (caught fish back as a school from an edge, now and then)
-  const due = sea.fish.filter((f) => !f.alive && f.back <= sea.t);
+  // (the bait ball's own come back together, to it)
+  let due = sea.fish.filter((f) => !f.alive && f.back <= sea.t);
+  const home = due.filter((f) => f.home);
+  due = home.length * 2 >= due.length ? home : due.filter((f) => !f.home);
   if (due.length && (due.length >= 6 || sea.t - sea.lastSchool > 9)) {
     sea.lastSchool = sea.t;
-    const edge = Math.floor(Math.random() * 4), u = between(0.15, 0.85), kind = Math.floor(Math.random() * SCHOOLS.length), sc = SCHOOLS[kind];
+    const edge = Math.floor(Math.random() * 4), u = between(0.15, 0.85), kind = due[0].home ? 0 : Math.floor(Math.random() * SCHOOLS.length), sc = SCHOOLS[kind];
     const x = edge === 0 ? -0.03 : edge === 1 ? sea.aspect + 0.03 : u * sea.aspect, y = edge === 2 ? -0.03 : edge === 3 ? 1.03 : u;
-    const d = Math.atan2(0.5 - y, sea.aspect / 2 - x) + between(-0.5, 0.5), mill = Math.random() < 0.5 ? 1 : -1;
-    for (const f of due.slice(0, sc.n[1])) Object.assign(f, { alive: true, kind, alarm: 0, turn: 0, mill, x: x + between(-1, 1) * R, y: y + between(-1, 1) * R, vx: Math.cos(d) * sc.cruise * 1.4, vy: Math.sin(d) * sc.cruise * 1.4 });
+    const d = Math.atan2(0.5 - y, sea.aspect / 2 - x) + between(-0.5, 0.5), mill = due[0].home || Math.random() < 0.5 ? 1 : -1;
+    for (const f of due.slice(0, due[0].home ? due.length : sc.n[1])) Object.assign(f, { alive: true, kind, alarm: 0, turn: 0, mill, x: x + between(-1, 1) * R, y: y + between(-1, 1) * R, vx: Math.cos(d) * sc.cruise * 1.4, vy: Math.sin(d) * sc.cruise * 1.4 });
   }
 }
 function swimFish(sea, dt, m, bc, br, bucket) {
@@ -2982,15 +3182,17 @@ function swimFish(sea, dt, m, bc, br, bucket) {
     }
     ax += sx * 0.5; ay += sy * 0.5;
     if (n) {
-      const keep = sc.keep * (1 - 0.8 * f.alarm);
+      const keep = sc.keep * (1 - 0.8 * f.alarm) * (f.home ? 0.25 : 1);
       ax += (vx / n - f.vx) * 1.4 * sc.line + (mx / n) * keep;
       ay += (vy / n - f.vy) * 1.4 * sc.line + (my / n) * keep;
-      if (sc.mill) { const l = Math.hypot(mx, my) || 1; ax -= (my / l) * f.mill * sc.mill * (1 - f.alarm); ay += (mx / l) * f.mill * sc.mill * (1 - f.alarm); }
+      if (sc.mill && !f.home) { const l = Math.hypot(mx, my) || 1; ax -= (my / l) * f.mill * sc.mill * (1 - f.alarm); ay += (mx / l) * f.mill * sc.mill * (1 - f.alarm); }
     }
     // the sharks: away from the nearest part of the front half of each, and off to the side of its path
     let fear = 0;
     for (const s of sharks) {
-      const far = s.L * 0.6 + 0.075;
+      // (the bait ball holds together while they're only going round: only a snout right on it, or a
+      // charge, breaks it)
+      const far = f.home && sea.hunger <= 0.3 ? 0.08 : s.L * 0.6 + 0.075;
       let best = Infinity, bx = 0, by = 0;
       for (let k = 0; k <= 8; k += 2) {
         const d2 = (f.x - s.nodes[2 * k]) ** 2 + (f.y - s.nodes[2 * k + 1]) ** 2;
@@ -3007,7 +3209,16 @@ function swimFish(sea, dt, m, bc, br, bucket) {
     // (a flinch from the float on a kick)
     if (m.kick) {
       const dx = f.x - sea.fx, dy = f.y - sea.fy, d = Math.hypot(dx, dy);
-      if (d < 0.2 && d > 1e-6) { const k = (1 - d / 0.2) * 0.12; f.vx += (dx / d) * k; f.vy += (dy / d) * k; fear = Math.max(fear, 0.5 * (1 - d / 0.2)); }
+      if (d < 0.2 && d > 1e-6) { const k = (1 - d / 0.2) * (f.home ? 0.07 : 0.12); f.vx += (dx / d) * k; f.vy += (dy / d) * k; fear = Math.max(fear, (f.home ? 0.25 : 0.5) * (1 - d / 0.2)); }
+    }
+    // (the bait ball's: back round the float when nothing's after them, a ring about it clear of it,
+    // all swimming round it the same way)
+    if (f.home) {
+      const hx = f.x - sea.fx, hy = f.y - sea.fy, hd = Math.hypot(hx, hy) || 1, off = hd - 0.075, calmK = 1 - f.alarm;
+      const k = (Math.abs(off) > 0.012 ? off - Math.sign(off) * 0.012 : 0) * 4 * calmK;
+      ax -= (hx / hd) * k; ay -= (hy / hd) * k;
+      ax += ((-hy / hd) * sc.cruise * 1.2 - f.vx) * 1.5 * calmK;
+      ay += ((hx / hd) * sc.cruise * 1.2 - f.vy) * 1.5 * calmK;
     }
     let alarm = Math.max(f.alarm * calm, fear);
     if (heard * 0.86 > alarm) alarm += (heard * 0.86 - alarm) * pass;
@@ -3019,7 +3230,7 @@ function swimFish(sea, dt, m, bc, br, bucket) {
     const a1 = f.x * 3.1 + t * 0.07, b1 = f.y * 2.6 - t * 0.05;
     ax += -0.011 * Math.sin(a1) * Math.sin(b1) + (Math.random() - 0.5) * sc.rest;
     ay += -0.013 * Math.cos(a1) * Math.cos(b1) + (Math.random() - 0.5) * sc.rest;
-    ay -= f.vy * sc.level * (1 - 0.7 * f.alarm);
+    ay -= f.vy * sc.level * (f.home ? 0.2 : 1) * (1 - 0.7 * f.alarm);
     const want = sc.cruise * (1 + 1.3 * f.alarm);
     ax += (want - sp) * hx * 1.6; ay += (want - sp) * hy * 1.6;
     const was = Math.atan2(f.vy, f.vx);
@@ -3039,14 +3250,24 @@ function swimSharks(sea, dt, m, bucket) {
     // (a wander: a slowly drifting aim ahead of its snout)
     s.wander = within(s.wander + (Math.random() - 0.5) * dt * 2.4, -0.7, 0.7);
     dx += Math.cos(s.head + s.wander) * 0.3; dy += Math.sin(s.head + s.wander) * 0.3;
-    // hunting: the fish it's after, where it's about to be; or its round
-    if (sea.hunger > 0.3 && t >= s.look) { s.prey = findPrey(sea, s, bucket); s.look = t + 0.45; }
-    if (sea.hunger <= 0.3) s.prey = null;
+    // hungry with the bait ball there: a charge, at the ball's middle and a little to its own side,
+    // aiming on through (past the middle the aim's behind it, so it turns back for another pass);
+    // else hunting: the fish it's after, where it's about to be; or its round
+    const ball = sea.hunger > 0.3 ? sea.ball : null;
+    if (sea.hunger > 0.3 && !ball && t >= s.look) { s.prey = findPrey(sea, s, bucket); s.look = t + 0.45; }
+    if (sea.hunger <= 0.3 || ball) s.prey = null;
     // (a fish that's run for an edge is let go)
     if (s.prey && !(s.prey.alive && huntGround(sea, s.prey, 0.6))) { s.prey = null; s.look = Math.min(s.look, t + 0.15); }
     const f = s.prey;
     let close = 0;
-    if (f) {
+    if (ball) {
+      const side = (s.id - 2) * 0.025, bx = ball.x - x, by = ball.y - y, bd = Math.hypot(bx, by) || 1;
+      const tx = bx + (bx / bd) * 0.12 - (by / bd) * side, ty = by + (by / bd) * 0.12 + (bx / bd) * side, d = Math.hypot(tx, ty) || 1;
+      dx += (tx / d) * 4; dy += (ty / d) * 4;
+      close = within(1 - bd / (L * 0.9), 0, 1);
+      // (the water boiling white where it cuts through)
+      if (bd < 0.06) stamp(sea, sea.splash, x, y, 1, 0.35);
+    } else if (f) {
       const tx = f.x + f.vx * 0.35 - x, ty = f.y + f.vy * 0.35 - y, d = Math.hypot(tx, ty) || 1, w = 1.4 + 2.6 * sea.hunger;
       dx += (tx / d) * w; dy += (ty / d) * w;
       close = within(1 - d / (L * 0.9), 0, 1);
@@ -3060,22 +3281,22 @@ function swimSharks(sea, dt, m, bucket) {
       if (o === s) continue;
       for (let k = 0; k < SPINE; k += 3) {
         const ox = x - o.nodes[2 * k], oy = y - o.nodes[2 * k + 1], d = Math.hypot(ox, oy), far = (L + o.L) * 0.45;
-        if (d < far && d > 1e-6) { const w = (1 - d / far) * 3; dx += (ox / d) * w; dy += (oy / d) * w; }
+        if (d < far && d > 1e-6) { const w = (1 - d / far) * (ball ? 0.8 : 3); dx += (ox / d) * w; dy += (oy / d) * w; }
       }
     }
     // clear of the float (unless it's chasing), and back in when its snout's out of the window
-    const ex = x - fx, ey = y - fy, e = Math.hypot(ex, ey), clear = 0.11 + 0.1 * L;
-    if (e < clear && e > 1e-6) { const w = (1 - e / clear) * (f ? 1 : 2.5); dx += (ex / e) * w; dy += (ey / e) * w; }
+    const ex = x - fx, ey = y - fy, e = Math.hypot(ex, ey), clear = (f || ball ? 0.11 : 0.17) + 0.1 * L;
+    if (e < clear && e > 1e-6) { const w = (1 - e / clear) * (f ? 1 : ball ? 0.4 : 2.5); dx += (ex / e) * w; dy += (ey / e) * w; }
     const over = Math.max(-x, x - aspect, -y, y - 1);
-    const near = L * (f ? 0.45 : 0.3);
+    const near = L * (f || ball ? 0.45 : 0.3);
     if (over > -near) { const w = within((over + near) / (L * 0.35), 0, 1) * 3.5 + (over > 0 ? 3 : 0), tx = cx - x, ty = cy - y, d = Math.hypot(tx, ty) || 1; dx += (tx / d) * w; dy += (ty / d) * w; }
     // its turn: no sharper than its speed allows (out of the window, where it doesn't show, as sharp
     // as when hunting)
-    const most = Math.min(f || over > 0 ? 1.7 + close : 0.8, s.speed / (L * (f || over > 0 ? 0.35 : 0.3))) * dt, turned = within(turnTo(s.head, Math.atan2(dy, dx)), -most, most);
+    const chase = f || ball, most = Math.min(chase || over > 0 ? 1.7 + close : 0.8, s.speed / (L * (ball ? 0.22 : chase || over > 0 ? 0.35 : 0.3))) * dt, turned = within(turnTo(s.head, Math.atan2(dy, dx)), -most, most);
     s.head += turned;
     s.turn += (turned / dt - s.turn) * Math.min(1, dt * 3);
-    const cruise = (0.03 + 0.06 * L) * m.pace, want = f ? cruise * (1.45 + 1.5 * close) : cruise;
-    s.speed += (want - s.speed) * Math.min(1, dt * 1.1);
+    const cruise = (0.03 + 0.06 * L) * m.pace, want = ball ? cruise * (3.2 + 1.2 * close) : f ? cruise * (1.45 + 1.5 * close) : cruise;
+    s.speed += (want - s.speed) * Math.min(1, dt * (ball ? 3.5 : 1.1));
     s.phase += dt * (2 + s.speed / 0.03);
     nodes[0] += Math.cos(s.head) * s.speed * dt;
     nodes[1] += Math.sin(s.head) * s.speed * dt;
@@ -3089,15 +3310,16 @@ function swimSharks(sea, dt, m, bucket) {
       nodes[2 * k + 1] = py + Math.sin(a) * seg;
       prev = a;
     }
-    // a catch
-    if (f) {
+    // a catch (in a charge one at a time, the hunger lasting: it's the ball they're after)
+    if (f || (ball && t - (s.ate ?? -9) > 0.4)) {
       const r = L * 0.05 + 0.01;
       for (const g of sea.fish) {
         if (g.alive && (g.x - nodes[0]) ** 2 + (g.y - nodes[1]) ** 2 < r * r) {
           g.alive = false;
           g.back = t + between(3, 8);
-          sea.hunger = Math.max(0, sea.hunger - 0.08);
+          sea.hunger = Math.max(0, sea.hunger - (ball ? 0.02 : 0.08));
           stamp(sea, sea.splash, g.x, g.y, 2, 1);
+          if (ball) { s.ate = t; break; }
         }
       }
     }
@@ -3188,6 +3410,7 @@ function seaCells(sea) {
       seen[i] = frame;
       const glint = within(Math.abs(f.turn) / 3.5, 0, 1);
       data[4 * i] = Math.round(255 * within(0.3 + (0.4 * (f.near - 0.55)) / 0.45 + 0.3 * Math.max(glint, f.alarm), 0.05, 1));
+      data[4 * i + 3] = Math.round((((Math.atan2(f.vy, f.vx) % Math.PI) + Math.PI) % Math.PI) / Math.PI * 255);
     }
   }
 }
@@ -3220,7 +3443,7 @@ export function createScenery(canvas) {
   let popAt = -9, dipAt = -9, dropSeen = -99;
   // the music: the walk (in beats, kept on the beat), the wind, the glow, the fireflies, the
   // ripples, the birds or a falling star
-  let last = 0, walkB = 0, beamB = 0, swimB = 0, car = null, wind = 0.25, glowV = 0, flyV = 0, kickAt = -1, lastBar = null, flock = null, falling = null;
+  let last = 0, walkB = 0, beamB = 0, swimB = 0, car = null, wind = 0.25, glowV = 0, flyV = 0, kickAt = -1, lastBar = null, flock = null, falling = null, glide = null;
   const rips = [], ripV = new Float32Array(16);
   // the sharks' water while their scene is up (a kick for it, the last pop it saw; the sharks for
   // the shader: spines, kinds, boxes, how near)
@@ -3239,7 +3462,11 @@ export function createScenery(canvas) {
     if (!gl) { broken = true; return; }
     // A program, compiled and linked; ready() says whether it's done (without waiting for it when
     // the driver compiles in the background, on its own threads) and throws if it failed. Until
-    // it's ready nothing may ask it anything (that would wait for it).
+    // it's ready nothing may ask it anything (that would wait for it). settled() says it's been done
+    // a while: a shader the graphics driver hasn't seen before (after an update that changed it)
+    // is still being finished on the driver's own threads for a moment after the link says done,
+    // and a draw before then waits for it, the whole window frozen (half a second for the bigger
+    // scenes); done() notes when it finished, failed or not, without asking anything else.
     const par = gl.getExtension('KHR_parallel_shader_compile');
     const program = (fs) => {
       const p = gl.createProgram(), vs = gl.createShader(gl.VERTEX_SHADER), f = gl.createShader(gl.FRAGMENT_SHADER);
@@ -3252,15 +3479,17 @@ export function createScenery(canvas) {
       gl.bindAttribLocation(p, 0, 'a');
       gl.linkProgram(p);
       const loc = {};
-      let ok = false;
+      let ok = false, doneAt = 0;
+      const done = () => doneAt || (!par || gl.getProgramParameter(p, par.COMPLETION_STATUS_KHR) ? (doneAt = performance.now()) : 0);
       const ready = () => {
         if (ok) return true;
-        if (par && !gl.getProgramParameter(p, par.COMPLETION_STATUS_KHR)) return false;
+        if (!done()) return false;
         if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getShaderInfoLog(f) || gl.getProgramInfoLog(p));
         ok = true;
         return true;
       };
-      return { p, ready, u: (n) => (loc[n] ??= gl.getUniformLocation(p, n)) };
+      const settled = () => ready() && (!par || performance.now() - doneAt > SETTLE_MS);
+      return { p, done, ready, settled, u: (n) => (loc[n] ??= gl.getUniformLocation(p, n)) };
     };
     makeProgram = program;
     scenes = {};
@@ -3335,20 +3564,23 @@ export function createScenery(canvas) {
     // col: the theme's colours (0-255), which also say day (a light theme) or night; offset: how far
     // ahead to draw (as the blocks), for the walk; colours: 'own' (the scenery's) or 'theme' (its
     // two); strength: the ASCII backgrounds' strength (with the theme's colours), 1.5 the usual;
-    // scene: which (lake, sea, fire, snow)
-    draw(t, eng, { col, offset = 0, colours = 'own', strength = 1.5, scene = 'lake' } = {}) {
+    // scene: which (lake, sea, fire, snow); open: the code hidden (Z), so the scene can open out
+    draw(t, eng, { col, offset = 0, colours = 'own', strength = 1.5, scene = 'lake', open = false } = {}) {
       if (broken || gl?.isContextLost()) return;
       if (!ready) {
         try { build(scene); } catch (err) { broken = true; console.error('scenery:', err); return; }
         if (broken) return;
       }
-      // (a scene whose program isn't ready yet: the one before stays up meanwhile, or nothing's
-      // drawn yet when there's none)
+      // (a scene whose program isn't settled yet: the one before stays up meanwhile; with none up
+      // yet, it's drawn as soon as it's ready, and nothing till then. Every program is looked at
+      // each frame, so it's known when each finished.)
       let sp;
       try {
+        for (const k in scenes) scenes[k].done();
         sp = sceneProgram(scene);
-        if (!paint.ready() || !sp.ready()) {
-          if (!shownScene || !scenes[shownScene]?.ready() || !paint.ready()) return;
+        const before = shownScene && shownScene !== scene && paint.ready() && scenes[shownScene]?.ready();
+        if (!paint.ready() || !(before ? sp.settled() : sp.ready())) {
+          if (!before) return;
           scene = shownScene;
           sp = scenes[scene];
         }
@@ -3365,12 +3597,15 @@ export function createScenery(canvas) {
       walkB += dt * (bpm / 60) * (eng.silent ? 0.25 : 1);
       const step = T.locked ? eng.stepAt(t + offset) : null;
       if (step !== null) walkB += ((((step / 4 - walkB) % 1) + 1.5) % 1 - 0.5) * 0.08;
-      // the lighthouse's beam: a turn every 2 bars, kept on the bars (facing you on every other bar's
-      // first beat) the way the walk is kept on the beats
-      beamB += dt * (bpm / 60) * (eng.silent ? 0.25 : 1);
+      // the lighthouse's beams: a turn every 2 bars, kept on the bars (one facing you on each bar's
+      // first beat), but only by turning a little faster or slower, never back: a new bar line or a
+      // new tempo has them catch up over a few beats (they used to swing round to it, backward half
+      // the time)
+      let turn = (bpm / 60) * (eng.silent ? 0.25 : 1);
+      if (step !== null) turn *= Math.min(2, Math.max(0.4, 1 + 0.5 * ((((step / 4 - beamB) % 4) + 6) % 4 - 2)));
+      beamB += dt * turn;
       // the koi's swim: easy, darting ahead on each kick
       swimB += dt * (0.35 + 2.2 * Math.exp(-Math.max(0, t - dipAt) * 3));
-      if (step !== null) beamB += ((((step / 4 - beamB) % 8) + 12) % 8 - 4) * 0.08;
       // the wind and the fireflies: the hats in the last 2 s
       let hats = 0;
       for (const o of eng.onsets) if (o.id === 'hh' && o.t > t - 2) hats++;
@@ -3380,7 +3615,17 @@ export function createScenery(canvas) {
       // the sun's rays and the stars' twinkle: the loudness
       const lv = Math.min(1, Math.max(0, (20 * Math.log10(eng.level || 1e-6) + 50) / 50));
       glowV += (lv - glowV) * (1 - Math.exp(-dt / 0.4));
-      const V = (LAYOUT[scene] || LAYOUT.lake)[H > W ? 1 : 0], aspect = W / H;
+      const tall = H > W ? 1 : 0, aspect = W / H;
+      let V = (LAYOUT[scene] || LAYOUT.lake)[tall];
+      if (open && OPEN[scene]?.[tall]) V = { ...V, ...OPEN[scene][tall] };
+      // (the toaster and the moon glide to where they're going, over a second or so, when Z's
+      // pressed; anything else, a new scene or window, puts them straight there)
+      if (!glide || glide.scene !== scene || glide.tall !== tall) glide = { scene, tall, x: V.toaster.x, y: V.toaster.y, moon: V.moon ? [...V.moon] : null };
+      const gk = 1 - Math.exp(-dt / 0.45);
+      glide.x += (V.toaster.x - glide.x) * gk;
+      glide.y += (V.toaster.y - glide.y) * gk;
+      if (glide.moon) glide.moon = glide.moon.map((v, i) => v + (V.moon[i] - v) * gk);
+      V = { ...V, toaster: { ...V.toaster, x: glide.x, y: glide.y }, ...(glide.moon ? { moon: glide.moon, sun: glide.moon.slice(0, 2) } : {}) };
       const night = col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
       // a ripple on the lake for each kick (while the kick's in the song), somewhere on it
       const kick = eng.v.bd.lastHit;
@@ -3433,6 +3678,10 @@ export function createScenery(canvas) {
       // handed over)
       if (scene === 'sharks') {
         if (!sea || sea.cols !== dims.cols || sea.rows !== dims.rows || sea.aspect !== aspect) sea = newSea(dims.cols, dims.rows, dims.cw / H, PX / H, aspect, V.toaster.x * aspect, V.toaster.y);
+        // (the float where it is now, and the sharks' rounds about it: it glides when Z's pressed)
+        sea.fx = V.toaster.x * aspect;
+        sea.fy = V.toaster.y;
+        sea.cx = 0.65 * (aspect / 2) + 0.35 * sea.fx;
         if (popAt > seaPop) { seaPop = popAt; if (t - popAt < 1) sea.hunger = 1; }
         sea.acc += dt;
         let steps = 0;
