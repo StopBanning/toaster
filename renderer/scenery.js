@@ -83,9 +83,11 @@ function pumpkinArrays() {
 const VS = `#version 300 es
 in vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }`;
 
-// The scene, a cell at a time: R the glyph (its place on the sheet), G its ink (0-1); and its colour.
+// The scene, a cell at a time: its glyph (its place on the sheet), its ink (0-1), its tone, its
+// colour and its tile, packed into one texel.
 const LIB = `#version 300 es
 precision highp float;
+precision highp int;
 ${DEFS}
 uniform vec2 grid, cellPx, view;
 uniform float time, wind, glow, night, fly;
@@ -102,9 +104,11 @@ uniform vec4 car;                   // the city's car: x of its back, -, its col
 uniform vec4 leap;                  // the falls' fish leaping, halloween's ghost rising: its age (s), which side (-1, 1), which (0-1), on (1)
 uniform vec4 moon;                  // halloween's great moon: its centre (units of the height), its radius
 uniform vec4 sea;                   // the sea: the beam's turn (radians), the koi's swim (leaping on kicks), the waves' phase (beats), a kick's splash (0-1)
-layout(location = 0) out vec4 o;
-layout(location = 1) out vec4 oc;
-layout(location = 2) out vec4 ot;
+// (one output, the cell packed: x its glyph, ink and tone, y its colour, z its tile, a byte each.
+// One, not three: on Windows a program compiled in the background is ready for one output, and
+// drawing to more made it compile again at its first draw, holding everything up for seconds)
+layout(location = 0) out highp uvec4 o;
+uint b8(float v) { return uint(clamp(v, 0.0, 1.0) * 255.0 + 0.5); }
 uint hu(uvec2 q) { q *= uvec2(1597334673u, 3812015801u); return (q.x ^ q.y) * 1597334673u; }
 float h2(vec2 p) { return float(hu(uvec2(ivec2(floor(p)) + 32768))) / 4294967295.0; }
 float h1(float x) { return h2(vec2(x, 7.0)); }
@@ -125,7 +129,8 @@ vec3 tileC = vec3(0.0);
 float tileA = 0.0;
 void put(int g, float ink, vec3 c) {
   if (over != 0 && !solid) { g = over; ink = overInk; c = overC; }
-  o = vec4(float(g) / 255.0, ink, tone, 1.0); oc = vec4(clamp(c, 0.0, 1.0), 1.0); ot = vec4(clamp(tileC, 0.0, 1.0), tileA);
+  o = uvec4((uint(g) & 255u) | (b8(ink) << 8) | (b8(tone) << 16), b8(c.r) | (b8(c.g) << 8) | (b8(c.b) << 16),
+    b8(tileC.r) | (b8(tileC.g) << 8) | (b8(tileC.b) << 16) | (b8(tileA) << 24), 0u);
 }
 vec3 rgb(float r, float g, float b) { return vec3(r, g, b) / 255.0; }
 // the scene's colours, by night and by day
@@ -2683,7 +2688,8 @@ const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden
 // colour on its background. k: how strongly it shows (A's strength, in the theme's colours).
 const PAINT = `#version 300 es
 precision highp float;
-uniform sampler2D cells, cols, sheet, sprite, tiles;
+uniform highp usampler2D cells;
+uniform sampler2D sheet, sprite;
 uniform vec2 grid, cellPx, slot, sheetSize;
 uniform float gridK;     // the cells' grid, drawn faintly (the sharks' water); 0 none
 uniform float perRow, dpr, H, k, own, horizon, night, time, water;
@@ -2700,12 +2706,15 @@ void main() {
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y) / dpr;
   vec2 cell = floor(p / cellPx);
   ivec2 at = ivec2(int(cell.x), int(grid.y) - 1 - int(cell.y));
-  vec4 c = texelFetch(cells, at, 0);
-  float gi = floor(c.r * 255.0 + 0.5);
+  // (the cell unpacked: its glyph, ink and tone; its colour; its tile)
+  uvec4 u = texelFetch(cells, at, 0);
+  vec4 c = vec4(float(u.x & 255u), float((u.x >> 8) & 255u) / 255.0, float((u.x >> 16) & 255u) / 255.0, 1.0);
+  vec3 cc = vec3(float(u.y & 255u), float((u.y >> 8) & 255u), float((u.y >> 16) & 255u)) / 255.0;
+  vec4 tl = vec4(float(u.z & 255u), float((u.z >> 8) & 255u), float((u.z >> 16) & 255u), float(u.z >> 24)) / 255.0;
+  float gi = c.r;
   vec2 f = (p - cell * cellPx) / cellPx;
   float cov = gi > 0.5 ? texture(sheet, (vec2(mod(gi, perRow), floor(gi / perRow)) + f) * slot / sheetSize).a : 0.0;
   // (a tile fills its cell but for a hair along its top and left, where the grid's drawn)
-  vec4 tl = texelFetch(tiles, at, 0);
   bool rim = f.x * cellPx.x * dpr < 1.0 || f.y * cellPx.y * dpr < 1.0;
   vec3 col;
   if (own > 0.5) {
@@ -2715,12 +2724,12 @@ void main() {
     if (light2.w > 0.0) paper += light2C * light2.w * pow(max(0.0, 1.0 - length((p - light2.xy) * vec2(0.8, 1.0)) / light2.z), 2.0);
     if (rim) paper = mix(paper, night > 0.5 ? paper + 0.05 : paper * 0.9, gridK);
     else paper = mix(paper, tl.rgb, tl.a);
-    col = mix(paper, texelFetch(cols, at, 0).rgb, cov * c.g);
+    col = mix(paper, cc, cov * c.g);
   // (in the theme's colours at night, each glyph as bright as it is in the scenery's own: its shadows
   // stay dark, its lights full; a tile a faint block of the theme's ink)
   } else {
     vec3 under = rim ? mix(bg, fg, 0.05 * gridK) : mix(bg, fg, 0.22 * tl.a * min(1.0, k));
-    col = mix(under, fg, cov * min(1.0, c.g * k) * (night > 0.5 ? clamp(dot(texelFetch(cols, at, 0).rgb, vec3(0.3, 0.55, 0.15)) * 2.2, 0.0, 1.0) : 1.0));
+    col = mix(under, fg, cov * min(1.0, c.g * k) * (night > 0.5 ? clamp(dot(cc, vec3(0.3, 0.55, 0.15)) * 2.2, 0.0, 1.0) : 1.0));
   }
   // the boat, in pixels over the glyphs (the way the stream draws its fisher); under the water's
   // line its reflection, wavering, broken into lines, faint
@@ -2888,13 +2897,14 @@ function newSea(cols, rows, cw, ch, aspect, fx, fy) {
   const n = cols * rows, side = Math.min(1, aspect);
   const sea = {
     cols, rows, cw, ch, aspect, fx, fy, t: 0, acc: 0, sharks: [], fish: [], lastSchool: 0, hunger: 0,
-    // (the middle of the sharks' rounds: between the window's middle and the float; how far a fish sees)
-    cx: 0.65 * (aspect / 2) + 0.35 * fx, cy: 0.65 * 0.5 + 0.35 * fy, R: Math.max(3 * ch, 5.5 * cw),
+    // (the middle of the sharks' rounds: across, between the window's middle and the float; up and
+    // down, the window's middle; how far a fish sees)
+    cx: 0.65 * (aspect / 2) + 0.35 * fx, cy: 0.5, R: Math.max(3 * ch, 5.5 * cw),
     wake: new Float32Array(n), wake2: new Float32Array(n), splash: new Float32Array(n), data: new Uint8Array(n * 4), seen: new Uint32Array(n), frame: 0,
   };
   const sx = aspect >= 1 ? 1.3 : 1, sy = aspect >= 1 ? 1 : 1.5;
   SHARK_KINDS.forEach((k, i) => {
-    const L = (aspect >= 1 ? 0.56 : 0.5) * side * k.size, ring = side * between(0.26, 0.38), a = (i / SHARK_KINDS.length) * 2 * Math.PI + between(-0.4, 0.4), dir = i % 2 ? -1 : 1;
+    const L = (aspect >= 1 ? 0.56 : 0.5) * side * k.size, ring = side * between(0.25, 0.35), a = (i / SHARK_KINDS.length) * 2 * Math.PI + between(-0.4, 0.4), dir = i % 2 ? -1 : 1;
     const x = sea.cx + Math.cos(a) * ring * sx, y = sea.cy + Math.sin(a) * ring * sy, head = a + (dir * Math.PI) / 2;
     const nodes = new Float32Array(SPINE * 2), seg = L / (SPINE - 1);
     for (let j = 0; j < SPINE; j++) { nodes[2 * j] = x - Math.cos(head) * seg * j; nodes[2 * j + 1] = y - Math.sin(head) * seg * j; }
@@ -3032,7 +3042,9 @@ function swimSharks(sea, dt, m, bucket) {
     // hunting: the fish it's after, where it's about to be; or its round
     if (sea.hunger > 0.3 && t >= s.look) { s.prey = findPrey(sea, s, bucket); s.look = t + 0.45; }
     if (sea.hunger <= 0.3) s.prey = null;
-    const f = s.prey && s.prey.alive && s.prey.x > 0.03 && s.prey.x < aspect - 0.03 && s.prey.y > 0.03 && s.prey.y < 0.97 ? s.prey : null;
+    // (a fish that's run for an edge is let go)
+    if (s.prey && !(s.prey.alive && huntGround(sea, s.prey, 0.6))) { s.prey = null; s.look = Math.min(s.look, t + 0.15); }
+    const f = s.prey;
     let close = 0;
     if (f) {
       const tx = f.x + f.vx * 0.35 - x, ty = f.y + f.vy * 0.35 - y, d = Math.hypot(tx, ty) || 1, w = 1.4 + 2.6 * sea.hunger;
@@ -3055,7 +3067,8 @@ function swimSharks(sea, dt, m, bucket) {
     const ex = x - fx, ey = y - fy, e = Math.hypot(ex, ey), clear = 0.11 + 0.1 * L;
     if (e < clear && e > 1e-6) { const w = (1 - e / clear) * (f ? 1 : 2.5); dx += (ex / e) * w; dy += (ey / e) * w; }
     const over = Math.max(-x, x - aspect, -y, y - 1);
-    if (over > -L * 0.15) { const w = within((over + L * 0.15) / (L * 0.35), 0, 1) * 3.5 + (over > 0 ? 3 : 0), tx = cx - x, ty = cy - y, d = Math.hypot(tx, ty) || 1; dx += (tx / d) * w; dy += (ty / d) * w; }
+    const near = L * (f ? 0.45 : 0.3);
+    if (over > -near) { const w = within((over + near) / (L * 0.35), 0, 1) * 3.5 + (over > 0 ? 3 : 0), tx = cx - x, ty = cy - y, d = Math.hypot(tx, ty) || 1; dx += (tx / d) * w; dy += (ty / d) * w; }
     // its turn: no sharper than its speed allows (out of the window, where it doesn't show, as sharp
     // as when hunting)
     const most = Math.min(f || over > 0 ? 1.7 + close : 0.8, s.speed / (L * (f || over > 0 ? 0.35 : 0.3))) * dt, turned = within(turnTo(s.head, Math.atan2(dy, dx)), -most, most);
@@ -3090,13 +3103,19 @@ function swimSharks(sea, dt, m, bucket) {
     }
   }
 }
-// the fish a shark goes for: ahead of it, near, and alone rather than in a crowd (it keeps after the
-// one it's after unless another's clearly better)
+// where the sharks hunt: the window less a margin (m of it: 1 the whole margin, less to let a chase
+// run on a little), so a hunt stays in view
+const huntGround = (sea, f, m = 1) => {
+  const e = m * (0.06 + 0.24 * Math.min(1, sea.aspect));
+  return f.x > e && f.x < sea.aspect - e && f.y > e && f.y < 1 - e;
+};
+// the fish a shark goes for: on its hunting ground, ahead of it, near, and alone rather than in a
+// crowd (it keeps after the one it's after unless another's clearly better)
 function findPrey(sea, s, bucket) {
   const range = s.L * 0.9 + 0.2, x = s.nodes[0], y = s.nodes[1], ux = Math.cos(s.head), uy = Math.sin(s.head);
   let best = null, bestScore = Infinity, mine = Infinity;
   for (const f of sea.fish) {
-    if (!f.alive || f.x < 0.06 || f.x > sea.aspect - 0.06 || f.y < 0.06 || f.y > 0.94) continue;
+    if (!f.alive || !huntGround(sea, f)) continue;
     const dx = f.x - x, dy = f.y - y, d = Math.hypot(dx, dy);
     if (d > range || d < 1e-6) continue;
     const ahead = (dx * ux + dy * uy) / d;
@@ -3196,7 +3215,7 @@ function seaSharks(sea, spine, kinds, boxes, nears) {
 }
 
 export function createScenery(canvas) {
-  let gl = null, ready = false, scenes = {}, makeProgram = null, paint = null, vao = null, cellTex = null, colTex = null, tileTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
+  let gl = null, ready = false, scenes = {}, makeProgram = null, paint = null, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
   const boatCv = Object.assign(document.createElement('canvas'), { width: SW, height: SH }), boatG = boatCv.getContext('2d');
   let popAt = -9, dipAt = -9, dropSeen = -99;
   // the music: the walk (in beats, kept on the beat), the wind, the glow, the fireflies, the
@@ -3206,6 +3225,8 @@ export function createScenery(canvas) {
   // the sharks' water while their scene is up (a kick for it, the last pop it saw; the sharks for
   // the shader: spines, kinds, boxes, how near)
   let sea = null, seaKick = false, seaPop = -9;
+  // the scene last drawn (it stays up while the next one's program is being compiled)
+  let shownScene = null;
   const shkV = new Float32Array(2 * 3 * SPINE), shkKV = new Float32Array(12), shkBV = new Float32Array(12), shkDV = new Float32Array(12);
 
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; });
@@ -3213,23 +3234,40 @@ export function createScenery(canvas) {
   // (the sheet drawn again once the app's font is in)
   document.fonts?.ready.then(() => { dims = null; });
 
-  function build() {
+  function build(first) {
     gl = canvas.getContext('webgl2', { alpha: false, antialias: false });
     if (!gl) { broken = true; return; }
-    const shader = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    // A program, compiled and linked; ready() says whether it's done (without waiting for it when
+    // the driver compiles in the background, on its own threads) and throws if it failed. Until
+    // it's ready nothing may ask it anything (that would wait for it).
+    const par = gl.getExtension('KHR_parallel_shader_compile');
     const program = (fs) => {
-      const p = gl.createProgram();
-      gl.attachShader(p, shader(gl.VERTEX_SHADER, VS));
-      gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+      const p = gl.createProgram(), vs = gl.createShader(gl.VERTEX_SHADER), f = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(vs, VS);
+      gl.compileShader(vs);
+      gl.shaderSource(f, fs);
+      gl.compileShader(f);
+      gl.attachShader(p, vs);
+      gl.attachShader(p, f);
       gl.bindAttribLocation(p, 0, 'a');
       gl.linkProgram(p);
-      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
       const loc = {};
-      return { p, u: (n) => (loc[n] ??= gl.getUniformLocation(p, n)) };
+      let ok = false;
+      const ready = () => {
+        if (ok) return true;
+        if (par && !gl.getProgramParameter(p, par.COMPLETION_STATUS_KHR)) return false;
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getShaderInfoLog(f) || gl.getProgramInfoLog(p));
+        ok = true;
+        return true;
+      };
+      return { p, ready, u: (n) => (loc[n] ??= gl.getUniformLocation(p, n)) };
     };
     makeProgram = program;
     scenes = {};
     paint = program(PAINT);
+    // (every scene's started now when the driver can compile in the background, the one asked for
+    // first: by the time A moves on, the next is ready)
+    if (par) { sceneProgram(first); for (const name of Object.keys(MAINS)) sceneProgram(name); }
     vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -3238,8 +3276,6 @@ export function createScenery(canvas) {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
     cellTex = gl.createTexture();
-    colTex = gl.createTexture();
-    tileTex = gl.createTexture();
     lifeTex = gl.createTexture();
     sheetTex = gl.createTexture();
     spriteTex = gl.createTexture();
@@ -3247,10 +3283,11 @@ export function createScenery(canvas) {
     dims = null;
     ready = true;
   }
-  // each scene's program, made the first time it's shown (the library and its own part)
+  // each scene's program (the library and its own part): all made when the scenery starts, where the
+  // driver compiles in the background; otherwise each the first time it's shown
   const sceneProgram = (name) => (scenes[name] ??= makeProgram(LIB + (MAINS[name] || MAINS.lake)));
 
-  // The grid of cells for the window (the scene's three pictures: glyph and ink, colour, tile), and the
+  // The grid of cells for the window (the scene's picture: each cell packed, glyph and ink, colour, tile), and the
   // sheet: each glyph in a slot the size of a cell, in device pixels.
   function layout(W, H, dpr) {
     canvas.width = Math.round(W * dpr);
@@ -3274,15 +3311,11 @@ export function createScenery(canvas) {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sheet);
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-    for (const t of [cellTex, colTex, tileTex]) {
-      gl.bindTexture(gl.TEXTURE_2D, t);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, cols, rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-    }
+    gl.bindTexture(gl.TEXTURE_2D, cellTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32UI, cols, rows, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, null);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cellTex, 0);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, colTex, 0);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, tileTex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     dims = { W, H, dpr, cw, cols, rows, sw, sh, perRow, sheetW: sheet.width, sheetH: sheet.height };
   }
@@ -3306,9 +3339,21 @@ export function createScenery(canvas) {
     draw(t, eng, { col, offset = 0, colours = 'own', strength = 1.5, scene = 'lake' } = {}) {
       if (broken || gl?.isContextLost()) return;
       if (!ready) {
-        try { build(); } catch (err) { broken = true; console.error('scenery:', err); return; }
+        try { build(scene); } catch (err) { broken = true; console.error('scenery:', err); return; }
         if (broken) return;
       }
+      // (a scene whose program isn't ready yet: the one before stays up meanwhile, or nothing's
+      // drawn yet when there's none)
+      let sp;
+      try {
+        sp = sceneProgram(scene);
+        if (!paint.ready() || !sp.ready()) {
+          if (!shownScene || !scenes[shownScene]?.ready() || !paint.ready()) return;
+          scene = shownScene;
+          sp = scenes[scene];
+        }
+      } catch (err) { broken = true; console.error('scenery:', err); return; }
+      shownScene = scene;
       const dpr = Math.min(1.5, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
       if (!dims || dims.W !== W || dims.H !== H || dims.dpr !== dpr) layout(W, H, dpr);
       const dt = Math.min(0.1, Math.max(0, t - last));
@@ -3405,10 +3450,8 @@ export function createScenery(canvas) {
       // the scene into the cells
       gl.bindVertexArray(vao);
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
       gl.viewport(0, 0, dims.cols, dims.rows);
-      let sp;
-      try { sp = sceneProgram(scene); } catch (err) { broken = true; console.error('scenery:', err); return; }
       gl.useProgram(sp.p);
       const u = sp.u;
       gl.uniform2f(u('grid'), dims.cols, dims.rows);
@@ -3460,15 +3503,9 @@ export function createScenery(canvas) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, cellTex);
       gl.uniform1i(p('cells'), 0);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, colTex);
-      gl.uniform1i(p('cols'), 1);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, sheetTex);
       gl.uniform1i(p('sheet'), 2);
-      gl.activeTexture(gl.TEXTURE4);
-      gl.bindTexture(gl.TEXTURE_2D, tileTex);
-      gl.uniform1i(p('tiles'), 4);
       gl.uniform1f(p('gridK'), scene === 'sharks' ? 1 : 0);
       gl.activeTexture(gl.TEXTURE3);
       gl.bindTexture(gl.TEXTURE_2D, spriteTex);

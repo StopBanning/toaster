@@ -4,6 +4,13 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.9',
+    items: [
+      { act: 'strength', text: 'the sharks hunt where you can see them: when the drop hits they stay on screen, round the float' },
+      { act: 'strength', text: 'the scenery switches scenes smoothly: no more pause the first time each one shows (on Windows)' },
+    ],
+  },
+  {
     version: '0.4.8',
     items: [
       { act: 'strength', text: 'sharks in the scenery: a hammerhead, a blacktip and a zebra shark circling the toaster on its float, seen from above; little fish scatter from them, and they hunt on the drop' },
