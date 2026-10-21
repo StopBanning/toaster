@@ -252,29 +252,56 @@ function setUpIpc() {
     if (win) win.setFullScreen(!win.isFullScreen());
     return win?.isFullScreen();
   });
+  // Out of full screen and un-maximized before the window takes a new size: Windows keeps a
+  // maximized window as it is (a new size only becomes the one it restores to later), and can put
+  // the full screen's old size back after setFullScreen(false) has returned. Says what it was, so
+  // the window can go back to it.
+  const unbig = async () => {
+    const was = { full: win.isFullScreen(), max: win.isMaximized() };
+    if (was.full) {
+      await new Promise((r) => {
+        const t = setTimeout(r, 1500);
+        win.once('leave-full-screen', () => { clearTimeout(t); r(); });
+        win.setFullScreen(false);
+      });
+      await new Promise((r) => setTimeout(r, 150)); // (Windows settling the window back)
+    }
+    if (win.isMaximized()) win.unmaximize();
+    return was;
+  };
+  const rebig = (was) => {
+    if (was?.max) win.maximize();
+    if (was?.full) win.setFullScreen(true);
+  };
   // Vertical mode: a 9:16 window sized for recording TikToks and Shorts.
-  ipcMain.handle('win:vertical', (_e, on) => {
+  let normalWas = null;
+  ipcMain.handle('win:vertical', async (_e, on) => {
     if (!win) return false;
-    if (win.isFullScreen()) win.setFullScreen(false);
+    const was = await unbig();
     if (on) {
       normalBounds = win.getBounds();
+      normalWas = was;
       const area = screen.getDisplayMatching(normalBounds).workArea;
       const h = Math.round(area.height * 0.94);
       const w = Math.round((h * 9) / 16);
       win.setBounds({ x: area.x + Math.round((area.width - w) / 2), y: area.y + Math.round((area.height - h) / 2), width: w, height: h });
     } else if (normalBounds) {
       win.setBounds(normalBounds);
+      rebig(normalWas);
+      normalWas = null;
     }
     return on;
   });
   // The mini player: a small window over everything else (the code and the background, still
   // listening), in the corner of the screen it's on, or wherever you last moved it; off, the
-  // window goes back to where it was.
-  ipcMain.handle('win:mini', (_e, on) => {
+  // window goes back to where it was (maximized or full screen again, if it was).
+  let miniWas = null;
+  ipcMain.handle('win:mini', async (_e, on) => {
     if (!win) return false;
-    if (win.isFullScreen()) win.setFullScreen(false);
+    const was = await unbig();
     if (on && !miniFrom) {
       miniFrom = win.getBounds();
+      miniWas = was;
       const area = screen.getDisplayMatching(miniFrom).workArea, w = 460, h = 300;
       win.setMinimumSize(320, 200);
       win.setAlwaysOnTop(true, 'floating');
@@ -284,7 +311,9 @@ function setUpIpc() {
       win.setAlwaysOnTop(false);
       win.setMinimumSize(420, 560);
       win.setBounds(miniFrom);
+      rebig(miniWas);
       miniFrom = null;
+      miniWas = null;
     }
     return on;
   });

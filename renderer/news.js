@@ -4,6 +4,14 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.8',
+    items: [
+      { act: 'strength', text: 'sharks in the scenery: a hammerhead, a blacktip and a zebra shark circling the toaster on its float, seen from above; little fish scatter from them, and they hunt on the drop' },
+      { act: 'strength', text: "halloween in the scenery: the toaster on a broomstick across a great moon, bats, a graveyard, jack-o'-lanterns (auto picks it in October)" },
+      { act: 'mini', text: 'the mini player and 9:16 work from a maximized or full-screen window too' },
+    ],
+  },
+  {
     version: '0.4.7',
     items: [
       { act: 'strength', text: 'with the scenery on, its scenes: the lake, the sea, a campfire, the snow under the aurora, the city in the rain, a garden in blossom, a waterfall; auto picks a new one each song' },

@@ -43,17 +43,42 @@ const GARDEN_TALL = { ...TALL, lake: [0.26, 0.05], sun: [0.86, 0.905], band: [0.
 // the falls: far.x is the lip; mid the hills behind it; lake the pool's far edge and its near bank
 const FALLS_WIDE = { ...WIDE, far: [0.66, 0, 0, 0.3], mid: [0.68, 0.07, 0.3, 0.3], lake: [0.24, 0.04], sun: [0.8, 0.86], band: [0.75, 1.3, 0.13, 0.3], toaster: { x: 0.66, y: 0.5, on: 'tube' }, cool: true };
 const FALLS_TALL = { ...TALL, far: [0.54, 0, 0, 0.3], mid: [0.56, 0.06, 0.3, 0.3], lake: [0.2, 0.035], sun: [0.86, 0.905], band: [0.6, 1.3, 0.12, 0.3], toaster: { x: 0.7, y: 0.45, on: 'tube' }, cool: true };
-const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL] };
+// halloween: moon its centre (a share of the width, a height) and radius (the sun there too); lake the
+// hill's top behind the graves and the graveyard's front; its own paper (a purple night, a dusk)
+const HALLOWEEN_LOOK = { band: [5, 1.57, 0.1, 0.3], tint: [0.92, 0.9, 0.98], toneN: [0.34, 0.31, 0.27], toneD: [0.0, -0.1, -0.22], paperN: [[5, 3, 10], [26, 14, 40]], paperD: [[226, 190, 186], [250, 212, 168]] };
+const HALLOWEEN_WIDE = { ...WIDE, ...HALLOWEEN_LOOK, far: [0.34, 0, 0, 0.3], lake: [0.32, 0.06], moon: [0.64, 0.57, 0.32], sun: [0.64, 0.57], toaster: { x: 0.585, y: 0.64, on: 'broom' } };
+// (in a tall window the code and its panels fill the top two thirds: the moon rises low, the toaster
+// flies on its right, clear of them)
+const HALLOWEEN_TALL = { ...TALL, ...HALLOWEEN_LOOK, far: [0.22, 0, 0, 0.3], lake: [0.2, 0.04], moon: [0.56, 0.28, 0.2], sun: [0.56, 0.28], toaster: { x: 0.74, y: 0.3, on: 'broom' } };
+// the sharks: all water, seen from above (no horizon: the paper's shade runs top to bottom); the
+// toaster floats on its ring (a share of the width across, of the height up); the lagoon's paper by
+// day, the deep's by night; under a cell's tone, a shark's shadow darkens the day's paper, the
+// plankton's glow lights the night's
+const SHARKS_LOOK = { far: [0, 0, 0, 0.3], lake: [1, 0], band: [5, 1.57, 0.1, 0.3], tint: [0.78, 0.9, 1.0], toneN: [0.0, 0.2, 0.22], toneD: [-0.09, -0.055, -0.04], paperN: [[3, 9, 22], [6, 20, 42]], paperD: [[112, 200, 208], [148, 216, 212]] };
+const SHARKS_WIDE = { ...WIDE, ...SHARKS_LOOK, toaster: { x: 0.7, y: 0.3, on: 'float' } };
+const SHARKS_TALL = { ...TALL, ...SHARKS_LOOK, toaster: { x: 0.6, y: 0.15, on: 'float' } };
+const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL] };
 const SPEED = [1, 0.5, 0.25, 0.12, 0.2];
 // the glyphs the scene draws with (the first, blank, is nothing there)
 const GLYPHS = {
   BLANK: ' ', DOT: '.', MID: '·', COMMA: ',', TICK: "'", COLON: ':', DASH: '-', TILDE: '~', EQ: '=', APPROX: '≈', UNDER: '_',
   CARET: '^', SLASH: '/', BACK: '\\', BAR: '|', LP: '(', RP: ')', STAR: '*', PLUS: '+', SMALLO: 'o', BIGO: 'O', AT: '@', PCT: '%',
   VEE: 'v', TRI: '▲', TRIO: '△', LIGHT: '░', MEDIUM: '▒', DARK: '▓', HATCH: '╱', HATCHB: '╲', DBL: '═', LINE: '─',
-  SPARK: '✦', BULLET: '•', QUOTE: '"', LT: 'T', LA: 'A', LS: 'S', LESS: '<', MORE: '>', LP2: 'P', LE: 'E', LN: 'N', LH: 'H', LL: 'L',
+  SPARK: '✦', BULLET: '•', QUOTE: '"', LT: 'T', LA: 'A', LS: 'S', LESS: '<', MORE: '>', LP2: 'P', LE: 'E', LN: 'N', LH: 'H', LL: 'L', LR: 'R', LI: 'I',
+  HASH: '#', DOLLAR: '$', SEMI: ';', SMALLI: 'i', SMALLX: 'x', EIGHT: '8', GRAVE: '`',
 };
 const SHEET = Object.values(GLYPHS);
 const DEFS = Object.keys(GLYPHS).map((k, i) => `#define G_${k} ${i}`).join('\n');
+// The jack-o'-lanterns' art, as the shader's constant arrays: each cell the glyph's place on the sheet
+// plus 64 times its part (1 its outline, 2 its carved face, 3 its stem, 4 its body)
+const PUMPKIN_ART = [[["        _|_        ", "        sss        "], ["    .-'     '-.    ", "    ooobbbbbooo    "], ["  .'  /\\   /\\  '.  ", "  oobbffbbbffbboo  "], [" (       ^       ) ", " obbbbbbbfbbbbbbbo "], ["  \\  \\/\\/\\/\\/\\  /  ", "  obbfffffffffbbo  "], ["   '-._______.-'   ", "   ooooooooooooo   "]], [["    |    ", "    s    "], [" .-' '-. ", " ooobooo "], ["( ▲   ▲ )", "obfbbbfbo"], [" '\\/\\/\\' ", " offfffo "]], [["    |,   ", "    ss   "], [" .-' '-. ", " ooobooo "], ["( o   o )", "obfbbbfbo"], [" '.\\_/.' ", " oofffoo "]]];
+function pumpkinArrays() {
+  const part = { o: 1, f: 2, s: 3, b: 4 };
+  return PUMPKIN_ART.map((rows, k) => {
+    const cells = rows.flatMap(([art, roles]) => [...art].map((c, i) => (c === ' ' && roles[i] !== 'b' ? 0 : SHEET.indexOf(c === ' ' ? '\u2591' : c) + 64 * (part[roles[i]] || 0))));
+    return `const int PK${k}[${cells.length}] = int[${cells.length}](${cells.join(', ')});`;
+  }).join('\n');
+}
 
 const VS = `#version 300 es
 in vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }`;
@@ -73,11 +98,13 @@ uniform vec4 birds;                 // the flock: x of its lead, y, wings up (1)
 uniform vec4 shoot;                 // a falling star: x, y where it starts, its age (s), on (1)
 uniform vec2 sunAt;                 // where the sun (or the moon) is: x, y (units of the height)
 uniform vec4 band;                  // the Milky Way: x at the horizon, tilt, width, the core along it
-uniform vec4 car;                   // the city's car: x of its back, -, its colour (0-1), on (1)
-uniform vec4 leap;                  // the falls' fish leaping: its age (s), which side (-1, 1), -, on (1)
+uniform vec4 car;                   // the city's car: x of its back, -, its colour (0-1), on (1); halloween's broom: the end of its bristles (x, y), -, on
+uniform vec4 leap;                  // the falls' fish leaping, halloween's ghost rising: its age (s), which side (-1, 1), which (0-1), on (1)
+uniform vec4 moon;                  // halloween's great moon: its centre (units of the height), its radius
 uniform vec4 sea;                   // the sea: the beam's turn (radians), the koi's swim (leaping on kicks), the waves' phase (beats), a kick's splash (0-1)
 layout(location = 0) out vec4 o;
 layout(location = 1) out vec4 oc;
+layout(location = 2) out vec4 ot;
 uint hu(uvec2 q) { q *= uvec2(1597334673u, 3812015801u); return (q.x ^ q.y) * 1597334673u; }
 float h2(vec2 p) { return float(hu(uvec2(ivec2(floor(p)) + 32768))) / 4294967295.0; }
 float h1(float x) { return h2(vec2(x, 7.0)); }
@@ -92,9 +119,13 @@ float tone = 0.0, overInk = 0.0;
 int over = 0;
 vec3 overC = vec3(0.0);
 bool solid = false;      // (what the over-glyph passes behind: a sign, a lamp)
+// (a tile: the cell filled with a colour under its glyph, how strongly: the sharks' skin, the light's
+// net under them)
+vec3 tileC = vec3(0.0);
+float tileA = 0.0;
 void put(int g, float ink, vec3 c) {
   if (over != 0 && !solid) { g = over; ink = overInk; c = overC; }
-  o = vec4(float(g) / 255.0, ink, tone, 1.0); oc = vec4(clamp(c, 0.0, 1.0), 1.0);
+  o = vec4(float(g) / 255.0, ink, tone, 1.0); oc = vec4(clamp(c, 0.0, 1.0), 1.0); ot = vec4(clamp(tileC, 0.0, 1.0), tileA);
 }
 vec3 rgb(float r, float g, float b) { return vec3(r, g, b) / 255.0; }
 // the scene's colours, by night and by day
@@ -2103,15 +2134,558 @@ void main() {
   sky(cell, X, Y, h0, lip + 0.03, lip + 0.06);
 }`;
 
-const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS };
+// Halloween: a graveyard on a hill under a great moon, a dark wood along the hill behind, a bare tree
+// reaching across the moon; the toaster flies across it on a broomstick in a witch's hat. Bats
+// flutter round the moon (more of them when the hats are busy), wisps of cloud drift over it, mist
+// creeps between the graves, will-o'-the-wisps blink among them, jack-o'-lanterns grin at the front,
+// flaring on each kick, and every 8 bars (and on a drop) a ghost rises from a grave. (moon: its
+// centre and radius; lake.x: the hill's top behind the graves; lake.y: the graveyard's front.) By
+// day it's dusk: the moon a great orange sun, everything else in silhouette.
+const HALLOWEEN = `
+// the hill the wood stands on, behind the graves
+float hillTop(float x) { return lake.x + 0.022 * sin(x * 2.3 + 1.0) + 0.012 * (vn(x * 9.0) - 0.5); }
+// the wood along the hill: pines of all heights, crowded. In one at p?
+bool woodAt(vec2 p) {
+  float S = cw * 3.0, k0 = floor(p.x / S);
+  for (int j = -3; j <= 3; j++) {
+    float k = k0 + float(j), r = h1(k * 2.7 + 11.0);
+    float cx = (k + 0.5 + 0.8 * (h1(k * 1.3 + 11.0) - 0.5)) * S;
+    float th = (0.06 + 0.14 * r * r) * mix(0.65, 1.0, clamp((view.x / view.y - 0.56) / 1.22, 0.0, 1.0)), base = hillTop(cx) - 0.012;
+    if (abs(p.x - cx) < pineW((p.y - base) / th, th * 0.3, 3.0 + floor(th * 30.0))) return true;
+  }
+  return false;
+}
+// the bare tree: its limbs (from, to, in units of its size from its foot) and their thickness
+const vec4 LIMB[11] = vec4[11](
+  vec4(0.0, 0.0, -0.015, 0.16), vec4(-0.015, 0.16, 0.005, 0.3),
+  vec4(0.005, 0.3, -0.13, 0.42), vec4(-0.13, 0.42, -0.23, 0.43), vec4(-0.13, 0.42, -0.17, 0.52),
+  vec4(0.005, 0.3, 0.0, 0.46), vec4(0.0, 0.46, -0.05, 0.55),
+  vec4(-0.015, 0.16, -0.16, 0.22), vec4(-0.16, 0.22, -0.27, 0.2), vec4(-0.16, 0.22, -0.2, 0.3),
+  vec4(0.005, 0.3, 0.08, 0.38));
+const float LIMBW[11] = float[11](0.024, 0.017, 0.007, 0.003, 0.003, 0.006, 0.003, 0.007, 0.003, 0.003, 0.004);
+// in the tree at p (its foot at T, its size sc)? Its glyph (0 if not): the edges by the limb's slope,
+// the middle of a thick limb solid (inside 1)
+int treeAt(vec2 p, vec2 T, float sc, out float inside) {
+  inside = 0.0;
+  float best = 9.0, bsl = 0.0;
+  for (int i = 0; i < 11; i++) {
+    vec4 L = LIMB[i] * sc;
+    vec2 a = T + L.xy, b = T + L.zw, pa = p - a, ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    float d = length((pa - ba * h) / vec2(cw, ch)) - LIMBW[i] * sc / ch * (1.0 - 0.4 * h);
+    if (d < best) { best = d; bsl = ba.y / (abs(ba.x) < 1e-5 ? 1e-5 : ba.x) * cw / ch; }
+  }
+  if (best > 0.5) return 0;
+  if (best < -1.0) { inside = 1.0; return G_DARK; }
+  return abs(bsl) > 2.4 ? G_BAR : (abs(bsl) < 0.4 ? G_UNDER : (bsl > 0.0 ? G_SLASH : G_BACK));
+}
+// the jack-o'-lanterns' art (see PUMPKIN_ART): kind 0 the big one, 1 and 2 the small ones. The glyph
+// at column o, row r from its top left (0 if none); part 1 its outline, 2 its face, 3 its stem, 4 its
+// body
+${pumpkinArrays()}
+int pumpkinAt(int kind, int o, int r, out int part) {
+  part = 0;
+  int w = kind == 0 ? 19 : 9, h = kind == 0 ? 6 : 4;
+  if (o < 0 || o >= w || r < 0 || r >= h) return 0;
+  int i = r * w + o;
+  int v = kind == 0 ? PK0[i] : (kind == 1 ? PK1[i] : PK2[i]);
+  part = v / 64;
+  return v - part * 64;
+}
+// a gravestone, the column of its left side and the row of its foot at at; its kind: 0 a headstone
+// (RIP), 1 a small one, 2 a cross. Its glyph at the cell (0 if none); face 1 on its face
+int stone(vec2 cell, float row, vec2 at, float kind, out float face) {
+  face = 0.0;
+  float o = cell.x - at.x, rr = at.y - row;                     // (columns from its left side, rows up from its foot)
+  if (kind > 2.5) {
+    // a big one, its shoulders rounded:  .---.  .'   '.  | RIP |  |     |  |_____|
+    if (o < 0.0 || o > 6.0 || rr < 0.0 || rr > 4.0) return 0;
+    if (rr == 4.0) return o == 1.0 || o == 5.0 ? G_DOT : (o > 1.0 && o < 5.0 ? G_DASH : 0);
+    if (rr == 3.0) { if (o == 0.0 || o == 6.0) return G_DOT; if (o == 1.0 || o == 5.0) return G_TICK; face = 1.0; return 0; }
+    if (o == 0.0 || o == 6.0) return G_BAR;
+    face = 1.0;
+    if (rr == 2.0) return o == 2.0 ? G_LR : (o == 3.0 ? G_LI : (o == 4.0 ? G_LP2 : 0));
+    return rr == 0.0 ? G_UNDER : 0;
+  }
+  if (kind < 0.5) {
+    if (o < 0.0 || o > 4.0 || rr < 0.0 || rr > 3.0) return 0;
+    if (rr == 3.0) return o == 0.0 || o == 4.0 ? G_DOT : G_DASH;
+    if (o == 0.0 || o == 4.0) return G_BAR;
+    face = 1.0;
+    if (rr == 2.0) return o == 1.0 ? G_LR : (o == 2.0 ? G_LI : G_LP2);
+    return rr == 0.0 ? G_UNDER : 0;
+  }
+  if (kind < 1.5) {
+    if (o < 0.0 || o > 2.0 || rr < 0.0 || rr > 2.0) return 0;
+    if (rr == 2.0) return o == 1.0 ? G_DASH : G_DOT;
+    if (o != 1.0) return G_BAR;
+    face = 1.0;
+    return rr == 1.0 ? G_PLUS : G_UNDER;
+  }
+  if (o < 0.0 || o > 2.0 || rr < 0.0 || rr > 3.0) return 0;
+  if (rr == 2.0) return o == 1.0 ? G_PLUS : G_DASH;
+  return o == 1.0 ? G_BAR : 0;
+}
+// the graves: x in a tall window, in a wide one (shares of the width); where (0 at the graveyard's
+// front, 1 at the hill's top); which kind
+const vec4 STONES[11] = vec4[11](
+  vec4(0.06, 0.46, 0.14, 1.0), vec4(0.46, 0.79, 0.12, 3.0), vec4(0.64, 0.88, 0.16, 2.0), vec4(0.9, 0.52, 0.2, 3.0),
+  vec4(0.3, 0.55, 0.6, 1.0), vec4(0.4, 0.61, 0.66, 2.0), vec4(0.7, 0.69, 0.58, 0.0), vec4(0.84, 0.75, 0.64, 1.0),
+  vec4(0.18, 0.84, 0.6, 0.0), vec4(0.56, 0.95, 0.66, 2.0), vec4(0.04, 0.42, 0.62, 2.0));
+// the jack-o'-lanterns: x tall, x wide, foot (its bottom row), -
+const vec4 PUMPS[3] = vec4[3](vec4(0.22, 0.63, 0.025, 1.0), vec4(0.4, 0.72, 0.025, 1.0), vec4(0.76, 0.55, 0.03, 1.0));
+// where jack-o'-lantern i's art sits: its left column, its top row, its width, its height (0 wide if
+// it's left out: the small ones in a small window)
+vec4 pumpkinBox(int i, float aspect, float wide) {
+  vec4 pk = PUMPS[i];
+  float w = i == 0 ? 19.0 : 9.0, h = i == 0 ? 6.0 : 4.0;
+  if (i > 0 && view.y < 520.0) return vec4(0.0);
+  return vec4(floor(mix(pk.x, pk.y, wide) * aspect / cw) - floor(w / 2.0), floor((1.0 - pk.z) / ch) - (h - 1.0), w, h);
+}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  float row = grid.y - 1.0 - cell.y, H = view.y;
+  cw = cellPx.x / H; ch = cellPx.y / H;
+  float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
+  day = night < 0.5;
+  float h0 = h2(cell + 17.0);
+  float aspect = view.x / H, wide = clamp((aspect - 0.56) / 1.22, 0.0, 1.0);
+  vec2 Pp = vec2(X, Y), mc = moon.xy;
+  float R = moon.z, r = length(Pp - mc) / R;
+  float mtone = r < 1.0 ? 0.62 + 0.3 * (1.0 - r * r) : 0.0;     // (the moon's light on the paper)
+  vec3 SIL = P(rgb(14.0, 9.0, 20.0), rgb(48.0, 28.0, 38.0));       // (silhouettes against it)
+  vec3 RIM = P(rgb(86.0, 76.0, 118.0), rgb(58.0, 36.0, 46.0));     // (their edges, off the moon)
+  vec3 moonC = P(rgb(248.0, 238.0, 210.0), rgb(214.0, 84.0, 40.0)), moonD = P(rgb(180.0, 168.0, 156.0), rgb(236.0, 128.0, 60.0));
+
+  // --- sparkles trailing behind the broom: twinkling, drifting down as they fall behind, fading
+  // (more of them when the hats are busy)
+  if (car.w > 0.5) {
+    for (int k = 0; k < 12; k++) {
+      float fk = float(k);
+      if (h1(fk * 4.7 + 1.0) > 0.45 + 0.55 * fly) continue;
+      float u = fract(time * (0.5 + 0.25 * h1(fk * 2.3)) + h1(fk * 7.9));
+      vec2 sp = car.xy + vec2(-u * 0.13 - 0.005, -0.03 * u * u + 0.012 * sin(u * 8.0 + fk * 2.0) * u);
+      if (abs(X - sp.x) < cw * 0.5 && abs(Y - sp.y) < ch * 0.5) {
+        float tw = 0.6 + 0.4 * sin(time * 9.0 + fk * 3.0);
+        tone = mtone;
+        put(u < 0.3 ? G_STAR : (u < 0.65 ? G_MID : G_DOT), (1.0 - 0.8 * u) * tw, P(r < 1.0 ? rgb(150.0, 70.0, 230.0) : rgb(214.0, 160.0, 255.0), rgb(110.0, 40.0, 150.0)));
+        return;
+      }
+    }
+  }
+
+  // --- a ghost rising from a grave every 8 bars (and on a drop), swaying, its hem fluttering,
+  // fading away as it goes up
+  if (leap.w > 0.5 && leap.x < 4.5) {
+    vec4 st = STONES[min(10, int(floor(leap.z * 11.0)))];
+    float age = leap.x, a = smoothstep(0.0, 0.4, age) * (1.0 - smoothstep(3.0, 4.5, age));
+    vec2 gc = vec2(mix(st.x, st.y, wide) * aspect + 0.015 * sin(age * 2.5), mix(lake.y, lake.x, st.z) + 0.06 + age * 0.055);
+    float o = cell.x - (floor(gc.x / cw) - 3.0), rr = row - floor((1.0 - gc.y) / ch);   // (columns from its left, rows down from its top)
+    if (a > 0.05 && o >= 0.0 && o <= 6.0 && rr >= 0.0 && rr <= 4.0) {
+      int g = 0;
+      if (rr == 0.0) g = o == 0.0 || o == 6.0 ? 0 : (o == 1.0 || o == 5.0 ? G_DOT : G_DASH);
+      else if (rr == 1.0) g = o == 0.0 ? G_LP : (o == 6.0 ? G_RP : (o == 2.0 || o == 4.0 ? G_SMALLO : 0));
+      else if (rr == 2.0) g = o == 0.0 || o == 6.0 ? G_BAR : (o == 3.0 ? G_BIGO : 0);
+      else if (rr == 3.0) g = o == 0.0 || o == 6.0 ? G_BAR : 0;
+      else g = mod(o + floor(age * 4.0), 2.0) < 1.0 ? G_BACK : G_SLASH;                    // (its hem, fluttering)
+      if (rr >= 1.0 && rr <= 3.0 && o >= 1.0 && o <= 5.0) tone = 0.9 * a;                    // (its body, pale)
+      bool hole = (rr == 1.0 || rr == 2.0) && o > 0.0 && o < 6.0;                             // (its eyes and its mouth, dark)
+      if (g != 0 || tone > 0.0) { put(g, a, hole ? P(rgb(40.0, 30.0, 60.0), rgb(60.0, 50.0, 70.0)) : P(rgb(232.0, 240.0, 255.0), rgb(110.0, 110.0, 150.0))); return; }
+    }
+  }
+
+  // --- the jack-o'-lanterns at the front: their faces lit from inside (flickering, flaring on each
+  // kick, brighter with the loudness); by day unlit
+  for (int i = 0; i < 3; i++) {
+    vec4 bx = pumpkinBox(i, aspect, wide);
+    if (bx.z == 0.0) continue;
+    int part;
+    int g = pumpkinAt(i, int(cell.x - bx.x), int(row - bx.y), part);
+    if (part == 4) { put(0, 0.0, vec3(0.0)); return; }                   // (its body: dark, in the candle's glow)
+    if (part != 0) {
+      // (the candle inside: flickering, flaring on the kick, brighter with the loudness)
+      float fl = 0.82 + 0.18 * sin(time * 11.0 + float(i) * 2.0) * sin(time * 6.7 + float(i));
+      vec3 lit = mix(rgb(255.0, 150.0, 40.0), rgb(255.0, 236.0, 150.0), clamp(0.35 + 0.5 * sea.w + 0.2 * glow, 0.0, 1.0)) * fl;
+      vec3 c = part == 3 ? P(rgb(120.0, 140.0, 70.0), rgb(90.0, 80.0, 40.0))
+             : part == 2 ? (day ? rgb(70.0, 34.0, 24.0) : lit)
+             : P(rgb(236.0, 116.0, 32.0), rgb(206.0, 90.0, 24.0));
+      if (part == 2 && !day) tone = 0.22 * fl;                          // (a glow in the carved holes)
+      put(g, 1.0, c);
+      return;
+    }
+  }
+
+  // --- the bare tree at the edge, its limbs reaching across the moon: black against it, rimmed off it
+  {
+    float inside;
+    vec2 T = vec2(mix(0.92, 0.93, wide) * aspect, mix(lake.y, lake.x, 0.2));
+    int g = treeAt(Pp, T, mix(0.95, 1.2, wide), inside);
+    if (g != 0) {
+      if (r < 1.0) { tone = inside > 0.5 ? 0.0 : mtone; put(inside > 0.5 && h0 < 0.06 ? G_TICK : g, 1.0, inside > 0.5 && h0 < 0.06 ? RIM * 0.6 : SIL); }
+      else put(g, inside > 0.5 ? 1.0 : 0.85, inside > 0.5 ? SIL : RIM);
+      return;
+    }
+  }
+
+  // --- will-o'-the-wisps among the graves at night, wandering, blinking (more of them when the hats
+  // are busy)
+  if (!day) for (int k = 0; k < 5; k++) {
+    float fk = float(k);
+    vec2 f = vec2((0.1 + 0.85 * h1(fk * 3.7 + 20.0)) * aspect + 0.04 * sin(time * (0.17 + 0.08 * h1(fk)) + fk * 2.0),
+                  mix(lake.y, lake.x, 0.15 + 0.6 * h1(fk * 5.1 + 20.0)) + 0.012 * sin(time * (0.5 + 0.3 * h1(fk * 1.9)) + fk));
+    float b = smoothstep(0.3, 1.0, 0.5 + 0.5 * sin(time * (1.1 + h1(fk * 4.4)) + fk * 7.0)) * (0.3 + 0.7 * fly);
+    if (abs(X - f.x) < cw * 0.5 && abs(Y - f.y) < ch * 0.5 && b > 0.08) { put(b > 0.5 ? G_BULLET : G_MID, 0.4 + 0.6 * b, rgb(150.0, 255.0, 210.0)); return; }
+  }
+
+  // --- the graves: headstones, small stones, crosses, pale in the moonlight
+  for (int i = 0; i < 11; i++) {
+    vec4 st = STONES[i];
+    vec2 at = vec2(floor(mix(st.x, st.y, wide) * aspect / cw), floor((1.0 - mix(lake.y, lake.x, st.z)) / ch));
+    float sw = st.w > 2.5 ? 7.0 : (st.w < 0.5 ? 5.0 : 3.0), sh = st.w > 2.5 ? 5.0 : (st.w > 1.5 || st.w < 0.5 ? 4.0 : 3.0);
+    bool clash = false;
+    for (int j = 0; j < 3; j++) {
+      vec4 bx = pumpkinBox(j, aspect, wide);
+      if (bx.z > 0.0 && at.x <= bx.x + bx.z && at.x + sw >= bx.x - 1.0 && at.y >= bx.y - 1.0 && at.y - sh <= bx.y + bx.w) clash = true;
+    }
+    if (clash) continue;
+    float face;
+    int g = stone(cell, row, at, st.w, face);
+    if (g != 0 || face > 0.5) {
+      tone = face > 0.5 ? (day ? 0.0 : 0.22) : 0.0;
+      put(g, 0.95, face > 0.5 && g != G_UNDER ? P(rgb(130.0, 126.0, 164.0), rgb(90.0, 80.0, 90.0)) : P(rgb(176.0, 172.0, 204.0), rgb(70.0, 60.0, 70.0)));
+      return;
+    }
+  }
+
+  // --- mist creeping along the ground between the graves and at the foot of the wood, drifting with
+  // the wind
+  {
+    float drift = fbm(vec2(X * 3.0 - time * (0.01 + 0.03 * wind), Y * 22.0));
+    float m = exp(-pow((Y - (lake.y + 0.06)) / 0.03, 2.0)) * 0.8 + exp(-pow((Y - (lake.x - 0.012)) / 0.018, 2.0)) * 0.6;
+    m *= (0.2 + 0.8 * smoothstep(0.35, 0.7, drift)) * (0.8 + 0.4 * glow);
+    if (h0 < m * 0.3) { tone = 0.12 * m; put(h0 < m * 0.24 ? G_TILDE : G_DASH, 0.3 + 0.4 * m, P(rgb(150.0, 140.0, 196.0), rgb(196.0, 170.0, 170.0))); return; }
+  }
+
+  // --- the graveyard's ground: dead grass, fallen leaves; the hill's edge drawn
+  float ht = hillTop(X);
+  if (Y < ht + 0.5 * ch) {
+    if (Y < ht) {
+      float k = h2(cell + 4.0);
+      int g = k < 0.03 ? G_COMMA : (k < 0.055 ? G_TICK : (k < 0.085 ? G_DOT : 0));
+      put(g, 0.55, k < 0.055 ? P(rgb(80.0, 90.0, 70.0), rgb(80.0, 66.0, 40.0)) : P(rgb(150.0, 80.0, 40.0), rgb(160.0, 80.0, 36.0)));
+      return;
+    }
+  }
+
+  // --- the wood along the hill: black against the moon (its edges in the moon's light), rimmed off it
+  if (woodAt(Pp)) {
+    bool lf = !woodAt(Pp - vec2(cw, 0.0)), rt = !woodAt(Pp + vec2(cw, 0.0)), up = !woodAt(Pp + vec2(0.0, ch));
+    int g = lf && rt ? G_CARET : (lf ? G_SLASH : (rt ? G_BACK : (up ? G_CARET : G_DARK)));
+    if (r < 1.0) { tone = g == G_DARK ? 0.0 : mtone; put(g == G_DARK && h0 < 0.05 ? G_TICK : g, 1.0, g == G_DARK && h0 < 0.05 ? RIM * 0.6 : SIL); }
+    else if (day) put(g, 1.0, SIL);                                     // (at dusk: black against the sky)
+    else put(g == G_DARK ? (h0 < 0.12 ? G_CARET : (h0 < 0.2 ? G_TICK : 0)) : g, 0.85, RIM * (g == G_DARK ? 0.7 : 1.0));
+    return;
+  }
+
+  // --- bats fluttering round the moon (more of them out when the hats are busy), wings up and down
+  // twice a beat: black against it, dim off it
+  for (int k = 0; k < 8; k++) {
+    float fk = float(k);
+    if (h1(fk * 5.3 + 2.0) > 0.3 + 0.7 * fly) continue;
+    float sp = 0.2 + 0.18 * h1(fk * 1.9), ph = fk * 2.1;
+    vec2 b = mc + vec2(0.15 + cos(time * sp + ph) * (1.05 + 0.3 * h1(fk * 3.7)), 0.1 + sin(time * sp * 1.6 + ph * 1.3) * (0.5 + 0.35 * h1(fk * 7.3))) * R;
+    float o = cell.x - floor(b.x / cw), big = k < 3 ? 3.0 : 1.0;
+    if (row == floor((1.0 - b.y) / ch) && abs(o) <= big) {
+      bool up = fract(sea.z * 2.0 + h1(fk * 9.1)) < 0.5;
+      int g = o == 0.0 ? G_VEE : (abs(o) == 1.0 ? (big > 1.0 ? G_CARET : (up ? G_CARET : G_DASH)) : (abs(o) == 2.0 ? (o < 0.0 ? G_LP : G_RP) : ((o < 0.0) == up ? G_BACK : G_SLASH)));
+      if (r < 1.0) { tone = mtone; put(g, 1.0, SIL); }
+      else put(g, 0.9, P(rgb(130.0, 116.0, 160.0), rgb(48.0, 28.0, 38.0)));
+      return;
+    }
+  }
+
+  // --- wisps of cloud drifting across the moon: dark streaks on it, faint beyond it
+  for (int i = 0; i < 2; i++) {
+    float fi = float(i);
+    float wy = mc.y + R * (i == 0 ? 0.55 : 0.2);
+    if (abs(Y - wy) < ch * 0.5 && Y > ht + 0.16) {
+      float len = R * (0.7 + 0.5 * h1(fi * 3.1)), x0 = mod(time * (0.01 + 0.005 * fi) + h1(fi * 7.7) * 3.0, aspect + 2.0 * len) - len;
+      if (X > x0 && X < x0 + len && vn(X * 55.0 + fi * 9.0) > 0.28) {
+        if (r < 1.0) { tone = mtone; put(G_LINE, 1.0, SIL); }
+        else put(G_DASH, 0.45, P(rgb(90.0, 84.0, 124.0), rgb(170.0, 120.0, 110.0)));
+        return;
+      }
+    }
+  }
+
+  // --- the moon: a great disc, its face knit in zigzags along each row (sparser and dimmer in its
+  // seas, dimmer toward its rim), its rim drawn; by day an orange sun going down
+  if (r < 1.0) {
+    tone = mtone;
+    #define OUT(o) (length(Pp + (o) - mc) > R)
+    int eg = edge4(OUT(vec2(0.0, ch)), OUT(vec2(0.0, -ch)), OUT(vec2(-cw, 0.0)), OUT(vec2(cw, 0.0)));
+    if (eg != 0) { put(eg, 1.0, moonC); return; }
+    vec2 q = (Pp - mc) / R;
+    float sea2 = day ? 0.0 : smoothstep(0.5, 0.64, fbm(q * 2.2 + 3.0));
+    bool knit = sea2 < 0.5 || h0 < 0.45;
+    put(knit ? (mod(cell.x, 2.0) < 1.0 ? G_HATCHB : G_HATCH) : (h0 < 0.7 ? G_DOT : 0), 0.9, mix(moonC, moonD, sea2) * (1.0 - 0.22 * r * r));
+    return;
+  }
+  // its glow: a fine haze all round, breathing with the loudness
+  if (r < 1.3) {
+    float a = 1.0 - (r - 1.0) / 0.3;
+    if (h0 < a * a * 0.22 * (0.6 + 0.6 * glow)) { put(h0 < a * 0.05 ? G_MID : G_DOT, 0.4 + 0.4 * a, moonC * 0.85); return; }
+  }
+  sky(cell, X, Y, h0, lake.x, lake.x + 0.05);
+}`;
+
+// The sharks, seen from above: by day a lagoon, turquoise over sand, the light gathering in a net on
+// the bottom and the sharks' shadows on it; by night deep water, plankton lit in their wakes and
+// twinkling (more when the hats are busy). Three swim their rounds under the toaster on its ring:
+// a hammerhead, a blacktip reef shark and a leopard shark, darting on the kicks and rushing on a
+// drop; a ripple spreads from the ring on each kick. The page swims them (swimSharks) and hands
+// each over as a spine of 12 points, snout first, then 4 along its wake (shk); its kind, length,
+// width (units of the height) and whether it's there (shkK); a box round it (shkB). moon: the
+// ring's middle and radius.
+const SHARKS = `
+uniform vec2 shk[48];       // the sharks' spines, 16 points each from the snout (units of the height)
+uniform vec4 shkK[3];       // each one's kind (0 a hammerhead, 1 a blacktip, 2 a zebra shark), its length, how far its left and right fins reach (as it banks)
+uniform vec4 shkB[3];       // the box each one's in (x0, y0, x1, y1), none when x1 < x0
+uniform vec4 shkD[3];       // how near each one is (1 the nearest), a number of its own
+uniform sampler2D life;     // a cell at a time: a fish there (R, how bright), the water stirred (G), a splash where one was caught (B)
+const vec2 SUN = vec2(-0.6, 0.8);
+// (where in a cell the sharks are looked for, besides its middle)
+const vec2 SUB[4] = vec2[4](vec2(-0.27, 0.24), vec2(0.27, 0.2), vec2(-0.2, -0.26), vec2(0.24, -0.24));
+// the skin's glyphs, sparse to dense: sparse where it's lit, dense in its shadows
+const int RAMP[10] = int[10](G_COLON, G_SEMI, G_SMALLI, G_PLUS, G_SMALLX, G_LS, G_DOLLAR, G_EIGHT, G_HASH, G_AT);
+// what's at the last point looked at: 0 water, 1 a shark's body, 2 a fin, 3 the dorsal fin, 4 an
+// eye, 5 a dark mark; how lit (0-1); how far along it (0 the snout, 1 the tail's end) and across it
+// (signed, units of its length)
+float what = 0.0, lit = 0.0, along = 0.0, across = 0.0;
+float cr(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
+bool inTri(vec2 p, vec2 a, vec2 b, vec2 c) {
+  float s1 = cr(b - a, p - a), s2 = cr(c - b, p - b), s3 = cr(a - c, p - c);
+  return (s1 >= 0.0 && s2 >= 0.0 && s3 >= 0.0) || (s1 <= 0.0 && s2 <= 0.0 && s3 <= 0.0);
+}
+// half a shark's width at s (0 its snout, 1 its tail's end), in units of its length, seen from above:
+// a rounded snout, widest a third back, narrowing to the stalk of its tail; the hammerhead's neck slim
+// behind its head (the head's a wing across it, below); the zebra shark stout, half its length a tail
+float bodyW(float s, float kind) {
+  if (kind > 1.5) {
+    if (s < 0.09) return 0.074 * pow(sin(1.5708 * s / 0.09), 0.7);
+    if (s < 0.26) return mix(0.074, 0.097, smoothstep(0.09, 0.26, s));
+    if (s < 0.52) return 0.027 + 0.07 * pow(1.0 - (s - 0.26) / 0.26, 1.15);
+    float k = (s - 0.52) / 0.48;
+    return 0.026 * (1.0 - k * k) + 0.016 * sin(k * 3.14159);
+  }
+  if (s < 0.12) return kind < 0.5 ? (s < 0.01 ? 0.0 : 0.036) : 0.085 * pow(sin(1.5708 * s / 0.12), 0.9);
+  if (s < 0.3) return mix(kind < 0.5 ? 0.036 : 0.085, 0.1, smoothstep(0.12, 0.3, s));
+  if (s < 0.84) return 0.018 + 0.082 * pow(1.0 - (s - 0.3) / 0.54, 1.3);
+  float k = (s - 0.84) / 0.16;
+  return 0.017 * (1.0 - k) + 0.009 * sin(k * 3.14159);
+}
+// the zebra shark's spots: one to each patch of its skin, somewhere in it, each its own size
+bool spotAt(float s, float v, float id) {
+  vec2 g = vec2(s / 0.05, v / 0.036), c = floor(g);
+  vec2 o = 0.25 + 0.5 * vec2(h2(c + id * 7.0), h2(c + id * 7.0 + 19.0));
+  return length(g - c - o) < 0.2 + 0.13 * h2(c + id * 7.0 + 41.0);
+}
+// shark k at p: whether it's there, and what's there (into what, lit, along, across). Its body lit
+// from the top left, rounded (its flanks falling into shadow), a pale snout, the gill slits, the
+// dorsal fin catching the light down the middle of its back (the blacktip's black at its tip); the
+// fins: the pectorals long and swept back (sickle-shaped but the zebra shark's), the pelvics, the
+// tail's fork; the hammerhead's head, its eyes on the ends; the blacktip's black tips, the zebra
+// shark's ridges and spots
+bool sharkAt(int k, vec2 p) {
+  vec4 K = shkK[k];
+  float kind = K.x, L = K.y, best = 1e9, arc = 0.0, at = 0.0, side = 1.0;
+  vec2 nrm = vec2(0.0);
+  for (int j = 0; j < 15; j++) {
+    vec2 a = shk[k * 16 + j], ab = shk[k * 16 + j + 1] - a;
+    float l = max(length(ab), 1e-6), u = clamp(dot(p - a, ab) / (l * l), 0.0, 1.0);
+    vec2 d = p - a - ab * u;
+    float dd = dot(d, d);
+    if (dd < best) { best = dd; at = arc + u * l; side = cr(ab, d) < 0.0 ? -1.0 : 1.0; nrm = side * vec2(-ab.y, ab.x) / l; }
+    arc += l;
+  }
+  float a = sqrt(best) / L, s = at / max(arc, 1e-6);
+  along = s; across = side * a;
+  if (kind < 0.5) {
+    float r = a / 0.15, front = 0.03 * r * r, deep = 0.07 * (1.0 - 0.3 * r * r * r * r);
+    if (r <= 1.0 && s >= front && s <= front + deep) {
+      what = r > 0.85 ? 4.0 : 1.0;
+      lit = r > 0.85 ? 0.0 : 0.6 - 0.18 * r + (s < front + 0.012 ? 0.12 : 0.0);
+      return true;
+    }
+  }
+  float w = bodyW(s, kind);
+  if (a <= w) {
+    float c = a / max(w, 1e-5);
+    what = 1.0;
+    lit = 0.58 - 0.3 * c * c + 0.15 * dot(nrm, SUN) * c;
+    vec2 d1 = kind < 0.5 ? vec2(0.3, 0.43) : kind < 1.5 ? vec2(0.33, 0.45) : vec2(0.35, 0.43);
+    vec2 d2 = kind > 1.5 ? vec2(0.47, 0.51) : vec2(0.7, 0.745);
+    vec2 ey = kind < 0.5 ? vec2(-1.0) : kind < 1.5 ? vec2(0.085, 0.12) : vec2(0.055, 0.085);
+    vec2 gi = kind < 0.5 ? vec2(0.15, 0.25) : kind < 1.5 ? vec2(0.17, 0.27) : vec2(0.13, 0.2);
+    if (s > d1.x && s < d1.y && c < 0.3) { what = kind > 0.5 && kind < 1.5 && s > mix(d1.x, d1.y, 0.6) ? 5.0 : 3.0; lit = 1.0; }
+    else if (s > d2.x && s < d2.y && c < 0.4) lit = max(lit, 0.8);
+    else if (s > ey.x && s < ey.y && c > 0.6) { what = 4.0; lit = 0.0; }
+    else if (s > gi.x && s < gi.y && c > 0.58) { if (mod(floor((s - gi.x) / (gi.y - gi.x) * 9.0), 2.0) < 0.5) lit *= 0.5; }
+    else if (s < 0.045) lit = max(lit, 0.7);
+    else if (kind > 1.5 && s > 0.08 && s < 0.52 && (c < 0.1 || abs(c - 0.62) < 0.07)) lit = max(lit, 0.8);
+    else if (kind > 1.5 && s > 0.07 && spotAt(s, across, shkD[k].y)) what = 5.0;
+    return true;
+  }
+  vec2 q = vec2(s, a);
+  vec4 pc = kind < 0.5 ? vec4(0.17, 0.41, 0.51, 0.23) : kind < 1.5 ? vec4(0.15, 0.42, 0.53, 0.25) : vec4(0.12, 0.31, 0.37, 0.2);
+  float tip = pc.w * (side > 0.0 ? K.z : K.w);
+  if (inTri(q, vec2(pc.x, 0.0), vec2(pc.y, 0.0), vec2(pc.z, tip)) && (kind > 1.5 || !inTri(q, vec2(pc.y, 0.0), vec2(mix(pc.y, pc.z, 0.42), 0.55 * tip), vec2(pc.z, tip)))) {
+    what = kind > 0.5 && kind < 1.5 && a > 0.66 * tip ? 5.0 : 2.0;
+    lit = 0.38 + 0.22 * (1.0 - clamp(a / tip, 0.0, 1.0));
+    if (kind > 1.5 && spotAt(s, across, shkD[k].y)) what = 5.0;
+    return true;
+  }
+  vec4 pv = kind > 1.5 ? vec4(0.43, 0.49, 0.52, 0.06) : vec4(0.57, 0.64, 0.68, 0.07);
+  if (inTri(q, vec2(pv.x, 0.0), vec2(pv.y, 0.0), vec2(pv.z, pv.w)) || (kind < 1.5 && inTri(q, vec2(0.85, 0.0), vec2(0.94, 0.0), vec2(1.0, kind < 0.5 ? 0.09 : 0.075)))) {
+    what = kind > 0.5 && kind < 1.5 && s > 0.95 ? 5.0 : 2.0;
+    lit = 0.36;
+    return true;
+  }
+  return false;
+}
+// a colour for a glyph's flash, by its key
+vec3 accent(float key) {
+  int i = int(fract(key * 7.31) * 7.0);
+  return i == 0 ? rgb(232.0, 168.0, 88.0) : i == 1 ? rgb(226.0, 70.0, 70.0) : i == 2 ? rgb(166.0, 98.0, 232.0) : i == 3 ? rgb(52.0, 196.0, 200.0)
+       : i == 4 ? rgb(84.0, 190.0, 96.0) : i == 5 ? rgb(70.0, 104.0, 236.0) : rgb(232.0, 204.0, 84.0);
+}
+// a glyph along a line at angle a (on the screen, y up): -, /, | or the backslash, as the cells are drawn
+int lineGlyph(float a) {
+  float c = mod(atan(sin(a) / ch, cos(a) / cw), 3.14159265);
+  return c < 0.3927 || c > 2.7489 ? G_DASH : c < 1.1781 ? G_SLASH : c < 1.9635 ? G_BAR : G_BACK;
+}
+// the light's net on the bottom: cells drifting (Voronoi), the light gathered along their edges:
+// how far from the nearest edge (x, small on it) and the edge's direction there (y, an angle)
+vec2 causticEdge(vec2 q, float t) {
+  q += 0.22 * vec2(sin(q.y * 1.3 + t * 0.7), sin(q.x * 1.1 - t * 0.6));
+  vec2 g = floor(q), f = fract(q), c1 = vec2(0.0), c2 = vec2(0.0);
+  float d1 = 9.0, d2 = 9.0;
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 o = vec2(float(i), float(j)), hh = vec2(h2(g + o), h2(g + o + 31.0));
+    vec2 c = o + 0.5 + 0.35 * vec2(sin(t * (0.6 + hh.x) + 6.28 * hh.y), cos(t * (0.5 + hh.y) + 6.28 * hh.x)) - f;
+    float d = dot(c, c);
+    if (d < d1) { d2 = d1; c2 = c1; d1 = d; c1 = c; } else if (d < d2) { d2 = d; c2 = c; }
+  }
+  vec2 a = c2 - c1;
+  return vec2(dot(0.5 * (c1 + c2), normalize(a)), atan(a.y, a.x) + 1.5708);
+}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  float row = grid.y - 1.0 - cell.y, H = view.y;
+  cw = cellPx.x / H; ch = cellPx.y / H;
+  float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
+  day = night < 0.5;
+  vec2 p = vec2(X, Y);
+  vec4 lf = texelFetch(life, ivec2(int(cell.x), int(row)), 0);
+
+  // --- the sharks, the nearest first: a tile where one covers the cell, in its kind's colours
+  // shaded by the light, its glyph from the skin's (keyed to a place on the skin, so it rides along
+  // with it), dark but now and then flashing a colour or white, so the hide shimmers; and round
+  // their edges, where a cell's only partly covered, a light glyph with no tile
+  for (int k = 0; k < 3; k++) {
+    vec4 B = shkB[k];
+    if (B.z < B.x || X < B.x || X > B.z || Y < B.y || Y > B.w) continue;
+    bool mid = sharkAt(k, p);
+    float wh = what, li = lit, s = along, v = across;
+    int n = mid ? 1 : 0;
+    for (int i = 0; i < 4; i++) if (sharkAt(k, p + SUB[i] * vec2(cw, ch))) n++;
+    if (n == 0) continue;
+    vec4 K = shkK[k], D = shkD[k];
+    float kind = K.x, cover = float(n) / 5.0, near = 0.74 + 0.26 * D.x;
+    float key = h2(vec2(floor(s * 52.0 + 0.5), floor(v * K.y / cw + 0.5)) + D.y * 37.0);
+    // (its colours, in shadow and lit: the hammerhead olive bronze, the blacktip grey, the zebra
+    // shark sand; by night in the moonlight)
+    vec3 dk = kind < 0.5 ? rgb(78.0, 76.0, 58.0) : kind < 1.5 ? rgb(70.0, 80.0, 94.0) : rgb(122.0, 98.0, 60.0);
+    vec3 lt = kind < 0.5 ? rgb(170.0, 164.0, 128.0) : kind < 1.5 ? rgb(170.0, 182.0, 196.0) : rgb(226.0, 198.0, 140.0);
+    if (!day) { dk *= vec3(0.55, 0.62, 0.8); lt *= vec3(0.6, 0.68, 0.86); }
+    dk *= near; lt *= near;
+    if (!mid || cover < 0.6) {
+      put(cover >= 0.5 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, mix(dk, lt, 0.35));
+      return;
+    }
+    // (its tile: shaded by the light, the fins a little duller, the dark marks darker, the dorsal
+    // fin's edge catching the light, the eyes black; flickering a little)
+    vec3 c = wh > 4.5 ? dk * 0.38 : wh > 3.5 ? rgb(16.0, 16.0, 20.0) : wh > 2.5 ? mix(lt, vec3(1.0), 0.25) : mix(dk, lt, wh > 1.5 ? 0.15 + 0.7 * li : li);
+    c *= 1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.05;
+    tileC = c; tileA = 1.0;
+    int g = wh > 4.5 ? (key < 0.33 ? G_HASH : key < 0.67 ? G_PCT : G_AT)
+          : wh > 3.5 ? G_SMALLO
+          : wh > 2.5 ? (key < 0.33 ? G_AT : key < 0.67 ? G_EIGHT : G_PCT)
+          : wh > 1.5 ? (key < 0.2 ? G_PCT : key < 0.4 ? G_SEMI : key < 0.6 ? G_SMALLI : key < 0.8 ? G_LS : G_COLON)
+          : RAMP[clamp(int((1.0 - li) * 9.99) + int(fract(key * 13.7) * 3.0) - 1, 0, 9)];
+    // (the shimmer: each glyph rolls again a couple of times a second, each on its own beat)
+    float roll = h2(vec2(floor(key * 4096.0), floor(time * 2.4 + fract(key * 31.0) * 10.0)));
+    vec3 ink = wh > 4.5 ? dk * 0.6 : wh > 3.5 ? rgb(154.0, 160.0, 173.0) : roll < 0.045 ? accent(key) : roll < 0.065 ? vec3(1.0)
+             : day ? c * (li > 0.55 ? 0.36 : 0.48) : li > 0.55 ? rgb(14.0, 15.0, 19.0) : rgb(27.0, 29.0, 36.0);
+    put(g, 1.0, ink);
+    return;
+  }
+
+  // --- by day, their shadows on the bottom, down and to the right of each
+  if (day) for (int k = 0; k < 3; k++) {
+    vec4 B = shkB[k];
+    vec2 q = p - vec2(0.02, -0.026);
+    if (B.z < B.x || q.x < B.x || q.x > B.z || q.y < B.y || q.y > B.w) continue;
+    if (sharkAt(k, q)) { tone = 0.8; break; }
+  }
+  // --- the fish: a dash each, brighter nearer, glinting as they turn or flee
+  if (lf.r > 0.0) {
+    put(G_DASH, 0.45 + 0.55 * lf.r, day ? mix(rgb(70.0, 120.0, 132.0), rgb(24.0, 62.0, 76.0), lf.r) : mix(rgb(70.0, 96.0, 150.0), rgb(220.0, 232.0, 255.0), lf.r));
+    return;
+  }
+  // --- a splash of bubbles where a fish was caught
+  if (lf.b > 0.08) { put(lf.b > 0.5 ? G_SMALLO : G_MID, 0.4 + 0.6 * lf.b, day ? vec3(1.0) : rgb(170.0, 250.0, 255.0)); return; }
+  // --- a ripple spreading from the float on each kick
+  for (int i = 0; i < 4; i++) {
+    vec4 q = rip[i];
+    if (q.w <= 0.0) continue;
+    float fade = exp(-q.z * 1.7), rad = moon.z * 1.05 + q.z * 0.08, dr = length(p - q.xy) - rad;
+    if (abs(dr) < cw * 0.55 && fade > 0.15 && h2(cell + 3.0) < 0.35 + 0.45 * fade) {
+      vec2 dv = p - q.xy;
+      put(lineGlyph(atan(dv.y, dv.x) + 1.5708), 0.25 + 0.6 * fade, P(rgb(150.0, 230.0, 240.0), rgb(248.0, 255.0, 255.0)));
+      return;
+    }
+  }
+  // --- by night the plankton lit where things swim, the light spreading and fading
+  if (!day && lf.g > 0.1) { put(lf.g > 0.4 ? G_MID : G_DOT, min(1.0, 0.25 + 1.5 * lf.g), mix(rgb(50.0, 140.0, 210.0), rgb(120.0, 245.0, 255.0), min(1.0, 2.0 * lf.g))); return; }
+  if (!day) {
+    // (the plankton twinkling here and there, more when the hats are busy)
+    float tw = h2(cell + floor(time * (2.0 + 4.0 * fly)) * 3.1);
+    if (tw > 0.996 - 0.006 * fly) { put(tw > 0.9993 ? G_STAR : G_MID, 0.8, rgb(140.0, 255.0, 230.0)); return; }
+    put(0, 0.0, vec3(0.0));
+    return;
+  }
+  // --- the light's net on the bottom, cells lit along its edges, in patches, drifting (faster when
+  // the hats are busy); none in the shadows
+  if (tone == 0.0) {
+    float sc0 = 14.0, netAt = vn2(p * 3.0 + vec2(time * 0.05, -time * 0.03));
+    vec2 ce = causticEdge(p * sc0, time * (0.35 + 0.5 * wind));
+    if (abs(ce.x) / sc0 < cw * 0.55 && netAt > 0.42) { tileC = rgb(250.0, 255.0, 252.0); tileA = min(0.45, 0.12 + 0.8 * (netAt - 0.42)); }
+  }
+  put(0, 0.0, vec3(0.0));
+}
+`;
+
+const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS };
 
 // The glyphs, each from the sheet, over the paper. In its own colours: each in its colour, on a
 // night sky (darkest overhead) or on the day's paper; or in the theme's: its ink in the theme's
 // colour on its background. k: how strongly it shows (A's strength, in the theme's colours).
 const PAINT = `#version 300 es
 precision highp float;
-uniform sampler2D cells, cols, sheet, sprite;
+uniform sampler2D cells, cols, sheet, sprite, tiles;
 uniform vec2 grid, cellPx, slot, sheetSize;
+uniform float gridK;     // the cells' grid, drawn faintly (the sharks' water); 0 none
 uniform float perRow, dpr, H, k, own, horizon, night, time, water;
 uniform vec3 bg, fg, top, low;
 uniform vec3 tint;       // the toaster's colour at night (moonlight, firelight, the aurora's)
@@ -2130,16 +2704,24 @@ void main() {
   float gi = floor(c.r * 255.0 + 0.5);
   vec2 f = (p - cell * cellPx) / cellPx;
   float cov = gi > 0.5 ? texture(sheet, (vec2(mod(gi, perRow), floor(gi / perRow)) + f) * slot / sheetSize).a : 0.0;
+  // (a tile fills its cell but for a hair along its top and left, where the grid's drawn)
+  vec4 tl = texelFetch(tiles, at, 0);
+  bool rim = f.x * cellPx.x * dpr < 1.0 || f.y * cellPx.y * dpr < 1.0;
   vec3 col;
   if (own > 0.5) {
     float y = p.y / (H / dpr);
     vec3 paper = mix(top, low, smoothstep(0.0, horizon, y)) + toneC * c.b;
     if (light.w > 0.0) paper += vec3(0.32, 0.13, 0.03) * light.w * pow(max(0.0, 1.0 - length((p - light.xy) * vec2(0.8, 1.0)) / light.z), 2.0);
     if (light2.w > 0.0) paper += light2C * light2.w * pow(max(0.0, 1.0 - length((p - light2.xy) * vec2(0.8, 1.0)) / light2.z), 2.0);
+    if (rim) paper = mix(paper, night > 0.5 ? paper + 0.05 : paper * 0.9, gridK);
+    else paper = mix(paper, tl.rgb, tl.a);
     col = mix(paper, texelFetch(cols, at, 0).rgb, cov * c.g);
   // (in the theme's colours at night, each glyph as bright as it is in the scenery's own: its shadows
-  // stay dark, its lights full)
-  } else col = mix(bg, fg, cov * min(1.0, c.g * k) * (night > 0.5 ? clamp(dot(texelFetch(cols, at, 0).rgb, vec3(0.3, 0.55, 0.15)) * 2.2, 0.0, 1.0) : 1.0));
+  // stay dark, its lights full; a tile a faint block of the theme's ink)
+  } else {
+    vec3 under = rim ? mix(bg, fg, 0.05 * gridK) : mix(bg, fg, 0.22 * tl.a * min(1.0, k));
+    col = mix(under, fg, cov * min(1.0, c.g * k) * (night > 0.5 ? clamp(dot(texelFetch(cols, at, 0).rgb, vec3(0.3, 0.55, 0.15)) * 2.2, 0.0, 1.0) : 1.0));
+  }
   // the boat, in pixels over the glyphs (the way the stream draws its fisher); under the water's
   // line its reflection, wavering, broken into lines, faint
   if (spr.z > 0.0) {
@@ -2163,6 +2745,32 @@ const SW = 40, SH = 28, WATER = 22.5;
 function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
   g.clearRect(0, 0, SW, SH);
   const rect = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y + dy, w, h); };
+  if (on === 'float') {
+    // Seen from above (the sharks' scene): a ring, red and white, shaded down and to the right, a
+    // shine on its top left; on it the toaster, its two slots, the toast in them (risen when it
+    // pops), the lever at its side, and its face on the front
+    const cx = 20, cy = 14;
+    for (let y = 0; y < SH; y++) {
+      for (let x = 0; x < SW; x++) {
+        const dx = x + 0.5 - cx, dy2 = y + 0.5 - cy, d = Math.hypot(dx, dy2);
+        if (d < 7.4 || d > 12.6) continue;
+        const red = Math.floor(((Math.atan2(dy2, dx) + Math.PI) / (Math.PI / 4)) + 0.5) % 2 === 0;
+        const lit = -(dx + dy2) / d; // (the light from the top left)
+        const mid = Math.abs(d - 10) < 0.8 && lit > 0.75;
+        rect(x, y, 1, 1, mid ? '#ffffff' : red ? (lit < -0.3 ? '#a83232' : '#e04848') : (lit < -0.3 ? '#c4c4d0' : '#f2f2f6'));
+      }
+    }
+    rect(14, 9, 13, 10, '#86817a'); rect(15, 9, 11, 1, '#e8e8f0'); rect(15, 10, 11, 8, '#c9c9d4'); rect(14, 18, 13, 1, '#6e6a64');
+    for (const sy of [12, 15]) {
+      rect(16, sy, 9, 1, '#2a2a33');
+      rect(17, sy - (pop > 1 ? 1 : 0), 7, pop > 1 ? 2 : 1, '#e0a860');
+      if (pop > 1) rect(17, sy - 1, 7, 1, '#a8682e');
+    }
+    rect(27, 13, 1, 2, '#3a3048');
+    rect(17, 17, 1, 1, '#1a1626'); rect(23, 17, 1, 1, '#1a1626');
+    rect(16, 17, 1, 1, '#ff9ab8'); rect(24, 17, 1, 1, '#ff9ab8');
+    return;
+  }
   const line = (x0, y0, x1, y1, c) => {
     const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
     for (let i = 0; i <= n; i++) rect(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), 1, 1, c);
@@ -2180,7 +2788,13 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
   rect(24, 12, 1, 2, '#3a3048');
   // the rowboat, a rock in the shallows, a log by the fire, a bucket on the ice and a hole in it,
   // or a bench on the pavement
-  if (on === 'tube') {
+  if (on === 'broom') {
+    // the broomstick under it, the handle turned up at the front, the bristles fanning out behind,
+    // bound with a band
+    rect(6, 18, 31, 1, '#9a6a3a'); rect(6, 19, 31, 1, '#5e3a1a'); rect(37, 17, 2, 1, '#9a6a3a');
+    [[15, '#e8c060'], [16.5, '#b8862e'], [18, '#e8c060'], [19.5, '#b8862e'], [21, '#e8c060'], [22.5, '#b8862e']].forEach(([y, c]) => line(6, 18.5, 0, Math.round(y), c));
+    rect(6, 17, 2, 4, '#6a2a7a');
+  } else if (on === 'tube') {
     const seg = (x) => (Math.floor((x - 6) / 4) % 2 ? '#f2f2f6' : '#e04848');
     for (let x = 9; x < 31; x++) if (x < 12 || x > 23) rect(x, 16, 1, 1, seg(x));
     for (let x = 7; x < 33; x++) if (x < 12 || x > 23) rect(x, 17, 1, 1, seg(x));
@@ -2200,6 +2814,15 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
     rect(13, 20, 3, 1, '#4a4d60'); rect(24, 21, 4, 1, '#3c3f50'); rect(10, 19, 2, 1, '#c4c8da');
   } else {
     rect(6, 18, 28, 1, '#c8925a'); rect(6, 19, 28, 1, '#8a5a2b'); rect(7, 20, 26, 1, '#6e4521'); rect(8, 21, 24, 1, '#8a5a2b'); rect(10, 22, 20, 1, '#5e3a1a');
+  }
+  if (on === 'broom') {
+    // the witch's hat, perched on the toast (and lifted by it when it pops): a brim, a purple band,
+    // the cone with its tip bent over
+    const hy = -pop, hat = '#2b2238', glint = '#55447a';
+    rect(10, 6 + hy, 16, 1, hat); rect(13, 5 + hy, 10, 1, '#8a3ab8');
+    rect(14, 4 + hy, 8, 1, hat); rect(15, 3 + hy, 6, 1, hat); rect(16, 2 + hy, 4, 1, hat); rect(17, 1 + hy, 3, 1, hat); rect(19, hy, 3, 1, hat); rect(21, hy - 1, 2, 1, hat);
+    rect(14, 4 + hy, 1, 1, glint); rect(15, 3 + hy, 1, 1, glint); rect(16, 2 + hy, 1, 1, glint);
+    return;
   }
   if (on === 'bridge' || on === 'tube') return;
   if (on === 'umbrella') {
@@ -2225,14 +2848,365 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
   rect(36, fy - 1, 1, 1, '#e04848'); rect(36, fy, 1, 1, '#ffffff');
 }
 
+// The sharks' water (the scene 'sharks'), in units of the window's height, y up (as the shader has
+// them), a step a 60th of a second at a time. Three sharks patrol a loose round about the toaster's
+// float, each its own way round and at its own distance, wandering off it, giving each other room,
+// keeping clear of the float and turning back as they leave the window. None turns tighter than a
+// shark can (the faster, the wider its turn); its spine follows its snout a joint at a time, bending
+// so far at each and no further, and a wave runs down its body, more toward the tail. Schools of
+// little fish (a dash each) shoal about: each keeps its room, lines up with its school and keeps to
+// it (a bait ball milling round its middle), sees all but straight behind it, and swims mostly level;
+// they flee a shark to whichever side of its path they're on, the alarm running through the school,
+// and flinch from the float on each kick. On a drop (and every 8 bars, with the toast) the sharks get
+// hungry and hunt: the nearest fish ahead of them, the strays sooner than those in a crowd; a caught
+// fish leaves a splash of bubbles and comes back later with a new school swimming in from an edge.
+// Where anything swims it stirs the water (a cell at a time, spreading and fading).
+const SPINE = 16, SEA_STEP = 1 / 60;
+const SHARK_KINDS = [
+  { kind: 0, size: 1, near: 1 }, // a scalloped hammerhead
+  { kind: 1, size: 0.84, near: 0.86 }, // a blacktip reef shark
+  { kind: 2, size: 0.92, near: 0.74 }, // a zebra shark (the Indo-Pacific leopard shark)
+];
+// how each kind of fish schools: its cruising, top and least speeds (units of the height a second);
+// how many to a school; the room each keeps (in cells, along and across); how strongly they line up
+// with and keep to their school; how restless; a pull round the school's middle (a bait ball); how
+// level they keep
+const SCHOOLS = [
+  { cruise: 0.05, top: 0.09, least: 0.025, n: [14, 22], room: [1.7, 1.1], line: 1.4, keep: 1.8, rest: 0.06, mill: 0.1, level: 0.6 }, // a bait ball
+  { cruise: 0.06, top: 0.1, least: 0.03, n: [16, 26], room: [1.6, 1], line: 3, keep: 0.5, rest: 0.04, mill: 0, level: 1.5 }, // a ribbon
+  { cruise: 0.035, top: 0.07, least: 0.015, n: [8, 12], room: [1.5, 1.2], line: 0.4, keep: 1.2, rest: 0.12, mill: 0, level: 0.4 }, // a loose swarm
+];
+const between = (a, b) => a + Math.random() * (b - a);
+const within = (v, a, b) => (v < a ? a : v > b ? b : v);
+const turnTo = (a, b) => {
+  let d = (b - a) % (2 * Math.PI);
+  if (d > Math.PI) d -= 2 * Math.PI;
+  else if (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+};
+function newSea(cols, rows, cw, ch, aspect, fx, fy) {
+  const n = cols * rows, side = Math.min(1, aspect);
+  const sea = {
+    cols, rows, cw, ch, aspect, fx, fy, t: 0, acc: 0, sharks: [], fish: [], lastSchool: 0, hunger: 0,
+    // (the middle of the sharks' rounds: between the window's middle and the float; how far a fish sees)
+    cx: 0.65 * (aspect / 2) + 0.35 * fx, cy: 0.65 * 0.5 + 0.35 * fy, R: Math.max(3 * ch, 5.5 * cw),
+    wake: new Float32Array(n), wake2: new Float32Array(n), splash: new Float32Array(n), data: new Uint8Array(n * 4), seen: new Uint32Array(n), frame: 0,
+  };
+  const sx = aspect >= 1 ? 1.3 : 1, sy = aspect >= 1 ? 1 : 1.5;
+  SHARK_KINDS.forEach((k, i) => {
+    const L = (aspect >= 1 ? 0.56 : 0.5) * side * k.size, ring = side * between(0.26, 0.38), a = (i / SHARK_KINDS.length) * 2 * Math.PI + between(-0.4, 0.4), dir = i % 2 ? -1 : 1;
+    const x = sea.cx + Math.cos(a) * ring * sx, y = sea.cy + Math.sin(a) * ring * sy, head = a + (dir * Math.PI) / 2;
+    const nodes = new Float32Array(SPINE * 2), seg = L / (SPINE - 1);
+    for (let j = 0; j < SPINE; j++) { nodes[2 * j] = x - Math.cos(head) * seg * j; nodes[2 * j + 1] = y - Math.sin(head) * seg * j; }
+    sea.sharks.push({ ...k, id: i + 1, L, ring, dir, nodes, head, speed: 0.04, phase: between(0, 6.28), turn: 0, wander: 0, prey: null, look: 0 });
+  });
+  const total = within(Math.round(n / 80), 60, 220);
+  while (sea.fish.length < total) {
+    const kind = Math.floor(Math.random() * SCHOOLS.length), sc = SCHOOLS[kind];
+    const size = Math.min(Math.round(between(sc.n[0], sc.n[1])), total - sea.fish.length);
+    const x = between(0.06, 0.94) * aspect, y = between(0.08, 0.92), d = (Math.random() < 0.5 ? 0 : Math.PI) + between(-0.5, 0.5), mill = Math.random() < 0.5 ? 1 : -1;
+    for (let j = 0; j < size; j++) {
+      sea.fish.push({ x: x + between(-1, 1) * sc.room[0] * cw * Math.sqrt(size), y: y + between(-1, 1) * sc.room[1] * ch * Math.sqrt(size) * 0.6, vx: Math.cos(d) * sc.cruise, vy: Math.sin(d) * sc.cruise, kind, alarm: 0, alive: true, back: 0, turn: 0, near: between(0.55, 1), mill });
+    }
+  }
+  return sea;
+}
+// a step: m the music's (kick: a kick this step; pace: how fast the sharks cruise, with the
+// loudness); sea.hunger is set to 1 on a drop or the toast's pop, and fades
+function stepSea(sea, m) {
+  const dt = SEA_STEP;
+  sea.t += dt;
+  sea.hunger = Math.max(0, sea.hunger - dt * 0.12);
+  // (the fish into buckets as wide as they see, for their neighbours)
+  const R = sea.R, bc = Math.ceil(sea.aspect / R) + 4, br = Math.ceil(1 / R) + 4;
+  if (!sea.head || sea.head.length !== bc * br) { sea.head = new Int32Array(bc * br); sea.count = new Uint16Array(bc * br); }
+  if (!sea.next || sea.next.length !== sea.fish.length) sea.next = new Int32Array(sea.fish.length);
+  const bucket = (x, y) => within(Math.floor(y / R) + 2, 0, br - 1) * bc + within(Math.floor(x / R) + 2, 0, bc - 1);
+  sea.head.fill(-1);
+  sea.count.fill(0);
+  sea.fish.forEach((f, i) => {
+    if (!f.alive) return;
+    const b = bucket(f.x, f.y);
+    sea.next[i] = sea.head[b];
+    sea.head[b] = i;
+    sea.count[b]++;
+  });
+  swimFish(sea, dt, m, bc, br, bucket);
+  swimSharks(sea, dt, m, bucket);
+  stirSea(sea, dt, m);
+  // (caught fish back as a school from an edge, now and then)
+  const due = sea.fish.filter((f) => !f.alive && f.back <= sea.t);
+  if (due.length && (due.length >= 6 || sea.t - sea.lastSchool > 9)) {
+    sea.lastSchool = sea.t;
+    const edge = Math.floor(Math.random() * 4), u = between(0.15, 0.85), kind = Math.floor(Math.random() * SCHOOLS.length), sc = SCHOOLS[kind];
+    const x = edge === 0 ? -0.03 : edge === 1 ? sea.aspect + 0.03 : u * sea.aspect, y = edge === 2 ? -0.03 : edge === 3 ? 1.03 : u;
+    const d = Math.atan2(0.5 - y, sea.aspect / 2 - x) + between(-0.5, 0.5), mill = Math.random() < 0.5 ? 1 : -1;
+    for (const f of due.slice(0, sc.n[1])) Object.assign(f, { alive: true, kind, alarm: 0, turn: 0, mill, x: x + between(-1, 1) * R, y: y + between(-1, 1) * R, vx: Math.cos(d) * sc.cruise * 1.4, vy: Math.sin(d) * sc.cruise * 1.4 });
+  }
+}
+function swimFish(sea, dt, m, bc, br, bucket) {
+  const { fish, sharks, cw, ch, aspect, R, head, next } = sea, R2 = R * R, calm = Math.exp(-dt * 0.7), pass = Math.min(1, dt * 6), t = sea.t;
+  for (let i = 0; i < fish.length; i++) {
+    const f = fish[i];
+    if (!f.alive) continue;
+    const sc = SCHOOLS[f.kind], room = 1 + 1.8 * f.alarm, rx = sc.room[0] * cw * room, ry = sc.room[1] * ch * room;
+    const sp = Math.hypot(f.vx, f.vy) || 1e-6, hx = f.vx / sp, hy = f.vy / sp;
+    let ax = 0, ay = 0, sx = 0, sy = 0, vx = 0, vy = 0, mx = 0, my = 0, n = 0, heard = 0;
+    const b0 = bucket(f.x, f.y), c0 = b0 % bc, r0 = (b0 - c0) / bc;
+    for (let r = Math.max(0, r0 - 1); r <= Math.min(br - 1, r0 + 1); r++) {
+      for (let c = Math.max(0, c0 - 1); c <= Math.min(bc - 1, c0 + 1); c++) {
+        for (let j = head[r * bc + c]; j !== -1; j = next[j]) {
+          if (j === i) continue;
+          const o = fish[j], dx = o.x - f.x, dy = o.y - f.y, d2 = dx * dx + dy * dy;
+          if (d2 >= R2 || d2 < 1e-12) continue;
+          const d = Math.sqrt(d2);
+          if ((dx * hx + dy * hy) / d < -0.6) continue;
+          // (its room: wider along than across, so each has a cell of its own)
+          const qx = dx / rx, qy = dy / ry, q2 = qx * qx + qy * qy;
+          if (q2 < 1) { const q = Math.sqrt(q2) || 1e-3, k = (1 - q) / q; sx -= qx * k; sy -= qy * k; }
+          if (o.kind === f.kind) { vx += o.vx; vy += o.vy; mx += dx; my += dy; n++; }
+          else if (d < 3 * cw) { const k = ((1 - d / (3 * cw)) / d) * 0.6; sx -= dx * k; sy -= dy * k; }
+          heard = Math.max(heard, o.alarm);
+        }
+      }
+    }
+    ax += sx * 0.5; ay += sy * 0.5;
+    if (n) {
+      const keep = sc.keep * (1 - 0.8 * f.alarm);
+      ax += (vx / n - f.vx) * 1.4 * sc.line + (mx / n) * keep;
+      ay += (vy / n - f.vy) * 1.4 * sc.line + (my / n) * keep;
+      if (sc.mill) { const l = Math.hypot(mx, my) || 1; ax -= (my / l) * f.mill * sc.mill * (1 - f.alarm); ay += (mx / l) * f.mill * sc.mill * (1 - f.alarm); }
+    }
+    // the sharks: away from the nearest part of the front half of each, and off to the side of its path
+    let fear = 0;
+    for (const s of sharks) {
+      const far = s.L * 0.6 + 0.075;
+      let best = Infinity, bx = 0, by = 0;
+      for (let k = 0; k <= 8; k += 2) {
+        const d2 = (f.x - s.nodes[2 * k]) ** 2 + (f.y - s.nodes[2 * k + 1]) ** 2;
+        if (d2 < best) { best = d2; bx = s.nodes[2 * k]; by = s.nodes[2 * k + 1]; }
+      }
+      const d = Math.sqrt(best);
+      if (d >= far || d < 1e-6) continue;
+      const w = (1 - d / far) ** 2, ux = Math.cos(s.head), uy = Math.sin(s.head);
+      const side = ux * (f.y - s.nodes[1]) - uy * (f.x - s.nodes[0]) >= 0 ? 1 : -1;
+      ax += ((f.x - bx) / d * 0.7 - uy * side * 0.9) * 1.4 * w;
+      ay += ((f.y - by) / d * 0.7 + ux * side * 0.9) * 1.4 * w;
+      fear = Math.max(fear, Math.sqrt(w));
+    }
+    // (a flinch from the float on a kick)
+    if (m.kick) {
+      const dx = f.x - sea.fx, dy = f.y - sea.fy, d = Math.hypot(dx, dy);
+      if (d < 0.2 && d > 1e-6) { const k = (1 - d / 0.2) * 0.12; f.vx += (dx / d) * k; f.vy += (dy / d) * k; fear = Math.max(fear, 0.5 * (1 - d / 0.2)); }
+    }
+    let alarm = Math.max(f.alarm * calm, fear);
+    if (heard * 0.86 > alarm) alarm += (heard * 0.86 - alarm) * pass;
+    f.alarm = alarm;
+    // the window's edges, a slow current (curling, so it doesn't gather them anywhere), restlessness
+    const e = 0.045;
+    if (f.x < e) ax += (e - f.x) * 7; else if (f.x > aspect - e) ax -= (f.x - aspect + e) * 7;
+    if (f.y < e) ay += (e - f.y) * 7; else if (f.y > 1 - e) ay -= (f.y - 1 + e) * 7;
+    const a1 = f.x * 3.1 + t * 0.07, b1 = f.y * 2.6 - t * 0.05;
+    ax += -0.011 * Math.sin(a1) * Math.sin(b1) + (Math.random() - 0.5) * sc.rest;
+    ay += -0.013 * Math.cos(a1) * Math.cos(b1) + (Math.random() - 0.5) * sc.rest;
+    ay -= f.vy * sc.level * (1 - 0.7 * f.alarm);
+    const want = sc.cruise * (1 + 1.3 * f.alarm);
+    ax += (want - sp) * hx * 1.6; ay += (want - sp) * hy * 1.6;
+    const was = Math.atan2(f.vy, f.vx);
+    f.vx += ax * dt; f.vy += ay * dt;
+    const top = sc.top * (1 + 1.8 * f.alarm), v = Math.hypot(f.vx, f.vy);
+    if (v > top) { f.vx *= top / v; f.vy *= top / v; } else if (v < sc.least && v > 1e-9) { f.vx *= sc.least / v; f.vy *= sc.least / v; }
+    f.turn += (turnTo(was, Math.atan2(f.vy, f.vx)) / dt - f.turn) * Math.min(1, dt * 8);
+    f.x = within(f.x + f.vx * dt, -0.075, aspect + 0.075);
+    f.y = within(f.y + f.vy * dt, -0.075, 1.075);
+  }
+}
+function swimSharks(sea, dt, m, bucket) {
+  const { sharks, aspect, cx, cy, fx, fy, t } = sea, sx = aspect >= 1 ? 1.3 : 1, sy = aspect >= 1 ? 1 : 1.5;
+  for (const s of sharks) {
+    const { L, nodes } = s, x = nodes[0], y = nodes[1];
+    let dx = Math.cos(s.head), dy = Math.sin(s.head);
+    // (a wander: a slowly drifting aim ahead of its snout)
+    s.wander = within(s.wander + (Math.random() - 0.5) * dt * 2.4, -0.7, 0.7);
+    dx += Math.cos(s.head + s.wander) * 0.3; dy += Math.sin(s.head + s.wander) * 0.3;
+    // hunting: the fish it's after, where it's about to be; or its round
+    if (sea.hunger > 0.3 && t >= s.look) { s.prey = findPrey(sea, s, bucket); s.look = t + 0.45; }
+    if (sea.hunger <= 0.3) s.prey = null;
+    const f = s.prey && s.prey.alive && s.prey.x > 0.03 && s.prey.x < aspect - 0.03 && s.prey.y > 0.03 && s.prey.y < 0.97 ? s.prey : null;
+    let close = 0;
+    if (f) {
+      const tx = f.x + f.vx * 0.35 - x, ty = f.y + f.vy * 0.35 - y, d = Math.hypot(tx, ty) || 1, w = 1.4 + 2.6 * sea.hunger;
+      dx += (tx / d) * w; dy += (ty / d) * w;
+      close = within(1 - d / (L * 0.9), 0, 1);
+    } else {
+      const rx = (x - cx) / sx, ry = (y - cy) / sy, r = Math.hypot(rx, ry) || 1, ring = s.ring * (1 + 0.15 * Math.sin(t * 0.05 + s.id)), out = within((ring - r) / ring, -1, 1);
+      dx += ((-ry / r) * s.dir + (rx / r) * out * 0.9) * 0.55;
+      dy += ((rx / r) * s.dir + (ry / r) * out * 0.9) * 0.55;
+    }
+    // room for the others
+    for (const o of sharks) {
+      if (o === s) continue;
+      for (let k = 0; k < SPINE; k += 3) {
+        const ox = x - o.nodes[2 * k], oy = y - o.nodes[2 * k + 1], d = Math.hypot(ox, oy), far = (L + o.L) * 0.45;
+        if (d < far && d > 1e-6) { const w = (1 - d / far) * 3; dx += (ox / d) * w; dy += (oy / d) * w; }
+      }
+    }
+    // clear of the float (unless it's chasing), and back in when its snout's out of the window
+    const ex = x - fx, ey = y - fy, e = Math.hypot(ex, ey), clear = 0.11 + 0.1 * L;
+    if (e < clear && e > 1e-6) { const w = (1 - e / clear) * (f ? 1 : 2.5); dx += (ex / e) * w; dy += (ey / e) * w; }
+    const over = Math.max(-x, x - aspect, -y, y - 1);
+    if (over > -L * 0.15) { const w = within((over + L * 0.15) / (L * 0.35), 0, 1) * 3.5 + (over > 0 ? 3 : 0), tx = cx - x, ty = cy - y, d = Math.hypot(tx, ty) || 1; dx += (tx / d) * w; dy += (ty / d) * w; }
+    // its turn: no sharper than its speed allows (out of the window, where it doesn't show, as sharp
+    // as when hunting)
+    const most = Math.min(f || over > 0 ? 1.7 + close : 0.8, s.speed / (L * (f || over > 0 ? 0.35 : 0.3))) * dt, turned = within(turnTo(s.head, Math.atan2(dy, dx)), -most, most);
+    s.head += turned;
+    s.turn += (turned / dt - s.turn) * Math.min(1, dt * 3);
+    const cruise = (0.03 + 0.06 * L) * m.pace, want = f ? cruise * (1.45 + 1.5 * close) : cruise;
+    s.speed += (want - s.speed) * Math.min(1, dt * 1.1);
+    s.phase += dt * (2 + s.speed / 0.03);
+    nodes[0] += Math.cos(s.head) * s.speed * dt;
+    nodes[1] += Math.sin(s.head) * s.speed * dt;
+    // the spine after the snout, a joint at a time, each bending so far and no further
+    const seg = L / (SPINE - 1);
+    let prev = s.head + Math.PI;
+    for (let k = 1; k < SPINE; k++) {
+      const px = nodes[2 * k - 2], py = nodes[2 * k - 1];
+      const a = prev + within(turnTo(prev, Math.atan2(nodes[2 * k + 1] - py, nodes[2 * k] - px)), -0.12, 0.12);
+      nodes[2 * k] = px + Math.cos(a) * seg;
+      nodes[2 * k + 1] = py + Math.sin(a) * seg;
+      prev = a;
+    }
+    // a catch
+    if (f) {
+      const r = L * 0.05 + 0.01;
+      for (const g of sea.fish) {
+        if (g.alive && (g.x - nodes[0]) ** 2 + (g.y - nodes[1]) ** 2 < r * r) {
+          g.alive = false;
+          g.back = t + between(3, 8);
+          sea.hunger = Math.max(0, sea.hunger - 0.08);
+          stamp(sea, sea.splash, g.x, g.y, 2, 1);
+        }
+      }
+    }
+  }
+}
+// the fish a shark goes for: ahead of it, near, and alone rather than in a crowd (it keeps after the
+// one it's after unless another's clearly better)
+function findPrey(sea, s, bucket) {
+  const range = s.L * 0.9 + 0.2, x = s.nodes[0], y = s.nodes[1], ux = Math.cos(s.head), uy = Math.sin(s.head);
+  let best = null, bestScore = Infinity, mine = Infinity;
+  for (const f of sea.fish) {
+    if (!f.alive || f.x < 0.06 || f.x > sea.aspect - 0.06 || f.y < 0.06 || f.y > 0.94) continue;
+    const dx = f.x - x, dy = f.y - y, d = Math.hypot(dx, dy);
+    if (d > range || d < 1e-6) continue;
+    const ahead = (dx * ux + dy * uy) / d;
+    if (ahead < 0.2) continue;
+    const score = d * (1 + (1 - ahead) * 0.8) * (1 + sea.count[bucket(f.x, f.y)] * 0.07);
+    if (score < bestScore) { bestScore = score; best = f; }
+    if (f === s.prey) mine = score;
+  }
+  return s.prey && mine < bestScore * 1.3 ? s.prey : best;
+}
+// a little of something into the cells round x, y (a round of r cells)
+function stamp(sea, field, x, y, r, amount) {
+  const c0 = Math.floor(x / sea.cw), r0 = Math.floor((1 - y) / sea.ch);
+  for (let r1 = r0 - r; r1 <= r0 + r; r1++) {
+    for (let c1 = c0 - r; c1 <= c0 + r; c1++) {
+      if (c1 < 0 || r1 < 0 || c1 >= sea.cols || r1 >= sea.rows) continue;
+      const d = Math.hypot(c1 - c0, (r1 - r0) * 1.4);
+      if (d > r + 0.5) continue;
+      const i = r1 * sea.cols + c1;
+      field[i] = Math.min(1.6, field[i] + amount * (1 - d / (r + 1)));
+    }
+  }
+}
+// the water stirred: by each fish (more as it flees), each shark's tail, the float on a kick;
+// spreading to the cells round it and fading
+function stirSea(sea, dt, m) {
+  const { cols, rows, cw, ch } = sea;
+  const at = (x, y) => { const c = Math.floor(x / cw), r = Math.floor((1 - y) / ch); return c < 0 || r < 0 || c >= cols || r >= rows ? -1 : r * cols + c; };
+  let w = sea.wake;
+  for (const f of sea.fish) {
+    if (!f.alive) continue;
+    const i = at(f.x, f.y);
+    if (i >= 0) w[i] = Math.min(1.6, w[i] + 0.025 + f.alarm * 0.05);
+  }
+  for (const s of sea.sharks) {
+    for (let k = SPINE - 5; k < SPINE; k++) {
+      const i = at(s.nodes[2 * k], s.nodes[2 * k + 1]);
+      if (i >= 0) w[i] = Math.min(1.6, w[i] + 0.12 + 2 * s.speed);
+    }
+  }
+  if (m.kick) stamp(sea, w, sea.fx, sea.fy, 4, 0.8);
+  const fade = Math.exp(-dt * 1.5), o = sea.wake2;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      o[i] = (w[i] * 4 + w[c > 0 ? i - 1 : i] + w[c < cols - 1 ? i + 1 : i] + w[r > 0 ? i - cols : i] + w[r < rows - 1 ? i + cols : i]) * 0.125 * fade;
+    }
+  }
+  sea.wake = o;
+  sea.wake2 = w;
+  const gone = Math.exp(-dt * 2.2), sp = sea.splash;
+  for (let i = 0; i < sp.length; i++) sp[i] *= gone;
+}
+// the sea a cell at a time for the shader: R a fish (how bright: nearer, and glinting as it turns or
+// flees; the nearer where two share a cell), G the water stirred, B a splash
+function seaCells(sea) {
+  const { data, cols, rows, cw, ch, wake, splash, seen } = sea, frame = ++sea.frame;
+  for (let i = 0, n = cols * rows; i < n; i++) {
+    data[4 * i] = 0;
+    data[4 * i + 1] = Math.min(255, wake[i] * 160);
+    data[4 * i + 2] = Math.min(255, splash[i] * 255);
+  }
+  for (let pass = 0; pass < 2; pass++) {
+    for (const f of sea.fish) {
+      if (!f.alive || (f.near > 0.78 ? 0 : 1) !== pass) continue;
+      const c = Math.floor(f.x / cw), r = Math.floor((1 - f.y) / ch);
+      if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
+      const i = r * cols + c;
+      if (seen[i] === frame) continue;
+      seen[i] = frame;
+      const glint = within(Math.abs(f.turn) / 3.5, 0, 1);
+      data[4 * i] = Math.round(255 * within(0.3 + (0.4 * (f.near - 0.55)) / 0.45 + 0.3 * Math.max(glint, f.alarm), 0.05, 1));
+    }
+  }
+}
+// the sharks for the shader: each one's spine with its swimming wave on it (stronger toward the
+// tail, quicker and wider the faster it goes), kind, length and fins (the one inside a turn
+// foreshortened, the outer spread), its box, how near it is and its number
+function seaSharks(sea, spine, kinds, boxes, nears) {
+  sea.sharks.forEach((s, k) => {
+    const { L, nodes } = s, swim = within(s.speed / 0.06, 0.4, 1.4);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let j = 0; j < SPINE; j++) {
+      const u = j / (SPINE - 1), a = Math.max(0, j - 1), b = Math.min(SPINE - 1, j + 1);
+      const tx = nodes[2 * a] - nodes[2 * b], ty = nodes[2 * a + 1] - nodes[2 * b + 1], tl = Math.hypot(tx, ty) || 1;
+      const off = L * 0.05 * (0.1 + 0.9 * u ** 1.8) * swim * Math.sin(s.phase - u * 5.2);
+      const x = nodes[2 * j] - (ty / tl) * off, y = nodes[2 * j + 1] + (tx / tl) * off;
+      spine[(k * SPINE + j) * 2] = x;
+      spine[(k * SPINE + j) * 2 + 1] = y;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+    const bank = within(s.turn * 0.45, -0.35, 0.35), flex = 1 + 0.06 * Math.sin(s.phase * 0.5), mg = L * 0.3;
+    kinds.set([s.kind, L, flex * (1 - bank), flex * (1 + bank)], k * 4);
+    boxes.set([x0 - mg, y0 - mg, x1 + mg, y1 + mg], k * 4);
+    nears.set([s.near, s.id, 0, 0], k * 4);
+  });
+}
+
 export function createScenery(canvas) {
-  let gl = null, ready = false, scenes = {}, makeProgram = null, paint = null, vao = null, cellTex = null, colTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
+  let gl = null, ready = false, scenes = {}, makeProgram = null, paint = null, vao = null, cellTex = null, colTex = null, tileTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
   const boatCv = Object.assign(document.createElement('canvas'), { width: SW, height: SH }), boatG = boatCv.getContext('2d');
   let popAt = -9, dipAt = -9, dropSeen = -99;
   // the music: the walk (in beats, kept on the beat), the wind, the glow, the fireflies, the
   // ripples, the birds or a falling star
   let last = 0, walkB = 0, beamB = 0, swimB = 0, car = null, wind = 0.25, glowV = 0, flyV = 0, kickAt = -1, lastBar = null, flock = null, falling = null;
   const rips = [], ripV = new Float32Array(16);
+  // the sharks' water while their scene is up (a kick for it, the last pop it saw; the sharks for
+  // the shader: spines, kinds, boxes, how near)
+  let sea = null, seaKick = false, seaPop = -9;
+  const shkV = new Float32Array(2 * 3 * SPINE), shkKV = new Float32Array(12), shkBV = new Float32Array(12), shkDV = new Float32Array(12);
 
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; });
   canvas.addEventListener('webglcontextrestored', () => { ready = false; });
@@ -2265,6 +3239,8 @@ export function createScenery(canvas) {
     gl.bindVertexArray(null);
     cellTex = gl.createTexture();
     colTex = gl.createTexture();
+    tileTex = gl.createTexture();
+    lifeTex = gl.createTexture();
     sheetTex = gl.createTexture();
     spriteTex = gl.createTexture();
     fbo = gl.createFramebuffer();
@@ -2274,7 +3250,7 @@ export function createScenery(canvas) {
   // each scene's program, made the first time it's shown (the library and its own part)
   const sceneProgram = (name) => (scenes[name] ??= makeProgram(LIB + (MAINS[name] || MAINS.lake)));
 
-  // The grid of cells for the window (the scene's two pictures: glyph and ink, colour), and the
+  // The grid of cells for the window (the scene's three pictures: glyph and ink, colour, tile), and the
   // sheet: each glyph in a slot the size of a cell, in device pixels.
   function layout(W, H, dpr) {
     canvas.width = Math.round(W * dpr);
@@ -2298,7 +3274,7 @@ export function createScenery(canvas) {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sheet);
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-    for (const t of [cellTex, colTex]) {
+    for (const t of [cellTex, colTex, tileTex]) {
       gl.bindTexture(gl.TEXTURE_2D, t);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, cols, rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
@@ -2306,6 +3282,7 @@ export function createScenery(canvas) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cellTex, 0);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, colTex, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, tileTex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     dims = { W, H, dpr, cw, cols, rows, sw, sh, perRow, sheetW: sheet.width, sheetH: sheet.height };
   }
@@ -2320,6 +3297,7 @@ export function createScenery(canvas) {
       dims = null;
       rips.length = 0;
       flock = falling = null; lastBar = null;
+      sea = null;
     },
     // col: the theme's colours (0-255), which also say day (a light theme) or night; offset: how far
     // ahead to draw (as the blocks), for the walk; colours: 'own' (the scenery's) or 'theme' (its
@@ -2366,6 +3344,7 @@ export function createScenery(canvas) {
         dipAt = t;
         if (eng.present('bd', t)) {
           if (scene === 'falls') rips.push({ x: (0.5 + (Math.random() - 0.5) * 0.1) * aspect, y: V.lake[0] - 0.035 - 0.03 * Math.random(), t });
+          else if (scene === 'sharks') { rips.push({ x: V.toaster.x * aspect, y: V.toaster.y, t }); seaKick = true; }
           else rips.push({ x: (0.15 + 0.7 * Math.random()) * aspect, y: V.lake[1] + (V.lake[0] - V.lake[1]) * (0.25 + 0.6 * Math.random()), t });
           if (rips.length > 4) rips.shift();
         }
@@ -2398,13 +3377,35 @@ export function createScenery(canvas) {
       }
       if ((eng.lastDrop ?? -99) > dropSeen) { dropSeen = eng.lastDrop; if (t - eng.lastDrop < 1) popAt = t; }
       const pa = t - popAt;
-      drawBoat(boatG, { dy: V.toaster.on === 'boat' || V.toaster.on === 'tube' ? Math.floor(walkB) % 2 : 0, pop: pa < 0.7 ? Math.round(5 * Math.sin((Math.PI * pa) / 0.7)) : 0, dip: t - dipAt < 0.2 ? 1 : 0, on: V.toaster.on, toast: (walkB % 32) / 32 });
+      // (the toaster on its broom: flying across the moon, drifting to and fro, rising and falling,
+      // slowly; its middle, CSS pixels)
+      const Sz = Math.max(1, Math.round(H / 270));
+      const flight = V.toaster.on === 'broom' ? { x: (V.toaster.x + 0.03 * Math.sin(t * 0.17)) * W, y: (1 - V.toaster.y - 0.012 * Math.sin(t * 0.71)) * H } : null;
+      drawBoat(boatG, { dy: (V.toaster.on === 'broom' ? 5 : 0) + (['boat', 'tube', 'broom', 'float'].includes(V.toaster.on) ? Math.floor(walkB) % 2 : 0), pop: pa < 0.7 ? Math.round(5 * Math.sin((Math.PI * pa) / 0.7)) : 0, dip: t - dipAt < 0.2 ? 1 : 0, on: V.toaster.on, toast: (walkB % 32) / 32 });
       const shoot = falling ? [falling.x, falling.y, t - falling.t, 1] : [0, 0, 0, 0];
+      // (the sharks' water: stepped on, a 60th of a second a step and at most 4 a frame, with the
+      // kicks, the hunger a drop or the toast's pop brings, the loudness; its cells and the sharks
+      // handed over)
+      if (scene === 'sharks') {
+        if (!sea || sea.cols !== dims.cols || sea.rows !== dims.rows || sea.aspect !== aspect) sea = newSea(dims.cols, dims.rows, dims.cw / H, PX / H, aspect, V.toaster.x * aspect, V.toaster.y);
+        if (popAt > seaPop) { seaPop = popAt; if (t - popAt < 1) sea.hunger = 1; }
+        sea.acc += dt;
+        let steps = 0;
+        while (sea.acc >= SEA_STEP && steps < 4) {
+          stepSea(sea, { kick: seaKick, pace: 0.9 + 0.25 * glowV });
+          seaKick = false;
+          sea.acc -= SEA_STEP;
+          steps++;
+        }
+        if (steps === 4) sea.acc = 0;
+        if (steps) seaCells(sea);
+        seaSharks(sea, shkV, shkKV, shkBV, shkDV);
+      } else { sea = null; seaKick = false; }
 
       // the scene into the cells
       gl.bindVertexArray(vao);
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
       gl.viewport(0, 0, dims.cols, dims.rows);
       let sp;
       try { sp = sceneProgram(scene); } catch (err) { broken = true; console.error('scenery:', err); return; }
@@ -2432,8 +3433,23 @@ export function createScenery(canvas) {
       gl.uniform4fv(u('rip'), ripV);
       gl.uniform4fv(u('birds'), birds);
       gl.uniform4fv(u('shoot'), shoot);
-      gl.uniform4fv(u('car'), carU);
-      gl.uniform4f(u('leap'), t - popAt, Math.floor(popAt * 3.7) % 2 ? 1 : -1, 0, scene === 'falls' ? 1 : 0);
+      gl.uniform4fv(u('car'), flight ? [(flight.x - 20 * Sz) / H, 1 - (flight.y + 9.5 * Sz) / H, 0, 1] : carU);
+      gl.uniform4f(u('leap'), t - popAt, Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' ? 1 : 0);
+      gl.uniform4f(u('moon'), (V.moon?.[0] ?? 0) * aspect, V.moon?.[1] ?? 0, V.moon?.[2] ?? 0, 0);
+      if (scene === 'sharks') {
+        gl.uniform2fv(u('shk'), shkV);
+        gl.uniform4fv(u('shkK'), shkKV);
+        gl.uniform4fv(u('shkB'), shkBV);
+        gl.uniform4fv(u('shkD'), shkDV);
+        gl.activeTexture(gl.TEXTURE5);
+        gl.bindTexture(gl.TEXTURE_2D, lifeTex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, dims.cols, dims.rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, sea.data);
+        for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+        gl.uniform1i(u('life'), 5);
+        // (moon: the toaster's ring, its middle and its radius)
+        gl.uniform4f(u('moon'), V.toaster.x * aspect, V.toaster.y, (12.6 * Math.max(1, Math.round(H / 270))) / H, 0);
+      }
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
@@ -2450,6 +3466,10 @@ export function createScenery(canvas) {
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, sheetTex);
       gl.uniform1i(p('sheet'), 2);
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, tileTex);
+      gl.uniform1i(p('tiles'), 4);
+      gl.uniform1f(p('gridK'), scene === 'sharks' ? 1 : 0);
       gl.activeTexture(gl.TEXTURE3);
       gl.bindTexture(gl.TEXTURE_2D, spriteTex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -2460,15 +3480,17 @@ export function createScenery(canvas) {
       // float clear of the light's path; or where it sits by the campfire)
       const S = Math.max(1, Math.round(H / 270)), bw = SW * S, bh = SH * S;
       const wideF = Math.min(1, Math.max(0, (aspect - 0.56) / 1.22));
-      const waterY = V.toaster.on === 'bridge'
+      const flying = V.toaster.on === 'broom';
+      const waterY = flying ? 1e6 : V.toaster.on === 'bridge'
         ? (1 - (V.lake[1] + (V.lake[0] - V.lake[1]) * 0.4 + (0.1 + 0.03 * wideF))) * H + (WATER - 18.5) * S
         : (1 - (V.lake[1] + (V.lake[0] - V.lake[1]) * V.toaster.y)) * H;
-      const bx = (V.toaster.on === 'bridge' ? (0.5 + 0.14 * wideF) * W : V.toaster.x * W) - bw / 2, by = waterY - (V.toaster.on === 'tube' ? 20 : WATER) * S;
+      const bx = flying ? flight.x - bw / 2 : (V.toaster.on === 'bridge' ? (0.5 + 0.14 * wideF) * W : V.toaster.x * W) - bw / 2;
+      const by = flying ? flight.y - bh / 2 : waterY - (V.toaster.on === 'tube' ? 20 : V.toaster.on === 'float' ? SH / 2 : WATER) * S;
       gl.uniform4f(p('spr'), bx, by, bw, bh);
-      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge'].includes(V.toaster.on) ? 1e6 : waterY);
+      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float'].includes(V.toaster.on) ? 1e6 : waterY);
       gl.uniform1f(p('night'), night);
       gl.uniform3fv(p('tint'), night ? V.tint || [0.8, 0.82, 0.96] : [1, 1, 1]);
-      gl.uniform3fv(p('toneC'), night ? V.toneN || [0.1, 0.12, 0.17] : [-0.075, -0.045, -0.015]);
+      gl.uniform3fv(p('toneC'), night ? V.toneN || [0.1, 0.12, 0.17] : V.toneD || [-0.075, -0.045, -0.015]);
       // (the campfire's light on the paper, breathing with the loudness)
       const kickV = Math.exp(-Math.max(0, t - dipAt) * 4);
       if (scene === 'fire' && night) gl.uniform4f(p('light'), 0.5 * W, (1 - V.lake[1] - 0.04) * H, 0.55 * H, 0.7 + 0.2 * glowV + 0.25 * kickV + 0.06 * Math.sin(t * 13) * Math.sin(t * 7.3));
@@ -2482,6 +3504,9 @@ export function createScenery(canvas) {
       } else if (scene === 'garden' && night) {
         const wide = Math.min(1, Math.max(0, (aspect - 0.56) / 1.22));
         gl.uniform4f(p('light'), (0.22 + 0.28 * wide) * W, (1 - V.lake[0] - 0.05) * H, 0.13 * H, 0.45 + 0.2 * glowV);
+      } else if (scene === 'halloween' && night) {
+        const wide = Math.min(1, Math.max(0, (aspect - 0.56) / 1.22));
+        gl.uniform4f(p('light'), (0.22 + 0.41 * wide) * W, (1 - 0.055) * H, 0.17 * H, 0.5 + 0.3 * kickV + 0.12 * glowV + 0.08 * Math.sin(t * 11) * Math.sin(t * 6.7));
       } else gl.uniform4f(p('light'), 0, 0, 1, 0);
       if (scene === 'city' && night) {
         const wide = Math.min(1, Math.max(0, (aspect - 0.56) / 1.22));
@@ -2491,6 +3516,9 @@ export function createScenery(canvas) {
         const wide = Math.min(1, Math.max(0, (aspect - 0.56) / 1.22));
         gl.uniform4f(p('light2'), (0.86 - 0.04 * wide) * W, (1 - V.lake[0] - 0.05) * H, 0.13 * H, 0.45 + 0.2 * glowV);
         gl.uniform3f(p('light2C'), 0.32, 0.13, 0.03);
+      } else if (scene === 'halloween' && night) {
+        gl.uniform4f(p('light2'), V.moon[0] * W, (1 - V.moon[1]) * H, V.moon[2] * 1.9 * H, 0.85 + 0.25 * glowV);
+        gl.uniform3f(p('light2C'), 0.1, 0.085, 0.12);
       } else gl.uniform4f(p('light2'), 0, 0, 1, 0);
       gl.uniform1f(p('time'), t % 1000);
       gl.uniform2f(p('grid'), dims.cols, dims.rows);
@@ -2506,9 +3534,10 @@ export function createScenery(canvas) {
       gl.uniform3f(p('bg'), col.bg[0] / 255, col.bg[1] / 255, col.bg[2] / 255);
       gl.uniform3f(p('fg'), col.fg[0] / 255, col.fg[1] / 255, col.fg[2] / 255);
       // (the paper: a night sky, darkest overhead; or the day's warm paper)
-      if (night) { gl.uniform3f(p('top'), 4 / 255, 5 / 255, 13 / 255); gl.uniform3f(p('low'), 14 / 255, 18 / 255, 46 / 255); }
-      else if (V.cool) { gl.uniform3f(p('top'), 222 / 255, 230 / 255, 242 / 255); gl.uniform3f(p('low'), 244 / 255, 247 / 255, 251 / 255); }
-      else { gl.uniform3f(p('top'), 238 / 255, 232 / 255, 214 / 255); gl.uniform3f(p('low'), 248 / 255, 244 / 255, 232 / 255); }
+      // (or the scene's own)
+      const paper = night ? V.paperN || [[4, 5, 13], [14, 18, 46]] : V.paperD || (V.cool ? [[222, 230, 242], [244, 247, 251]] : [[238, 232, 214], [248, 244, 232]]);
+      gl.uniform3f(p('top'), paper[0][0] / 255, paper[0][1] / 255, paper[0][2] / 255);
+      gl.uniform3f(p('low'), paper[1][0] / 255, paper[1][1] / 255, paper[1][2] / 255);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindVertexArray(null);

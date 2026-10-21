@@ -494,7 +494,7 @@ function toggleSpectroColours() {
 }
 // A, while the scenery is on: the next scene (auto, a new one each song; then each by name), and
 // after the last, auto again in the theme's two colours rather than its own
-const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls' };
+const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks' };
 function nextScene() {
   const all = ['auto', ...scenery.scenes];
   if (state.sceneryTheme) { state.sceneryTheme = false; state.sceneryScene = 'auto'; }
@@ -504,8 +504,10 @@ function nextScene() {
   saveSettings();
 }
 // with auto, the scene shown: a new one each song, in turn (from one picked at random at the start)
+// (Halloween's among them only in October)
 let autoScene = Math.floor(Math.random() * 64), autoSceneAt = -99;
-const sceneShown = () => (state.sceneryScene === 'auto' ? scenery.scenes[autoScene % scenery.scenes.length] : state.sceneryScene);
+const autoScenes = () => scenery.scenes.filter((s) => s !== 'halloween' || new Date().getMonth() === 9);
+const sceneShown = () => (state.sceneryScene === 'auto' ? autoScenes()[autoScene % autoScenes().length] : state.sceneryScene);
 function nextAutoScene() {
   const t = nowSec();
   if (t - autoSceneAt < 20) return; // (a new source and the engine can both say so, for one song)
