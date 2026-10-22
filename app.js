@@ -221,6 +221,7 @@ function attach(node, source, label) {
   // a file or the demo plays from its start; system audio and inputs may be halfway through a song
   freshStart(source === 'file' || source === 'demo');
   $('menu').hidden = true;
+  if (window.nc?.platform === 'web') $('alerts').innerHTML = '';   // (a browser's "pick a source" box goes with the menu)
   document.body.classList.add('live');
   $('status').classList.add('on');
   $('status').textContent = '● live';
@@ -257,11 +258,17 @@ const outdated = (ticket) => ticket !== picking;
 async function useSystem() {
   const ticket = ++picking;
   await ac.resume();
-  const stream = await navigator.mediaDevices.getDisplayMedia({ audio: RAW_AUDIO, video: !onMac() });
+  // (in a browser: a tab or the screen, picked in its sharing box, and this tab kept in front, as
+  // the browser would otherwise switch to the tab picked, leaving Toaster in the back, not drawing)
+  const web = window.nc?.platform === 'web', controller = web && window.CaptureController ? new CaptureController() : null;
+  const stay = () => { try { controller?.setFocusBehavior('focus-capturing-application'); } catch { /* (too late, or an older browser: it switches) */ } };
+  stay();
+  const stream = await navigator.mediaDevices.getDisplayMedia({ audio: RAW_AUDIO, video: !onMac(), ...(controller ? { controller } : {}) });
+  stay();                                                                   // (and again the moment it's picked, for browsers that only take it then)
   const track = stream.getAudioTracks()[0];
   if (!track || outdated(ticket)) {
     stream.getTracks().forEach((t) => t.stop());
-    if (!track && !outdated(ticket)) throw new Error(onMac() ? 'macOS did not hand over any audio.' : 'Windows did not hand over any audio.');
+    if (!track && !outdated(ticket)) throw new Error(web ? "The browser didn't share any sound: pick a tab (or your whole screen) and turn on sharing its audio." : onMac() ? 'macOS did not hand over any audio.' : 'Windows did not hand over any audio.');
     return;
   }
   await track.applyConstraints(RAW_AUDIO).catch(() => {}); // in case the first request was ignored
@@ -269,7 +276,7 @@ async function useSystem() {
   if (outdated(ticket)) { track.stop(); return; }
   detach();
   state.stream = stream;
-  track.addEventListener('ended', () => { if (state.stream === stream) showMenu('System audio stopped. Pick a source.', 'warning'); });
+  track.addEventListener('ended', () => { if (state.stream === stream) showMenu(web ? 'Sharing stopped. Pick a source.' : 'System audio stopped. Pick a source.', 'warning'); });
   attach(ac.createMediaStreamSource(new MediaStream([track])), 'system', 'system audio');
 }
 
@@ -329,7 +336,7 @@ async function useInput(deviceId, label) {
 
 function describeAudio() {
   const rate = `${ac.sampleRate / 1000} kHz`;
-  return state.source === 'system' ? `system loopback · ${rate}` : `${state.label || 'none'} · ${rate}`;
+  return state.source === 'system' ? `${window.nc?.platform === 'web' ? 'shared tab or screen' : 'system loopback'} · ${rate}` : `${state.label || 'none'} · ${rate}`;
 }
 
 // The source menu, with an optional message shown as an XP message box on top.
@@ -968,12 +975,18 @@ async function toggleRecording() {
 // The window's picture as a stream: just the page, at the window's own shape, up to 1920 on the
 // long side (the vertical layout comes out about 1080 x 1920, the size TikTok and Shorts want).
 // Left alone, the capture would be 1920 x 1080 whatever the window's shape, with bars round it. In a
-// browser: this tab, as the browser's own sharing dialog offers it.
+// browser: this tab, as the browser's own sharing dialog offers it, held at the size it starts at
+// (the bar the browser shows while sharing shrinks the page, and a recording whose size changes
+// partway comes out with broken frames).
 async function windowStream() {
-  if (window.nc.platform === 'web') return navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include' });
-  const id = await window.nc.recSource();
   const w = innerWidth * devicePixelRatio, h = innerHeight * devicePixelRatio, k = Math.min(2, 1920 / Math.max(w, h));
   const even = (x) => 2 * Math.round((x * k) / 2);
+  if (window.nc.platform === 'web') {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 60 }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include' });
+    await stream.getVideoTracks()[0]?.applyConstraints({ width: { exact: even(w) }, height: { exact: even(h) }, frameRate: 60, resizeMode: 'crop-and-scale' }).catch(() => {});
+    return stream;
+  }
+  const id = await window.nc.recSource();
   const size = { minWidth: even(w), maxWidth: even(w), minHeight: even(h), maxHeight: even(h) };
   return navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id, maxFrameRate: 60, ...size } } });
 }
