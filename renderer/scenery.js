@@ -16,9 +16,11 @@
 // ink and its colour) into two small pictures, then the glyphs drawn from a sheet in the app's font.
 
 const PX = 10; // a cell's height (CSS pixels)
-// how long a scene's program has been done before a switch shows it (ms): the graphics driver's own
-// finishing of a shader new to it, about half a second for the bigger scenes, over by then
-const SETTLE_MS = 1500;
+// how long a scene's program has been done before it's shown (ms): the graphics driver's own
+// finishing of a shader new to it, about half a second for the bigger scenes, over by then. One
+// done within QUICK_MS of being asked for came from the shader cache, nothing new to finish: shown
+// at once
+const SETTLE_MS = 1500, QUICK_MS = 150;
 // The land, in units of the window's height: each range's base, tallest peak, how far apart its
 // peaks come and its ink; the lake's far and near shores; how many cells a beat each layer glides
 // (meadow, near, mid, far, clouds); where the sun (or the moon) is, as shares of the width and
@@ -60,14 +62,34 @@ const HALLOWEEN_TALL = { ...TALL, ...HALLOWEEN_LOOK, far: [0.22, 0, 0, 0.3], lak
 const SHARKS_LOOK = { far: [0, 0, 0, 0.3], lake: [1, 0], band: [5, 1.57, 0.1, 0.3], tint: [0.78, 0.9, 1.0], toneN: [0.0, 0.2, 0.22], toneD: [-0.09, -0.055, -0.04], paperN: [[3, 9, 22], [6, 20, 42]], paperD: [[112, 200, 208], [148, 216, 212]] };
 const SHARKS_WIDE = { ...WIDE, ...SHARKS_LOOK, toaster: { x: 0.7, y: 0.3, on: 'float' } };
 const SHARKS_TALL = { ...TALL, ...SHARKS_LOOK, toaster: { x: 0.6, y: 0.15, on: 'float' } };
+// the koi pond: all water, seen from above as the sharks' is; the toaster on a lily pad (a share of
+// the width across, of the height up); the pond's paper, jade by day, dark by night; under a cell's
+// tone, by day, the shadows of the koi and the pads on the bottom
+const KOI_LOOK = { far: [0, 0, 0, 0.3], lake: [1, 0], band: [5, 1.57, 0.1, 0.3], tint: [0.8, 0.9, 0.94], toneN: [0.04, 0.1, 0.08], toneD: [-0.1, -0.07, -0.06], paperN: [[3, 12, 12], [6, 22, 20]], paperD: [[88, 148, 122], [116, 170, 138]] };
+const KOI_WIDE = { ...WIDE, ...KOI_LOOK, toaster: { x: 0.68, y: 0.32, on: 'pad' } };
+const KOI_TALL = { ...TALL, ...KOI_LOOK, toaster: { x: 0.6, y: 0.17, on: 'pad' } };
+// the festival: a stage on the far shore of a lake in the mountains; lake its far shore (the stage's
+// foot) and its near one (where the crowd stands); stage its middle (a share of the width), its
+// floor and its half width (units of the height), handed to the shader as moon; the toaster at its
+// decks, on the floor
+const FESTIVAL_WIDE = { ...WIDE, far: [0.36, 0.3, 0.4, 0.32], mid: [0.33, 0.15, 0.27, 0.56], near: [0.32, 0.022, 3.2, 0.86], lake: [0.32, 0.12], stage: [0.63, 0.335, 0.21], sun: [0.9, 0.86], band: [0.1, 0.72, 0.13, 0.25], tint: [1.0, 0.88, 1.0] };
+const FESTIVAL_TALL = { ...TALL, far: [0.27, 0.28, 0.4, 0.32], mid: [0.24, 0.14, 0.27, 0.56], near: [0.23, 0.018, 3.2, 0.86], lake: [0.23, 0.08], stage: [0.5, 0.243, 0.17], sun: [0.86, 0.55], band: [5, 1.57, 0.1, 0.3], tint: [1.0, 0.88, 1.0] };
+const onStage = (L, x) => ({ x, y: (L.stage[1] - L.lake[1]) / (L.lake[0] - L.lake[1]), on: 'decks' });
+for (const L of [FESTIVAL_WIDE, FESTIVAL_TALL]) L.toaster = onStage(L, L.stage[0]);
+// (the stage's glow on the paper: the show's first colours, as the shader has them, dimmed)
+const FESTIVAL_GLOW = [[0.3, 0.1, 0.25], [0.3, 0.21, 0.08], [0.12, 0.3, 0.2], [0.21, 0.16, 0.3]];
 // With the code hidden (Z), what changes where the code kept room: the sharks' float comes to the
-// middle (they circle it); in a tall window, where the code fills the top two thirds, Halloween's moon
-// rises into the middle, the toaster flying across it. (wide, tall: null if nothing changes)
+// middle (they circle it), and so does the koi's lily pad; in a tall window, where the code fills
+// the top two thirds, Halloween's moon rises into the middle, the toaster flying across it; in a
+// wide one the festival's stage moves to the middle, the toaster with it. (wide, tall: null if
+// nothing changes)
 const OPEN = {
   sharks: [{ toaster: { x: 0.5, y: 0.45, on: 'float' } }, { toaster: { x: 0.5, y: 0.42, on: 'float' } }],
+  koi: [{ toaster: { x: 0.5, y: 0.45, on: 'pad' } }, { toaster: { x: 0.5, y: 0.42, on: 'pad' } }],
   halloween: [null, { moon: [0.5, 0.56, 0.22], sun: [0.5, 0.56], toaster: { x: 0.66, y: 0.6, on: 'broom' } }],
+  festival: [{ stage: [0.5, FESTIVAL_WIDE.stage[1], FESTIVAL_WIDE.stage[2]], toaster: onStage(FESTIVAL_WIDE, 0.5) }, null],
 };
-const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL] };
+const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL], festival: [FESTIVAL_WIDE, FESTIVAL_TALL], koi: [KOI_WIDE, KOI_TALL] };
 const SPEED = [1, 0.5, 0.25, 0.12, 0.2];
 // the glyphs the scene draws with (the first, blank, is nothing there)
 const GLYPHS = {
@@ -78,15 +100,46 @@ const GLYPHS = {
   HASH: '#', DOLLAR: '$', SEMI: ';', SMALLI: 'i', SMALLX: 'x', EIGHT: '8', GRAVE: '`',
   VLINE: '│', VHEAVY: '┃', HHEAVY: '━',
 };
-const SHEET = Object.values(GLYPHS);
+// (and on the sheet after them, characters only the sharks' code fish draws with: kept out of GLYPHS,
+// so the program every scene shares (LIB) stays as it was and no other scene has to compile again;
+// past 63, so never in the art below, which keeps its glyph under 64)
+const EXTRA = [...'0123456789!?&[]{}'];
+const SHEET = [...Object.values(GLYPHS), ...EXTRA];
 const DEFS = Object.keys(GLYPHS).map((k, i) => `#define G_${k} ${i}`).join('\n');
+// the code fish's characters, as places on the sheet: digits and the code's punctuation
+const CODE_CHARS = [...'0123456789$%#@*+=-~<>/!?&[]{}'].map((c) => SHEET.indexOf(c));
 // Halloween's art (the jack-o'-lanterns; the big bats' wings up, level and down), as the shader's
 // constant arrays: each cell the glyph's place on the sheet plus 64 times its part (1 an outline, 2 lit:
 // a carved hole, a bat's eye; 3 a stem; 4 inside: a pumpkin's body, a bat's head)
 const PUMPKIN_ART = [[["          _)_          ", "          sss          "], ["     .-'~~~|~~~'-.     ", "     ooooooooooooo     "], ["   .'(( (( | )) ))'.   ", "   oobbbbbbbbbbbbboo   "], ["  /((  /\\ ( ) /\\  ))\\  ", "  obbbbffbbbbbffbbbbo  "], [" |((( /__\\(|)/__\\ )))| ", " obbbbffffbbbffffbbbbo "], [" |((((   (/_\\)   ))))| ", " obbbbbbbbfffbbbbbbbbo "], ["  \\((\\/\\/\\/\\/\\/\\/\\))/  ", "  obbfffffffffffffbbo  "], ["   '.(( \\/\\/\\/\\ )).'   ", "   oobbbfffffffbbboo   "], ["      '-._____.-'      ", "      ooooooooooo      "]], [["     _|,     ", "     sss     "], ["  .-'~|~'-.  ", "  ooooooooo  "], [" /(( o|o ))\\ ", " obbbfbfbbbo "], ["|(((  ^  )))|", "obbbbbfbbbbbo"], [" \\(( \\_/ ))/ ", " obbbfffbbbo "], ["  '-.___.-'  ", "  ooooooooo  "]], [["     _|_     ", "     sss     "], ["  .-'~|~'-.  ", "  ooooooooo  "], [" /(\\\\ | //)\\ ", " obffbbbffbo "], ["|(( (( )) ))|", "obbbbbbbbbbbo"], [" \\( \\/\\/\\ )/ ", " obbfffffbbo "], ["  '-.___.-'  ", "  ooooooooo  "]]];
 const BAT_ART = [[["\\.                 ./", "oo                 oo"], [" \\`-._  /\\_/\\  _.-'/ ", " ooooo  ooooo  ooooo "], ["  `-._`( o o )'_.-'  ", "  oooooobfbfboooooo  "], ["       `\\ v /'       ", "       ooboboo       "]], [["        /\\_/\\        ", "        ooooo        "], [" ._.-.-( o o )-.-._. ", " ooooooobfbfbooooooo "], [" \\/\\/\\/ \\ v / \\/\\/\\/ ", " oooooo obobo oooooo "], ["                     ", "                     "]], [["        /\\_/\\        ", "        ooooo        "], ["    _.-( o o )-._    ", "    oooobfbfboooo    "], ["  ./ /\\_\\ v /_/\\ \\.  ", "  oo ooooboboooo oo  "], [" /_/             \\_\\ ", " ooo             ooo "]]];
+// The garden's pagoda: three roofs, their eaves turned up at the ends, red walls with windows (lit at
+// night), the spire on top and a stone base (parts: 1 an outline, 2 lit, 3 the spire, 5 a wall, 6 a
+// roof's tiles, 7 the base)
+const PAGODA_ART = [[
+  ['          ┃          ', '          s          '],
+  ['         ═┃═         ', '         sss         '],
+  ['       _.-^-._       ', '       ooooooo       '],
+  ["    '-.~~~~~~~.-'    ", '    ooorrrrrrrooo    '],
+  ['       |▒▓▒▓▒|       ', '       owfwfwo       '],
+  ['     _.~~~~~~~._     ', '     oorrrrrrroo     '],
+  ["  '-.~~~~~~~~~~~.-'  ", '  ooorrrrrrrrrrrooo  '],
+  ['      |▒▓▒▓▒▓▒|      ', '      owfwfwfwo      '],
+  ['    _.~~~~~~~~~._    ', '    oorrrrrrrrroo    '],
+  ["'-.~~~~~~~~~~~~~~~.-'", 'ooorrrrrrrrrrrrrrrooo'],
+  ['    |▒▓▒▒▓▓▓▒▒▓▒|    ', '    owfwwfffwwfwo    '],
+  ['   ═══════════════   ', '   ggggggggggggggg   '],
+], [ // (two roofs, for a short window)
+  ['     ┃     ', '     s     '],
+  ['   _.^._   ', '   ooooo   '],
+  ["  '-~~~-'  ", '  oorrroo  '],
+  ['   |▒▓▒|   ', '   owfwo   '],
+  ["'-.~~~~~.-'", 'ooorrrrrooo'],
+  ['  |▒▓▓▓▒|  ', '  owfffwo  '],
+  [' ═════════ ', ' ggggggggg '],
+]];
 function artArrays(name, art) {
-  const part = { o: 1, f: 2, s: 3, b: 4 };
+  const part = { o: 1, f: 2, s: 3, b: 4, w: 5, r: 6, g: 7 };
   return art.map((rows, k) => {
     const cells = rows.flatMap(([a, roles]) => [...a].map((c, i) => (part[roles[i]] ? SHEET.indexOf(c) + 64 * part[roles[i]] : 0)));
     return `const int ${name}${k}[${cells.length}] = int[${cells.length}](${cells.join(', ')});`;
@@ -115,7 +168,7 @@ uniform vec2 sunAt;                 // where the sun (or the moon) is: x, y (uni
 uniform vec4 band;                  // the Milky Way: x at the horizon, tilt, width, the core along it
 uniform vec4 car;                   // the city's car: x of its back, -, its colour (0-1), on (1); halloween's broom: the end of its bristles (x, y), -, on
 uniform vec4 leap;                  // the falls' fish leaping, halloween's ghost rising: its age (s), which side (-1, 1), which (0-1), on (1)
-uniform vec4 moon;                  // halloween's great moon: its centre (units of the height), its radius
+uniform vec4 moon;                  // halloween's great moon: its centre (units of the height), its radius; the festival's stage: its middle, its floor, its half width
 uniform vec4 sea;                   // the sea: the beam's turn (radians), the koi's swim (leaping on kicks), the waves' phase (beats), a kick's splash (0-1)
 // (one output, the cell packed: x its glyph, ink and tone, y its colour, z its tile, a byte each.
 // One, not three: on Windows a program compiled in the background is ready for one output, and
@@ -1596,22 +1649,68 @@ float arch(float x, vec4 br) {
   float u = (x - br.x) / br.y;
   return abs(u) < 1.0 ? br.w * pow(max(0.0, 1.0 - u * u), 0.6) : -1.0;
 }
-// the cherry tree's blossom: clusters spread in a wide fan, a few hanging at the sides, gaps
-// between (signed distance, below 0 inside), and the cluster nearest (its centre)
-float crown(vec2 p, vec2 c, float r, out vec2 near) {
-  float d = 9.0;
-  near = c;
-  for (int k = 0; k < 11; k++) {
-    float fk = float(k);
-    float a = 3.14159 * (k < 9 ? (0.04 + 0.92 * (fk + 0.5 * h1(fk * 1.7 + 3.0)) / 9.0) : (fk == 9.0 ? -0.06 : 1.06));
-    float rr = r * (k < 9 ? 0.55 + 0.45 * h1(fk * 2.3 + 1.0) : 0.95);
-    vec2 q = c + vec2(cos(a) * 1.55, sin(a) * 0.85 - 0.1) * rr;
-    float dk = length((p - q) / vec2(1.25, 1.0)) - r * (0.24 + 0.12 * h1(fk * 3.1 + 2.0));
-    if (dk < d) { d = dk; near = q; }
+// the cherry tree's limbs (from, to: in units of its size, from its foot; it leans out over the
+// pond) and how thick each is where it starts
+const vec4 CLIMB[17] = vec4[17](
+  vec4(0.0, 0.0, -0.03, 0.14), vec4(-0.03, 0.14, -0.07, 0.26),
+  vec4(-0.07, 0.26, -0.3, 0.37), vec4(-0.3, 0.37, -0.52, 0.41), vec4(-0.3, 0.37, -0.36, 0.49),
+  vec4(-0.07, 0.26, -0.16, 0.5), vec4(-0.16, 0.5, -0.26, 0.58),
+  vec4(-0.07, 0.26, 0.06, 0.46), vec4(0.06, 0.46, 0.14, 0.56),
+  vec4(-0.03, 0.14, 0.18, 0.3), vec4(0.18, 0.3, 0.3, 0.33),
+  // (twigs out past the blossom, and the roots flaring at its foot)
+  vec4(-0.52, 0.41, -0.69, 0.47), vec4(-0.5, 0.4, -0.59, 0.31), vec4(0.3, 0.33, 0.44, 0.3), vec4(0.26, 0.4, 0.41, 0.47),
+  vec4(0.0, 0.03, -0.08, 0.0), vec4(0.0, 0.03, 0.07, 0.0));
+const float CLIMBW[17] = float[17](0.085, 0.07, 0.04, 0.022, 0.012, 0.03, 0.012, 0.028, 0.012, 0.026, 0.012, 0.007, 0.006, 0.007, 0.006, 0.03, 0.026);
+// its blossom: clumps along the limbs and at their tips, smaller ones round the edges and hanging
+// under them, a lacy outline (centre, radius: units of its size)
+const vec3 PUFF[24] = vec3[24](
+  vec3(-0.45, 0.5, 0.085), vec3(-0.32, 0.57, 0.095), vec3(-0.18, 0.63, 0.1), vec3(-0.04, 0.67, 0.095),
+  vec3(0.09, 0.62, 0.095), vec3(0.2, 0.54, 0.085), vec3(0.3, 0.45, 0.075),
+  vec3(-0.58, 0.45, 0.05), vec3(-0.53, 0.38, 0.045), vec3(-0.4, 0.42, 0.06), vec3(-0.25, 0.46, 0.065),
+  vec3(-0.11, 0.52, 0.07), vec3(0.03, 0.51, 0.065), vec3(0.15, 0.42, 0.06), vec3(0.25, 0.36, 0.05),
+  vec3(0.36, 0.37, 0.045), vec3(-0.27, 0.69, 0.055), vec3(-0.1, 0.76, 0.05), vec3(0.05, 0.74, 0.055),
+  vec3(0.18, 0.66, 0.05), vec3(-0.48, 0.32, 0.04), vec3(-0.36, 0.33, 0.035), vec3(0.33, 0.29, 0.035),
+  vec3(-0.63, 0.4, 0.03));
+// in the blossom at p (the tree's foot at T, its size S)? How far into the nearest clump (0 its
+// middle, 1 its edge, lumpy), the same for the next nearest (d2), and the nearest's centre
+float bloom(vec2 p, vec2 T, float S, out float d2, out vec2 c1) {
+  float d1 = 9.0;
+  d2 = 9.0;
+  c1 = T;
+  for (int k = 0; k < 24; k++) {
+    vec3 b = PUFF[k];
+    vec2 c = T + b.xy * S, q = (p - c) / (b.z * 1.15 * S);
+    float d = length(q / vec2(1.15, 0.92)) / (1.0 + 0.16 * (vn2(q * 2.6 + float(k) * 5.3) - 0.5));
+    if (d < d1) { d2 = d1; d1 = d; c1 = c; } else if (d < d2) d2 = d;
   }
-  float core = length((p - c - vec2(0.0, 0.08 * r)) / vec2(1.7, 0.75)) - r * 0.42;
-  if (core < d) { d = core; near = c; }
-  return d + 0.012 * (vn(p.x * 70.0) - 0.5) + 0.01 * (vn(p.y * 90.0 + 3.0) - 0.5);
+  return d1;
+}
+// in the cherry tree's limbs at p? Their glyph (0 if not): the edges by the limb's slope, the middle
+// of a thick one solid (inside 1)
+int limbAt(vec2 p, vec2 T, float S, out float inside) {
+  inside = 0.0;
+  float best = 9.0, bsl = 0.0;
+  for (int i = 0; i < 17; i++) {
+    vec4 L = CLIMB[i] * S;
+    vec2 a = T + L.xy, b = T + L.zw, pa = p - a, ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    float d = length((pa - ba * h) / vec2(cw, ch)) - CLIMBW[i] * S / ch * (1.0 - 0.35 * h);
+    if (d < best) { best = d; bsl = ba.y / (abs(ba.x) < 1e-5 ? 1e-5 : ba.x) * cw / ch; }
+  }
+  if (best > 0.5) return 0;
+  if (best < -0.35) { inside = 1.0; return G_DARK; }
+  return abs(bsl) > 2.4 ? G_BAR : (abs(bsl) < 0.4 ? G_UNDER : (bsl > 0.0 ? G_SLASH : G_BACK));
+}
+// the pagoda (see PAGODA_ART): the glyph at column o, row r from its top left (0 if none), and its
+// part. Kind 0 the big one, 1 the small one (a short window)
+${artArrays('PG', PAGODA_ART)}
+int pagodaAt(int kind, int o, int r, out int part) {
+  part = 0;
+  int w = kind == 0 ? 21 : 11, h = kind == 0 ? 12 : 7;
+  if (o < 0 || o >= w || r < 0 || r >= h) return 0;
+  int v = kind == 0 ? PG0[r * w + o] : PG1[r * w + o];
+  part = v / 64;
+  return v - part * 64;
 }
 void main() {
   vec2 cell = floor(gl_FragCoord.xy);
@@ -1657,34 +1756,40 @@ void main() {
     }
   }
 
-  // --- the cherry tree on the right: blossom in clusters (lighter on top and toward the light,
-  // deeper underneath), its branches showing between them, its trunk down to the near bank
+  // --- the cherry tree on the right, leaning out over the pond: its blossom in clumps along the limbs
+  // (masses lit from above, deeper underneath, a seam where one clump meets the one behind it, every
+  // cell of them a blossom glyph as the light falls), loose blossoms past their edges, its limbs and
+  // twigs and trunk in the gaps and below
   {
-    vec2 c = vec2(mix(0.84, 0.88, wide) * aspect, mix(0.56, 0.6, wide));
-    float r = mix(0.15, 0.19, wide);
-    vec2 q;
-    float d = crown(vec2(X, Y), c, r, q);
-    if (d < 0.0) {
+    vec2 T = vec2(mix(0.95, 0.91, wide) * aspect, bank - 0.004), P0 = vec2(X, Y), c1;
+    float S = mix(0.36, 0.56, wide), d2 = 9.0;
+    bool near0 = X > T.x - 0.75 * S && Y > T.y - 0.01 && Y < T.y + 0.85 * S;    // (anywhere near it at all)
+    float d1 = near0 ? bloom(P0, T, S, d2, c1) : 9.0;
+    if (d1 < 1.0) {
+      float lit = clamp(0.5 + 3.2 * (Y - c1.y) / S + 0.12 * (vn2(cell * 0.3) - 0.5), 0.0, 1.0);
+      bool seam = d2 < 1.06 && d2 - d1 < 0.16 && Y < c1.y + S * 0.03;
+      tileC = mix(P(rgb(92.0, 28.0, 66.0), rgb(232.0, 140.0, 178.0)), P(rgb(186.0, 76.0, 134.0), rgb(255.0, 210.0, 228.0)), lit) * (seam ? 0.78 : 1.0);
+      tileA = (day ? 0.66 : 0.74) * smoothstep(1.0, 0.82, d1);
+      // (open flowers and buds on top, dense clusters in the middle, deep shadow underneath; the
+      // edge in petals and buds)
       float k = h2(cell + 21.0);
-      float lit = clamp(0.5 + (Y - q.y) / (r * 0.35) * 0.5 + (sunAt.x < c.x ? 0.15 : -0.1), 0.0, 1.0);
-      int g = d > -cw * 1.2 ? (k < 0.5 ? G_STAR : G_SMALLO) : (k < 0.3 ? G_STAR : k < 0.55 ? G_PCT : k < 0.75 ? G_SMALLO : k < 0.9 ? G_AT : G_PLUS);
-      put(g, 0.95, mix(pinkD, mix(pink, pinkL, lit), lit));
+      int g;
+      if (d1 > 0.84) g = Y > c1.y ? (k < 0.4 ? G_STAR : (k < 0.7 ? G_SMALLO : G_MID)) : (k < 0.5 ? G_STAR : G_COMMA);
+      else if (seam) g = k < 0.5 ? G_COMMA : G_PCT;
+      else if (lit > 0.66) g = k < 0.32 ? G_STAR : (k < 0.55 ? G_SMALLO : (k < 0.7 ? G_PLUS : (k < 0.85 ? G_AT : G_MID)));
+      else if (lit > 0.33) g = k < 0.25 ? G_AT : (k < 0.5 ? G_SMALLO : (k < 0.7 ? G_PCT : (k < 0.88 ? G_STAR : G_PLUS)));
+      else g = k < 0.35 ? G_PCT : (k < 0.65 ? G_AT : (k < 0.85 ? G_SMALLO : G_COMMA));
+      vec3 sh = P(rgb(196.0, 76.0, 140.0), rgb(150.0, 36.0, 92.0)), md = P(rgb(255.0, 140.0, 200.0), rgb(200.0, 64.0, 124.0)), hi = P(rgb(255.0, 230.0, 245.0), rgb(240.0, 110.0, 160.0));
+      put(g, 0.95, lit < 0.5 ? mix(sh, md, lit * 2.0) : mix(md, hi, lit * 2.0 - 1.0));
       return;
     }
-    vec2 T = vec2(c.x + 0.06 * r / 0.2, c.y - r * 0.35);        // (where the trunk splits)
-    // branches from there out to the clusters, seen in the gaps
-    for (int k = 0; k < 6; k++) {
-      float fk = float(k), a = 3.14159 * (0.1 + 0.8 * fk / 5.0);
-      vec2 e = c + vec2(cos(a) * 1.3, sin(a) * 0.7) * r * 0.8;
-      vec2 pa = vec2(X, Y) - T, ba = e - T;
-      float hh = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-      if (length((pa - ba * hh) / vec2(cw, ch)) < 0.55) { float sl = ba.y / ba.x * cw / ch; put(abs(sl) > 2.5 ? G_BAR : (sl > 0.0 ? G_SLASH : G_BACK), 0.95, bark); return; }
-    }
-    float tb = bank, w = mix(0.022, 0.012, clamp((Y - tb) / (T.y - tb), 0.0, 1.0)) * (0.7 + 0.3 * wide);
-    float tx = T.x + 0.01 * sin((Y - tb) * 18.0);
-    if (Y > tb && Y < T.y && abs(X - tx) < w + cw * 0.4) {
-      bool edge = abs(X - tx) > w - cw * 0.6;
-      put(edge ? (X < tx ? G_LP : G_RP) : G_DARK, 1.0, bark * (edge ? 1.2 : 0.8));
+    if (near0 && d1 < 1.3 && h2(cell + 51.0) < 0.5 * (1.3 - d1)) { put(h2(cell + 52.0) < 0.5 ? G_STAR : G_SMALLO, 0.85, P(rgb(255.0, 170.0, 216.0), rgb(220.0, 90.0, 146.0))); return; }
+    float inside;
+    int g = near0 ? limbAt(P0, T, S, inside) : 0;
+    if (g != 0) {
+      // (the bark: fissures running up it, a knot here and there)
+      if (inside > 0.5) { tileC = bark * 0.75; tileA = 0.9; float f = h2(vec2(cell.x, floor(row / 3.0)) + 61.0); put(h0 < 0.03 ? G_SMALLO : (f < 0.45 ? G_BAR : 0), 0.9, bark * 1.6); }
+      else put(g, 1.0, bark * 1.25);
       return;
     }
   }
@@ -1761,8 +1866,10 @@ void main() {
   // --- the near bank: moss and stones along the bottom
   float nb = near + 0.006 * sin(X * 11.0) + 0.004 * (vn(X * 40.0) - 0.5);
   if (Y < nb) {
+    // (moss, solid, tufts of grass on it, a stone here and there)
     float k = h2(cell + 4.0);
-    put(k < 0.1 ? G_BIGO : (k < 0.45 ? G_QUOTE : (k < 0.65 ? G_COMMA : 0)), 0.8, k < 0.1 ? P(rgb(110.0, 110.0, 130.0), rgb(140.0, 136.0, 130.0)) : P(rgb(50.0, 100.0, 76.0), rgb(80.0, 140.0, 70.0)));
+    tileC = P(rgb(16.0, 36.0, 30.0), rgb(140.0, 184.0, 120.0)); tileA = day ? 0.55 : 0.75;
+    put(k < 0.035 ? G_BIGO : (k < 0.22 ? G_QUOTE : (k < 0.34 ? G_COMMA : 0)), 0.8, k < 0.035 ? P(rgb(130.0, 130.0, 150.0), rgb(130.0, 126.0, 120.0)) : P(rgb(60.0, 120.0, 86.0), rgb(70.0, 130.0, 66.0)));
     return;
   }
 
@@ -1850,11 +1957,13 @@ void main() {
   for (int i = 0; i < 3; i++) {
     float ax = (i == 0 ? mix(0.38, 0.6, wide) : (i == 1 ? mix(0.7, 0.72, wide) : mix(0.08, 0.27, wide))) * aspect;
     float rx = 0.03, ry = 0.018;
-    float ad = length(vec2((X - ax) / rx, (Y - (bank + ry * 0.6)) / ry));
+    float ad = length(vec2((X - ax) / rx, (Y - (bank + ry * 0.6)) / ry)) / (1.0 + 0.1 * (vn(X * 160.0 + float(i) * 9.0) - 0.5));
     if (ad < 1.0 && Y > bank) {
-      float k = h2(cell + 31.0 + float(i));
-      put(ad > 0.8 ? (k < 0.5 ? G_SMALLO : G_STAR) : (k < 0.4 ? G_AT : (k < 0.7 ? G_PCT : G_STAR)), 0.95,
-          mix(P(rgb(170.0, 40.0, 90.0), rgb(200.0, 40.0, 80.0)), P(rgb(255.0, 110.0, 160.0), rgb(250.0, 90.0, 120.0)), clamp((Y - bank) / (ry * 1.6), 0.0, 1.0)));
+      // (clipped round, solid, lighter on top, flowers dotted over it)
+      float k = h2(cell + 31.0 + float(i)), lit = clamp((Y - bank) / (ry * 1.6), 0.0, 1.0);
+      tileC = mix(P(rgb(84.0, 18.0, 52.0), rgb(206.0, 70.0, 118.0)), P(rgb(168.0, 46.0, 106.0), rgb(250.0, 144.0, 182.0)), lit);
+      tileA = 0.88 * smoothstep(1.0, 0.72, ad);
+      put(ad > 0.82 && Y > bank + ry * 0.6 ? G_SMALLO : (k < 0.3 ? G_STAR : 0), 0.95, P(rgb(255.0, 150.0, 200.0), rgb(140.0, 24.0, 76.0)));
       return;
     }
   }
@@ -1865,39 +1974,64 @@ void main() {
     if (mod(cell.x, 2.0) < 1.0) { put(G_BAR, 0.9, cane); return; }
   }
 
-  // --- the far bank: grass, a stone here and there; the hills behind, their trees; the pagoda
-  if (Y < bank + 0.01) { float k = h2(cell + 9.0); put(k < 0.06 ? G_BIGO : (k < 0.5 ? G_QUOTE : G_COMMA), 0.8, k < 0.06 ? P(rgb(110.0, 110.0, 130.0), rgb(140.0, 136.0, 130.0)) : P(rgb(50.0, 100.0, 76.0), rgb(80.0, 140.0, 70.0))); return; }
+  // --- the far bank: grass, a stone here and there; the hill behind it, its trees, the pagoda on top
+  if (Y < bank + 0.01) {
+    float k = h2(cell + 9.0);
+    tileC = P(rgb(18.0, 40.0, 34.0), rgb(150.0, 190.0, 130.0)); tileA = 0.5;
+    put(k < 0.03 ? G_BIGO : (k < 0.3 ? G_QUOTE : (k < 0.45 ? G_COMMA : 0)), 0.8, k < 0.03 ? P(rgb(110.0, 110.0, 130.0), rgb(140.0, 136.0, 130.0)) : P(rgb(50.0, 100.0, 76.0), rgb(80.0, 140.0, 70.0)));
+    return;
+  }
   {
-    float px = mix(0.3, 0.42, wide) * aspect;
-    float hill = bank + 0.04 + 0.05 * exp(-pow((X - px) / 0.3, 2.0)) + 0.015 * vn(X * 6.0);
-    // the pagoda: five roofs, each flaring out, smaller going up, a spire on top
-    float pb = bank + 0.085, PH = mix(0.14, 0.19, wide);
-    float pv = (Y - pb) / PH, pd = abs(X - px) / PH;
-    if (pv >= 0.0 && pv < 1.0 && pd < 0.4) {
-      float tier = floor(pv * 5.0), f = fract(pv * 5.0);
-      float ww = 0.24 * (1.0 - tier * 0.13);
-      vec3 roof = P(rgb(70.0, 60.0, 92.0), rgb(70.0, 60.0, 70.0)), walls = P(rgb(120.0, 54.0, 60.0), rgb(176.0, 70.0, 60.0));
-      if (pv > 0.92) { if (pd < 0.03) { put(G_BAR, 0.9, roof * 1.4); return; } }
-      else if (f > 0.66) {
-        float rw = ww * (1.0 + (1.0 - f) * 1.4);
-        if (pd < rw) { put(pd > rw - cw / PH ? (X < px ? G_SLASH : G_BACK) : (f > 0.85 ? G_UNDER : G_DARK), 0.95, roof); return; }
-      } else if (pd < ww * 0.62) {
-        bool win = !day && f > 0.2 && f < 0.5 && mod(cell.x, 3.0) < 1.0;
-        put(win ? G_DARK : G_MEDIUM, 0.85, win ? lampC * 0.8 : walls);
+    float px = mix(0.28, 0.4, wide) * aspect;
+    float hump = bank + 0.035 + 0.07 * exp(-pow((X - px) / 0.17, 2.0));
+    float hill = hump + 0.01 * (vn(X * 9.0) - 0.5);
+    // the pagoda (PAGODA_ART), standing on the hill's top (the small one in a short window)
+    int part, pk = grid.y < 44.0 ? 1 : 0;
+    int g = pagodaAt(pk, int(cell.x) - (int(floor(px / cw)) - (pk == 0 ? 10 : 5)), int(row) - (int(floor((1.0 - bank - 0.105) / ch)) - (pk == 0 ? 11 : 6)), part);
+    if (part != 0) {
+      vec3 roof = P(rgb(46.0, 40.0, 70.0), rgb(92.0, 84.0, 104.0)), edge = P(rgb(150.0, 146.0, 196.0), rgb(60.0, 54.0, 70.0));
+      if (part == 3) { put(g, 1.0, P(rgb(220.0, 190.0, 110.0), rgb(160.0, 124.0, 60.0))); return; }     // (the spire)
+      if (part == 6) { tileC = roof; tileA = 0.95; put(g, 0.8, roof * 1.7 + 0.04); return; }         // (a roof's tiles)
+      if (part == 5) { tileC = P(rgb(112.0, 34.0, 40.0), rgb(204.0, 82.0, 62.0)); tileA = 0.95; put(g, 0.7, P(rgb(160.0, 60.0, 60.0), rgb(236.0, 120.0, 92.0))); return; }
+      if (part == 2) {                                                                              // (a window, lit at night)
+        tileC = day ? rgb(60.0, 30.0, 36.0) : lampC * (0.7 + 0.15 * glow); tileA = 1.0;
+        put(g, 1.0, day ? rgb(90.0, 50.0, 50.0) : rgb(255.0, 230.0, 170.0));
         return;
       }
+      if (part == 7) { tileC = P(rgb(70.0, 70.0, 90.0), rgb(150.0, 146.0, 140.0)); tileA = 0.9; put(g, 1.0, P(rgb(150.0, 150.0, 176.0), rgb(110.0, 106.0, 100.0))); return; }
+      put(g, 1.0, edge);                                                                            // (the eaves and walls' edges)
+      return;
     }
     if (Y < hill) {
-      // round trees on the hills, dark
-      float tk = floor(X / (cw * 5.0)), tc = (tk + 0.5) * cw * 5.0, th = 0.015 + 0.02 * h1(tk * 3.3);
-      bool tree = h1(tk * 7.7) < 0.4 && length(vec2((X - tc) / 1.3, Y - (hill - 0.003))) < th;
-      put(tree ? (h0 < 0.5 ? G_SMALLO : G_PCT) : (h0 < 0.25 ? G_COLON : 0), tree ? 0.8 : 0.45, tree ? P(rgb(30.0, 70.0, 64.0), rgb(60.0, 110.0, 70.0)) : P(rgb(30.0, 50.0, 64.0), rgb(110.0, 150.0, 110.0)));
+      // the hill, solid, its line drawn along its top; round trees on it, darker, their crowns
+      // breaking its line
+      float tk = floor(X / (cw * 5.0)), tc = (tk + 0.5) * cw * 5.0, th = 0.014 + 0.02 * h1(tk * 3.3);
+      bool tree = h1(tk * 7.7) < 0.55 && length(vec2((X - tc) / 1.3, Y - (hill - 0.004))) < th;
+      if (!tree && Y > hill - ch) {
+        float hl = bank + 0.035 + 0.07 * exp(-pow((X - cw * 0.5 - px) / 0.17, 2.0)) + 0.01 * (vn((X - cw * 0.5) * 9.0) - 0.5);
+        float hr = bank + 0.035 + 0.07 * exp(-pow((X + cw * 0.5 - px) / 0.17, 2.0)) + 0.01 * (vn((X + cw * 0.5) * 9.0) - 0.5);
+        float sl = (hr - hl) / ch;
+        tileC = P(rgb(20.0, 30.0, 44.0), rgb(160.0, 196.0, 150.0)); tileA = (day ? 0.6 : 0.85) * 0.45;
+        put(abs(sl) < 0.4 ? G_UNDER : (sl > 0.0 ? G_SLASH : G_BACK), 0.9, P(rgb(60.0, 110.0, 96.0), rgb(90.0, 140.0, 90.0)));
+        return;
+      }
+      tileC = tree ? P(rgb(14.0, 34.0, 32.0), rgb(96.0, 146.0, 100.0)) : P(rgb(20.0, 30.0, 44.0), rgb(160.0, 196.0, 150.0));
+      tileA = day ? 0.6 : 0.85;
+      put(tree ? (h0 < 0.3 ? G_SMALLO : 0) : (h0 < 0.08 ? G_COLON : 0), 0.7, P(rgb(50.0, 100.0, 86.0), rgb(60.0, 110.0, 70.0)));
+      return;
+    }
+    // (a tree's crown standing above the hill's line)
+    float tk = floor(X / (cw * 5.0)), tc = (tk + 0.5) * cw * 5.0, th = 0.014 + 0.02 * h1(tk * 3.3);
+    float td = length(vec2((X - tc) / 1.3, Y - (hill - 0.004)));
+    if (h1(tk * 7.7) < 0.55 && td < th) {
+      tileC = P(rgb(14.0, 34.0, 32.0), rgb(96.0, 146.0, 100.0)); tileA = (day ? 0.6 : 0.85) * clamp((th - td) / (ch * 0.8) + 0.3, 0.0, 1.0);   // (its edge soft)
+      put(h0 < 0.3 ? G_SMALLO : 0, 0.7, P(rgb(50.0, 100.0, 86.0), rgb(60.0, 110.0, 70.0)));
       return;
     }
   }
   // --- a snow-capped peak far behind, faint in the haze, its slopes flaring out at the foot
   {
-    float fx = mix(0.7, 0.62, wide) * aspect, fb = bank + 0.05, fh = mix(0.17, 0.2, wide), fw = mix(0.3, 0.36, wide);
+    float fx = mix(0.42, 0.5, wide) * aspect, fb = bank + 0.05, fh = mix(0.17, 0.2, wide), fw = mix(0.3, 0.36, wide);   // (behind the pagoda)
     float u = abs(X - fx) / fw;
     float top = u < 1.0 ? fb + fh * pow(1.0 - u, 1.7) : -1.0;
     float tl = abs(X - cw * 0.5 - fx) / fw < 1.0 ? fb + fh * pow(1.0 - abs(X - cw * 0.5 - fx) / fw, 1.7) : -1.0;
@@ -1908,8 +2042,13 @@ void main() {
       return;
     }
     if (Y < top) {
-      bool snow = Y > fb + fh * 0.62 + 0.012 * (vn(X * 50.0) - 0.5);
-      put(snow ? (h0 < 0.5 ? G_TRI : G_CARET) : (h0 < 0.15 ? G_DOT : (h0 < 0.22 ? G_COLON : 0)), snow ? 0.75 : 0.5, snow ? P(rgb(200.0, 210.0, 245.0), rgb(250.0, 250.0, 255.0)) * (day ? 0.8 : 0.9) : P(rgb(54.0, 62.0, 110.0), rgb(140.0, 160.0, 200.0)));
+      // (solid, hazy; its snow cap's foot ragged, streaks of it running down the gullies)
+      float gully = pow(vn(X * 46.0 + 3.0), 3.0);
+      float snowY = fb + fh * (0.62 - 0.16 * gully) + 0.01 * (vn(X * 30.0) - 0.5);
+      bool snow = Y > snowY, foot = snow && Y < snowY + ch;           // (its foot a fringe of carets)
+      tileC = snow ? P(rgb(150.0, 160.0, 206.0), rgb(252.0, 252.0, 255.0)) : P(rgb(30.0, 36.0, 74.0), rgb(170.0, 186.0, 222.0));
+      tileA = foot ? 0.25 : (snow ? (day ? 0.85 : 0.62) : (day ? 0.5 : 0.6));
+      put(foot ? G_CARET : (snow ? (h0 < 0.1 ? G_CARET : 0) : (h0 < 0.08 ? G_DOT : 0)), foot ? 0.8 : (snow ? 0.6 : 0.45), snow ? P(rgb(220.0, 228.0, 255.0), rgb(150.0, 162.0, 210.0)) : P(rgb(70.0, 80.0, 130.0), rgb(130.0, 150.0, 190.0)));
       return;
     }
   }
@@ -2748,6 +2887,109 @@ vec3 accent(float key) {
   return i == 0 ? rgb(232.0, 168.0, 88.0) : i == 1 ? rgb(226.0, 70.0, 70.0) : i == 2 ? rgb(166.0, 98.0, 232.0) : i == 3 ? rgb(52.0, 196.0, 200.0)
        : i == 4 ? rgb(84.0, 190.0, 96.0) : i == 5 ? rgb(70.0, 104.0, 236.0) : rgb(232.0, 204.0, 84.0);
 }
+// a jellyfish's bell, seen from the side: its rim's middle at c, half its width a, its height b, and
+// how far its hollow underside rises in the middle h. Is p inside it?
+bool bellAt(vec2 p, vec2 c, float a, float b, float h) {
+  float x = (p.x - c.x) / a;
+  if (abs(x) >= 1.0) return false;
+  float w = 1.0 - x * x, y = p.y - c.y;
+  return y < b * sqrt(w) && y > h * w;
+}
+// the code fish's characters (see CODE_CHARS)
+const int CODE[${CODE_CHARS.length}] = int[${CODE_CHARS.length}](${CODE_CHARS.join(', ')});
+// the code fish's way across: a gentle meander at x = u (units of the height)
+vec2 fishWay(float u) { return vec2(u, 0.62 + 0.06 * sin(u * 3.0 + 1.0) + 0.025 * sin(u * 7.0)); }
+// what's of the code fish at p, seen from above as the sharks are: its snout at u along its way, F
+// long, its spine following its way back from its snout with a wave running down it as it swims. 0
+// nothing, 1 its body, 2 a fin, 3 the dark of its back, 4 an eye; how far along it (s: 0 its snout, 1
+// its tail's tip), across it (side: -1 one edge, 1 the other) and which way its left is (lf)
+int fishAt(vec2 p, float u, float F, out float s, out float side, out vec2 lf) {
+  s = 0.0; side = 0.0; lf = vec2(0.0, 1.0);
+  float best = 9.0, bl = 0.0;
+  vec2 prev = vec2(0.0), pt = vec2(1.0, 0.0), back = vec2(-1.0, 0.0), root = vec2(0.0);
+  for (int i = 0; i <= 14; i++) {
+    float si = float(i) / 14.0, ui = u - si * F;
+    vec2 q;
+    if (i <= 12) {
+      // (its body, to the root of its tail, bending as it swims: an easy beat)
+      q = fishWay(ui);
+      vec2 tg = normalize(fishWay(ui + 0.01) - q);
+      q += vec2(-tg.y, tg.x) * 0.085 * F * pow(si, 1.6) * sin(6.2832 * (si * 1.1 - time * 0.7));
+      if (i > 0) back = normalize(q - prev);
+      root = q;
+    } else q = root + back * (si - 12.0 / 14.0) * F;      // (its tail: stiff, swung by the root as one piece)
+    if (i > 0) {
+      vec2 pa = p - q, ba = prev - q;
+      float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0), dl = length(pa - ba * h);
+      if (dl < best) { best = dl; s = i == 14 && dot(pa, ba) < 0.0 ? 9.0 : (float(i) - h) / 14.0; bl = sign(ba.x * pa.y - ba.y * pa.x) * dl; pt = normalize(-ba); }   // (past its tail's tip: nothing)
+    }
+    prev = q;
+  }
+  if (s > 1.0) return 0;
+  float wm = 0.13 * F;
+  // (its body: a round snout, full, then narrowing to the root of its tail)
+  float w = s < 0.15 ? wm * sqrt(s / 0.15) : mix(wm, 0.2 * wm, smoothstep(0.5, 0.86, s));
+  lf = vec2(pt.y, -pt.x);                                  // (the side its positive edge faces)
+  if (abs(bl) < w) {
+    side = bl / w;
+    if (abs(s - 0.07) < 0.025 && abs(abs(side) - 0.55) < 0.25) return 4;
+    if (abs(side) < (s > 0.32 && s < 0.56 ? 0.16 : 0.26) && s > 0.08 && s < 0.84) return 3;
+    return 1;
+  }
+  // (its fins: the pectorals swept back behind its head; its tail spread in a fork)
+  if (s > 0.19 && s < 0.42) {
+    // (its pectorals: slender sickles from behind its gills, swept back and out, paddling a little)
+    float f = (s - 0.19) / 0.23, reach = w + (0.1 + 0.85 * f * (1.15 - 0.3 * f)) * wm * (1.0 + 0.12 * sin(time * 1.4));
+    if (abs(abs(bl) - reach) < 0.17 * wm * (1.0 - f) + 0.02 * wm) { side = sign(bl) * 2.0; return 2; }
+  }
+  if (s > 0.86) {
+    float span = mix(0.25, 1.35, pow((s - 0.86) / 0.14, 0.6)) * wm, notch = s > 0.94 ? 0.95 * wm * pow((s - 0.94) / 0.06, 1.4) : -1.0;
+    if (abs(bl) < span && abs(bl) > notch) { side = bl / span; return 2; }
+  }
+  return 0;
+}
+// the stingray's way: a slow meander right to left (u along it: x falls as u grows), low in a wide
+// window, through the middle of a tall one
+vec2 rayWay(float u, float asp, float lane) { return vec2(asp + 0.3 - u, lane + 0.05 * sin(u * 2.3 + 0.7) + 0.02 * sin(u * 5.1)); }
+// what's of the stingray at p, seen from above: its disc's middle at u along its way, its half length
+// Lb and half span Wb, its tail T long, following its way behind it. 0 nothing, 1 its disc, 2 its wings'
+// thin edges, 3 its tail, 4 an eye, 5 a spiracle, 6 a pelvic fin. Where on the disc (al along it, ac
+// across it, -1 to 1; r how far out, 0 its middle, 1 its edge); along the tail, its way there (td)
+int rayAt(vec2 p, float u, float asp, float lane, float Lb, float Wb, float T, out float al, out float ac, out float r, out vec2 td) {
+  vec2 c = rayWay(u, asp, lane), d = normalize(c - rayWay(u - 0.01, asp, lane)), sd = vec2(-d.y, d.x), q = p - c;
+  al = dot(q, d) / Lb; ac = dot(q, sd) / Wb; r = 9.0; td = -d;
+  // (its disc: a rounded diamond, a little pointed at its snout; its wings' edges rippling, a wave
+  // running back along each as it flies)
+  float edge = (1.0 + 0.09 * smoothstep(0.35, 1.0, abs(ac)) * sin(7.0 * al + time * 2.6 + (ac > 0.0 ? 0.0 : 1.4))) * (1.0 + 0.04 * sin(time * 1.5));   // (its wings rippling, flapping slowly)
+  // (its disc: a kite, its wingtips a little behind its middle; its front edges bowed out a little to a
+  // rounded snout, its back edges running in to the root of its tail)
+  float wt = -0.08, span = al > wt ? pow(clamp((1.0 - al) / (1.0 - wt), 0.0, 1.0), 0.72) : pow(clamp((al + 1.0) / (wt + 1.0), 0.0, 1.0), 0.9);
+  span = min(span * edge, 0.98);
+  r = max(abs(ac) / max(span, 1e-3), abs(al) * 0.9);
+  if (abs(al) < 1.0 && abs(ac) < span) {
+    if (abs(al - 0.42) < 0.09 && abs(abs(ac) - 0.16) < 0.06) return 4;
+    if (abs(al - 0.27) < 0.06 && abs(abs(ac) - 0.21) < 0.05) return 5;
+    return r > 0.86 ? 2 : 1;
+  }
+  // (its pelvic fins: two small lobes at the back of its disc)
+  if (length(vec2((al + 0.97) * Lb, (abs(ac) - 0.17) * Wb)) < 0.17 * Lb) return 6;
+  // (its tail: long and whip thin, following its way behind it, swaying)
+  if (al < -0.8) {
+    float best = 9.0, bt = 0.0;
+    vec2 prev = c - d * Lb;
+    for (int i = 1; i <= 10; i++) {
+      float t = float(i) / 10.0, back = Lb + t * T;
+      vec2 w = rayWay(u - back, asp, lane), wd = normalize(rayWay(u - back + 0.01, asp, lane) - w);
+      w += vec2(-wd.y, wd.x) * 0.02 * t * sin(t * 7.0 - time * 2.2);
+      vec2 pa = p - prev, ba = w - prev;
+      float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0), dl = length(pa - ba * h);
+      if (dl < best) { best = dl; bt = (float(i - 1) + h) / 10.0; td = normalize(ba); }
+      prev = w;
+    }
+    if (best < mix(0.12 * Lb, 0.02 * Lb, bt) + 0.45 * cw) { r = bt; return 3; }
+  }
+  return 0;
+}
 // a glyph along a line at angle a (on the screen, y up): -, /, | or the backslash, as the cells are drawn
 int lineGlyph(float a) {
   float c = mod(atan(sin(a) / ch, cos(a) / cw), 3.14159265);
@@ -2827,9 +3069,12 @@ void main() {
     if (B.z < B.x || q.x < B.x || q.x > B.z || q.y < B.y || q.y > B.w) continue;
     if (sharkAt(k, q)) { tone = 0.8; break; }
   }
-  // --- the fish: a stroke each, along its way, brighter nearer, glinting as they turn or flee
+  // --- the fish: a wisp each, brighter nearer, glinting as they turn or flee: a dash swimming level,
+  // a dot turning steeply (never a tall stroke: a bait ball milling round was a jumble of them)
   if (lf.r > 0.0) {
-    put(lineGlyph(lf.a * 3.14159), 0.45 + 0.55 * lf.r, day ? mix(rgb(70.0, 120.0, 132.0), rgb(24.0, 62.0, 76.0), lf.r) : mix(rgb(70.0, 96.0, 150.0), rgb(220.0, 232.0, 255.0), lf.r));
+    float fa = mod(atan(sin(lf.a * 3.14159) / ch, cos(lf.a * 3.14159) / cw), 3.14159265);
+    bool level = fa < 0.6 || fa > 2.54;
+    put(level ? G_DASH : G_MID, (0.45 + 0.55 * lf.r) * (level ? 1.0 : 0.85), day ? mix(rgb(70.0, 120.0, 132.0), rgb(24.0, 62.0, 76.0), lf.r) : mix(rgb(70.0, 96.0, 150.0), rgb(220.0, 232.0, 255.0), lf.r));
     return;
   }
   // --- a splash of bubbles where a fish was caught
@@ -2843,6 +3088,206 @@ void main() {
       vec2 dv = p - q.xy;
       put(lineGlyph(atan(dv.y, dv.x) + 1.5708), 0.25 + 0.6 * fade, P(rgb(150.0, 230.0, 240.0), rgb(248.0, 255.0, 255.0)));
       return;
+    }
+  }
+  // --- the code fish, drawn as the sharks are, seen from above: a big fish meandering across the water
+  // (surging on the kicks, back in from the left once it's gone), its body bending side to side as it
+  // swims. A tile where it covers the cell, silver, shaded by the light, its back dark; its scales the
+  // code's characters (digits and punctuation), each rolling to another a few times a second (faster
+  // when the hats are busy), now and then flashing a colour or white; light glyphs round its edge where
+  // a cell's only partly covered; its shadow on the bottom by day
+  {
+    float asp = view.x / view.y, F = 0.3 * min(1.0, 0.6 + 0.4 * asp), s, side;
+    float u = mod(time * 0.014 + sea.y * 0.012 + 0.4, asp + F + 0.6) - 0.15;   // (cruising, a little faster after a kick)
+    vec2 lf;
+    if (abs(X - (u - F * 0.5)) < F * 0.7 && abs(Y - 0.62) < 0.2) {
+      int what = fishAt(p, u, F, s, side, lf);
+      int n = what != 0 ? 1 : 0;
+      float s2, side2; vec2 lf2;
+      for (int i = 0; i < 4; i++) if (fishAt(p + SUB[i] * vec2(cw, ch), u, F, s2, side2, lf2) != 0) n++;
+      float key = h2(vec2(floor(s * F / cw * 1.4 + 0.5), floor(side * 3.0 + 0.5)) + 71.0);
+      vec3 dk = rgb(44.0, 62.0, 104.0), lt = rgb(176.0, 196.0, 224.0);
+      if (!day) { dk *= vec3(0.55, 0.62, 0.8); lt *= vec3(0.6, 0.68, 0.86); }
+      if (n > 0 && (what == 0 || n < 3)) {
+        put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, mix(dk, lt, 0.35));
+        return;
+      }
+      if (what != 0) {
+        // (lit on the side toward the light, its back dark, its fins a little see-through, its eyes black)
+        float li = clamp(0.55 + 0.45 * side * dot(lf, normalize(SUN)), 0.0, 1.0);
+        // (a yellowfin: its back a deep metal blue, silver sides with a gold stripe along them, yellow fins)
+        vec3 gold = mix(rgb(196.0, 150.0, 40.0), rgb(250.0, 214.0, 96.0), li) * (day ? 1.0 : 0.62);
+        vec3 c = what == 4 ? rgb(14.0, 14.0, 20.0) : what == 3 ? (day ? mix(dk, lt, 0.22) : dk * 0.82) : what == 2 ? (abs(side) > 1.5 ? mix(mix(dk, lt, 0.4), gold, 0.35 + 0.45 * smoothstep(0.25, 0.42, s)) : gold) : mix(mix(dk, lt, li), gold, 0.55 * smoothstep(0.16, 0.0, abs(abs(side) - 0.5)));
+        c *= 1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.05;
+        tileC = c; tileA = what == 2 ? 0.8 : 1.0;
+        float roll = h2(vec2(floor(key * 4096.0), floor(time * (0.7 + 1.8 * fly) + fract(key * 31.0) * 10.0)));
+        int g = what == 4 ? G_SMALLO : CODE[int(roll * ${CODE_CHARS.length}.0)];
+        float fl = h2(vec2(floor(key * 2048.0), floor(time * 2.4 + fract(key * 17.0) * 10.0)));
+        vec3 ink = what == 4 ? rgb(150.0, 160.0, 175.0) : fl < 0.05 ? accent(key) : fl < 0.075 ? vec3(1.0)
+                 : day ? c * (li > 0.55 ? 0.36 : 0.48) : li > 0.55 ? rgb(14.0, 15.0, 19.0) : rgb(27.0, 29.0, 36.0);
+        put(g, 1.0, ink);
+        return;
+      }
+    }
+    // (its shadow on the bottom by day, down and to the right of it)
+    if (day && abs(X - 0.02 - (u - F * 0.5)) < F * 0.7 && abs(Y + 0.026 - 0.62) < 0.2) {
+      float s2, side2; vec2 lf2;
+      if (fishAt(p - vec2(0.02, -0.026), u, F, s2, side2, lf2) != 0) tone = 0.8;
+    }
+  }
+  // --- jellyfish rising through the middle of the water, seen from the side, drawn as the sharks are:
+  // the bell a dome, its tiles shaded by the light from above, its glyphs keyed to it (so they ride
+  // along with it) and now and then flashing, so it shimmers; light glyphs round its edge where a cell's
+  // only partly in it; its rim glowing, a fringe of short tentacles under it, its four rings showing
+  // through. It beats every two beats (squeezing, a surge up, gliding on). Under it its tentacles hang
+  // in swaying strands that end in wisps, its frilled arms between them. They glow at night
+  {
+    float asp = view.x / view.y, s2 = sea.z * 0.5, b2 = fract(s2);
+    float pulse = exp(-b2 * 6.0);                                                   // (1 as it beats)
+    float rise = floor(s2) + (1.0 - exp(-b2 * 5.0)) / (1.0 - exp(-5.0));           // (a surge, then gliding)
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k);
+      bool big = k == 0;
+      // (its bell: half its width, its height, its hollow's rise, squeezing as it beats; its tentacles' length)
+      float sz = min(1.0, 0.55 + 0.45 * asp);                                         // (a little smaller in a tall window)
+      float a = (big ? 0.105 : 0.066) * sz * (1.0 - 0.14 * pulse), b = (big ? 0.1 : 0.064) * sz * (1.0 + 0.12 * pulse);
+      float hh = (big ? 0.014 : 0.009) * sz * (1.0 + 1.2 * pulse), L = (big ? 0.3 : 0.19) * sz;
+      vec2 c = vec2((k == 0 ? 0.24 : (k == 1 ? 0.58 : 0.86)) * asp + 0.03 * sin(time * 0.11 + fk * 2.1),
+                    mod(0.1 + 0.53 * fk + rise * (big ? 0.022 : 0.016), 1.75) - 0.4);   // (its rim's middle: rising, back in below once well out the top)
+      if (abs(X - c.x) > a + 0.06 || Y > c.y + b + 0.02 || Y < c.y - L - 0.02) continue;
+      vec3 glowC = k == 1 ? rgb(190.0, 150.0, 255.0) : (k == 2 ? rgb(120.0, 230.0, 255.0) : rgb(255.0, 150.0, 220.0));
+      vec3 dk = day ? rgb(178.0, 206.0, 232.0) : glowC * 0.1, lt = day ? rgb(248.0, 242.0, 255.0) : glowC * 0.66;   // (see-through, and its skin)
+      bool mid = bellAt(p, c, a, b, hh);
+      int n = mid ? 1 : 0;
+      for (int i = 0; i < 4; i++) if (bellAt(p + SUB[i] * vec2(cw, ch), c, a, b, hh)) n++;
+      float x = clamp((X - c.x) / a, -0.999, 0.999), w = 1.0 - x * x, yT = b * sqrt(w), yB = hh * w, dy = Y - c.y;
+      float vv = clamp((dy - yB) / max(yT - yB, 1e-4), 0.0, 1.0);                  // (0 its underside, 1 its top)
+      float key = h2(vec2(floor((X - c.x) / cw + 0.5), floor((dy - yB) / ch + 0.5)) + fk * 37.0);
+      if (n > 0 && (!mid || n < 3)) {
+        // (its edge: a light glyph, no tile)
+        put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, day ? mix(dk, lt, 0.2) * 0.85 : mix(dk, lt, 0.7) * 1.3);
+        return;
+      }
+      if (n > 0) {
+        // (glowing at its skin, along its top and down its sides, see-through inside; lit from above)
+        float skin = max(smoothstep(0.5, 1.0, vv), smoothstep(0.55, 1.0, abs(x)));
+        float li = clamp(0.08 + 0.8 * skin + 0.15 * vv, 0.0, 1.0);
+        bool rim = (dy - yB) < ch * 0.9;                                            // (its rim, glowing: a row along its base)
+        bool ring = false;                                                          // (its four rings, in a row)
+        for (int i = 0; i < 4; i++) if (abs(x - (-0.54 + 0.36 * float(i))) * a < cw * 0.6 && abs(vv - 0.32) * (yT - yB) < ch * 0.55) ring = true;
+        vec3 tc = rim ? (day ? rgb(236.0, 206.0, 244.0) : glowC * (0.62 + 0.3 * pulse))
+                : ring ? (day ? rgb(236.0, 160.0, 214.0) : mix(glowC, vec3(1.0), 0.2) * 0.62)
+                : mix(dk, lt, li) * (1.0 + 0.25 * pulse * (day ? 0.0 : 1.0));
+        tc *= 1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.05;
+        tileC = tc; tileA = day ? 0.88 : 1.0;
+        // (the shimmer: each glyph rolls again a couple of times a second, on its own beat; more as it beats)
+        float roll = h2(vec2(floor(key * 4096.0), floor(time * 2.4 + fract(key * 31.0) * 10.0)));
+        // (fine grain on its skin, nearly clear inside: a fleck here and there)
+        int g = rim ? (mod(cell.x + fk, 2.0) < 1.0 ? G_TILDE : G_DASH) : ring ? G_SMALLO : (li > 0.6 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < (li > 0.3 ? 0.35 : 0.14) ? G_MID : 0));
+        vec3 ink = roll < 0.05 + 0.08 * pulse ? vec3(1.0) : (day ? tc * (ring ? 0.62 : 0.72) : tc * (ring ? 1.5 : 1.55));
+        put(g, 1.0, ink);
+        return;
+      }
+      // (a fringe of short tentacles just under its rim)
+      if (dy < yB && dy > yB - ch * 1.6 && abs(X - c.x) < a * 0.98 && h2(vec2(cell.x, floor(time * 1.5)) + fk * 9.0) < 0.75) {
+        put(mod(cell.x, 3.0) < 1.0 ? G_GRAVE : (mod(cell.x, 3.0) < 2.0 ? G_TICK : G_COMMA), 0.7, day ? dk * 0.85 : glowC * 0.75);
+        return;
+      }
+      // (its tentacles: from points along its rim, hanging, swaying, strands, then dots, then wisps)
+      int N = big ? 5 : 3;
+      for (int j = 0; j < 5; j++) {
+        if (j >= N) break;
+        float fj = float(j), u = (fj / float(N - 1) - 0.5) * 1.7;
+        float len = L * (0.75 + 0.25 * h1(fj * 3.7 + fk * 11.0));
+        float xa = c.x + u * a, ya = c.y + hh * (1.0 - u * u) - ch;
+        float down = ya - Y;
+        if (down < 0.0 || down >= len) continue;
+        float t0 = down / len, rr = down / ch, A = (big ? 1.6 : 1.0) * cw, ph = time * 1.3 + fj * 1.1 + fk * 2.0;
+        float x1 = xa + A * pow(t0, 0.8) * sin(ph - rr * 0.5), x2 = xa + A * pow(min(1.0, (down + ch) / len), 0.8) * sin(ph - (rr + 1.0) * 0.5);
+        if (abs(X - x1) < cw * 0.5) {
+          float sl = (x2 - x1) / cw;
+          put(t0 > 0.7 ? G_MID : (t0 > 0.35 ? G_COLON : (sl > 0.4 ? G_BACK : (sl < -0.4 ? G_SLASH : G_BAR))), 0.75 - 0.4 * t0, (day ? dk * 0.8 : glowC * 0.8) * (1.0 - 0.45 * t0));
+          return;
+        }
+      }
+      // (its frilled arms from the middle of its underside, shorter, swaying slower and wider: two, or
+      // one on a small one)
+      for (int j = 0; j < 2; j++) {
+        if (!big && j == 1) break;
+        float fj = float(j), len = L * 0.58;
+        float xa = c.x + (big ? (fj - 0.5) * 0.36 : 0.0) * a, ya = c.y + hh - ch;
+        float down = ya - Y;
+        if (down < 0.0 || down >= len) continue;
+        float t0 = down / len, x1 = xa + 1.4 * cw * pow(t0, 0.7) * sin(time * 0.8 + fj * 2.5 + fk - down / ch * 0.35);
+        if (abs(X - x1) < cw * 0.5) { put(t0 > 0.75 ? G_TILDE : G_APPROX, 0.8 - 0.35 * t0, day ? mix(dk, rgb(200.0, 100.0, 180.0), 0.5) : mix(glowC, vec3(1.0), 0.2)); return; }
+      }
+    }
+  }
+  // --- a stingray gliding along the bottom, drawn as the sharks are, seen from above: a blue-spotted
+  // ribbontail, its disc sandy gold with electric blue spots, shaded by the light (domed a little, its
+  // wings' thin edges paler), the edges of its wings rippling as it flies, its eyes and spiracles on
+  // top; its long thin tail following its way behind it, banded blue. Light glyphs round its edge where
+  // a cell's only partly covered; its shadow close under it on the bottom by day
+  {
+    float asp = view.x / view.y, wide = clamp((asp - 0.56) / 1.22, 0.0, 1.0), sz = min(1.0, 0.55 + 0.45 * asp);
+    float Lb = 0.075 * sz, Wb = 0.105 * sz, T = 0.26 * sz, lane = mix(0.84, 0.8, wide);
+    float u = mod(time * 0.011 + sea.y * 0.006 + 0.9, asp + 0.65 + T);
+    vec2 c0 = rayWay(u, asp, lane);
+    if (length(p - c0) < Lb + Wb + T + 0.06) {
+      float al, ac, r;
+      vec2 td;
+      int what = rayAt(p, u, asp, lane, Lb, Wb, T, al, ac, r, td);
+      vec3 night = day ? vec3(1.0) : vec3(0.6, 0.68, 0.86);
+      if (what == 3) {
+        // (its tail: a line along its way, sand banded blue, a wisp at its end)
+        float ta = mod(atan(td.y / ch, td.x / cw), 3.14159265);
+        int tg = r > 0.85 ? G_MID : (r < 0.45 && (ta < 0.4 || ta > 2.74) ? G_HHEAVY : (r < 0.45 && abs(ta - 1.5708) < 0.4 ? G_VHEAVY : lineGlyph(atan(td.y, td.x))));
+        put(tg, 1.0, (mod(r * 14.0, 2.0) < 1.0 ? rgb(70.0, 150.0, 250.0) : rgb(176.0, 144.0, 88.0)) * night);
+        return;
+      }
+      int n = what != 0 ? 1 : 0;
+      float a2, c2, r2; vec2 t2;
+      for (int i = 0; i < 4; i++) { int w2 = rayAt(p + SUB[i] * vec2(cw, ch), u, asp, lane, Lb, Wb, T, a2, c2, r2, t2); if (w2 != 0 && w2 != 3) n++; }
+      float key = h2(vec2(floor(al * Lb / cw * 1.3 + 0.5), floor(ac * Wb / ch * 1.3 + 0.5)) + 53.0);
+      vec3 dk = rgb(150.0, 114.0, 64.0), lt = rgb(238.0, 210.0, 148.0);
+      if (n > 0 && (what == 0 || n < 3)) {
+        put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, mix(dk, lt, 0.5) * night);
+        return;
+      }
+      if (what != 0) {
+        // (lit from above: domed a little, brighter toward the light; its wings' edges paler)
+        vec2 rdir = normalize(p - c0 + vec2(1e-5));
+        float li = clamp(0.5 + 0.3 * dot(rdir, normalize(SUN)) * min(1.0, r) + 0.25 * (1.0 - min(1.0, r)), 0.0, 1.0);
+        vec3 c = mix(dk, lt, li);
+        // (its body raised down its middle, a little darker and richer, a faint line where its wings
+        // begin; the wings' thin edges paler)
+        float wing = abs(ac) / 0.34;
+        if (what == 1 && wing < 1.0) c = mix(c, c * vec3(0.86, 0.8, 0.72), 0.7);
+        if (what == 1 && abs(wing - 1.0) < 0.09 && abs(al) < 0.82) c *= 0.84;
+        if (what == 2) c = mix(c, rgb(250.0, 236.0, 200.0), 0.35);
+        if (what == 6) c *= 0.85;
+        // (its spots: electric blue, spread evenly over its wings and the back of its disc, one to a
+        // patch of it, riding along with it; none on its edge, none round its eyes)
+        float span0 = al > -0.08 ? pow(clamp((1.0 - al) / 1.08, 0.0, 1.0), 0.72) : pow(clamp((al + 1.0) / 0.92, 0.0, 1.0), 0.9);
+        vec2 sg = vec2(al * Lb, ac * Wb) / 0.028, gi = floor(sg);
+        vec2 sc = gi + 0.3 + 0.4 * vec2(h2(gi + 3.1), h2(gi + 9.7));
+        bool spot = what == 1 && (span0 - abs(ac)) * Wb > 1.3 * max(cw, ch) && !(al > 0.15 && abs(ac) < 0.3) && h2(gi + 5.3) < 0.5 && length(sg - sc) < 0.26;
+        if (spot) c = rgb(60.0, 150.0, 255.0);
+        if (what == 4) c = rgb(36.0, 30.0, 22.0);
+        if (what == 5) c = mix(dk, rgb(36.0, 30.0, 22.0), 0.5);
+        c *= night * (1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.04);
+        tileC = c; tileA = 1.0;
+        int g = what == 4 ? G_SMALLO : what == 5 ? G_DOT : spot ? G_SMALLO : RAMP[clamp(int((1.0 - li) * 9.99) + int(fract(key * 13.7) * 3.0) - 1, 0, 9)];
+        vec3 ink = what == 4 ? rgb(200.0, 190.0, 160.0) * night : spot ? rgb(190.0, 230.0, 255.0) * night
+                 : day ? c * (li > 0.55 ? 0.42 : 0.52) : li > 0.55 ? rgb(16.0, 15.0, 14.0) : rgb(30.0, 28.0, 26.0);
+        put(g, 1.0, ink);
+        return;
+      }
+    }
+    // (its shadow close under it on the bottom by day: it swims low)
+    if (day && length(p - c0) < Lb + Wb + T + 0.08) {
+      float a2, c2, r2; vec2 t2;
+      if (rayAt(p - vec2(0.012, -0.016), u, asp, lane, Lb, Wb, T, a2, c2, r2, t2) != 0) tone = 0.8;
     }
   }
   // --- by night the plankton lit where things swim, the light spreading and fading
@@ -2865,7 +3310,684 @@ void main() {
 }
 `;
 
-const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS };
+// The festival: a stage on the far shore of a lake in the mountains, the toaster at its decks. Its
+// lights' beams fan up into the sky and sweep with the bars, brighter on the kick; the screen behind
+// the decks plays the music as bars; the speakers thump on the kick; fireworks go up over the
+// mountains every 8 bars and on a drop. The crowd stands on the near shore, seen from behind
+// against the light, heads bobbing on the beat, glow sticks and phones up, every hand in the air
+// when the fireworks go; the lake mirrors all of it. By day an afternoon set: the lights off, the
+// screen still playing. (moon: the stage's middle, its floor, its half width; lake: its far shore
+// and the near one; the show's two colours change every 8 bars)
+const FESTIVAL = `
+vec3 showA(float beats) { float k = mod(floor(beats / 32.0), 4.0); return k < 0.5 ? rgb(255.0, 84.0, 214.0) : k < 1.5 ? rgb(255.0, 178.0, 70.0) : k < 2.5 ? rgb(100.0, 255.0, 170.0) : rgb(176.0, 136.0, 255.0); }
+vec3 showB(float beats) { float k = mod(floor(beats / 32.0), 4.0); return k < 0.5 ? rgb(86.0, 222.0, 255.0) : k < 1.5 ? rgb(120.0, 146.0, 255.0) : k < 2.5 ? rgb(255.0, 124.0, 222.0) : rgb(236.0, 238.0, 255.0); }
+// a light's beam from o, leaning a (radians from straight up, + to the right): how bright at p, and
+// how far from its middle line (0 there, 1 at its edge); widening and fading as it goes
+float beamAt(vec2 p, vec2 o, float a, out float edge) {
+  vec2 d = vec2(sin(a), cos(a)), v = p - o;
+  float along = dot(v, d), across = abs(v.x * d.y - v.y * d.x);
+  float w = 0.004 + 0.05 * along;
+  edge = across / w;
+  if (along <= 0.0 || edge >= 1.0) return 0.0;
+  return (1.0 - edge * edge) * exp(-along * 1.5);
+}
+// the beams' lean: fanned out, sweeping together across the sky every 2 bars
+float beamLean(float fi, float beats) { return (fi - 2.0) * 0.26 + 0.3 * sin(beats * 0.7854 + fi * 0.9); }
+// whether a beam's middle line, from o leaning a, passes through the cell at c (its glyph then: │ ╱
+// ╲, joined cell to cell into one line, as the ridges are drawn)
+int beamLine(vec2 c, vec2 o, float a) {
+  float y0 = max(c.y - 0.5 * ch, o.y), y1 = c.y + 0.5 * ch;
+  if (y1 <= o.y) return 0;
+  float ta = tan(a), x0 = o.x + (y0 - o.y) * ta, x1 = o.x + (y1 - o.y) * ta;
+  if (max(x0, x1) < c.x - 0.5 * cw || min(x0, x1) > c.x + 0.5 * cw) return 0;
+  return abs(x1 - x0) < cw * 0.6 ? G_VLINE : (x1 > x0 ? G_HATCH : G_HATCHB);
+}
+// the fireworks: three shells each time (leap), rising from behind the stage, each bursting into a
+// ring of sparks that streak out, fall and twinkle out, white hot at first; at p the brightest
+// (0-1), its colour and its glyph (a streak along its way out, its head a star)
+float fireworks(vec2 p, float beats, out vec3 col, out int g) {
+  col = vec3(0.0);
+  g = 0;
+  if (leap.w < 0.5 || leap.x > 3.6) return 0.0;
+  float best = 0.0;
+  vec2 cs = vec2(cw, ch);
+  for (int s = 0; s < 3; s++) {
+    float fs = float(s), t = leap.x - fs * 0.4;
+    if (t < 0.0) continue;
+    float seed = leap.z * 17.0 + fs * 3.7;
+    vec2 from = vec2(moon.x + (h1(seed) - 0.5) * 0.7, moon.y + 0.05);
+    vec2 burst = vec2(from.x + (h1(seed + 1.0) - 0.5) * 0.25, 0.62 + 0.22 * h1(seed + 2.0));
+    vec3 c = s == 1 ? showB(beats) : s == 2 ? rgb(255.0, 220.0, 130.0) : showA(beats);
+    if (t < 0.65) {
+      // rising, its trail behind it
+      float u = t / 0.65;
+      vec2 q = mix(from, burst, 1.0 - (1.0 - u) * (1.0 - u));
+      if (abs(p.x - q.x) < cw * 0.55 && p.y < q.y + ch * 0.5 && p.y > q.y - ch * 4.5) {
+        float b = 1.0 - (q.y - p.y) / (ch * 5.0);
+        if (b > best) { best = b; col = rgb(255.0, 236.0, 196.0); g = p.y > q.y - ch * 0.5 ? G_BULLET : G_VLINE; }
+      }
+      continue;
+    }
+    float tb = t - 0.65, R = 0.17 + 0.07 * h1(seed + 3.0);
+    if (length(p - burst) > R * 1.15 + 0.05 * tb * tb + 0.02) continue;          // (nowhere near it)
+    float fade = exp(-tb * 1.2), out1 = 1.0 - exp(-tb * 2.8), tp = max(tb - 0.14, 0.0), out0 = 1.0 - exp(-tp * 2.8);
+    vec3 cc = tb < 0.25 ? mix(rgb(255.0, 250.0, 235.0), c, tb / 0.25) : c;
+    // (its first instant: one flash at its heart, the sparks drawn once they're on their way)
+    if (tb < 0.12 && length((p - burst) / cs) < 0.7) { best = 1.0; col = rgb(255.0, 252.0, 240.0); g = G_SPARK; continue; }
+    for (int k = 0; k < 20; k++) {
+      float fk = float(k), ang = fk * 0.31416 + h1(seed + fk) * 0.25, sp = R * (0.8 + 0.2 * h1(seed + fk * 1.7));
+      vec2 u = vec2(sin(ang), cos(ang));
+      vec2 q1 = burst + u * sp * out1 - vec2(0.0, 0.05 * tb * tb), q0 = burst + u * sp * out0 - vec2(0.0, 0.05 * tp * tp);
+      if (length((q1 - burst) / cs) < 1.2) continue;
+      // (the streak from q0 to q1, measured in cells)
+      vec2 a = (p - q0) / cs, ab = (q1 - q0) / cs;
+      float h = clamp(dot(a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+      if (length(a - ab * h) < 0.6) {
+        float b = fade * (0.45 + 0.55 * h) * (tb > 1.6 ? 0.6 + 0.4 * h1(seed + fk * 2.3 + floor(tb * 9.0)) : 1.0);
+        if (b > best) {
+          best = b;
+          col = cc;
+          g = h > 0.8 ? (b > 0.6 ? G_SPARK : G_STAR) : (abs(ab.x) < 0.5 * abs(ab.y) ? G_VLINE : (abs(ab.y) < 0.5 * abs(ab.x) ? G_LINE : (ab.x * ab.y > 0.0 ? G_HATCH : G_HATCHB)));
+        }
+      }
+    }
+  }
+  return best;
+}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  float row = grid.y - 1.0 - cell.y, H = view.y;
+  cw = cellPx.x / H; ch = cellPx.y / H;
+  float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
+  day = night < 0.5;
+  float h0 = h2(cell + 17.0);
+  float beats = sea.z, kick = sea.w;
+  float sx = moon.x, sf = moon.y, sw = moon.z, roof = sf + 0.125;
+  float dx = X - sx, ax = abs(dx);
+  vec3 cA = showA(beats), cB = showB(beats);
+  bool pop = leap.w > 0.5 && leap.x < 3.0;
+  vec3 dark = P(rgb(8.0, 8.0, 20.0), rgb(40.0, 36.0, 56.0));          // (the crowd, against the light)
+
+  // --- the crowd on the near shore, seen from behind against the lit water: a person every 5
+  // cells, a head over shoulders widening into the dark of the crowd, the outline lit along its top
+  // in the show's colours, the light catching the tops of the shoulders; each head bobbing on the
+  // beat (some a little behind it), some jumping on a kick; here and there an arm up, a glow stick
+  // or a phone in its hand, and now and then someone up on someone's shoulders waving a flag
+  // (every arm up when the fireworks go)
+  if (Y < lake.y + 12.0 * ch) {
+    float frontRow = floor((1.0 - lake.y) / ch) + 1.0;              // (the heads' row at rest: at the water's edge)
+    for (int n = -1; n < 2; n++) {
+      // this cell's person, and those either side (their arms reach into the next one's cells)
+      float i = floor(cell.x / 5.0) + float(n), k = cell.x - i * 5.0, seed = i * 7.13;
+      float bob = fract(beats + h1(seed) * 0.35) < 0.3 ? 1.0 : 0.0;
+      float jump = kick > 0.45 && h1(seed + 2.0) < 0.3 ? 1.0 : 0.0;
+      bool high = h1(seed + 10.0) < 0.07;                             // (up on someone's shoulders)
+      float hRow = frontRow + floor(h1(seed + 1.0) * 3.0) - 1.0 - bob - jump - (high ? 3.0 : 0.0), d = row - hRow;
+      bool upR = pop || high || h1(seed + 3.0) < 0.12 + 0.15 * fly, upL = pop || h1(seed + 8.0) < 0.08;
+      vec3 rim = mix(dark, mix(cA, cB, h1(seed + 6.0)), day ? 0.15 : 0.65);
+      if (n == 0) {
+        if (k == 2.0 && d == 0.0) { put(G_BIGO, 0.95, rim); return; }                              // the head
+        if (d == 1.0 && (k == 1.0 || k == 3.0)) { put(k == 1.0 ? G_SLASH : G_BACK, 0.9, rim); return; }  // its shoulders
+        if (d == 2.0 && (k == 0.0 || k == 4.0)) { put(G_UNDER, 0.8, rim); return; }
+        if (d >= 1.0 && k >= 1.0 && k <= 3.0 || d >= 2.0) {
+          // (the crowd's dark, the light just catching its top; by day a soft shade on the paper)
+          if (day) { put(d < 3.0 ? G_LIGHT : (h0 < 0.35 ? G_COLON : (h0 < 0.65 ? G_DOT : 0)), 0.5, rgb(126.0, 120.0, 146.0)); return; }
+          bool lit = d < (k == 2.0 ? 4.0 : 3.0);
+          put(lit ? G_MEDIUM : G_DARK, lit ? 0.6 : 0.95, lit ? mix(dark, rim, 0.3) : dark);
+          return;
+        }
+      }
+      // an arm raised to the right (out of this person's cells into the next one's), the hand
+      // holding a glow stick or a phone, or a flag on a pole; or an arm raised to the left
+      float holds = h1(seed + 4.0);
+      if (upR && ((k == 3.0 && d == 0.0) || (k == 4.0 && d == -1.0))) { put(G_SLASH, 0.9, rim); return; }
+      if (upR && high && k >= 5.0 && k <= 8.0 && d <= -2.0 && d >= -6.0) {
+        if (k == 5.0) { put(G_VLINE, 0.9, rim); return; }
+        // (the flag, its far end flapping)
+        float flap = k == 8.0 && sin(time * 5.0 + seed) < -0.1 ? 1.0 : 0.0;
+        if (d - flap == -6.0 || d - flap == -5.0) { put(d - flap == -6.0 ? G_DARK : G_MEDIUM, 0.9, h1(seed + 11.0) < 0.5 ? cA : cB); return; }
+      }
+      if (upR && !high && k == 5.0 && d == -2.0) {
+        if (holds < 0.35) { put(G_BAR, 1.0, h1(seed + 7.0) < 0.5 ? cA : cB); return; }
+        if (holds > 0.8 && !day) { put(G_BULLET, 1.0, rgb(232.0, 240.0, 255.0)); return; }
+        put(G_TICK, 0.9, rim); return;
+      }
+      if (upL && ((k == 1.0 && d == 0.0) || (k == 0.0 && d == -1.0))) { put(G_BACK, 0.9, rim); return; }
+    }
+    if (Y < lake.y) { if (day) put(h0 < 0.35 ? G_COLON : (h0 < 0.65 ? G_DOT : 0), 0.5, rgb(126.0, 120.0, 146.0)); else put(G_DARK, 0.95, dark); return; }
+  }
+
+  // --- the lake: everything over it mirrored, dimmer, broken by the water: the stage's light lying
+  // across it toward the crowd, the beams, the fireworks, the mountains; ripples on the kicks
+  if (Y < lake.x) {
+    float depth = (lake.x - Y) / (lake.x - lake.y);
+    float wob = (0.002 + 0.006 * depth) * sin(row * 2.1 + time * 1.3);
+    float Ym = 2.0 * lake.x - Y, Xw = X + wob;
+    float streak = vn2(vec2((X + time * 0.004) * 14.0, row));
+    int g = 0; vec3 c = P(rgb(36.0, 60.0, 120.0), rgb(70.0, 130.0, 190.0)); float ink = 0.0;
+    // (the stage's light lying across it, widening and brightening toward the crowd)
+    float pathW = sw * (0.55 + 0.9 * depth);
+    if (abs(Xw - sx) < pathW && streak > 0.3 + 0.4 * abs(Xw - sx) / pathW) {
+      g = streak > 0.72 ? G_DBL : G_DASH;
+      c = h1(floor(Xw / cw) * 1.7 + row) < 0.5 ? cA : cB;
+      ink = (0.35 + 0.4 * glow + 0.3 * kick) * (0.7 + 0.3 * depth) * (day ? 0.45 : 1.0);
+    }
+    // (the fireworks, then the beams' middle lines, mirrored)
+    if (g == 0) {
+      vec3 fc;
+      int fg;
+      float f = fireworks(vec2(Xw, Ym), beats, fc, fg);
+      if (f > 0.15 && streak > 0.3) { g = fg == G_HATCH ? G_HATCHB : (fg == G_HATCHB ? G_HATCH : fg); c = fc; ink = 0.3 + 0.4 * f; }
+    }
+    if (!day && g == 0 && streak > 0.35) {
+      for (int i = 0; i < 5; i++) {
+        float fi = float(i), a = beamLean(fi, beats);
+        vec2 o = vec2(sx + (fi - 2.0) * sw * 0.38, roof + 2.0 * ch);
+        int bg = beamLine(vec2(Xw, Ym), o, a);
+        if (bg != 0) { g = bg == G_HATCH ? G_HATCHB : (bg == G_HATCHB ? G_HATCH : bg); c = i % 2 == 0 ? cA : cB; ink = (0.3 + 0.3 * glow + 0.35 * kick) * exp(-(Ym - o.y) * 1.8); break; }
+      }
+    }
+    if (g == 0) {
+      for (int i = 1; i < 3; i++) {
+        float t0 = peak(i, Xw).x;
+        if (Ym < t0 + 0.5 * ch) {
+          bool edge = abs(Ym - t0) < ch * 0.8;
+          if (streak > (edge ? 0.35 : 0.8)) { g = edge ? G_TILDE : G_LINE; c = P(rgb(70.0, 66.0, 128.0), rgb(110.0, 120.0, 168.0)); ink = 0.5; }
+          break;
+        }
+      }
+    }
+    if (g == 0 && streak > 0.88) { g = G_DASH; ink = 0.4; c = P(rgb(36.0, 56.0, 108.0), rgb(90.0, 140.0, 196.0)); }
+    for (int i = 0; i < 4; i++) {
+      vec4 q = rip[i];
+      if (q.w <= 0.0) continue;
+      float rad = 0.015 + q.z * 0.08, d = length(vec2(X - q.x, (Y - q.y) * 5.0)) - rad;
+      float a = exp(-q.z * 1.2) * q.w;
+      if (abs(d) < cw * 0.8 && a > 0.08) {
+        float side = (X - q.x) / max(rad, 1e-3);
+        g = side < -0.85 ? G_LP : side > 0.85 ? G_RP : G_DASH;
+        c = P(rgb(150.0, 180.0, 230.0), rgb(255.0, 255.0, 255.0));
+        ink = max(ink, 0.35 + 0.65 * a);
+      }
+    }
+    put(g, ink, c);
+    return;
+  }
+
+  // --- the stage, on the far shore
+  if (ax < sw + cw && Y < roof + 4.0 * ch) {
+    vec3 steel = P(rgb(120.0, 120.0, 150.0), rgb(70.0, 72.0, 92.0));
+    // its floor, a lit edge; under it the skirt, dark, uplights along its front
+    if (Y < sf) {
+      if (ax < sw && Y > sf - ch) { put(G_HHEAVY, 0.95, P(rgb(150.0, 150.0, 180.0), rgb(60.0, 60.0, 80.0))); return; }
+      if (ax < sw) {
+        if (mod(cell.x, 5.0) < 1.0 && Y > sf - 2.0 * ch) { put(G_CARET, 0.7 + 0.3 * kick, mod(cell.x, 10.0) < 5.0 ? cA : cB); return; }
+        put(h0 < 0.5 ? G_MEDIUM : G_DARK, 0.6, P(rgb(20.0, 20.0, 36.0), rgb(70.0, 66.0, 84.0)));
+        return;
+      }
+    }
+    // the roof: a truss, two chords and a lattice between, its lights hanging under it, blinking
+    // round on the beats
+    float rr = (Y - roof) / ch;
+    if (rr > -0.5 && rr < 2.5 && ax < sw + cw * 0.5) {
+      if (rr < 0.5 || rr > 1.5) { put(G_DBL, 0.95, steel); return; }
+      put(mod(cell.x, 2.0) < 1.0 ? G_HATCH : G_HATCHB, 0.8, steel);
+      return;
+    }
+    // the sign on top of it, its name lit, flaring on the kick
+    if (rr >= 2.5 && rr < 3.5) {
+      float kc = floor(dx / cw + 0.5);
+      if (abs(kc) <= 3.0) {
+        put(kc == -3.0 ? G_LT : kc == -2.0 ? G_BIGO : kc == -1.0 ? G_LA : kc == 0.0 ? G_LS : kc == 1.0 ? G_LT : kc == 2.0 ? G_LE : G_LR, 0.8 + 0.2 * kick, day ? cA * 0.75 : mix(rgb(255.0, 255.0, 255.0), cA, 0.3));
+        return;
+      }
+      if (abs(kc) == 5.0) { put(G_VLINE, 0.8, steel); return; }
+    }
+    if (rr > -1.5 && rr <= -0.5 && ax < sw && mod(cell.x, 4.0) < 1.0) {
+      float on = fract(beats * 0.5 + floor(cell.x / 4.0) * 0.25) < 0.5 ? 1.0 : 0.4;
+      put(G_VEE, 0.6 + 0.4 * on, mod(cell.x, 8.0) < 4.0 ? cA : cB);
+      return;
+    }
+    // the towers holding it up, at its ends
+    if (abs(ax - sw) < cw * 0.6 && Y >= sf && Y < roof) { put(G_VHEAVY, 0.9, steel); return; }
+    if (Y >= sf && Y < roof && ax < sw) {
+      // the speakers, stacked at each side, their cones thumping on the kick
+      float spx = sw - 0.035;
+      if (abs(ax - spx) < 0.022 && Y < sf + 0.09) {
+        float sy = (Y - sf) / 0.09;
+        if (abs(ax - spx) < cw * 0.6 && (abs(sy - 0.3) < 0.12 || abs(sy - 0.72) < 0.12)) { put(kick > 0.5 ? G_AT : G_BIGO, 0.75 + 0.25 * kick, P(rgb(150.0, 150.0, 170.0), rgb(60.0, 60.0, 70.0))); return; }
+        put(G_MEDIUM, 0.8, P(rgb(30.0, 30.0, 44.0), rgb(40.0, 40.0, 50.0)));
+        return;
+      }
+      // the screen behind the decks: the music as bars rising from its foot, coloured up them
+      float scrW = sw - 0.075, s0 = sf + 0.012, s1 = roof - 0.016;
+      if (ax < scrW && Y > s0 && Y < s1) {
+        float u = (Y - s0) / (s1 - s0), col = floor((X - (sx - scrW)) / cw);
+        float lvl = clamp(0.2 + 0.65 * vn(col * 0.45 + beats * 1.6) * (0.65 + 0.5 * glow) + 0.3 * kick, 0.0, 1.0);
+        if (u < lvl) {
+          bool cap = u > lvl - ch / (s1 - s0);
+          put(cap ? G_HHEAVY : G_DARK, cap ? 1.0 : 0.8, cap ? rgb(250.0, 250.0, 255.0) : mix(cB, cA, u));
+          return;
+        }
+        put(mod(cell.x + row, 2.0) < 1.0 ? G_MID : 0, 0.3, P(rgb(60.0, 70.0, 110.0), rgb(90.0, 96.0, 120.0)));
+        return;
+      }
+      // (the rest of it dark, the haze in it lit in the show's colours)
+      float hz = fbm(vec2(X * 9.0 - time * 0.2, Y * 14.0));
+      if (!day && h0 < 0.35 * hz) { put(G_TILDE, 0.3 + 0.3 * hz, cA); return; }
+      put(0, 0.0, vec3(0.0));
+      return;
+    }
+  }
+
+  // --- the far shore beside it: pines, and the low hills behind them; the side of each tree toward
+  // the stage lit in its colours at night, the nearer the brighter
+  {
+    float top, bot;
+    vec4 tr = tree(X, top, bot);
+    if (abs(tr.x - sx) > sw + 0.05 && Y < top && Y > bot) {
+      float u = (Y - tr.y) / tr.z, axT = abs(X - tr.x), hw = tr.z * 0.42 * (1.0 - u);
+      float tier = fract(u * (2.0 + floor(tr.z * 60.0)));
+      int g = u > 0.86 ? G_TRI : (axT > hw - cw * 0.9 ? (X < tr.x ? G_SLASH : G_BACK) : (tier < 0.5 ? G_CARET : G_TRI));
+      bool toward = (X - tr.x) * (sx - tr.x) > 0.0;
+      put(g, 0.95, mix(P(rgb(18.0, 54.0, 46.0), rgb(36.0, 96.0, 58.0)), cA, toward && !day ? 0.55 * exp(-abs(tr.x - sx) * 3.0) : 0.0));
+      return;
+    }
+    if (Y < hill(X) && ax > sw) { put(h0 < 0.5 ? G_DARK : G_MEDIUM, 0.7, P(rgb(12.0, 34.0, 30.0), rgb(36.0, 86.0, 52.0))); return; }
+  }
+
+  // --- the fireworks, over the mountains, in front of the beams
+  {
+    vec3 fc;
+    int fg;
+    float f = fireworks(vec2(X, Y), beats, fc, fg);
+    if (f > 0.08) { put(fg, clamp(0.35 + 0.75 * f, 0.0, 1.0), fc); return; }
+  }
+
+  // --- the lights' beams, fanning up from the roof into the sky and sweeping with the bars, brighter
+  // on the kick (at night): each a crisp line up its middle, the haze it lights round it a soft
+  // scatter of dots, thinning out to its edges and as it goes
+  if (!day && Y > roof) {
+    for (int i = 0; i < 5; i++) {
+      float fi = float(i), e, a = beamLean(fi, beats);
+      vec2 o = vec2(sx + (fi - 2.0) * sw * 0.38, roof + 2.0 * ch);
+      float b = beamAt(vec2(X, Y), o, a, e) * (0.5 + 0.35 * glow + 0.5 * kick);
+      vec3 bc = i % 2 == 0 ? cA : cB;
+      int bg = beamLine(vec2(X, Y), o, a);
+      if (bg != 0 && b > 0.04) { put(bg, clamp(0.4 + 0.9 * b, 0.0, 1.0), bc); return; }
+      if (b > 0.05 && h0 < 0.9 * b * (1.0 - e)) { put(e < 0.45 && h0 < 0.4 * b ? G_COLON : G_MID, clamp(0.3 + 0.6 * b, 0.0, 1.0), bc); return; }
+    }
+  }
+
+  // --- mist along the mountains' foot, and the ranges (as the lake's, lit by the moon)
+  float lightX = sunAt.x;
+  {
+    float drift = fbm(vec2(X * 4.0 + time * 0.012, Y * 26.0));
+    float m = exp(-pow((Y - (farL.x + 0.03)) / 0.026, 2.0)) * 0.8;
+    m *= (0.15 + 0.85 * smoothstep(0.3, 0.7, drift)) * (day ? 0.8 : 1.0);
+    if (h0 < m * 0.6) { put(h0 < m * 0.3 ? G_LINE : (h0 < m * 0.55 ? G_DASH : G_TILDE), 0.5 + 0.4 * m, P(rgb(118.0, 126.0, 172.0), rgb(150.0, 158.0, 190.0))); return; }
+  }
+  for (int i = 1; i < 3; i++) {
+    float tl = peak(i, X - 0.5 * cw).x, tr = peak(i, X + 0.5 * cw).x;
+    vec4 pk = peak(i, X);
+    float tc = pk.x, hi = max(max(tl, tr), tc);
+    if (Y - 0.5 * ch > hi) continue;
+    bool across = abs(tc - Y) <= 0.5 * ch, down = (Y - tl) * (Y - tr) <= 0.0;
+    vec3 ridge = i == 1 ? P(rgb(196.0, 196.0, 244.0), rgb(44.0, 46.0, 80.0)) : P(rgb(116.0, 126.0, 186.0), rgb(86.0, 100.0, 146.0));
+    if (across || down) {
+      float rise = (tr - tl) / ch, lo = Y - 0.5 * ch, hi2 = Y + 0.5 * ch;
+      bool top = tc > tl + 0.15 * ch && tc > tr + 0.15 * ch;
+      bool stays = tl >= lo && tl < hi2 && tr >= lo && tr < hi2;
+      put(top && hi2 > tc ? G_CARET : (stays && abs(rise) < 0.9 ? ((tl + tr) * 0.5 < Y ? G_UNDER : G_DASH) : (rise > 0.0 ? G_SLASH : G_BACK)), 1.0, ridge);
+      return;
+    }
+    float d = tc - Y;
+    bool lit = (X - (pk.y + (pk.z - Y) * 0.2)) * (lightX - pk.y) > 0.0;
+    float snowD = pk.w > 0.1 * (i == 2 ? farL.y : midL.y) / 0.4 ? (0.32 + 0.1 * (vn(X * 31.0) - 0.5)) * pk.w : 0.0;
+    snowD = max(0.0, snowD - (pk.z - tc));
+    bool snow = d < snowD;
+    float st = h0, fall = 1.0 - smoothstep(0.02, 0.35, d);
+    float haze = smoothstep(0.0, 0.25, (Y - farL.x) / max(1e-3, (i == 1 ? midL.y : farL.y)));
+    if (i == 2) {
+      if (snow) { if (st < (lit ? 0.55 : 0.3)) { put(lit ? G_TRIO : G_MID, 0.8, P(rgb(176.0, 186.0, 232.0), rgb(130.0, 142.0, 186.0))); return; } }
+      else if (st < (lit ? 0.22 : 0.4) * (0.4 + 0.6 * haze)) { put(lit ? G_DOT : G_COLON, 0.75, P(rgb(64.0, 70.0, 120.0), rgb(112.0, 128.0, 168.0))); return; }
+      put(0, 0.0, vec3(0.0));
+      return;
+    }
+    if (snow) {
+      if (snowD > ch && abs(d - snowD) < 0.5 * ch) { put(mod(cell.x, 2.0) < 1.0 ? G_SLASH : G_BACK, 0.9, P(rgb(200.0, 208.0, 245.0), rgb(200.0, 206.0, 230.0))); return; }
+      put(lit ? (st < 0.5 ? G_TRI : G_TRIO) : (st < 0.6 ? G_LIGHT : G_TRIO), 0.95, lit ? P(rgb(232.0, 238.0, 255.0), rgb(120.0, 132.0, 182.0)) : P(rgb(150.0, 162.0, 214.0), rgb(92.0, 100.0, 150.0)));
+      return;
+    }
+    if (lit) {
+      float keep = day ? 0.8 + 0.2 * fall : 0.55 + 0.4 * fall;
+      if (st < keep) put(day ? (mod(cell.x + row, 2.0) < 1.0 ? G_SLASH : G_HATCH) : (mod(cell.x + row, 2.0) < 1.0 ? G_HATCH : (st < 0.3 ? G_SLASH : G_HATCH)), day ? 1.0 : 0.85, P(rgb(140.0, 134.0, 204.0), rgb(66.0, 74.0, 128.0)) * (0.75 + 0.25 * fall));
+      else put(0, 0.0, vec3(0.0));
+      return;
+    }
+    int g = day ? (d < 0.03 ? G_DARK : d < 0.07 ? G_MEDIUM : d < 0.14 ? (st < 0.8 ? G_LIGHT : G_COLON) : (st < 0.6 ? G_COLON : G_DOT))
+                : (d < 0.022 ? G_MEDIUM : d < 0.05 ? (st < 0.7 ? G_LIGHT : G_COLON) : d < 0.13 ? (st < 0.55 ? G_COLON : st < 0.8 ? G_DOT : 0) : (st < 0.3 ? G_DOT : 0));
+    put(g, 0.85, P(rgb(84.0, 70.0, 140.0), rgb(58.0, 60.0, 104.0)) * (0.75 + 0.25 * fall));
+    return;
+  }
+
+  sky(cell, X, Y, h0, farL.x, farL.x + farL.y * 0.2);
+}`;
+
+// The koi pond, seen from above as the sharks' water is: five koi swimming about it (a kohaku, white
+// with red patches; a showa, black, red and white; a sanke, white and red flecked with black; a
+// yamabuki, gold; an orange ogon), drawn as the sharks are, their fins and tails see-through; lily
+// pads in the corners, two in flower, the koi passing under them; the toaster on a pad of its own, a
+// ripple spreading from it on each kick, crumbs of toast on the water when it pops (or where food's
+// dropped on it); a few petals floating. By day the bottom's pebbles, the light's net drifting over
+// them and the shadows of the koi and the pads; by night fireflies (more of them lit when the hats
+// are busy). The page swims the koi (stepPond) and hands each over as a spine of 13 points, snout
+// first (koiS); its kind, length and how far its pectorals are spread (koiK); a box round it (koiB).
+// moon: the toaster's pad, its middle and radius; a ripple's strength (rip.w) is how big it starts
+const KOI = `
+uniform vec2 koiS[65];      // the koi's spines, 13 points each from the snout (units of the height)
+uniform vec4 koiK[5];       // each one's kind (0 a kohaku, 1 a showa, 2 a sanke, 3 a yamabuki, 4 an orange ogon), its length, how far its left and right pectorals are spread (0-1)
+uniform vec4 koiB[5];       // the box each one's in (x0, y0, x1, y1), none when x1 < x0
+uniform vec4 food;          // the last food on the water: where (units of the height), how long ago (s), how far it's spread
+const vec2 SUN = vec2(-0.6, 0.8);
+// (where in a cell the koi and the pads are looked for, besides its middle)
+const vec2 SUB[4] = vec2[4](vec2(-0.27, 0.24), vec2(0.27, 0.2), vec2(-0.2, -0.26), vec2(0.24, -0.24));
+// the skin's glyphs, sparse to dense, as the sharks': sparse where it's lit, dense in its shadows
+const int RAMP[10] = int[10](G_COLON, G_SEMI, G_SMALLI, G_PLUS, G_SMALLX, G_LS, G_DOLLAR, G_EIGHT, G_HASH, G_AT);
+// the lily pads, in the corners: which (0 the top left, 1 the top right, 2 the bottom left, 3 the
+// bottom right), how far in from it (across, and up or down) and how big (units of the height, in a
+// wide window); 0 and 5 in flower
+const int PADC[8] = int[8](0, 0, 0, 1, 1, 2, 2, 3);
+const vec2 PADO[8] = vec2[8](vec2(0.1, 0.11), vec2(0.215, 0.06), vec2(0.05, 0.245), vec2(0.11, 0.13), vec2(0.225, 0.05), vec2(0.13, 0.11), vec2(0.04, 0.245), vec2(0.09, 0.08));
+const float PADR[8] = float[8](0.075, 0.042, 0.034, 0.062, 0.038, 0.07, 0.04, 0.052);
+// a glyph along a line at angle a (on the screen, y up): a dash, a slash, a bar or a backslash, as the cells are drawn
+int lineGlyph(float a) {
+  float c = mod(atan(sin(a) / ch, cos(a) / cw), 3.14159265);
+  return c < 0.3927 || c > 2.7489 ? G_DASH : c < 1.1781 ? G_SLASH : c < 1.9635 ? G_BAR : G_BACK;
+}
+// the light's net on the bottom, as in the sharks' water: how far from the nearest edge (x) and the
+// edge's direction there (y)
+vec2 causticEdge(vec2 q, float t) {
+  q += 0.22 * vec2(sin(q.y * 1.3 + t * 0.7), sin(q.x * 1.1 - t * 0.6));
+  vec2 g = floor(q), f = fract(q), c1 = vec2(0.0), c2 = vec2(0.0);
+  float d1 = 9.0, d2 = 9.0;
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 o = vec2(float(i), float(j)), hh = vec2(h2(g + o), h2(g + o + 31.0));
+    vec2 c = o + 0.5 + 0.35 * vec2(sin(t * (0.6 + hh.x) + 6.28 * hh.y), cos(t * (0.5 + hh.y) + 6.28 * hh.x)) - f;
+    float d = dot(c, c);
+    if (d < d1) { d2 = d1; c2 = c1; d1 = d; c1 = c; } else if (d < d2) { d2 = d; c2 = c; }
+  }
+  vec2 a = c2 - c1;
+  return vec2(dot(0.5 * (c1 + c2), normalize(a)), atan(a.y, a.x) + 1.5708);
+}
+float bump(float x, float c, float w) { float d = (x - c) / w; return exp(-d * d); }
+
+// --- the koi. What's of koi k at p, seen from above: 0 nothing, 1 its body, 2 a fin, 3 its tail.
+// Where on it: kS how far along it (0 its snout, 1 its tail's tip), kSide across it (-1 its right
+// edge, 1 its left), kLf which way its left is; on a fin, kR how far out (0 its root, 1 its edge),
+// kRay the way its rays run there (on the screen) and kRd how far from the nearest of them
+float kS = 0.0, kSide = 0.0, kR = 0.0, kRay = 0.0, kRd = 0.0, kRidge = 0.0;
+vec2 kLf = vec2(0.0, 1.0);
+int koiAt(int k, vec2 p) {
+  vec4 K = koiK[k];
+  float L = K.y, best = 9.0, bl = 0.0, s = 9.0, fk = float(k);
+  vec2 pt = vec2(1.0, 0.0);
+  for (int i = 1; i <= 12; i++) {
+    vec2 q = koiS[k * 13 + i], ba = koiS[k * 13 + i - 1] - q, pa = p - q;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0), dl = length(pa - ba * h);
+    if (dl < best) { best = dl; s = i == 12 && dot(pa, ba) < 0.0 ? 9.0 : (float(i) - h) / 12.0; bl = sign(ba.x * pa.y - ba.y * pa.x) * dl; pt = normalize(-ba); }
+  }
+  kS = s; kSide = 0.0; kRidge = 0.0; kLf = vec2(pt.y, -pt.x);
+  if (s > 1.0) return 0;
+  float wm = 0.115 * L, ab = abs(bl), sd = sign(bl);
+  // (its body: a round head, full from its shoulders to halfway down, then narrowing to the root of
+  // its tail)
+  float x = 1.0 - min(1.0, s / 0.3), w = mix(wm * sqrt(1.0 - x * x), 0.33 * wm, smoothstep(0.45, 0.8, s));
+  if (ab < w && s < 0.8) {
+    // (its dorsal fin along the middle of its back, seen edge on: a cell wide)
+    kSide = bl / w; kRidge = s > 0.3 && s < 0.64 && ab < 0.5 * (abs(pt.x) * ch + abs(pt.y) * cw) ? 1.0 : 0.0;
+    return 1;
+  }
+  // (its pectoral fins: rounded paddles from behind its head, folded back as it cruises, spread as it
+  // turns or slows, stirring slowly; and two small pelvic fins halfway down)
+  for (int f = 0; f < 2; f++) {
+    float at = f == 0 ? 0.24 : 0.52, spread = sd > 0.0 ? K.z : K.w;
+    float an = f == 0 ? 0.5 + 0.75 * spread + 0.08 * sin(time * 1.3 + fk * 2.3 + sd) : 0.5 + 0.2 * spread;
+    float a = (f == 0 ? 0.1 : 0.048) * L, b = (f == 0 ? 0.052 : 0.024) * L;
+    vec2 lp = vec2((s - at) * L, ab - (f == 0 ? 0.75 : 0.5) * wm), d = vec2(cos(an), sin(an)), c = lp - d * 0.9 * a;
+    float e1 = dot(c, d) / a, e2 = (d.x * c.y - d.y * c.x) / b;
+    if (e1 * e1 + e2 * e2 < 1.0) {
+      float th = atan(lp.y, lp.x);
+      kSide = sd; kR = length(lp) / (1.9 * a);
+      kRd = abs(th - 0.36 * round(th / 0.36)) * length(lp);
+      vec2 dir = lp.x * pt + lp.y * sd * kLf;
+      kRay = atan(dir.y, dir.x);
+      return 2;
+    }
+  }
+  // (its tail: a broad fan, forked a little, its edge rippling)
+  if (s > 0.76) {
+    float tx = (s - 0.76) / 0.24, span = wm * (0.3 + 1.1 * pow(tx, 0.55)) * (1.0 + 0.05 * sin(time * 2.2 + tx * 5.0 + fk));
+    if (ab < span && tx < 0.62 + 0.38 * pow(min(1.0, ab / (1.4 * wm)), 0.8)) {
+      vec2 v = p - koiS[k * 13 + 9];
+      float th = atan(pt.x * v.y - pt.y * v.x, dot(pt, v));
+      kSide = bl / span; kR = tx;
+      kRd = abs(th - 0.28 * round(th / 0.28)) * length(v);
+      kRay = atan(v.y, v.x);
+      return 3;
+    }
+  }
+  return 0;
+}
+// a koi's colours: its skin at s along it, side across it, and its fins r out on them. 0 a kohaku
+// (white, red patches, one on its head), 1 a showa (black, red and white, its fins black at their
+// roots), 2 a sanke (a kohaku flecked with black), 3 a yamabuki (gold), 4 an orange ogon; its patches
+// clouds riding along with it
+vec3 koiSkin(int kind, float s, float side, float seed) {
+  if (kind == 3) return rgb(242.0, 194.0, 76.0);
+  if (kind == 4) return rgb(244.0, 132.0, 42.0);
+  vec2 q = vec2(s * 7.0, side * 1.3) + seed * 9.7;
+  float n = vn2(q) + 0.32 * bump(s, 0.13, 0.055) - 0.35 * bump(s, 0.245, 0.035) - (s < 0.045 ? 1.0 : 0.0);
+  bool hi = n > 0.52 && abs(side) < 0.92;
+  vec3 white = rgb(246.0, 243.0, 234.0), red = rgb(226.0, 70.0, 40.0), black = rgb(30.0, 29.0, 34.0);
+  if (kind == 1) return hi ? red : vn2(q * 1.4 + 31.0) > 0.45 ? black : white;
+  if (kind == 2 && !hi && s > 0.22 && vn2(vec2(s * 18.0, side * 3.0) + 51.0) > 0.74) return black;
+  return hi ? red : white;
+}
+vec3 koiFin(int kind, float r) {
+  if (kind == 3) return rgb(250.0, 214.0, 120.0);
+  if (kind == 4) return rgb(250.0, 162.0, 82.0);
+  if (kind == 1) return mix(rgb(40.0, 38.0, 44.0), rgb(238.0, 238.0, 234.0), smoothstep(0.25, 0.7, r));
+  return rgb(244.0, 242.0, 236.0);
+}
+
+// --- the lily pads: lily pad k, its middle, its size and which way its notch points; drifting a
+// little, turning slowly
+vec4 padOf(int k, float asp, float sz) {
+  float fk = float(k);
+  int c = PADC[k];
+  vec2 o = PADO[k] * sz;
+  vec2 m = vec2(c == 0 || c == 2 ? o.x : asp - o.x, c < 2 ? 1.0 - o.y : o.y);
+  return vec4(m + 0.008 * vec2(sin(time * 0.05 + fk), cos(time * 0.04 + fk * 1.7)), PADR[k] * sz, 6.2832 * h1(fk * 9.1 + 3.0) + 0.06 * sin(time * 0.03 + fk));
+}
+// what's of lily pad P at p: 0 nothing, 1 the leaf, 2 its rim, 3 a vein; dr how far out (0 its
+// middle, 1 its edge, a little wavy); its notch a V cut in to its middle
+int padAt(vec4 P, vec2 p, out float dr) {
+  vec2 d0 = p - P.xy;
+  float a = atan(d0.y, d0.x);
+  dr = length(d0) / (P.z * (1.0 + 0.025 * sin(a * 7.0 + P.w * 3.0)));
+  if (dr > 1.0) return 0;
+  float da = abs(mod(a - P.w + 3.14159, 6.28318) - 3.14159);
+  if (dr > 0.06 && da < 0.03 + 0.2 * dr) return 0;
+  if (dr > 0.88) return 2;
+  float va = abs(mod(a - P.w + 0.349, 0.6981) - 0.349);
+  if (dr > 0.1 && va * dr * P.z < 0.4 * cw) return 3;
+  return 1;
+}
+
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  float row = grid.y - 1.0 - cell.y, H = view.y;
+  cw = cellPx.x / H; ch = cellPx.y / H;
+  float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
+  day = night < 0.5;
+  vec2 p = vec2(X, Y);
+  float asp = view.x / view.y, sz = min(1.0, 0.55 + 0.45 * asp), h0 = h2(cell + 17.0);
+  vec3 dim = day ? vec3(1.0) : vec3(0.5, 0.58, 0.74);   // (by night, in the moonlight)
+
+  // --- fireflies over the water at night, wandering, blinking (more of them lit when the hats are
+  // busy), each a glow round it on the water
+  if (!day) for (int k = 0; k < 9; k++) {
+    float fk = float(k);
+    vec2 f = vec2(h1(fk * 3.1 + 40.0) * asp + 0.06 * sin(time * (0.2 + 0.1 * h1(fk)) + fk * 2.0),
+                  0.08 + 0.84 * h1(fk * 5.7 + 40.0) + 0.04 * sin(time * (0.3 + 0.2 * h1(fk * 1.9)) + fk));
+    float bl = smoothstep(0.35, 1.0, 0.5 + 0.5 * sin(time * (1.3 + 1.5 * h1(fk * 4.4)) + fk * 7.0)) * (0.35 + 0.65 * fly);
+    if (bl < 0.08) continue;
+    if (abs(X - f.x) < cw * 0.5 && abs(Y - f.y) < ch * 0.5) { tileC = rgb(255.0, 214.0, 96.0); tileA = 0.3 * bl; put(bl > 0.5 ? G_BULLET : G_MID, 0.45 + 0.55 * bl, rgb(255.0, 236.0, 150.0)); return; }
+    float d = length(vec2((X - f.x) / cw, (Y - f.y) / ch)) / 2.6;
+    if (d < 1.0 && 0.22 * bl * (1.0 - d) * (1.0 - d) > tileA) { tileC = rgb(255.0, 210.0, 90.0); tileA = 0.22 * bl * (1.0 - d) * (1.0 - d); }
+  }
+  // --- petals floating on the water, drifting slowly across
+  for (int k = 0; k < 7; k++) {
+    float fk = float(k);
+    vec2 f = vec2(mod(h1(fk * 2.3 + 60.0) * (asp + 0.2) + time * (0.004 + 0.003 * h1(fk + 61.0)), asp + 0.2) - 0.1,
+                  0.05 + 0.9 * h1(fk * 4.9 + 60.0) + 0.02 * sin(time * 0.05 + fk));
+    if (abs(X - f.x) < cw * 0.5 && abs(Y - f.y) < ch * 0.5) { put(h1(fk + 62.0) < 0.5 ? G_COMMA : G_TICK, 0.95, rgb(255.0, 178.0, 208.0) * (day ? 1.0 : 0.6)); return; }
+  }
+  // --- food on the water (the toast's crumbs when it pops, or where it's dropped), spreading a little,
+  // eaten a crumb at a time
+  if (food.z < 9.0) for (int k = 0; k < 7; k++) {
+    float fk = float(k), seed = floor(food.x * 977.0 + food.y * 613.0);
+    float a = 6.2832 * h1(fk * 5.3 + seed), r = food.w * (0.55 + 0.45 * h1(fk * 2.9 + seed)) + 0.004 * food.z;
+    vec2 c = food.xy + r * vec2(cos(a), sin(a));
+    if (2.0 + 7.0 * h1(fk * 8.7 + seed) > food.z && abs(X - c.x) < cw * 0.5 && abs(Y - c.y) < ch * 0.5) { put(fk < 3.0 ? G_SMALLO : G_DOT, 0.9, rgb(214.0, 150.0, 76.0) * (day ? 1.0 : 0.7)); return; }
+  }
+
+  // --- the lily pads: each leaf a tile, lit from the top left, its rim paler, veins running out
+  // from its middle; two in flower: a water lily, two rings of pointed petals, white going pink at
+  // their tips, a golden heart
+  for (int k = 0; k < 8; k++) {
+    vec4 P0 = padOf(k, asp, sz);
+    if (length(p - P0.xy) > P0.z * 1.05 + 0.012) continue;
+    if (k == 0 || k == 5) {
+      vec2 fc = P0.xy - 0.25 * P0.z * vec2(cos(P0.w), sin(P0.w)), fd = p - fc;
+      float fr = length(fd) / (0.6 * P0.z), fa = atan(fd.y, fd.x);
+      float o1 = abs(mod(fa - P0.w, 0.7854) - 0.3927) / 0.3927, o2 = abs(mod(fa - P0.w + 0.3927, 0.7854) - 0.3927) / 0.3927;
+      bool inner = fr < 0.68 - 0.38 * pow(o2, 0.8);
+      if (fr < 0.2) { tileC = rgb(250.0, 200.0, 70.0) * dim; tileA = 1.0; put(G_STAR, 1.0, rgb(160.0, 100.0, 20.0) * dim); return; }
+      if (inner || fr < 1.0 - 0.6 * pow(o1, 0.8)) {
+        vec3 pc = mix(rgb(255.0, 248.0, 250.0), rgb(242.0, 128.0, 172.0), smoothstep(inner ? 0.35 : 0.5, inner ? 0.9 : 1.0, fr));
+        tileC = pc * dim; tileA = 1.0;
+        put(lineGlyph(fa), 1.0, mix(pc, rgb(150.0, 50.0, 100.0), 0.55) * dim);
+        return;
+      }
+    }
+    float dr, d2;
+    int what = padAt(P0, p, dr);
+    int n = what != 0 ? 1 : 0;
+    for (int i = 0; i < 4; i++) if (padAt(P0, p + SUB[i] * vec2(cw, ch), d2) != 0) n++;
+    if (n == 0) continue;
+    vec3 dk = rgb(30.0, 84.0, 46.0), lt = rgb(112.0, 172.0, 86.0);
+    if (what == 0 || n < 3) { put(n >= 2 ? G_COLON : G_DOT, 0.85, mix(dk, lt, 0.6) * dim); return; }
+    float li = clamp(0.5 + 0.28 * dot(normalize(p - P0.xy + 1e-5), normalize(SUN)) * dr + 0.18 * (1.0 - dr), 0.0, 1.0);
+    vec3 c = mix(dk, lt, li);
+    if (what == 2) c = mix(c, rgb(152.0, 198.0, 106.0), 0.45);
+    if (what == 3) c *= 0.82;
+    c *= dim;
+    tileC = c; tileA = 1.0;
+    put(what == 3 ? lineGlyph(atan(p.y - P0.y, p.x - P0.x)) : h0 < 0.07 ? G_MID : 0, 1.0, c * (day ? 0.55 : 0.5));
+    return;
+  }
+
+  // --- a ripple spreading from the toaster's pad on each kick, or from where food's dropped
+  for (int i = 0; i < 4; i++) {
+    vec4 q = rip[i];
+    if (q.w <= 0.0) continue;
+    float fade = exp(-q.z * 1.5), rad = q.w + q.z * 0.075, dr = length(p - q.xy) - rad;
+    if (abs(dr) < cw * 0.55 && fade > 0.15 && h2(cell + 3.0) < 0.35 + 0.45 * fade) {
+      vec2 dv = p - q.xy;
+      put(lineGlyph(atan(dv.y, dv.x) + 1.5708), 0.25 + 0.6 * fade, P(rgb(150.0, 220.0, 200.0), rgb(244.0, 255.0, 250.0)));
+      return;
+    }
+  }
+
+  // --- the koi, the first over the rest: a tile where one's body covers the cell, its colours shaded
+  // by the light (by night in the moonlight, still bright: they're what's to see), a glyph of the
+  // skin's on its shaded side (keyed to a place on the skin, so it rides along with it) a shade darker
+  // than it (on a black patch, lighter), now and then glinting white (the ogons' metal more often),
+  // its eyes dark beads; light glyphs round its body where a cell's only partly covered; its fins and
+  // tail see-through, only their rays drawn, pale
+  vec3 kdim = day ? vec3(1.0) : vec3(0.72, 0.76, 0.88);
+  for (int k = 0; k < 5; k++) {
+    vec4 B = koiB[k];
+    if (B.z < B.x || X < B.x || X > B.z || Y < B.y || Y > B.w) continue;
+    int what = koiAt(k, p);
+    float s = kS, side = kSide, r = kR, ray = kRay, rd = kRd, ridge = kRidge, fk = float(k), L = koiK[k].y;
+    vec2 lf = kLf;
+    int n = what == 1 ? 1 : 0;
+    for (int i = 0; i < 4; i++) if (koiAt(k, p + SUB[i] * vec2(cw, ch)) == 1) n++;
+    int kind = int(koiK[k].x + 0.5);
+    float key = h2(vec2(floor(s * L / cw * 1.3 + 0.5), floor(side * 2.5 + 0.5)) + fk * 41.0);
+    vec3 base = koiSkin(kind, s, side, fk);
+    if (what == 1 && n >= 3) {
+      float li = clamp(0.55 + 0.45 * clamp(side, -1.0, 1.0) * dot(lf, normalize(SUN)), 0.0, 1.0);
+      vec3 c = base * (0.7 + 0.42 * li);
+      if (kind >= 3) c = mix(c, vec3(1.0, 0.98, 0.88), 0.4 * smoothstep(0.62, 1.0, li));   // (the ogons' metal)
+      c *= kdim * (1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.04);
+      tileC = c; tileA = 1.0;
+      vec2 e0 = koiS[k * 13 + 1], ed = normalize(koiS[k * 13] - koiS[k * 13 + 2]), el = vec2(-ed.y, ed.x) * 0.055 * L;
+      vec2 a1 = abs(p - e0 - el), a2 = abs(p - e0 + el);
+      if ((a1.x < 0.5 * cw && a1.y < 0.5 * ch) || (a2.x < 0.5 * cw && a2.y < 0.5 * ch)) { tileC = rgb(22.0, 20.0, 26.0); put(G_MID, 0.9, rgb(230.0, 230.0, 236.0) * kdim); return; }
+      float roll = h2(vec2(floor(key * 4096.0), floor(time * 2.0 + fract(key * 31.0) * 10.0)));
+      if (ridge > 0.5) { put(lineGlyph(atan(lf.x, -lf.y)), 0.85, day ? c * 0.68 : mix(c, vec3(1.0), 0.3)); return; }
+      if (roll < (kind >= 3 ? 0.05 : 0.015)) { put(G_MID, 1.0, vec3(1.0)); return; }
+      bool sumi = dot(base, vec3(1.0)) < 0.5;
+      int g = li > 0.74 - 0.18 * key ? 0 : RAMP[clamp(int((0.86 - li) * 6.0) + int(fract(key * 13.7) * 2.0), 0, 6)];
+      put(g, 1.0, sumi ? c * 2.4 + 0.06 : c * (day ? 0.6 : 0.52));
+      return;
+    }
+    if (n > 0) {
+      put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, base * 0.85 * kdim);
+      return;
+    }
+    if (what == 2 || what == 3) {
+      // (a fin: a faint film, its rays drawn on it)
+      vec3 fc = koiFin(kind, r) * kdim;
+      tileC = fc; tileA = day ? 0.2 : 0.13;
+      if (rd < 0.5 * (abs(sin(ray)) * cw + abs(cos(ray)) * ch)) { put(lineGlyph(ray), 0.75 - 0.3 * r, fc); return; }
+      put(0, 0.0, vec3(0.0));
+      return;
+    }
+  }
+  // (by day their shadows on the bottom, and the pads', down and to the right of each)
+  if (day) {
+    for (int k = 0; k < 8; k++) {
+      vec4 P0 = padOf(k, asp, sz);
+      float d2;
+      if (padAt(P0, p - vec2(0.022, -0.032), d2) != 0) { tone = 0.8; break; }
+    }
+    if (length(p - vec2(0.022, -0.032) - moon.xy) < moon.z) tone = 0.8;
+    if (tone == 0.0) for (int k = 0; k < 5; k++) {
+      vec4 B = koiB[k];
+      vec2 q = p - vec2(0.014, -0.02);
+      if (B.z < B.x || q.x < B.x || q.x > B.z || q.y < B.y || q.y > B.w) continue;
+      if (koiAt(k, q) == 1) { tone = 0.8; break; }
+    }
+  }
+
+  // --- the bottom: pebbles here and there; by day the light's net drifting over it (faster when
+  // the hats are busy), none in the shadows
+  if (day && tone == 0.0) {
+    float sc0 = 13.0, netAt = vn2(p * 3.0 + vec2(time * 0.05, -time * 0.03));
+    vec2 ce = causticEdge(p * sc0, time * (0.35 + 0.5 * wind));
+    if (abs(ce.x) / sc0 < cw * 0.45 && netAt > 0.5) { tileC = rgb(236.0, 252.0, 228.0); tileA = min(0.22, 0.06 + 0.6 * (netAt - 0.5)); }
+  }
+  float pb = h2(cell + 5.0);
+  put(pb < 0.02 ? G_SMALLO : pb < 0.05 ? G_DOT : 0, 0.5, P(rgb(40.0, 70.0, 66.0), rgb(66.0, 104.0, 84.0)));
+}
+`;
+
+const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS, festival: FESTIVAL, koi: KOI };
 
 // The glyphs, each from the sheet, over the paper. In its own colours: each in its colour, on a
 // night sky (darkest overhead) or on the day's paper; or in the theme's: its ink in the theme's
@@ -2938,14 +4060,22 @@ const SW = 40, SH = 28, WATER = 22.5;
 function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
   g.clearRect(0, 0, SW, SH);
   const rect = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y + dy, w, h); };
-  if (on === 'float') {
+  if (on === 'float' || on === 'pad') {
     // Seen from above (the sharks' scene): a ring, red and white, shaded down and to the right, a
-    // shine on its top left; on it the toaster, its two slots, the toast in them (risen when it
-    // pops), the lever at its side, and its face on the front
+    // shine on its top left; or (the koi pond) a lily pad, its notch cut in from its edge, its veins
+    // running out from its middle, its rim paler. On it the toaster, its two slots, the toast in them
+    // (risen when it pops), the lever at its side, and its face on the front
     const cx = 20, cy = 14;
     for (let y = 0; y < SH; y++) {
       for (let x = 0; x < SW; x++) {
         const dx = x + 0.5 - cx, dy2 = y + 0.5 - cy, d = Math.hypot(dx, dy2);
+        if (on === 'pad') {
+          const a = Math.atan2(dy2, dx), lit = -(dx + dy2) / (d || 1);
+          if (d > 12.6 || (d > 1.5 && Math.abs(a - 0.8) < 0.04 + 0.022 * d)) continue;
+          const vein = d > 2.5 && d < 11.4 && Math.abs(((a - 0.8 + Math.PI * 2 + 0.349) % 0.6981) - 0.349) * d < 0.5;
+          rect(x, y, 1, 1, d > 11.4 ? (lit < -0.3 ? '#5e9a48' : '#8cc46a') : vein ? '#3a6e38' : lit > 0.35 ? '#62a454' : lit < -0.35 ? '#3f7a3e' : '#4f8f47');
+          continue;
+        }
         if (d < 7.4 || d > 12.6) continue;
         const red = Math.floor(((Math.atan2(dy2, dx) + Math.PI) / (Math.PI / 4)) + 0.5) % 2 === 0;
         const lit = -(dx + dy2) / d; // (the light from the top left)
@@ -3005,6 +4135,21 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
   } else if (on === 'rock') {
     rect(9, 18, 22, 1, '#a4a8be'); rect(7, 19, 26, 1, '#7c8098'); rect(6, 20, 28, 1, '#686c84'); rect(6, 21, 29, 1, '#55596e'); rect(7, 22, 27, 1, '#45485a');
     rect(13, 20, 3, 1, '#4a4d60'); rect(24, 21, 4, 1, '#3c3f50'); rect(10, 19, 2, 1, '#c4c8da');
+  } else if (on === 'decks') {
+    // the festival's decks, the toaster behind them in headphones: the table, its front lit in a
+    // strip of two colours; a turntable at each end, its tonearm over it; the mixer in the middle,
+    // its knobs lit; the headphones' band over the toast, a cup either side
+    rect(2, 17, 36, 1, '#4a4a5e'); rect(2, 18, 36, 5, '#20202a'); rect(2, 18, 36, 1, '#34343f');
+    for (let x = 4; x < 36; x += 4) rect(x, 20, 2, 1, x % 8 ? '#5ce1ff' : '#ff5cbf');
+    for (const px of [3, 29]) {
+      rect(px, 16, 8, 1, '#111118'); rect(px + 3, 15, 2, 1, '#26262f');
+      rect(px < 20 ? px + 7 : px, 14, 1, 2, '#b8b8c8');
+    }
+    rect(14, 16, 12, 1, '#2a2a35');
+    rect(15, 15, 1, 1, '#ffd34a'); rect(18, 15, 1, 1, '#5ce1ff'); rect(21, 15, 1, 1, '#ff5cbf'); rect(24, 15, 1, 1, '#9cff6a');
+    rect(12, 6, 12, 1, '#2a2a33'); rect(11, 7, 1, 4, '#2a2a33'); rect(24, 7, 1, 4, '#2a2a33');
+    rect(10, 11, 2, 4, '#ff5cbf'); rect(24, 11, 2, 4, '#ff5cbf'); rect(10, 11, 1, 4, '#c43c94'); rect(25, 11, 1, 4, '#c43c94');
+    return;
   } else {
     rect(6, 18, 28, 1, '#c8925a'); rect(6, 19, 28, 1, '#8a5a2b'); rect(7, 20, 26, 1, '#6e4521'); rect(8, 21, 24, 1, '#8a5a2b'); rect(10, 22, 20, 1, '#5e3a1a');
   }
@@ -3437,8 +4582,183 @@ function seaSharks(sea, spine, kinds, boxes, nears) {
   });
 }
 
+// The koi pond (the scene 'koi'), in units of the window's height, y up (as the shader has them), a
+// step a 60th of a second at a time, as the sharks' water is. Five koi (four in a tall window) swim
+// slow, wandering rounds of the pond, each its own way, giving each other room, keeping clear of the
+// toaster's pad and turning back before they leave the window. None turns tighter than a koi can;
+// its spine follows its snout a joint at a time, bending so far at each and no further, and a wave
+// runs down it as it swims, more toward its tail (stiff, swung from its root). Each kick sends them on
+// a little. When the toast pops the one nearest the pad comes to feed (on a drop, all of them, round
+// it like the petals of a flower), nosing at its edge a few seconds, its pectorals spread, then
+// drifting off again; food dropped on the water (a click) brings the three nearest to it.
+const KOI_SPINE = 13, KOI_JOINTS = 10;
+const KOI_KINDS = [
+  { kind: 0, size: 1 }, // a kohaku
+  { kind: 1, size: 0.92 }, // a showa
+  { kind: 3, size: 0.84 }, // a yamabuki ogon
+  { kind: 2, size: 0.8 }, // a sanke
+  { kind: 4, size: 0.7 }, // an orange ogon
+];
+function newPond(aspect, fx, fy, fr) {
+  const sz = Math.min(1, 0.55 + 0.45 * aspect), count = aspect < 0.8 ? 4 : 5;
+  const pond = { aspect, fx, fy, fr, t: 0, acc: 0, koi: [] };
+  KOI_KINDS.slice(0, count).forEach((k, i) => {
+    const L = 0.42 * sz * k.size, seg = L / 12;
+    // (spread about the pond, each somewhere of its own, heading anywhere)
+    const x = (0.15 + 0.7 * ((i * 0.618 + 0.3) % 1)) * aspect, y = 0.22 + 0.56 * ((i * 0.382 + 0.55) % 1), head = between(0, 2 * Math.PI);
+    const nodes = new Float32Array(KOI_JOINTS * 2);
+    for (let j = 0; j < KOI_JOINTS; j++) { nodes[2 * j] = x - Math.cos(head) * seg * j; nodes[2 * j + 1] = y - Math.sin(head) * seg * j; }
+    pond.koi.push({ ...k, L, nodes, head, speed: 0.03, turn: 0, wander: between(-0.5, 0.5), phase: between(0, 6.28), fins: [0.3, 0.3], feed: -9, spot: [0, 0], food: [0, 0] });
+  });
+  return pond;
+}
+// food on the water at x, y: the n koi nearest come to feed for a while (s), each to a place of its
+// own r from it, its body lying out from it, in the order the koi are round it, each as near as it
+// can be to the side its koi comes from (so they come straight in, none crossing): a few coming from
+// one side to places side by side there, else (or many) spaced evenly all round; near an edge, only
+// where a body lying out from the food stays in the window, spaced out over that
+function feedKoi(pond, x, y, r, n, long) {
+  const TAU = 2 * Math.PI, K = 72;
+  const near = pond.koi.map((s) => [Math.hypot(s.nodes[0] - x, s.nodes[1] - y), s]).sort((a, b) => a[0] - b[0]);
+  let come = near.slice(0, n).map(([, s]) => [Math.atan2(s.nodes[1] - y, s.nodes[0] - x), s]);
+  if (!come.length) return;
+  n = come.length;
+  let sx = 0, sy = 0;
+  for (const [a] of come) { sx += Math.cos(a); sy += Math.sin(a); }
+  const mid = Math.atan2(sy, sx), L = Math.max(...come.map(([, s]) => s.L)), places = [];
+  // (the ways out it can lie: the longest run of them)
+  const ok = Array.from({ length: K }, (_, k) => {
+    const a = (k / K) * TAU, ex = x + Math.cos(a) * (r + L), ey = y + Math.sin(a) * (r + L);
+    return ex > 0.02 && ex < pond.aspect - 0.02 && ey > 0.02 && ey < 0.98;
+  });
+  let run = [0, 0];
+  for (let k = 0; k < K; k++) {
+    if (!ok[k] || ok[(k + K - 1) % K]) continue;
+    let m = 0;
+    while (m < K && ok[(k + m) % K]) m++;
+    if (m > run[1]) run = [k, m];
+  }
+  const side = (gap, centre) => {
+    come = come.map(([a, s]) => [turnTo(centre, a), s]).sort((p, q) => p[0] - q[0]);
+    come.forEach((c, i) => places.push(centre + (i - (n - 1) / 2) * gap));
+  };
+  if (run[1] > 0 && run[1] < K) {
+    const a0 = (run[0] / K) * TAU, len = (run[1] / K) * TAU, gap = Math.min(n >= 4 ? TAU / n : 0.9, len / n), half = (gap * (n - 1)) / 2;
+    side(gap, a0 + within(((turnTo(a0, mid) % TAU) + TAU) % TAU, half + gap / 2, len - half - gap / 2));
+  } else if (n <= 3 && Math.hypot(sx, sy) > 0.5 * n) side(0.9, mid);
+  else {
+    // (the turn of the whole ring of places that moves them least)
+    const gap = TAU / Math.max(n, 3);
+    come.sort((p, q) => p[0] - q[0]);
+    sx = 0; sy = 0;
+    come.forEach(([a], i) => { sx += Math.cos(a - i * gap); sy += Math.sin(a - i * gap); });
+    const turn = Math.atan2(sy, sx);
+    come.forEach((c, i) => places.push(turn + i * gap));
+  }
+  come.forEach(([, s], i) => {
+    s.feed = pond.t + long * between(0.9, 1.1);
+    s.spot = [x + Math.cos(places[i]) * r, y + Math.sin(places[i]) * r];
+    s.food = [x, y];
+  });
+}
+function stepPond(pond, m) {
+  const dt = SEA_STEP, { koi, aspect, fx, fy, fr } = pond;
+  pond.t += dt;
+  const t = pond.t;
+  for (const s of koi) {
+    const { L, nodes } = s, x = nodes[0], y = nodes[1];
+    let dx = Math.cos(s.head), dy = Math.sin(s.head);
+    // (a wander: a slowly drifting aim ahead of its snout)
+    s.wander = within(s.wander + (Math.random() - 0.5) * dt * 1.8, -0.8, 0.8);
+    dx += Math.cos(s.head + s.wander) * 0.45; dy += Math.sin(s.head + s.wander) * 0.45;
+    // feeding: a rush to its place by the food, in along its own spoke from the food (swinging out
+    // to it first if it's coming from aside), slowing as it comes, stopping there and turning to face
+    // the food; just after, turning away
+    const feeding = t < s.feed, leaving = !feeding && t < s.feed + 2.5;
+    let close = 0, there = 0;
+    if (feeding) {
+      const ox = s.spot[0] - s.food[0], oy = s.spot[1] - s.food[1], ol = Math.hypot(ox, oy) || 1;
+      const px = x - s.food[0], py = y - s.food[1], pl = Math.hypot(px, py) || 1;
+      const a = within(((px * ox + py * oy) / (pl * ol) - 0.7) / 0.23, 0, 1), on = a * a * (3 - 2 * a), out = L * 0.6 * (1 - on);
+      const tx = s.spot[0] + (ox / ol) * out - x, ty = s.spot[1] + (oy / ol) * out - y, d = Math.hypot(tx, ty) || 1;
+      there = within(1 - d / 0.03, 0, 1);
+      dx += ((tx / d) * (1 - there) - (px / pl) * there) * 3; dy += ((ty / d) * (1 - there) - (py / pl) * there) * 3;
+      close = within(1 - d / (L * 0.7), 0, 1) * on;
+    }
+    // room for the others
+    for (const o of koi) {
+      if (o === s) continue;
+      for (let k = 0; k < KOI_JOINTS; k += 3) {
+        const ox = x - o.nodes[2 * k], oy = y - o.nodes[2 * k + 1], d = Math.hypot(ox, oy), far = (L + o.L) * 0.4;
+        if (d < far && d > 1e-6) { const w = (1 - d / far) * (feeding ? 1 : 2.5); dx += (ox / d) * w; dy += (oy / d) * w; }
+      }
+    }
+    // clear of the pad (unless it's feeding there), and back before its snout leaves the window
+    const ex = x - fx, ey = y - fy, e = Math.hypot(ex, ey), clear = fr + 0.05 + 0.15 * L;
+    const atPad = feeding && Math.hypot(s.food[0] - fx, s.food[1] - fy) < fr + 0.1;
+    if (!atPad && e < clear && e > 1e-6) { const w = (1 - e / clear) * 2.5; dx += (ex / e) * w; dy += (ey / e) * w; }
+    const edge = 0.06 + 0.45 * L, over = Math.max(-x, x - aspect, -y, y - 1);
+    if (!feeding && over > -edge) { const w = within((over + edge) / edge, 0, 1.5) * 3, tx = aspect / 2 - x, ty = 0.5 - y, d = Math.hypot(tx, ty) || 1; dx += (tx / d) * w; dy += (ty / d) * w; }
+    // its turn: no sharper than its speed allows (wide as it cruises, tighter to feed, to turn away
+    // after or to keep in)
+    const most = Math.min(1.2, (s.speed + (feeding ? 0.025 : 0.006)) / (L * (feeding || leaving ? 0.5 : over > -edge ? 0.65 : 1))) * dt, turned = within(turnTo(s.head, Math.atan2(dy, dx)), -most, most);
+    s.head += turned;
+    s.turn += (turned / dt - s.turn) * Math.min(1, dt * 3);
+    // its speed: cruising (slower when it's quiet, faster when it's loud), a little faster after each
+    // kick; rushing to the food, slowing to a stop at it
+    const cruise = (0.025 + 0.05 * L) * m.pace, want = feeding ? cruise * 3 * (1 - close) : cruise * (1 + 0.5 * m.kick);
+    s.speed += (want - s.speed) * Math.min(1, dt * (feeding ? 3 : 1.5));
+    s.phase += dt * (1.5 + s.speed / 0.012);
+    // its pectorals: folded back as it cruises, the inner one spread as it turns, both as it noses
+    const spread = feeding ? 0.3 + 0.7 * close : 0.15;
+    s.fins[0] += (within(spread + s.turn * 1.5, 0, 1) - s.fins[0]) * Math.min(1, dt * 2);
+    s.fins[1] += (within(spread - s.turn * 1.5, 0, 1) - s.fins[1]) * Math.min(1, dt * 2);
+    nodes[0] += Math.cos(s.head) * s.speed * dt;
+    nodes[1] += Math.sin(s.head) * s.speed * dt;
+    // the spine after the snout, a joint at a time, each bending so far and no further
+    const seg = L / 12;
+    let prev = s.head + Math.PI;
+    for (let k = 1; k < KOI_JOINTS; k++) {
+      const px = nodes[2 * k - 2], py = nodes[2 * k - 1];
+      const a = prev + within(turnTo(prev, Math.atan2(nodes[2 * k + 1] - py, nodes[2 * k] - px)), -0.13, 0.13);
+      nodes[2 * k] = px + Math.cos(a) * seg;
+      nodes[2 * k + 1] = py + Math.sin(a) * seg;
+      prev = a;
+    }
+  }
+}
+// the koi for the shader: each one's spine (13 points from its snout: its body bent by the swim's
+// wave, then its tail straight on from its body's last joint), its kind, length and how far its
+// pectorals are spread (left, right), and a box round it (none for a koi that isn't there)
+function pondKoi(pond, spine, kinds, boxes) {
+  for (let k = 0; k < boxes.length / 4; k++) boxes.set([1, 1, 0, 0], k * 4);
+  pond.koi.forEach((s, k) => {
+    const { L, nodes } = s, swim = within(s.speed / 0.03, 0.3, 1.4), seg = L / 12;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, lx = 0, ly = 0, px = 0, py = 0;
+    const at = (j, x, y) => {
+      spine[(k * KOI_SPINE + j) * 2] = x;
+      spine[(k * KOI_SPINE + j) * 2 + 1] = y;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    };
+    for (let j = 0; j < KOI_JOINTS; j++) {
+      const u = j / 12, a = Math.max(0, j - 1), b = Math.min(KOI_JOINTS - 1, j + 1);
+      const tx = nodes[2 * a] - nodes[2 * b], ty = nodes[2 * a + 1] - nodes[2 * b + 1], tl = Math.hypot(tx, ty) || 1;
+      const off = L * 0.07 * u * u * swim * Math.sin(s.phase - u * 5.5);
+      px = lx; py = ly;
+      lx = nodes[2 * j] - (ty / tl) * off; ly = nodes[2 * j + 1] + (tx / tl) * off;
+      at(j, lx, ly);
+    }
+    // (its tail, on from its body's last joint the way the body runs there)
+    const bx = lx - px, by = ly - py, bl = Math.hypot(bx, by) || 1;
+    for (let j = KOI_JOINTS; j < KOI_SPINE; j++) at(j, lx + (bx / bl) * seg * (j - KOI_JOINTS + 1), ly + (by / bl) * seg * (j - KOI_JOINTS + 1));
+    const mg = L * 0.3;
+    kinds.set([s.kind, L, s.fins[0], s.fins[1]], k * 4);
+    boxes.set([x0 - mg, y0 - mg, x1 + mg, y1 + mg], k * 4);
+  });
+}
+
 export function createScenery(canvas) {
-  let gl = null, ready = false, scenes = {}, makeProgram = null, paint = null, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
+  let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
   const boatCv = Object.assign(document.createElement('canvas'), { width: SW, height: SH }), boatG = boatCv.getContext('2d');
   let popAt = -9, dipAt = -9, dropSeen = -99;
   // the music: the walk (in beats, kept on the beat), the wind, the glow, the fireflies, the
@@ -3448,6 +4768,13 @@ export function createScenery(canvas) {
   // the sharks' water while their scene is up (a kick for it, the last pop it saw; the sharks for
   // the shader: spines, kinds, boxes, how near)
   let sea = null, seaKick = false, seaPop = -9;
+  // the koi pond's koi while its scene is up (the last pop it saw, the last drop); the koi for the
+  // shader: spines, kinds, boxes
+  let pond = null, pondPop = -9, dropAt = -99;
+  // (the last food on the water, for the shader: where, when, how far it's spread; food dropped on
+  // it since the last frame: where it was clicked, CSS pixels)
+  let food = null, dropped = null;
+  const koiV = new Float32Array(2 * 5 * KOI_SPINE), koiKV = new Float32Array(20), koiBV = new Float32Array(20);
   // the scene last drawn (it stays up while the next one's program is being compiled)
   let shownScene = null;
   const shkV = new Float32Array(2 * 3 * SPINE), shkKV = new Float32Array(12), shkBV = new Float32Array(12), shkDV = new Float32Array(12);
@@ -3466,13 +4793,17 @@ export function createScenery(canvas) {
     // a while: a shader the graphics driver hasn't seen before (after an update that changed it)
     // is still being finished on the driver's own threads for a moment after the link says done,
     // and a draw before then waits for it, the whole window frozen (half a second for the bigger
-    // scenes); done() notes when it finished, failed or not, without asking anything else.
+    // scenes); one that came back at once, from the cache, is settled when done. done() notes when
+    // it finished, failed or not, without asking anything else. (The sources go in without their
+    // comments: the cache knows a shader by its text, and a comment changed would have every scene
+    // compiled again, for everyone, after the update)
     const par = gl.getExtension('KHR_parallel_shader_compile');
+    const bare = (src) => src.replace(/\/\/[^\n]*/g, '');
     const program = (fs) => {
-      const p = gl.createProgram(), vs = gl.createShader(gl.VERTEX_SHADER), f = gl.createShader(gl.FRAGMENT_SHADER);
-      gl.shaderSource(vs, VS);
+      const p = gl.createProgram(), vs = gl.createShader(gl.VERTEX_SHADER), f = gl.createShader(gl.FRAGMENT_SHADER), asked = performance.now();
+      gl.shaderSource(vs, bare(VS));
       gl.compileShader(vs);
-      gl.shaderSource(f, fs);
+      gl.shaderSource(f, bare(fs));
       gl.compileShader(f);
       gl.attachShader(p, vs);
       gl.attachShader(p, f);
@@ -3488,15 +4819,18 @@ export function createScenery(canvas) {
         ok = true;
         return true;
       };
-      const settled = () => ready() && (!par || performance.now() - doneAt > SETTLE_MS);
+      const settled = () => ready() && (!par || doneAt - asked < QUICK_MS || performance.now() - doneAt > SETTLE_MS);
       return { p, done, ready, settled, u: (n) => (loc[n] ??= gl.getUniformLocation(p, n)) };
     };
     makeProgram = program;
+    background = !!par;
     scenes = {};
     paint = program(PAINT);
-    // (every scene's started now when the driver can compile in the background, the one asked for
-    // first: by the time A moves on, the next is ready)
-    if (par) { sceneProgram(first); for (const name of Object.keys(MAINS)) sceneProgram(name); }
+    // (when the driver can compile in the background, the scene asked for is started now and the
+    // rest one at a time once it's up (in draw): all started at once, a new version's eleven fought
+    // over the processor, the window freezing for up to 3 s at a time and the first scene taking 9 s
+    // to come)
+    if (par) sceneProgram(first);
     vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -3512,8 +4846,9 @@ export function createScenery(canvas) {
     dims = null;
     ready = true;
   }
-  // each scene's program (the library and its own part): all made when the scenery starts, where the
-  // driver compiles in the background; otherwise each the first time it's shown
+  // each scene's program (the library and its own part): where the driver compiles in the
+  // background, the one shown first made when the scenery starts and the rest one at a time after
+  // it; otherwise each the first time it's shown
   const sceneProgram = (name) => (scenes[name] ??= makeProgram(LIB + (MAINS[name] || MAINS.lake)));
 
   // The grid of cells for the window (the scene's picture: each cell packed, glyph and ink, colour, tile), and the
@@ -3553,6 +4888,8 @@ export function createScenery(canvas) {
     get broken() { return broken; },
     // the scenes, by name
     get scenes() { return Object.keys(MAINS); },
+    // food dropped on the koi pond, where it was clicked (CSS pixels)
+    feed(x, y) { dropped = { x, y }; },
     // (the canvas shrunk, its full-window buffer freed while it's off)
     clear() {
       canvas.width = canvas.height = 1;
@@ -3572,17 +4909,23 @@ export function createScenery(canvas) {
         if (broken) return;
       }
       // (a scene whose program isn't settled yet: the one before stays up meanwhile; with none up
-      // yet, it's drawn as soon as it's ready, and nothing till then. Every program is looked at
-      // each frame, so it's known when each finished.)
+      // yet, nothing till then. Every program is looked at each frame, so it's known when each
+      // finished. Once the one showing has settled and nothing else is compiling, the next scene
+      // not made yet is started, the ones after this first.)
       let sp;
       try {
-        for (const k in scenes) scenes[k].done();
+        let busy = false;
+        for (const k in scenes) if (!scenes[k].done()) busy = true;
         sp = sceneProgram(scene);
         const before = shownScene && shownScene !== scene && paint.ready() && scenes[shownScene]?.ready();
-        if (!paint.ready() || !(before ? sp.settled() : sp.ready())) {
+        if (!paint.ready() || !sp.settled()) {
           if (!before) return;
           scene = shownScene;
           sp = scenes[scene];
+        }
+        if (background && !busy && sp.settled()) {
+          const all = Object.keys(MAINS), at = all.indexOf(scene), next = [...all.slice(at + 1), ...all.slice(0, at)].find((k) => !scenes[k]);
+          if (next) sceneProgram(next);
         }
       } catch (err) { broken = true; console.error('scenery:', err); return; }
       shownScene = scene;
@@ -3618,14 +4961,15 @@ export function createScenery(canvas) {
       const tall = H > W ? 1 : 0, aspect = W / H;
       let V = (LAYOUT[scene] || LAYOUT.lake)[tall];
       if (open && OPEN[scene]?.[tall]) V = { ...V, ...OPEN[scene][tall] };
-      // (the toaster and the moon glide to where they're going, over a second or so, when Z's
-      // pressed; anything else, a new scene or window, puts them straight there)
-      if (!glide || glide.scene !== scene || glide.tall !== tall) glide = { scene, tall, x: V.toaster.x, y: V.toaster.y, moon: V.moon ? [...V.moon] : null };
+      // (the toaster, the moon and the stage glide to where they're going, over a second or so, when
+      // Z's pressed; anything else, a new scene or window, puts them straight there)
+      if (!glide || glide.scene !== scene || glide.tall !== tall) glide = { scene, tall, x: V.toaster.x, y: V.toaster.y, moon: V.moon ? [...V.moon] : null, stage: V.stage ? [...V.stage] : null };
       const gk = 1 - Math.exp(-dt / 0.45);
       glide.x += (V.toaster.x - glide.x) * gk;
       glide.y += (V.toaster.y - glide.y) * gk;
       if (glide.moon) glide.moon = glide.moon.map((v, i) => v + (V.moon[i] - v) * gk);
-      V = { ...V, toaster: { ...V.toaster, x: glide.x, y: glide.y }, ...(glide.moon ? { moon: glide.moon, sun: glide.moon.slice(0, 2) } : {}) };
+      if (glide.stage) glide.stage = glide.stage.map((v, i) => v + (V.stage[i] - v) * gk);
+      V = { ...V, toaster: { ...V.toaster, x: glide.x, y: glide.y }, ...(glide.moon ? { moon: glide.moon, sun: glide.moon.slice(0, 2) } : {}), ...(glide.stage ? { stage: glide.stage } : {}) };
       const night = col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
       // a ripple on the lake for each kick (while the kick's in the song), somewhere on it
       const kick = eng.v.bd.lastHit;
@@ -3635,6 +4979,7 @@ export function createScenery(canvas) {
         if (eng.present('bd', t)) {
           if (scene === 'falls') rips.push({ x: (0.5 + (Math.random() - 0.5) * 0.1) * aspect, y: V.lake[0] - 0.035 - 0.03 * Math.random(), t });
           else if (scene === 'sharks') { rips.push({ x: V.toaster.x * aspect, y: V.toaster.y, t }); seaKick = true; }
+          else if (scene === 'koi') rips.push({ x: V.toaster.x * aspect, y: V.toaster.y, t, r: (13.2 * Math.max(1, Math.round(H / 270))) / H });
           else rips.push({ x: (0.15 + 0.7 * Math.random()) * aspect, y: V.lake[1] + (V.lake[0] - V.lake[1]) * (0.25 + 0.6 * Math.random()), t });
           if (rips.length > 4) rips.shift();
         }
@@ -3665,13 +5010,13 @@ export function createScenery(canvas) {
         if (x > aspect + 0.4 || scene !== 'city') car = null;
         else carU = [x, 0, car.colour, 1];
       }
-      if ((eng.lastDrop ?? -99) > dropSeen) { dropSeen = eng.lastDrop; if (t - eng.lastDrop < 1) popAt = t; }
+      if ((eng.lastDrop ?? -99) > dropSeen) { dropSeen = eng.lastDrop; if (t - eng.lastDrop < 1) popAt = dropAt = t; }
       const pa = t - popAt;
       // (the toaster on its broom: flying across the moon, drifting to and fro, rising and falling,
       // slowly; its middle, CSS pixels)
       const Sz = Math.max(1, Math.round(H / 270));
       const flight = V.toaster.on === 'broom' ? { x: (V.toaster.x + 0.03 * Math.sin(t * 0.17)) * W, y: (1 - V.toaster.y - 0.012 * Math.sin(t * 0.71)) * H } : null;
-      drawBoat(boatG, { dy: (V.toaster.on === 'broom' ? 5 : 0) + (['boat', 'tube', 'broom', 'float'].includes(V.toaster.on) ? Math.floor(walkB) % 2 : 0), pop: pa < 0.7 ? Math.round(5 * Math.sin((Math.PI * pa) / 0.7)) : 0, dip: t - dipAt < 0.2 ? 1 : 0, on: V.toaster.on, toast: (walkB % 32) / 32 });
+      drawBoat(boatG, { dy: (V.toaster.on === 'broom' ? 5 : 0) + (['boat', 'tube', 'broom', 'float', 'pad'].includes(V.toaster.on) ? Math.floor(walkB) % 2 : 0), pop: pa < 0.7 ? Math.round(5 * Math.sin((Math.PI * pa) / 0.7)) : 0, dip: t - dipAt < 0.2 ? 1 : 0, on: V.toaster.on, toast: (walkB % 32) / 32 });
       const shoot = falling ? [falling.x, falling.y, t - falling.t, 1] : [0, 0, 0, 0];
       // (the sharks' water: stepped on, a 60th of a second a step and at most 4 a frame, with the
       // kicks, the hunger a drop or the toast's pop brings, the loudness; its cells and the sharks
@@ -3695,6 +5040,35 @@ export function createScenery(canvas) {
         if (steps) seaCells(sea);
         seaSharks(sea, shkV, shkKV, shkBV, shkDV);
       } else { sea = null; seaKick = false; }
+      // (the koi pond: stepped on as the sharks' water is, with the kicks and the loudness; the
+      // toast's pop brings the nearest to the pad to feed, a drop all of them; food dropped on the
+      // water (a click) the three nearest to it, a splash where it lands)
+      if (scene === 'koi') {
+        const fx = V.toaster.x * aspect, fy = V.toaster.y, fr = (12.6 * Sz) / H;
+        if (!pond || pond.aspect !== aspect) pond = newPond(aspect, fx, fy, fr);
+        Object.assign(pond, { fx, fy, fr });
+        if (popAt > pondPop) {
+          pondPop = popAt;
+          if (t - popAt < 1) { feedKoi(pond, fx, fy, fr + 0.035, popAt === dropAt ? 5 : 1, popAt === dropAt ? 12 : 8); food = { x: fx, y: fy, r: fr * 1.7, t }; }
+        }
+        if (dropped) {
+          const x = within(dropped.x / H, 0.08, aspect - 0.08), y = within(1 - dropped.y / H, 0.08, 0.92);
+          feedKoi(pond, x, y, 0.065, 3, 7);
+          food = { x, y, r: 0.03, t };
+          rips.push({ x, y, t, r: 0.012 });
+          if (rips.length > 4) rips.shift();
+          dropped = null;
+        }
+        pond.acc += dt;
+        let steps = 0;
+        while (pond.acc >= SEA_STEP && steps < 4) {
+          stepPond(pond, { kick: Math.exp(-Math.max(0, t - dipAt) * 3), pace: (0.9 + 0.25 * glowV) * (eng.silent ? 0.6 : 1) });
+          pond.acc -= SEA_STEP;
+          steps++;
+        }
+        if (steps === 4) pond.acc = 0;
+        pondKoi(pond, koiV, koiKV, koiBV);
+      } else { pond = null; food = null; dropped = null; }
 
       // the scene into the cells
       gl.bindVertexArray(vao);
@@ -3721,13 +5095,14 @@ export function createScenery(canvas) {
       gl.uniform4f(u('band'), V.band[0] * aspect, V.band[1], V.band[2], V.band[3]);
       gl.uniform4f(u('sea'), beamB * Math.PI / 4, swimB, walkB, Math.exp(-Math.max(0, t - dipAt) * 4));
       ripV.fill(0);
-      rips.forEach((r, i) => ripV.set([r.x, r.y, t - r.t, 1], i * 4));
+      rips.forEach((r, i) => ripV.set([r.x, r.y, t - r.t, r.r ?? 1], i * 4));
       gl.uniform4fv(u('rip'), ripV);
       gl.uniform4fv(u('birds'), birds);
       gl.uniform4fv(u('shoot'), shoot);
       gl.uniform4fv(u('car'), flight ? [(flight.x - 20 * Sz) / H, 1 - (flight.y + 9.5 * Sz) / H, 0, 1] : carU);
-      gl.uniform4f(u('leap'), t - popAt, Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' ? 1 : 0);
-      gl.uniform4f(u('moon'), (V.moon?.[0] ?? 0) * aspect, V.moon?.[1] ?? 0, V.moon?.[2] ?? 0, 0);
+      gl.uniform4f(u('leap'), t - popAt, Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' ? 1 : 0);
+      const M = V.stage || V.moon; // (halloween's moon, or the festival's stage)
+      gl.uniform4f(u('moon'), (M?.[0] ?? 0) * aspect, M?.[1] ?? 0, M?.[2] ?? 0, 0);
       if (scene === 'sharks') {
         gl.uniform2fv(u('shk'), shkV);
         gl.uniform4fv(u('shkK'), shkKV);
@@ -3740,6 +5115,14 @@ export function createScenery(canvas) {
         for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
         gl.uniform1i(u('life'), 5);
         // (moon: the toaster's ring, its middle and its radius)
+        gl.uniform4f(u('moon'), V.toaster.x * aspect, V.toaster.y, (12.6 * Math.max(1, Math.round(H / 270))) / H, 0);
+      }
+      if (scene === 'koi') {
+        gl.uniform2fv(u('koiS'), koiV);
+        gl.uniform4fv(u('koiK'), koiKV);
+        gl.uniform4fv(u('koiB'), koiBV);
+        gl.uniform4f(u('food'), food?.x ?? 0, food?.y ?? 0, food ? t - food.t : 99, food?.r ?? 0);
+        // (moon: the toaster's lily pad, its middle and its radius)
         gl.uniform4f(u('moon'), V.toaster.x * aspect, V.toaster.y, (12.6 * Math.max(1, Math.round(H / 270))) / H, 0);
       }
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -3771,9 +5154,9 @@ export function createScenery(canvas) {
         ? (1 - (V.lake[1] + (V.lake[0] - V.lake[1]) * 0.4 + (0.1 + 0.03 * wideF))) * H + (WATER - 18.5) * S
         : (1 - (V.lake[1] + (V.lake[0] - V.lake[1]) * V.toaster.y)) * H;
       const bx = flying ? flight.x - bw / 2 : (V.toaster.on === 'bridge' ? (0.5 + 0.14 * wideF) * W : V.toaster.x * W) - bw / 2;
-      const by = flying ? flight.y - bh / 2 : waterY - (V.toaster.on === 'tube' ? 20 : V.toaster.on === 'float' ? SH / 2 : WATER) * S;
+      const by = flying ? flight.y - bh / 2 : waterY - (V.toaster.on === 'tube' ? 20 : V.toaster.on === 'float' || V.toaster.on === 'pad' ? SH / 2 : WATER) * S;
       gl.uniform4f(p('spr'), bx, by, bw, bh);
-      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float'].includes(V.toaster.on) ? 1e6 : waterY);
+      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float', 'pad', 'decks'].includes(V.toaster.on) ? 1e6 : waterY);
       gl.uniform1f(p('night'), night);
       gl.uniform3fv(p('tint'), night ? V.tint || [0.8, 0.82, 0.96] : [1, 1, 1]);
       gl.uniform3fv(p('toneC'), night ? V.toneN || [0.1, 0.12, 0.17] : V.toneD || [-0.075, -0.045, -0.015]);
@@ -3805,6 +5188,10 @@ export function createScenery(canvas) {
       } else if (scene === 'halloween' && night) {
         gl.uniform4f(p('light2'), V.moon[0] * W, (1 - V.moon[1]) * H, V.moon[2] * 1.9 * H, 0.85 + 0.25 * glowV);
         gl.uniform3f(p('light2C'), 0.1, 0.085, 0.12);
+      } else if (scene === 'festival' && night) {
+        // (the stage's glow, in the show's first colour of these 8 bars, flaring on the kick)
+        gl.uniform4f(p('light2'), V.stage[0] * W, (1 - V.stage[1] - 0.06) * H, 0.34 * H, 0.45 + 0.25 * glowV + 0.4 * kickV);
+        gl.uniform3f(p('light2C'), ...FESTIVAL_GLOW[((Math.floor(walkB / 32) % 4) + 4) % 4]);
       } else gl.uniform4f(p('light2'), 0, 0, 1, 0);
       gl.uniform1f(p('time'), t % 1000);
       gl.uniform2f(p('grid'), dims.cols, dims.rows);

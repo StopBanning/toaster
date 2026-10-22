@@ -14,7 +14,7 @@ rewriting the code as the song moves. It's a live reconstruction for show, not a
 transcription. Press X and it hands you the whole song as Strudel code and as a MIDI file. Press Z
 to hide the code and keep just the visuals.
 
-![The scenery's nine scenes: the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, Halloween and the sharks](docs/scenery.webp)
+![The scenery's eleven scenes: the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, Halloween, the sharks, the festival and the koi pond, by day and by night on a drop, its koi gathered round the toaster](docs/scenery.webp)
 
 ## Get it
 
@@ -71,7 +71,7 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 | W | mini player: the window shrinks to a small panel in the corner, on top of everything else, still listening (the code, and the card if it's on); W again brings it back |
 | T | theme: bluescreen, blackscreen, terminal, pink, whitescreen |
 | E | name the song yourself |
-| Z | hide the code: just the visuals, for Toaster as a visualizer (it's still written underneath; Z again shows it). The scenery opens out into the room the code kept: the sharks' float comes to the middle, and in a tall window Halloween's moon rises into it. Remembered |
+| Z | hide the code: just the visuals, for Toaster as a visualizer (it's still written underneath; Z again shows it). The scenery opens out into the room the code kept: the sharks' float and the koi's lily pad come to the middle, the festival's stage moves to the middle, and in a tall window Halloween's moon rises into it. Remembered |
 | H / F | hide header and footer / fullscreen |
 
 The background and its strength, blocks, orb, card, glass, theme, camera effect and drop-effect
@@ -100,6 +100,8 @@ V steps through them; A sets their strength, or for some their look (see the key
   - The falls, a waterfall pouring between cliffs of cracked rock into a pool, its water in unbroken streams that quicken as they fall, a dimmer sheet behind them, the pouring faster with the tempo, a surge of white racing down it on each kick and spray thrown up from its foot, the whole falls swelling on a drop, its mist rolling up, a rainbow in the spray by day (a moonbow at night) and an aurora over it all at night, the falls and the aurora mirrored in the pool with foam drifting off across it, a fish leaping every 8 bars, the toaster floating in the pool on an inner tube
   - Halloween (auto picks it only in October), a graveyard on a hill under a great moon knit in zigzags, a black wood along the hill and a bare tree reaching across the moon, the toaster flying across it on a broomstick in a witch's hat (its hat lifted when the toast pops), bats flitting round the moon, their wings beating with the beat and their eyes glinting (more of them when the hats are busy), mist and will-o'-the-wisps among the graves, jack-o'-lanterns at the front, each carved with its own face and lit from inside, flaring on the kicks, and every 8 bars a ghost rising from a grave; by day it's dusk, the moon a great orange sun and everything else in silhouette
   - The sharks (after stackedlol's ascii-sharks), shallow water seen from above, a hammerhead, a blacktip reef shark and a zebra shark circling the toaster on its float, each drawn as tiles of colour with a glyph on each, its hide shimmering, schools of little fish (a stroke each, along its way) scattering from them, a bait ball of them circling the float, pulsing on each kick, which the sharks charge on a drop (and every 8 bars, when the toast pops), cutting through it over the toaster till it scatters, after which it gathers again, each kick rippling out from the float and making the fish flinch; by day the light's net drifts on the sand beside their shadows, by night their wakes light up the plankton
+  - The festival, a stage on the far shore of a lake in the mountains, the toaster DJing at its decks in headphones, a sign on the truss lit up (TOASTER), its lights' beams fanning up into the sky and sweeping round every two bars, flaring on the kicks, the screen behind the decks playing the music as bars, the speakers thumping, the show's colours changing every 8 bars; fireworks going up over the mountains every 8 bars and on a drop, bursting into streaking sparks; the crowd at the water's edge against the light, heads bobbing on the beat, glow sticks, phones and flags up, every arm in the air when the fireworks go; the lake mirroring all of it; by day it's an afternoon set, the lights off
+  - The koi pond, seen from above, five koi (a kohaku, a showa, a sanke, a yamabuki and an orange ogon) swimming slow rounds of it, each drawn as tiles of colour with a glyph on each, their fins and tails see-through, a little faster on the kicks; lily pads in the corners, two in flower, the koi passing under them; the toaster on a lily pad of its own, a ripple spreading from it on each kick; when the toast pops (every 8 bars) the nearest koi comes for the crumbs, and on a drop they all do, gathering round the pad like the petals of a flower; click the water to drop food there and the three nearest come to it; by day the light's net drifts over the pebbles beside their shadows, by night fireflies glow over the water
 
 ## What you'll see in the code
 

@@ -4,6 +4,16 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.11',
+    items: [
+      { act: 'strength', text: 'the koi pond in the scenery: koi seen from above, lily pads, the toaster on a pad of its own; click the water to feed them, and on the drop they all gather round the toaster' },
+      { act: 'strength', text: "the festival in the scenery: the toaster DJing on a stage by a lake, beams sweeping with the bars, fireworks on the drop, the crowd's arms going up" },
+      { act: 'strength', text: 'the garden redrawn: the cherry tree in full blossom, a pagoda on the hill' },
+      { act: 'strength', text: 'the sharks have company: jellyfish, a fish made of code, a stingray' },
+      { key: 'startup', text: "no more freezes the first time after an update: the scenery makes its scenes one at a time, the one you're looking at first" },
+    ],
+  },
+  {
     version: '0.4.10',
     items: [
       { act: 'code', text: 'hide the code: just the visuals, for Toaster as a visualizer; the scenery opens out into the room' },

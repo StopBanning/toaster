@@ -496,7 +496,7 @@ function toggleSpectroColours() {
 }
 // A, while the scenery is on: the next scene (auto, a new one each song; then each by name), and
 // after the last, auto again in the theme's two colours rather than its own
-const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks' };
+const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond' };
 function nextScene() {
   const all = ['auto', ...scenery.scenes];
   if (state.sceneryTheme) { state.sceneryTheme = false; state.sceneryScene = 'auto'; }
@@ -1235,6 +1235,11 @@ function showVisMenu(open) {
 $('b-visual').onclick = () => showVisMenu(visMenu.hidden);
 visMenu.onclick = (e) => { const b = e.target.closest('button'); if (b) { setVisual(+b.dataset.i); showVisMenu(false); } };
 addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closest('#vis-menu, #b-visual')) showVisMenu(false); }, true);
+// the koi pond: a click on the water (not on a button, a menu or a panel) drops food there, and the
+// koi nearest come to it
+addEventListener('click', (e) => {
+  if (VISUALS[state.visual] === 'scenery' && sceneShown() === 'koi' && !e.target.closest('button, a, input, select, dialog, [role="menu"], #bar, footer, #alerts, #notice, #err, #card')) scenery.feed(e.clientX, e.clientY);
+});
 $('b-blocks').onclick = () => nextBlocks();
 $('b-cam').onclick = () => toggleCam();
 $('b-card').onclick = () => toggleCard();
