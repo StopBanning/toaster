@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:" />
+<title>Toaster</title>
+<meta name="description" content="Toaster hears whatever is playing and writes it out as live Strudel code in front of you: the beat, the bass line and the chords, typed out over visuals that move with them." />
+<meta property="og:title" content="Toaster" />
+<meta property="og:description" content="Toaster hears whatever is playing and writes it out as live Strudel code in front of you: the beat, the bass line and the chords, typed out over visuals that move with them." />
+<meta property="og:image" content="https://toaster.locust.lol/icon.png" />
+<meta property="og:url" content="https://toaster.locust.lol/" />
+<meta name="twitter:card" content="summary" />
+<link rel="icon" href="icon.png" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<script src="nc.js"></script>
+<script src="boot.js"></script>
+<canvas id="cam"></canvas>
+<canvas id="voxcam" aria-hidden="true"></canvas>
+<canvas id="dotcam" aria-hidden="true"></canvas>
+<canvas id="worlds" aria-hidden="true"></canvas>
+<canvas id="worldwords" aria-hidden="true"></canvas>
+<canvas id="chrome" aria-hidden="true"></canvas>
+<canvas id="spectro" aria-hidden="true"></canvas>
+<canvas id="spectrobox" aria-hidden="true"></canvas>
+<canvas id="scenery" aria-hidden="true"></canvas>
+<canvas id="vis"></canvas>
+<canvas id="warp" aria-hidden="true"></canvas>
+<canvas id="field" aria-hidden="true"></canvas>
+<canvas id="asciicam" aria-hidden="true"></canvas>
+<canvas id="orb" aria-hidden="true"></canvas>
+<canvas id="punch"></canvas>
+<div id="desk-back" aria-hidden="true"><div class="big"></div><div class="icons"></div></div>
+
+<header id="bar">
+  <span id="status" class="tag">○ idle</span>
+  <span class="appname">toaster</span>
+  <span class="spacer"></span>
+  <!-- in groups, as in the help: source | look | camera | save & share | window | help -->
+  <button id="b-source" class="grp" data-act="source" data-title="Audio source" title="Audio source (S)">source</button>
+  <button id="b-visual" class="grp" data-act="visual" data-title="Background visual: pick one" title="Background visual: pick one (V)" aria-haspopup="menu">spectrum ▾</button>
+  <div id="vis-menu" class="drop" role="menu" hidden></div>
+  <button id="b-orb" data-act="orb" data-title="Dot orb, over any background" title="Dot orb, over any background (R)">orb</button>
+  <button id="b-blocks" data-act="blocks" data-title="Blocks over any visual: punchcard, dominoes, off" title="Blocks over any visual: punchcard, dominoes, off (P)">blocks</button>
+  <button id="b-glass" data-act="glass" data-title="Glass blob over the code" title="Glass blob over the code (G)">glass</button>
+  <button id="b-card" data-act="card" data-title="Now-playing ID card: off, on, big" title="Now-playing ID card: off, on, big (N)">card</button>
+  <button id="b-cam" class="grp" data-act="cam" data-title="Webcam: off, on, big eyes, ASCII" title="Webcam: off, on, big eyes, ASCII (C)">cam</button>
+  <button id="b-rec" class="grp" data-act="rec" data-title="Record a video of the window, with the sound" title="Record a video of the window, with the sound (M)">● rec</button>
+  <button id="b-strudel" data-act="strudel" data-title="Open this code in Strudel, in your browser" title="Open this code in Strudel, in your browser (O)">strudel ↗</button>
+  <button id="b-mini" class="grp" data-act="mini" data-title="Mini player: a small window in the corner, over everything else" title="Mini player: a small window in the corner, over everything else (W)">mini</button>
+  <button id="b-layout" class="wide-only" data-act="layout" data-title="Vertical layout for TikTok/Shorts" title="Vertical layout for TikTok/Shorts (L)">9:16</button>
+  <button id="b-help" class="grp" title="Keys and how it works">?</button>
+</header>
+
+<main id="code">
+  <div class="ln title" id="ln-title" title="Press E to name the song yourself"></div>
+  <div class="ln" id="ln-tempo"></div>
+  <div class="ln" id="ln-scale"></div>
+  <div class="ln gap"></div>
+  <div class="ln" id="ln-bd"></div>
+  <div class="ln" id="ln-sd"></div>
+  <div class="ln" id="ln-hhc"></div>
+  <div class="ln" id="ln-hho"></div>
+  <pre class="panel" id="grid"></pre>
+  <div class="ln" id="ln-bassline"></div>
+  <div class="ln" id="ln-chords"></div>
+  <div class="ln" id="ln-vox"></div>
+  <pre class="panel" id="roll"></pre>
+</main>
+<canvas id="glass" hidden></canvas>
+<canvas id="segcam"></canvas>
+<canvas id="lens"></canvas>
+<canvas id="portal"></canvas>
+<pre id="sys" class="panel" hidden></pre>
+<div id="card" hidden aria-label="Now-playing ID card"></div>
+
+<div id="desk-front" aria-hidden="true"><div class="wins"></div></div>
+<canvas id="storm" aria-hidden="true" hidden></canvas>
+<div id="alerts"></div>
+<div id="notice" hidden></div>
+<div id="err" hidden></div>
+
+<footer>
+  <span class="stat" id="meter"></span>
+  <span class="stat" id="stats"></span>
+  <span class="spacer"></span>
+  <span class="keys">S source · V visual · A strength · P blocks · [ ] sync · C cam · N card · R orb · G glass · O strudel · M rec · J drop clips · X export · K cam fx · Space tap · Q hush · D drop now · B drop fx · I machine · L layout · W mini · T theme · E name · Z hide code · H hide · F full</span>
+</footer>
+
+<div id="bsod" aria-hidden="true">
+  <div class="face">:(</div>
+  <p>Your PC ran into a drop and needs to dance. We're just collecting some bass, and then we'll restart for you.</p>
+  <p>100% complete</p>
+  <small>For more information about this issue, keep listening.<br />Stop code: BASS_DROP_DETECTED</small>
+</div>
+
+<div id="menu" hidden>
+  <div class="card">
+    <h1>toaster <small class="ver"></small></h1>
+    <p class="sub">turns whatever's playing into live code</p>
+    <div class="opts">
+      <button id="go-system">▶ system audio</button><span><span class="os-desk">everything playing on this <span class="os-win">PC</span><span class="os-mac">Mac</span> (Spotify, YouTube, anything)</span><span class="os-web">a tab's sound, or your whole screen's: pick it in the browser's box and turn on sharing its audio</span></span>
+      <button id="go-demo">✦ demo beat</button><span>built-in test track</span>
+      <button id="go-file">▤ audio file</button><span>or drop a file on the window</span>
+      <button id="go-input">◉ audio input</button><span>a mic or line-in</span>
+    </div>
+    <p class="tip">Nothing is recorded or uploaded. Esc closes this.</p>
+  </div>
+</div>
+<input type="file" id="file" accept="audio/*" hidden />
+
+<dialog id="devices">
+  <h2>choose an audio input</h2>
+  <div id="device-list"></div>
+  <form method="dialog"><button>cancel</button></form>
+</dialog>
+
+<dialog id="help">
+  <h2>how it works <small class="ver"></small></h2>
+  <p>Toaster listens to whatever your <span class="os-win">PC</span><span class="os-mac">Mac</span> plays and writes it out as Strudel code, live: the drums on a 16-step grid, the tempo, bass, chords, key and lead line. A new song starts a fresh page. It's a reconstruction for show, not an exact transcription; steady beats work best.</p>
+  <p>When the kick comes back after a break, the drop effect takes over the screen. The camera features run on this <span class="os-win">PC</span><span class="os-mac">Mac</span>; nothing is uploaded. Your picks are remembered, except the camera, which always starts off.</p>
+  <label class="calm"><input type="checkbox" id="calm" /><span><b>Fewer flashes</b>: no full-screen flashes, hard cuts or colour flashes. On from the start if <span class="os-win">Windows' "Show animations" is off</span><span class="os-mac">the Mac's Reduce motion setting is on</span>.</span></label>
+  <label class="calm"><input type="checkbox" id="updates" /><span><b>Updates</b>: when it starts, Toaster asks GitHub whether there's a newer version, and offers it if there is. Nothing else is sent.</span></label>
+  <table>
+    <tr class="sec"><th colspan="2">look</th></tr>
+    <tr data-act="visual"><td>V</td><td>background: spectrum, tunnel, spiral, pitch wheel, warp, cuts, worlds, chrome, spectrogram, scenery, rain, scope, off</td></tr>
+    <tr data-act="strength"><td>A</td><td>background strength; with worlds, their look: night (no light skies), film, ASCII, code, ink, risograph, cyanotype, receipt, thermal, night vision, CRT, VHS, quadtree, cells, auto; with chrome, the collage on or off; with the spectrogram, its colours: rainbow or the theme's; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween (auto picks it in October), then auto in the theme's colours</td></tr>
+    <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen</td></tr>
+    <tr data-act="orb"><td>R</td><td>orb: dots that take a new form every 8 bars, moved by the kick, clap and hats</td></tr>
+    <tr data-act="blocks"><td>P</td><td>blocks: punchcard, then dominoes, then off</td></tr>
+    <tr data-act="glass"><td>G</td><td>liquid glass over the code, swelling on the kick</td></tr>
+    <tr data-act="card"><td>N</td><td>ID card: the song, tempo, key and a 1-bit picture; again for big, again to hide</td></tr>
+    <tr class="sec"><th colspan="2">camera</th></tr>
+    <tr data-act="cam"><td>C</td><td>webcam: tinted, big eyes, ASCII, off. Frame something with your fingers (each hand an L) for a filter window; turn a hand over or wink for the next filter, open your hands to close it. A circle of your hands (index tips together, thumb tips together) opens a portal (the first shows your skull: make it in front of your face): pull apart to grow it, spread wide and hold to fill the picture, pinch for the next look (once it fills the picture, a swipe too: hold an open hand up, then sweep it sideways, left for the next look, right for the one before), the circle again to close. Hand signs: ✌️ next theme, 👍 record, ✊ hush, 🖐 back</td></tr>
+    <tr data-act="camfx"><td>K</td><td>camera effect: cut-out, slit-scan, datamosh, windows, glass, dots, voxels, none</td></tr>
+    <tr class="sec"><th colspan="2">perform</th></tr>
+    <tr data-act="tap"><td>Space</td><td>tap the beat (four taps) when it gets the tempo wrong</td></tr>
+    <tr data-act="hush"><td>Q</td><td>hush every part; <kbd data-k="hush">Q</kbd> again or an open hand brings them back</td></tr>
+    <tr data-act="drop"><td>D</td><td>fire the drop effect now</td></tr>
+    <tr data-act="dropfx"><td>B</td><td>drop effect: XP takeover, blue screen, not responding, off</td></tr>
+    <tr class="sec"><th colspan="2">save &amp; share</th></tr>
+    <tr data-act="rec"><td>M</td><td>record the window with sound, into <span class="os-win">Videos\Toaster</span><span class="os-mac">Movies/Toaster</span> (for TikTok or Shorts, <kbd data-k="layout">L</kbd> first)</td></tr>
+    <tr data-act="clips"><td>J</td><td>save the first two drops of each song as clips</td></tr>
+    <tr data-act="export"><td>X</td><td>export the song so far as MIDI and Strudel code, into <span class="os-win">Music\Toaster</span><span class="os-mac">Music/Toaster</span></td></tr>
+    <tr data-act="strudel"><td>O</td><td>open the code in Strudel</td></tr>
+    <tr class="sec"><th colspan="2">window</th></tr>
+    <tr data-act="layout"><td>L</td><td>vertical layout</td></tr>
+    <tr data-act="mini"><td>W</td><td>mini player, over your other windows</td></tr>
+    <tr data-act="code"><td>Z</td><td>hide the code: just the visuals, for Toaster as a visualizer (it's still written underneath; Z again shows it)</td></tr>
+    <tr data-act="hide,full"><td>H / F</td><td>hide the header and footer / fullscreen</td></tr>
+    <tr data-act="machine"><td>I</td><td>machine readout</td></tr>
+    <tr class="sec"><th colspan="2">setup</th></tr>
+    <tr data-act="source"><td>S</td><td>audio source: system audio, demo beat, file, input</td></tr>
+    <tr data-act="name"><td>E</td><td>name the song yourself</td></tr>
+    <tr data-act="later,earlier"><td>[ / ]</td><td>blocks timing: ] if they land late, [ if early</td></tr>
+  </table>
+  <p class="keys-note">Click a key to change it. <button id="keys-reset" type="button">keys as they came</button></p>
+  <form method="dialog"><button>close</button></form>
+</dialog>
+
+<dialog id="rename">
+  <h2>name this song</h2>
+  <form method="dialog" id="rename-form">
+    <input id="rename-artist" placeholder="artist" autocomplete="off" />
+    <input id="rename-title" placeholder="title" autocomplete="off" />
+    <p class="tip">Leave both empty to go back to what <span class="os-win">Windows</span><span class="os-mac">the Mac</span> reports.</p>
+    <button value="ok">ok</button>
+  </form>
+</dialog>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

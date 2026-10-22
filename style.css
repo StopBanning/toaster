@@ -1,0 +1,452 @@
+/* JetBrains Mono (SIL Open Font License, fonts/OFL.txt), bundled: one variable-weight file for each
+   alphabet, as Google Fonts serves it, so nothing is fetched from the web */
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; font-display: swap; src: url(fonts/jetbrains-mono-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; font-display: swap; src: url(fonts/jetbrains-mono-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; font-display: swap; src: url(fonts/jetbrains-mono-cyrillic-ext.woff2) format("woff2");
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; font-display: swap; src: url(fonts/jetbrains-mono-cyrillic.woff2) format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; font-display: swap; src: url(fonts/jetbrains-mono-greek.woff2) format("woff2");
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; font-display: swap; src: url(fonts/jetbrains-mono-vietnamese.woff2) format("woff2");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+
+/* --dim (comments, the footer, secondary text) is as faint as it can be and still read: at least
+   4.5:1 against the background on every theme (WCAG AA) */
+:root {
+  --bg: #051db5; --fg: #fff; --ink: #020b45; --dim: rgba(255,255,255,.6); --faint: rgba(255,255,255,.14);
+  --hl-bg: rgba(255,255,255,.18); --line-bg: rgba(5,29,181,.62); --field: .22;
+  --font: "JetBrains Mono", Consolas, ui-monospace, monospace;
+  --size: clamp(14px, 1.45vw, 24px);
+  color-scheme: dark;
+}
+:root[data-theme="blackscreen"] { --bg:#000; --fg:#fff; --ink:#000; --dim:rgba(255,255,255,.5); --faint:rgba(255,255,255,.12); --hl-bg:rgba(255,255,255,.18); --line-bg:rgba(0,0,0,.62); }
+:root[data-theme="terminal"] { --bg:#010a03; --fg:#3dff76; --ink:#000; --dim:rgba(61,255,118,.56); --faint:rgba(61,255,118,.12); --hl-bg:rgba(61,255,118,.2); --line-bg:rgba(1,10,3,.62); }
+:root[data-theme="pink"] { --bg:#16000d; --fg:#ff5cbf; --ink:#000; --dim:rgba(255,92,191,.78); --faint:rgba(255,92,191,.13); --hl-bg:rgba(255,92,191,.22); --line-bg:rgba(22,0,13,.62); }
+:root[data-theme="whitescreen"] { --bg:#fff; --fg:#000; --ink:#d8d8d8; --dim:rgba(0,0,0,.58); --faint:rgba(0,0,0,.1); --hl-bg:rgba(0,0,0,.1); --line-bg:rgba(255,255,255,.7); --field:.16; color-scheme: light; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none; }
+
+#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spectro, #spectrobox, #scenery, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#warp { opacity: .55; }
+#glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+#glass[hidden] { display: none; }
+/* the finger frame, portals and big eyes: over the ID card too (in the vertical layout the card sits where the
+   camera is, and they went behind it), under the drop effect's pop-ups (#desk-front, later in the page) */
+#segcam, #lens, #portal { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
+/* a portal filling the picture, or the camera's glass effect (K), goes behind the code, in place of
+   the background */
+body.portal-full #portal { z-index: 1; }
+#cam { opacity: .62; }
+/* the cut-out (K): just you, over the visuals (still under the code) */
+body.cam-cut #cam { z-index: 1; opacity: .92; }
+#dotcam { z-index: 1; } /* (you as dots over the backgrounds, as the cut-out: its black is see-through) */
+#voxcam { opacity: .85; } /* (the voxels in the camera's place, under the backgrounds; a room, so solid) */
+#field { opacity: calc(var(--field) * var(--field-k, 1.5) * var(--hush, 1)); } /* --field-k: the strength you pick (A) */
+/* hushed (a raised fist, or Q): the picture dims, while the code mutes itself line by line */
+#worlds, #worldwords, #chrome, #spectro, #spectrobox, #scenery, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s; }
+body.hushed { --hush: .3; }
+/* the camera as text (a layer of its own, over the background) stands out more than an ASCII
+   background does */
+#asciicam { opacity: calc(var(--field) * 3.2 * var(--hush, 1)); }
+body.hushed #vis, body.hushed #orb, body.hushed #punch { opacity: .3; }
+body.hushed #warp { opacity: .17; }
+body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery { opacity: .3; }
+/* over the worlds (and the chrome, and the spectrogram) the code sits on the ID card's panel colour
+   (navy on the blue theme), not the theme's own, which fights the picture's colours */
+body.worlds-on, body.chrome-on, body.spectro-on { --line-bg: color-mix(in srgb, var(--ink) 70%, transparent); }
+/* the worlds (and the spectrogram, and the scenery) over the camera: you show through them (with the
+   cut-out you're in front of them) */
+body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery { opacity: .6; }
+
+/* ---------- code ---------- */
+#code {
+  position: relative; z-index: 2; height: 100%; overflow: hidden;
+  padding: 52px 28px 48px; font-size: var(--size); line-height: 1.55;
+}
+.ln { white-space: pre; min-height: 1.55em; overflow: hidden; text-overflow: ellipsis; }
+.ln.gap { min-height: .8em; }
+.ln .txt { background: var(--line-bg); }
+.ln.cm { color: var(--dim); }
+.tok { border-radius: 2px; }
+/* slider(...): a thin track under it, filled as far as its value, like the slider Strudel draws */
+.sl {
+  background: linear-gradient(var(--fg), var(--fg)) left bottom / calc(var(--k) * 100%) 2px no-repeat,
+    linear-gradient(var(--dim), var(--dim)) left bottom / 100% 2px no-repeat;
+}
+.tok.on { outline: 2px solid var(--fg); background: var(--hl-bg); }
+.caret {
+  display: inline-block; width: .6em; height: 1.2em; margin-right: -.6em; vertical-align: text-bottom;
+  background: var(--fg); animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+.ln.flash { animation: flash .4s ease-out; }
+@keyframes flash { from { background: var(--faint); } to { background: transparent; } }
+/* the rest of the playing code, as a change lands on the bar (Strudel's flash on ctrl+enter) */
+.ln.eval .txt { animation: evalflash .3s ease-out; }
+@keyframes evalflash { from { background: var(--hl-bg); } to { background: var(--line-bg); } }
+/* a slip, the way an editor shows one: the line squiggles red, the error sits just under it pointing
+   at where the typing stopped (codeview.js places it), and once it's fixed the line flashes green */
+#err { position: fixed; z-index: 2; padding: 2px 8px; font-size: calc(var(--size) * .7); color: #fff; background: #d42a2a;
+  white-space: pre; border-radius: 3px; box-shadow: 0 3px 12px rgba(0, 0, 0, .45); }
+#err[hidden] { display: none; }
+#err::before {
+  content: ''; position: absolute; top: -6px; left: var(--arrow, 8px);
+  border: 6px solid transparent; border-top: 0; border-bottom-color: #d42a2a;
+}
+#err.above::before { top: auto; bottom: -6px; border-top: 6px solid #d42a2a; border-bottom: 0; }
+.ln.slipped .txt { text-decoration: underline wavy #ff4d4d; text-decoration-skip-ink: none; text-underline-offset: 3px; }
+.ln.fixed .txt { animation: fixed .7s ease-out; }
+@keyframes fixed { from { background: rgba(70, 220, 130, .5); } to { background: var(--line-bg); } }
+
+.panel {
+  margin: .25em 0 .9em; font: inherit; font-size: .58em; line-height: 1.2; white-space: pre;
+  display: inline-block; background: var(--line-bg); padding: .35em .7em .35em .4em;
+}
+.panel .cur, .panel .lab.on { background: var(--fg); color: var(--bg); }
+.panel .dim { color: var(--dim); }
+#roll.cut { visibility: hidden; } /* (no room for all of it: see fitRoll) */
+#sys { position: fixed; z-index: 2; top: 48px; right: 24px; margin: 0; font-size: calc(var(--size) * .58); }
+body.card-on #sys { right: 348px; }
+
+/* ---------- now-playing ID card (N) ---------- */
+#card {
+  position: fixed; z-index: 3; top: 48px; right: 24px; width: 300px; padding: 9px 12px 6px;
+  border: 1px solid var(--dim); background: color-mix(in srgb, var(--ink) 90%, transparent); color: var(--fg);
+  font: 10px/1.4 var(--font); letter-spacing: .06em; text-transform: uppercase; box-shadow: 0 8px 28px rgba(0,0,0,.35);
+}
+#card[hidden] { display: none; }
+#card .c-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#card .c-dim { color: var(--dim); }
+#card .c-rule { border-top: 1px solid var(--faint); margin: 6px -12px; }
+#card .c-pow { font-weight: 400; }
+#card .c-bat { position: relative; display: inline-block; width: 22px; height: 10px; margin-left: 6px; padding: 1px; border: 1px solid currentColor; vertical-align: -1px; }
+#card .c-bat::after { content: ""; position: absolute; right: -4px; top: 2px; width: 2px; height: 4px; background: currentColor; }
+#card .c-bat i { display: block; width: 0; height: 100%; background: currentColor; }
+#card .c-id { margin: 1px 0 6px; font-size: 30px; font-weight: 700; line-height: 1.05; letter-spacing: .02em; text-transform: none; white-space: nowrap; overflow: hidden; }
+#card .c-mid { display: grid; grid-template-columns: 120px 1fr; gap: 10px; }
+#card .c-photo { width: 120px; height: 150px; image-rendering: pixelated; border: 1px solid var(--faint); }
+#card .c-fields { min-width: 0; }
+#card .c-title {
+  margin: 7px 0 6px; font-size: 16px; font-weight: 700; line-height: 1.12; letter-spacing: .02em; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+#card .c-jp { font-size: 12px; letter-spacing: .12em; }
+#card .c-hex { margin: 3px 0 0; font: inherit; font-size: 10.5px; line-height: 1.32; letter-spacing: .07em; white-space: pre; }
+#card .c-foot { padding: 1px 0 2px; text-align: center; letter-spacing: .16em; }
+/* in the wide layout the card sits over the right of the code: the code stops short of it (long
+   lines go on over more rows instead of running under it) */
+body.card-on:not(.vertical) #code { padding-right: 344px; }
+/* the big card (N a second time): a poster, the picture the whole width (the song's cover, or you,
+   in big dots), the ID code above it and under it the song (and トースター) at the left, its source,
+   tempo and key at the right, scaled up where the card sits; the code stops short of it */
+body.card-big #card { transform-origin: top right; transform: scale(var(--card-k, 1)); }
+body.card-big #card .c-mid { grid-template-columns: 1fr; }
+body.card-big #card .c-photo { width: 100%; height: auto; aspect-ratio: 4 / 5; }
+body.card-big #card .c-auth, body.card-big #card .c-hex { display: none; }
+body.card-big #card .c-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title info" "jp info"; column-gap: 14px; align-items: start; }
+body.card-big #card .c-title { grid-area: title; }
+body.card-big #card .c-jp { grid-area: jp; }
+body.card-big #card .c-info { grid-area: info; margin-top: 8px; white-space: nowrap; }
+body.card-big:not(.vertical) #code { padding-right: calc(var(--card-w, 300px) + 44px); }
+
+body.glitch #code { animation: glitch .34s steps(2) 1; }
+@keyframes glitch {
+  0% { transform: none; }
+  25% { transform: translate(-4px, 1px) skewX(-6deg); text-shadow: 4px 0 var(--dim); }
+  50% { transform: translate(4px, -2px); text-shadow: -4px 0 var(--dim); }
+  75% { transform: translate(-2px, 0) skewX(4deg); }
+  100% { transform: none; text-shadow: none; }
+}
+
+/* ---------- header / footer (the header doubles as the window's drag bar) ---------- */
+header, footer {
+  position: fixed; left: 0; right: 0; z-index: 5; display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; transition: opacity .4s; font-size: 12px;
+}
+/* the header: a strip of its own (the visuals stop under it), its line just below the window's
+   own buttons (36 px), so it runs under them too; the buttons in touching groups, as in the help,
+   an on/off one filled while it's on */
+header { top: 0; height: 37px; padding-right: 150px; gap: 0; background: var(--bg); border-bottom: 1px solid var(--faint); -webkit-app-region: drag; }
+header button { -webkit-app-region: no-drag; }
+header .appname { margin-left: 10px; }
+header > button { margin-left: -1px; }
+header > button.grp { margin-left: 12px; }
+header > button.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+header > button.on + button.on { border-left-color: var(--bg); } /* two on, side by side: still two */
+header > button.on:hover { background: color-mix(in srgb, var(--fg) 80%, var(--bg)); }
+header > button:hover, header > button:focus-visible, header > button.on { position: relative; z-index: 1; }
+/* the visual button's list of backgrounds */
+.drop { position: absolute; top: 40px; z-index: 6; min-width: 150px; padding: 4px 0; background: var(--bg); border: 1px solid var(--fg); box-shadow: 4px 4px 0 var(--faint); -webkit-app-region: no-drag; }
+.drop[hidden] { display: none; }
+.drop button { display: block; width: 100%; text-align: left; border: 0; padding: 4px 12px; }
+.drop button.on { background: var(--fg); color: var(--bg); }
+footer { bottom: 0; height: 32px; background: linear-gradient(transparent, var(--bg)); }
+body.live header, body.live footer { opacity: .14; }
+body.clean header, body.clean footer { opacity: 0 !important; }
+/* Z: the code hidden, just the visuals (still laid out, so it shows again as it stands) */
+body.nocode #code { visibility: hidden; }
+header:hover, footer:hover, header:focus-within { opacity: 1 !important; }
+/* recording: the bars stay out of the video (hover the header to reach stop; M stops it too) */
+body.recording header, body.recording footer { opacity: 0 !important; }
+body.clips-on #b-rec::before { content: '✂ '; } /* drop clips are on (J) */
+body.recording header:hover { opacity: 1 !important; }
+/* no mouse pointer in the video either (the page capture draws it): hidden over the window while
+   recording, back over the header to reach stop */
+body.recording, body.recording * { cursor: none !important; }
+body.recording header:hover, body.recording header:hover * { cursor: default !important; }
+body.recording header:hover button { cursor: pointer !important; }
+#b-rec { color: #ff4d4d; }
+#notice { position: fixed; left: 16px; bottom: 44px; z-index: 50; max-width: calc(100% - 32px); padding: 10px 14px; font-size: 13px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--fg); box-shadow: 4px 4px 0 var(--faint); }
+#notice button { margin-left: 8px; }
+.tag { letter-spacing: .1em; text-transform: uppercase; padding: 2px 8px; border: 1px solid currentColor; white-space: nowrap; }
+.tag.on { background: var(--fg); color: var(--bg); }
+.appname { opacity: .7; white-space: nowrap; }
+.spacer { flex: 1; }
+button {
+  font: inherit; font-size: 12px; color: inherit; background: transparent; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--dim); padding: 3px 9px;
+}
+button:hover, button:focus-visible { background: var(--faint); outline: none; border-color: var(--fg); }
+footer .stat { white-space: nowrap; }
+footer .keys { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* narrow windows: the header's buttons get tighter, then the ones you'd reach by key anyway go
+   (every one has a key, in the footer and the help), so the rest never run under the window's own
+   buttons */
+@media (max-width: 1100px) { header .appname { display: none; } }
+@media (max-width: 1000px) { #b-strudel, #b-glass, #b-blocks { display: none; } }
+@media (max-width: 820px) { #b-orb, #b-card, #b-layout { display: none; } }
+@media (max-width: 640px) { #b-visual { display: none; } header { padding-right: 140px; } } /* (rec stays: the vertical layout is this narrow) */
+
+.ver { font-size: .5em; opacity: .55; font-weight: 400; }
+
+/* ---------- vertical (TikTok / Shorts) layout ---------- */
+/* Reels and TikTok fill a phone's taller screen by trimming the sides of a 9:16 video: about 9%
+   each side on an iPhone, 10% on most Androids. Everything that matters stays inside --safe of
+   each edge (the code wraps a little more rather than getting smaller); the backgrounds and the
+   camera still run to the edges. */
+body.vertical { --size: clamp(11px, 3.1vw, 17px); --safe: 10vw; }
+body.vertical #code { padding: 52px var(--safe) 44px; }
+body.vertical.cam-on #code, body.vertical.wheel-up #code { padding-top: calc(42vh + 12px); }
+/* the wheel up there shows the chord already, and the chord roll would be pushed off the bottom */
+body.vertical.wheel-up #roll { display: none; }
+body.vertical .wide-only, body.vertical footer .keys, body.vertical .appname { display: none; }
+body.vertical header { padding-right: 140px; }
+body.vertical #sys { top: auto; bottom: 40px; right: var(--safe); }
+/* the ID card is the top of the frame (with the camera in its photo), the code below it */
+body.vertical #card { top: 42px; left: 50%; right: auto; transform: translateX(-50%); width: min(340px, calc(100vw - 2 * var(--safe))); }
+body.vertical.card-on #code { padding-top: calc(var(--card-h, 420px) + 54px); }
+body.vertical.card-big #card { transform-origin: top center; transform: translateX(-50%) scale(var(--card-k, 1)); }
+body.vertical.card-on #cam { display: none; }
+
+/* ---------- mini player (W): a small window over everything else ---------- */
+/* the code, smaller, over the background; the header a strip to drag the window by */
+body.mini { --size: 11px; }
+body.mini #code { padding: 40px 14px 10px; }
+body.mini footer, body.mini #grid, body.mini #roll, body.mini #sys, body.mini header .appname { display: none !important; }
+/* the ID card (N) in the mini player: the poster (the picture and the song, as the big card), as
+   tall as the panel, at its right; the code stops short of it */
+body.mini #card { top: 34px; right: 10px; transform-origin: top right; transform: scale(var(--card-k, 1)); }
+body.mini #card .c-mid { grid-template-columns: 1fr; }
+body.mini #card .c-photo { width: 100%; height: auto; aspect-ratio: 4 / 5; }
+body.mini #card .c-fields > div:not(.c-title), body.mini #card .c-auth, body.mini #card .c-hex { display: none; }
+body.mini #card .c-fields { display: block; }
+body.mini.card-on #code { padding: 40px calc(var(--card-w, 160px) + 22px) 10px 14px; }
+body.mini header button:not(#b-mini) { display: none; }
+body.mini header { padding-right: 140px; }
+/* macOS draws the traffic lights in the header's left, and has no caption buttons on the
+   right. Fullscreen hides the lights, so the gap goes with them. */
+.os-mac { display: none; }
+html.darwin .os-mac { display: inline; }
+html.darwin .os-win { display: none; }
+/* in a browser, the browser's wording for where the sound comes from */
+.os-web { display: none; }
+html.web .os-web { display: inline; }
+html.web .os-desk { display: none; }
+html.darwin header { padding-left: 78px; padding-right: 12px; }
+html.darwin.full header { padding-left: 12px; }
+
+/* ---------- menu ---------- */
+#menu { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
+#menu[hidden] { display: none; }
+.card { width: min(620px, 100%); border: 2px solid var(--fg); background: var(--bg); padding: 26px; }
+.card h1 { margin: 0; font-size: 28px; }
+.card .sub { margin: 6px 0 20px; color: var(--dim); }
+.opts { display: grid; grid-template-columns: max-content 1fr; gap: 10px 14px; align-items: center; }
+.opts button { font-size: 14px; padding: 8px 14px; text-align: left; }
+.opts span { color: var(--dim); font-size: 12px; }
+.tip { font-size: 12px; line-height: 1.5; margin: 16px 0 0; color: var(--dim); }
+
+/* ---------- drop takeover: a Windows XP desktop ---------- */
+#desk-back, #desk-front { position: fixed; inset: 0; pointer-events: none; display: none; }
+#desk-back { z-index: 1; }
+#desk-front { z-index: 4; }
+#desk-back.on, #desk-front.on { display: block; }
+/* the drop effect "not responding": a hung window dragged round over everything, as the pop-ups */
+#storm { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
+#storm[hidden] { display: none; }
+#desk-back .big {
+  position: absolute; left: 4vw; right: 14vw; top: 14vh; color: var(--fg); opacity: .92;
+  font: 900 clamp(60px, 14vw, 230px)/.9 Impact, "Arial Black", sans-serif; letter-spacing: -.01em; word-break: break-word;
+}
+#desk-back .icons { position: absolute; right: 2vw; top: 52px; display: grid; gap: 12px; }
+.icon {
+  display: grid; justify-items: center; gap: 3px; width: 84px; text-align: center;
+  font: 11px Tahoma, "Segoe UI", sans-serif; color: #fff; text-shadow: 1px 1px 1px #000;
+}
+.icon i {
+  position: relative; width: 38px; height: 30px; border-radius: 2px 2px 3px 3px;
+  background: linear-gradient(180deg, #fff1b5 0%, #f7d469 35%, #ebb53b 100%); box-shadow: 1px 2px 1px rgba(0,0,0,.35);
+}
+.icon i::before { content: ""; position: absolute; left: 0; top: -5px; width: 15px; height: 7px; border-radius: 3px 3px 0 0; background: #f2cd5e; }
+.icon span { padding: 0 2px; word-break: break-all; }
+
+/* ---------- Windows XP (Luna) windows: takeover pop-ups and error messages ---------- */
+.xp {
+  position: absolute; width: max-content; min-width: 250px; max-width: 400px; padding: 0 3px 3px;
+  border-radius: 8px 8px 0 0; background: #0831d9; box-shadow: 3px 3px 12px rgba(0,0,0,.45);
+  font: 11px Tahoma, "Segoe UI", sans-serif; color: #000; animation: pop .16s ease-out;
+}
+@keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+.xp-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  height: 29px; margin: 0 -3px; padding: 0 5px 0 8px; border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #0066ff 93%, #005bff 95%, #003dd7 96%, #003dd7 100%);
+  color: #fff; font: bold 13px "Trebuchet MS", Tahoma, sans-serif; text-shadow: 1px 1px #0f1089;
+}
+.xp-title > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xp-ctl { display: flex; gap: 2px; flex: none; }
+.xp-ctl i {
+  position: relative; width: 21px; height: 21px; border: 1px solid #fff; border-radius: 3px;
+  background: radial-gradient(circle at 90% 90%, #0054e9 0%, #2263d5 55%, #4479e4 70%, #a3bbec 90%, #fff 100%);
+  box-shadow: inset 0 -1px 2px rgba(0,0,0,.25);
+}
+.xp-ctl i.x { background: radial-gradient(circle at 90% 90%, #cc4600 0%, #dc6527 55%, #cd7546 70%, #ffccb2 90%, #fff 100%); }
+.xp-ctl i.x::before, .xp-ctl i.x::after {
+  content: ""; position: absolute; left: 8.5px; top: 3.5px; width: 2px; height: 12px; border-radius: 1px; background: #fff; transform: rotate(45deg);
+}
+.xp-ctl i.x::after { transform: rotate(-45deg); }
+.xp-ctl i.min::before { content: ""; position: absolute; left: 5px; bottom: 4px; width: 7px; height: 3px; background: #fff; }
+.xp-ctl i.max::before { content: ""; position: absolute; left: 4px; top: 4px; width: 9px; height: 9px; box-sizing: border-box; border: 1px solid #fff; border-top-width: 3px; }
+.xp-frame { background: #ece9d8; }
+.xp-msg { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px 6px 12px; }
+.xp-msg p { margin: 3px 0 0; max-width: 300px; line-height: 1.45; }
+/* (what's new: a line a thing, its key first) */
+.xp-list { margin: 8px 0 0; padding: 0; list-style: none; max-width: 330px; }
+.xp-list li { display: flex; gap: 8px; margin: 4px 0; line-height: 1.4; }
+.xp-list kbd { flex: none; min-width: 18px; height: 16px; padding: 0 4px; font: bold 10px Tahoma, sans-serif; line-height: 15px; text-align: center; border: 1px solid #8c8a7e; border-radius: 3px; background: #fff; box-shadow: inset 0 -1px #d6d0c5; }
+.xp-btns { display: flex; justify-content: center; gap: 6px; padding: 12px 12px 12px; }
+.xp button, .xp button:hover, .xp button:focus-visible {
+  min-width: 75px; height: 23px; padding: 0 10px; font: 11px Tahoma, "Segoe UI", sans-serif; color: #000;
+  border: 1px solid #003c74; border-radius: 3px; outline: none;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%);
+}
+.xp button.def { box-shadow: inset -1px 1px #cee7ff, inset 1px 2px #98b8ea, inset -2px 2px #bcd4f6, inset 1px -1px #89ade4, inset 2px -2px #89ade4; }
+.xp button:hover { box-shadow: inset -1px 1px #fff0cf, inset 1px 2px #fdd889, inset -2px 2px #fbc761, inset 2px -2px #e5a01a; }
+.xp-icon { position: relative; flex: none; width: 32px; height: 32px; }
+.xp-icon.error {
+  border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.4);
+  background: radial-gradient(circle at 35% 30%, #ffb3a7 0%, #f33 42%, #c00 78%, #900 100%);
+}
+.xp-icon.error::before, .xp-icon.error::after {
+  content: ""; position: absolute; left: 14px; top: 7px; width: 4px; height: 18px; border-radius: 2px; background: #fff; transform: rotate(45deg);
+}
+.xp-icon.error::after { transform: rotate(-45deg); }
+.xp-icon.warning { clip-path: polygon(50% 3%, 99% 95%, 1% 95%); background: linear-gradient(180deg, #fff3a0 0%, #ffd52e 45%, #e8a900 100%); }
+.xp-icon.warning::before { content: "!"; position: absolute; inset: 9px 0 0; text-align: center; font: bold 18px Tahoma, sans-serif; color: #000; }
+.xp-icon.info, .xp-icon.question {
+  border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.4);
+  background: radial-gradient(circle at 35% 30%, #cfe6ff 0%, #4a9af5 42%, #1660d6 78%, #0b3d9a 100%);
+}
+.xp-icon.info::before, .xp-icon.question::before {
+  position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font: bold 20px Georgia, serif; text-shadow: 0 1px 1px rgba(0,0,0,.4);
+}
+.xp-icon.info::before { content: "i"; }
+.xp-icon.question::before { content: "?"; font-family: Tahoma, sans-serif; }
+.xp-cam { padding: 3px; background: #000; }
+.xp-cam canvas { display: block; width: 100%; height: auto; }
+.xp-menu { display: flex; gap: 12px; padding: 2px 6px; border-bottom: 1px solid #aca899; }
+.xp-note {
+  margin: 0; padding: 4px 8px 6px; background: #fff; border-top: 1px solid #7f9db9;
+  font: 11px/1.2 "Lucida Console", Consolas, monospace; color: #000; white-space: pre;
+}
+
+/* a little beige CRT computer screen with an eye on it */
+.crt {
+  position: absolute; width: 236px; padding: 16px 16px 26px; border-radius: 14px;
+  background: linear-gradient(160deg, #efe8d6 0%, #d9d1bc 60%, #c9c0a6 100%);
+  box-shadow: 3px 5px 14px rgba(0,0,0,.45), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.6);
+  animation: pop .16s ease-out;
+}
+.crt::after { content: ""; position: absolute; left: 36%; right: 36%; bottom: -13px; height: 13px; border-radius: 0 0 4px 4px; background: linear-gradient(#bdb399, #a3997e); }
+.crt-glass { position: relative; overflow: hidden; border-radius: 18px / 24px; background: #000; box-shadow: 0 0 0 3px #77705f, 0 0 0 5px #b8af96; }
+.crt-glass canvas { display: block; width: 100%; height: auto; }
+.crt-glass::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(rgba(0,0,0,.3) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.6) 100%);
+}
+.crt-led { position: absolute; right: 22px; bottom: 9px; width: 6px; height: 6px; border-radius: 50%; background: #3dff76; box-shadow: 0 0 6px #3dff76; }
+
+/* a little blue screen among the pop-ups, in a thin monitor bezel */
+.mini-bsod {
+  position: absolute; width: 330px; padding: 18px 22px 16px; border: 5px solid #1b1b1b; border-radius: 4px;
+  background: #0078d7; color: #fff; font-family: "Segoe UI", system-ui, sans-serif;
+  box-shadow: 3px 3px 12px rgba(0,0,0,.45); animation: pop .16s ease-out;
+}
+.mini-bsod .face { font-size: 54px; line-height: 1; margin-bottom: 10px; }
+.mini-bsod p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.35; }
+.mini-bsod .foot { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.mini-bsod .qr {
+  flex: none; width: 40px; height: 40px; border: 3px solid #fff;
+  background: repeating-conic-gradient(#fff 0 25%, #0078d7 0 50%) 0 0 / 10px 10px;
+}
+.mini-bsod small { font-size: 9.5px; line-height: 1.4; }
+
+#alerts { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; pointer-events: none; }
+#alerts .xp { position: relative; pointer-events: auto; }
+#alerts .xp-ctl i.x { cursor: pointer; }
+
+/* ---------- blue screen ---------- */
+#bsod { position: fixed; inset: 0; z-index: 8; display: none; padding: 11vh 10vw; background: #0078d7; color: #fff; font-family: "Segoe UI", system-ui, sans-serif; }
+#bsod.show { display: block; }
+#bsod .face { font-size: clamp(80px, 11vw, 150px); line-height: 1; margin: 0 0 4vh; }
+#bsod p { font-size: clamp(18px, 2.1vw, 30px); max-width: 960px; margin: 0 0 3vh; line-height: 1.35; }
+#bsod small { display: block; font-size: clamp(13px, 1.1vw, 17px); line-height: 1.6; }
+
+/* fewer flashes (the help's setting, for anyone sensitive to flashing light): the blue screen
+   fades in and out instead of slamming on and off, and the code doesn't shake on a new song */
+body.calm #bsod.show { animation: calm-bsod .7s ease-in-out both; }
+@keyframes calm-bsod { 0% { opacity: 0; } 30% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+body.calm.glitch #code { animation: none; }
+#help .calm { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; font-size: 13px; line-height: 1.5; cursor: pointer; }
+#help .calm input { margin: 3px 0 0; accent-color: var(--fg); }
+
+/* ---------- dialogs ---------- */
+dialog {
+  width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
+  background: var(--bg); color: var(--fg); border: 2px solid var(--fg); padding: 22px 26px; font-family: var(--font); user-select: text;
+}
+dialog::backdrop { background: rgba(0,0,0,.55); }
+dialog h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: .08em; text-transform: uppercase; }
+dialog p, dialog li { font-size: 13px; line-height: 1.6; }
+dialog table { border-collapse: collapse; font-size: 13px; }
+dialog td { padding: 3px 14px 3px 0; vertical-align: top; }
+dialog td:first-child { white-space: nowrap; font-weight: 700; }
+/* the keys in the help: buttons to change them */
+dialog button.key { font-weight: 700; min-width: 2.2em; padding: 1px 6px; }
+dialog button.key.waiting { background: var(--fg); color: var(--bg); }
+dialog kbd { font: inherit; font-weight: 700; }
+dialog .keys-note { color: var(--dim); font-size: 12px; }
+dialog .vtag { color: var(--dim); font-size: 11px; margin-left: 4px; }
+dialog tr.sec th { text-align: left; padding: 12px 0 4px; color: var(--dim); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; font-size: 11px; }
+dialog form { text-align: right; margin-top: 14px; }
+#rename-form { display: grid; gap: 10px; text-align: left; }
+#rename-form input { font: inherit; padding: 6px 8px; background: transparent; color: inherit; border: 1px solid var(--dim); }
+#rename-form button { justify-self: end; }
+#device-list { display: grid; gap: 8px; margin: 8px 0; }
+#device-list button { text-align: left; }

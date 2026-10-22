@@ -1,0 +1,56 @@
+Toaster uses, and ships with, the work below. Thank you.
+
+MediaPipe Tasks Vision (@mediapipe/tasks-vision)
+  Copyright Google LLC. Apache License 2.0: licenses/Apache-2.0.txt
+  Finds your hands and face, and you in the picture for the camera cut-out.
+
+MediaPipe models, in renderer/models, unchanged
+  hand_landmarker.task, face_landmarker.task, selfie_segmenter.tflite
+  Copyright Google LLC. Apache License 2.0: licenses/Apache-2.0.txt
+  From https://storage.googleapis.com/mediapipe-models/
+
+Electron and Chromium
+  Electron: MIT License. Chromium and the parts it's made of: LICENSES.chromium.html,
+  next to Toaster.exe in the app's folder.
+
+thinking-orbs, the Thinking Orbs engine (libraries.dev), in part, in renderer/orb.js
+  Copyright (c) 2026 Jakub Antalik. MIT License: licenses/thinking-orbs-MIT.txt
+  The orb's puzzle moves (the sphere's slices turning and solving), its outline shapes and
+  its breathing ring.
+
+The skull in the portals' skull look, in renderer/models/skull.bin (made lighter by
+tools/skullmesh.mjs)
+  "ScatteringSkull" from the Khronos glTF Sample Assets: model by Vladimir Petkovic,
+  2025 (c) Adobe Inc. CC0 1.0 Universal (public domain).
+  From https://github.com/KhronosGroup/glTF-Sample-Assets
+
+JetBrains Mono (the typeface)
+  Included in renderer/fonts; SIL Open Font License 1.1 (renderer/fonts/OFL.txt).
+
+The ideas and looks it's after (none of their code is in Toaster, but for the orb's above):
+  DJ_Dave, whose way of performing live code the code view follows: named lines typed
+    from a blank window, lighting up as they play. Toaster is an independent project,
+    not made by or affiliated with DJ_Dave.
+  Strudel (strudel.cc), the live coding language Toaster writes in.
+  s1lax.art: the ID card's look.
+  null.mpeg's visuals for DJ_Dave's AIRGLOW: the glass blob.
+  lo.fi.sci.fi's segcam effect for DJ_Dave's videos: big eyes.
+  autterp0p's hand-frame edit: the finger frame.
+  libraries.dev's Thinking Orbs (Jakub Antalik and Alexandr Brinza): the orb.
+  Anthropic's launch film for Claude Opus 5.5 ("There's more to discover"): the worlds.
+  rentalunit5's video-synth piece "Circulation": the cuts' mirrored text and tunnel.
+  3D spectrum analysers (a dial-up modem's handshake seen as terrain) and Chrome Music
+    Lab's Spectrogram (Google Creative Lab): the spectrogram's landscape.
+  Claude FM ("music for thinking and building"), the Claude YouTube channel's live stream
+    drawn as ASCII art, its fisher in a boat on a misty lake, its campfire in the woods and
+    its witch on a broomstick across a great moon among them: the scenery, its toaster
+    fishing from a rowboat, its campfire scene and its Halloween scene.
+  days_of_93's Days of Glitch, a visual mangler that cuts a picture into moving cells:
+    the worlds' cells look.
+  cure.visual's portals, made in TouchDesigner: the portals.
+  ttyproj's "Transparent Distortion", made in TouchDesigner: the glass look.
+  design4me__'s x-ray hover, a Framer component that turns a head to a skull under the
+    cursor: the portals' skull look.
+  stackedlol's ascii-sharks, sharks and fish drawn as ASCII on a canvas: the sharks
+    scene's look (a tile of colour under each glyph, a shimmering hide) and the way its
+    sharks swim.
