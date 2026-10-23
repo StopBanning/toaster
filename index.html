@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:" />
 <title>Toaster</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="Toaster hears whatever is playing and writes it out as live Strudel code in front of you: the beat, the bass line and the chords, typed out over visuals that move with them." />
@@ -54,6 +54,7 @@
   <button id="b-mini" class="grp" data-act="mini" data-title="Mini player: a small window in the corner, over everything else" title="Mini player: a small window in the corner, over everything else (W)">mini</button>
   <button id="b-layout" class="wide-only" data-act="layout" data-title="Vertical layout for TikTok/Shorts" title="Vertical layout for TikTok/Shorts (L)">9:16</button>
   <button id="b-help" class="grp" title="Keys and how it works">?</button>
+  <a id="b-star" class="os-web" href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener" title="Toaster is free and open source: a star on GitHub helps people find it">★ star<span class="star-n"></span></a>
 </header>
 
 <main id="code">
@@ -110,7 +111,7 @@
     </div>
     <p class="tip">Nothing is recorded or uploaded. Esc closes this.</p>
     <p class="tip os-web-b">? shows the keys and how it works. The desktop app hears everything your PC plays by itself, no sharing.</p>
-    <p class="get os-web-b"><a href="https://github.com/StopBanning/toaster/releases/latest" target="_blank" rel="noopener">⇩ get the desktop app</a><a href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener">★ star it on GitHub</a></p>
+    <p class="get os-web-b"><a href="https://github.com/StopBanning/toaster/releases/latest" target="_blank" rel="noopener">⇩ get the desktop app</a><a href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener">★ star it on GitHub<span class="star-n"></span></a></p>
   </div>
 </div>
 <input type="file" id="file" accept="audio/*" hidden />

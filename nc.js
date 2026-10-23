@@ -53,4 +53,20 @@
     },
     saveClip: async (buf, ext) => download([buf], video(ext), `Toaster clip ${when()}.${ext}`),
   };
+  // the star links' count (the header's and the start menu's): GitHub's, asked once a visit and kept
+  // ten minutes in the tab; left off when it can't be had
+  const showStars = async () => {
+    let n = null;
+    try { const kept = JSON.parse(sessionStorage.getItem('toaster-stars') || 'null'); if (kept && Date.now() - kept.at < 600000) n = kept.n; } catch {}
+    if (typeof n !== 'number') {
+      try {
+        const r = await fetch('https://api.github.com/repos/StopBanning/toaster');
+        if (r.ok) n = (await r.json()).stargazers_count;
+      } catch {}
+      if (typeof n === 'number') try { sessionStorage.setItem('toaster-stars', JSON.stringify({ n, at: Date.now() })); } catch {}
+    }
+    if (typeof n === 'number') for (const el of document.querySelectorAll('.star-n')) el.textContent = n;
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showStars);
+  else showStars();
 })();
