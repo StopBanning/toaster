@@ -1518,5 +1518,10 @@ window.nc?.onFullScreen?.((on) => document.documentElement.classList.toggle('ful
 const inBrowser = !window.nc || window.nc.platform === 'web';
 if (state.firstRun && !inBrowser) setTimeout(() => showNotice(`Toaster is listening to whatever your ${onMac() ? 'Mac' : 'PC'} plays and writing it as code. ? shows the keys and how it works; ${K('source')} picks another source; ${K('cam')} turns on the camera.`), 2500);
 requestAnimationFrame(draw);
-// (in a browser nothing's heard till a source is picked: screen capture needs a click)
-if (inBrowser) showMenu("Pick what Toaster listens to, and it writes it out as live code. ? shows the keys; the desktop app hears your PC's sound by itself.", 'info');
+// (in a browser nothing's heard till a source is picked: screen capture needs a click. The menu says
+// where to start itself; a box over it hid its options. A phone's browser can't share a tab's sound,
+// so there the menu leaves that out)
+if (inBrowser) {
+  if (!navigator.mediaDevices?.getDisplayMedia) $('go-system').hidden = $('go-system').nextElementSibling.hidden = true;
+  showMenu();
+}

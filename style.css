@@ -288,6 +288,23 @@ html.darwin.full header { padding-left: 12px; }
 .opts button { font-size: 14px; padding: 8px 14px; text-align: left; }
 .opts span { color: var(--dim); font-size: 12px; }
 .tip { font-size: 12px; line-height: 1.5; margin: 16px 0 0; color: var(--dim); }
+.tip + .tip { margin-top: 6px; }
+/* (in a browser: where to get the desktop app, and the project) */
+.os-web-b { display: none; }
+html.web .os-web-b { display: block; }
+html.web .card .get { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; }
+.card .get a { font-size: 13px; padding: 8px 14px; border: 1px solid var(--fg); color: var(--fg); text-decoration: none; }
+.card .get a:hover, .card .get a:focus-visible { background: var(--fg); color: var(--bg); outline: none; }
+/* (a phone: the options one under another, each with its line under it) */
+@media (max-width: 640px) {
+  html.web #menu { padding: 12px; }
+  html.web .card { padding: 18px; }
+  html.web .card h1 { font-size: 24px; }
+  html.web .card .sub { margin-bottom: 14px; }
+  html.web .opts { grid-template-columns: 1fr; gap: 4px; }
+  html.web .opts button { width: 100%; }
+  html.web .opts span { margin-bottom: 8px; }
+}
 
 /* ---------- drop takeover: a Windows XP desktop ---------- */
 #desk-back, #desk-front { position: fixed; inset: 0; pointer-events: none; display: none; }
