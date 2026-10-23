@@ -2,19 +2,23 @@
 // drawing on the page never wait for them. The page sends camera frames ({ frame: ImageBitmap,
 // t, face: wanted?, cut: wanted? }) and gets back where the hands and face are, in the frame's own
 // 0-1 coordinates (not mirrored): { hands: [{ side, points: [[x, y] x 21], world: [[x, y, z] x 21] }],
-// face: [[x, y] x 478], pose, mask }. pose is how the head is turned: MediaPipe's facial
+// face: [[x, y] x 478], pose, mask, featureErrors }. Replies have type ready, result or fatal;
+// an optional model's failure belongs to featureErrors, never a fake empty hand detection.
+// pose is how the head is turned: MediaPipe's facial
 // transformation matrix (4 x 4, column by column), with the face. With cut, mask is where a person
 // is, for the cut-out: { data: 0-255 a pixel, w, h }, the frame at 256 across.
 import { FilesetResolver, HandLandmarker, FaceLandmarker, ImageSegmenter } from '../node_modules/@mediapipe/tasks-vision/vision_bundle.mjs';
 
 const at = (path) => new URL(path, import.meta.url).href;
-let files = null, hands = null, face = null, faceMaking = null, faceError = null, cutter = null, cutMaking = null, cutError = null, delegate = 'GPU';
+let files = null, hands = null, delegate = 'GPU';
+const optional = Object.fromEntries(['face', 'cut'].map((name) => [name, { model: null, making: null, error: '', tries: 0, retryAt: 0 }]));
 const options = (file, on = delegate) => ({ baseOptions: { modelAssetPath: at(`models/${file}`), delegate: on }, runningMode: 'VIDEO' });
 // MediaPipe runs its WASM loader script to make each model, and clears what it set up once the
 // model is made. In a module worker that script is imported, and an import only ever runs once, so
 // a model made after the first (the face, the cut-out) failed with "ModuleFactory not set". Each
 // of those gets the loader at an address of its own, which runs it afresh.
-const filesFor = (name) => ({ ...files, wasmLoaderPath: `${files.wasmLoaderPath}?for=${name}` });
+let loader = 0;
+const filesFor = (name) => ({ ...files, wasmLoaderPath: `${files.wasmLoaderPath}?for=${name}&try=${++loader}` });
 
 // On the graphics card (about 25 ms a look for hands and face; the very first time ever it takes
 // a moment to set up, then Chromium remembers), or on the processor if that fails (about 60 ms).
@@ -35,33 +39,50 @@ const ready = (async () => {
 function wantFace() {
   // (with blendshapes: how shut each eye is, for a wink; and the head's turn, for the skull)
   const make = (on) => FaceLandmarker.createFromOptions(filesFor('face-' + on), { ...options('face_landmarker.task', on), numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true });
-  faceMaking ||= make(delegate)
-    .catch((err) => { if (delegate === 'CPU') throw err; console.warn('face tracking on the graphics card failed, using the processor:', err); return make('CPU'); })
-    .then((f) => { face = f; }, (err) => { faceError = String(err?.message || err); console.error('face tracking failed:', err); });
+  wantFeature('face', make);
 }
 // The selfie segmenter (who's a person in the picture), made the first time a look wants it.
 function wantCut() {
   const make = (on) => ImageSegmenter.createFromOptions(filesFor('cut-' + on), { ...options('selfie_segmenter.tflite', on), outputConfidenceMasks: true, outputCategoryMask: false });
-  cutMaking ||= make(delegate)
-    .catch((err) => { if (delegate === 'CPU') throw err; console.warn('cut-out on the graphics card failed, using the processor:', err); return make('CPU'); })
-    .then((c) => { cutter = c; }, (err) => { cutError = String(err?.message || err); console.error('cut-out failed:', err); });
+  wantFeature('cut', make);
 }
+function featureFailed(name, err) {
+  const f = optional[name];
+  try { f.model?.close(); } catch { /* already failed */ }
+  f.model = null;
+  f.error = String(err?.message || err);
+  f.tries = Math.max(1, f.tries);
+  f.retryAt = performance.now() + 3000 * f.tries;
+}
+function wantFeature(name, make) {
+  const f = optional[name];
+  if (f.model || f.making || f.tries >= 4 || performance.now() < f.retryAt) return;
+  f.tries++;
+  f.making = make(delegate)
+    .catch((err) => { if (delegate === 'CPU') throw err; return make('CPU'); })
+    .then((model) => { f.model = model; }, (err) => featureFailed(name, err))
+    .finally(() => { f.making = null; });
+}
+const featureError = (name, wanted) => {
+  const f = optional[name];
+  return wanted && f.error ? { message: f.error, retrying: f.tries < 4 } : null;
+};
 // Where a person is, at 256 across: 0-255 a pixel.
 async function personMask(frame, t) {
   const w = 256, h = Math.max(1, Math.round((256 * frame.height) / frame.width));
   const small = await createImageBitmap(frame, { resizeWidth: w, resizeHeight: h, resizeQuality: 'low' });
   try {
-    const r = cutter.segmentForVideo(small, t);
-    const m = r.confidenceMasks?.[0];
-    if (!m) { r.close(); return null; }
-    const f = m.getAsFloat32Array(), data = new Uint8Array(f.length);
-    for (let i = 0; i < f.length; i++) data[i] = f[i] * 255;
-    const out = { data, w: m.width, h: m.height };
-    r.close();
-    return out;
+    const r = optional.cut.model.segmentForVideo(small, t);
+    try {
+      const m = r.confidenceMasks?.[0];
+      if (!m) return null;
+      const f = m.getAsFloat32Array(), data = new Uint8Array(f.length);
+      for (let i = 0; i < f.length; i++) data[i] = f[i] * 255;
+      return { data, w: m.width, h: m.height };
+    } finally { r.close(); }
   } finally { small.close(); }
 }
-ready.then(() => postMessage({ ready: true }), (err) => postMessage({ error: String(err?.message || err) }));
+ready.then(() => postMessage({ type: 'ready' }), (err) => postMessage({ type: 'fatal', error: String(err?.message || err) }));
 
 onmessage = async ({ data }) => {
   const { frame, t } = data;
@@ -69,14 +90,27 @@ onmessage = async ({ data }) => {
     await ready;
     const start = performance.now();
     const h = hands.detectForVideo(frame, t);
-    if (data.face && !face) wantFace();
-    const fr = data.face && face ? face.detectForVideo(frame, t) : null, f = fr?.faceLandmarks[0] || null;
+    let fr = null, mask = null;
+    if (data.face) {
+      wantFace();
+      if (optional.face.model) try {
+        fr = optional.face.model.detectForVideo(frame, t);
+        optional.face.error = ''; optional.face.tries = 0;
+      } catch (err) { featureFailed('face', err); }
+    }
+    const f = fr?.faceLandmarks[0] || null;
     // how shut each eye is (0 open, 1 shut): [left, right], the person's own
     const shapes = fr?.faceBlendshapes?.[0]?.categories, shut = (name) => shapes?.find((c) => c.categoryName === name)?.score ?? 0;
     const eyes = shapes ? [shut('eyeBlinkLeft'), shut('eyeBlinkRight')] : null;
-    if (data.cut && !cutter) wantCut();
-    const mask = data.cut && cutter ? await personMask(frame, t) : null;
+    if (data.cut) {
+      wantCut();
+      if (optional.cut.model) try {
+        mask = await personMask(frame, t);
+        optional.cut.error = ''; optional.cut.tries = 0;
+      } catch (err) { featureFailed('cut', err); }
+    }
     postMessage({
+      type: 'result',
       t,
       ms: performance.now() - start,
       // points: on the frame (0-1); world: the same in 3D, in metres round the hand's middle, for
@@ -90,11 +124,10 @@ onmessage = async ({ data }) => {
       pose: f && fr.facialTransformationMatrixes?.[0] ? Array.from(fr.facialTransformationMatrixes[0].data) : null,
       eyes,
       mask,
-      cutError: data.cut ? cutError : null,
-      faceError: data.face ? faceError : null,
+      featureErrors: { face: featureError('face', data.face), cut: featureError('cut', data.cut) },
     }, mask ? [mask.data.buffer] : []);
   } catch (err) {
-    postMessage({ t, hands: [], face: null, error: String(err?.message || err) });
+    postMessage({ type: 'fatal', t, error: String(err?.message || err) });
   } finally {
     frame.close();
   }

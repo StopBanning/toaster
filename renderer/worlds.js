@@ -1193,7 +1193,8 @@ export function createWorlds(canvas, wordsCanvas) {
   // brings another look for 8 bars
   let lookPick = 'auto', lookNow = 'film', lookAt = 0, lookTill = null, lookAuto = 'film', colours = { bg: [0, 0, 0], fg: [255, 255, 255] };
   const lookProgs = new Map(), lookPics = {};
-  let looksStarted = false; // every look's program started (the first time the worlds draw)
+  let looksStarted = 0; // how many of the looks have had their programs started (see draw)
+  let lastBox = null; // where the code was at the last cut (see place)
   let fbo2 = null, fbo2Tex = null, gridText = null, gridAt = -9;
   // the code as a grid of characters, for the code look: read in order, round and round
   const GRID = [96, 40], gridPic = makeCanvas(1);
@@ -1392,8 +1393,13 @@ export function createWorlds(canvas, wordsCanvas) {
     return p;
   }
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ok = false; });
-  canvas.addEventListener('webglcontextrestored', () => { fbo = fboTex = fbo2 = fbo2Tex = skyFbo = skyTex = skyFor = null; lookProgs.clear(); looksStarted = false; for (const k in lookPics) delete lookPics[k]; build(); });
-  build();
+  canvas.addEventListener('webglcontextrestored', () => { fbo = fboTex = fbo2 = fbo2Tex = skyFbo = skyTex = skyFor = null; lookProgs.clear(); looksStarted = 0; for (const k in lookPics) delete lookPics[k]; build(); });
+  // (the worlds' shader, the biggest, about a minute to compile the first time: started when the
+  // worlds are first shown, or warmed by the app once its first visual has settled; at startup it worked
+  // through that minute alongside whatever was being shown, after every update that changed it.
+  // Started early, it's asked after now and then till it's done, where the driver compiles in the
+  // background, so the settling's long over by the time the worlds are picked and they show at once)
+  const warm = () => { try { if (par && jobs && !gl.isContextLost() && !(jobs.world.ready() && jobs.post.ready())) setTimeout(warm, 1000); } catch {} };
 
   // The pictures the shader reads. The terminal: the code as it is now, green on black, the parts'
   // names in lime.
@@ -1471,7 +1477,7 @@ export function createWorlds(canvas, wordsCanvas) {
   // beside the code; in a tall one just above the code (under the camera or the card). room: how
   // wide the words may be.
   function place() {
-    const W = innerWidth, H = innerHeight, box = boxOf?.(), portrait = H > W, m = 24;
+    const W = innerWidth, H = innerHeight, box = (lastBox = boxOf?.()), portrait = H > W, m = 24;
     if (portrait) {
       // under the camera or the card, just above the code; with neither, under the code if there's
       // room, the planet a band along the bottom
@@ -1642,6 +1648,7 @@ export function createWorlds(canvas, wordsCanvas) {
 
   return {
     get broken() { return !ok; },
+    warm() { if (!gl) { build(); warm(); } },
     get world() { return card ? 'dawn' : shotNow?.w.key; },
     // a kick: its light, and the next world if it's the bar's first (onOne; null before the beat
     // is found): once a bar, or every other with fewer flashes. (A cut on every kick, once a beat,
@@ -1695,11 +1702,14 @@ export function createWorlds(canvas, wordsCanvas) {
     },
     // info: the song ({ title, artist }), the code's lines, the bar, what played in it
     draw(t, eng, info) {
+      if (!gl) build();
       if (!ok && !finish()) return;
-      // every look's program started the first time the worlds draw, in the background
-      if (!looksStarted && par) {
-        looksStarted = true;
-        for (const l of LOOKS) if (l.frag) try { lookProg(l); } catch (err) { console.error('worlds look:', l.key, err); }
+      // every look's program started in the background once the worlds draw, one every few frames
+      // (all eleven in the first frame, with the pictures they need, held it up 45-90 ms; the look
+      // in use is started whenever it's asked for)
+      if (par && looksStarted < LOOKS.length && frame % 6 === 0) {
+        const l = LOOKS[looksStarted++];
+        if (l.frag) try { lookProg(l); } catch (err) { console.error('worlds look:', l.key, err); }
       }
       boxOf = info.codeBox || null;
       const dt = Math.min(0.1, Math.max(0, t - last));
@@ -1863,7 +1873,9 @@ export function createWorlds(canvas, wordsCanvas) {
         // tall window), so the code's own lines stay clear of it (the horizon where the push has
         // it: the circle scaled about the apex)
         if (!look.whole) {
-          const box = boxOf?.(), overPlanet = box && (box.top + box.bottom) / 2 > Z * (innerWidth / 1920) * zoom;
+          // (the code where it was at the cut: measured every frame, it held each frame up for the
+          // page's layout)
+          const box = lastBox, overPlanet = box && (box.top + box.bottom) / 2 > Z * (innerWidth / 1920) * zoom;
           gl.uniform4f(lp.at('uPart'), W / 2, H - (Z + Rd * push) * C, Rd * push * C, overPlanet ? -1 : 1);
         }
         const seed = (hashText(title || 'toaster') % 997) + 1;

@@ -111,6 +111,7 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
 .panel .dim { color: var(--dim); }
 #roll.cut { visibility: hidden; } /* (no room for all of it: see fitRoll) */
 #sys { position: fixed; z-index: 2; top: 48px; right: 24px; margin: 0; font-size: calc(var(--size) * .58); }
+#sys[hidden] { display: none; } /* (.panel's inline-block would otherwise keep it up, an empty box in the corner) */
 body.card-on #sys { right: 348px; }
 
 /* ---------- now-playing ID card (N) ---------- */
@@ -171,7 +172,7 @@ header, footer {
 /* the header: a strip of its own (the visuals stop under it), its line just below the window's
    own buttons (36 px), so it runs under them too; the buttons in touching groups, as in the help,
    an on/off one filled while it's on */
-header { top: 0; height: 37px; padding-right: 150px; gap: 0; background: var(--bg); border-bottom: 1px solid var(--faint); -webkit-app-region: drag; }
+header { top: 0; height: 37px; left: env(titlebar-area-x, 0px); right: auto; width: env(titlebar-area-width, calc(100% - 138px)); padding-right: 8px; gap: 0; background: var(--bg); border-bottom: 1px solid var(--faint); -webkit-app-region: drag; }
 header button { -webkit-app-region: no-drag; }
 header .appname { margin-left: 10px; }
 header > button { margin-left: -1px; }
@@ -189,7 +190,7 @@ footer { bottom: 0; height: 32px; background: linear-gradient(transparent, var(-
 body.live header, body.live footer { opacity: .14; }
 body.clean header, body.clean footer { opacity: 0 !important; }
 /* Z: the code hidden, just the visuals (still laid out, so it shows again as it stands) */
-body.nocode #code { visibility: hidden; }
+body.nocode #code, body.nocode #err { visibility: hidden; }
 header:hover, footer:hover, header:focus-within { opacity: 1 !important; }
 /* recording: the bars stay out of the video (hover the header to reach stop; M stops it too) */
 body.recording header, body.recording footer { opacity: 0 !important; }
@@ -221,7 +222,14 @@ footer .keys { color: var(--dim); white-space: nowrap; overflow: hidden; text-ov
 @media (max-width: 1100px) { header .appname { display: none; } }
 @media (max-width: 1000px) { #b-strudel, #b-glass, #b-blocks { display: none; } }
 @media (max-width: 820px) { #b-orb, #b-card, #b-layout { display: none; } }
-@media (max-width: 640px) { #b-visual { display: none; } header { padding-right: 140px; } } /* (rec stays: the vertical layout is this narrow) */
+@media (max-width: 640px) {
+  #b-visual { display: none; } /* (rec stays: the vertical layout is this narrow) */
+  header { padding-left: 6px; padding-right: 6px; }
+  header > button { padding-left: 4px; padding-right: 4px; flex-shrink: 0; }
+  header > button.grp { margin-left: 4px; }
+  /* A long status yields space to the controls, not the other way round. */
+  header #status { min-width: 0; max-width: 52px; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; padding-right: 4px; letter-spacing: 0; }
+}
 
 .ver { font-size: .5em; opacity: .55; font-weight: 400; }
 
@@ -236,7 +244,6 @@ body.vertical.cam-on #code, body.vertical.wheel-up #code { padding-top: calc(42v
 /* the wheel up there shows the chord already, and the chord roll would be pushed off the bottom */
 body.vertical.wheel-up #roll { display: none; }
 body.vertical .wide-only, body.vertical footer .keys, body.vertical .appname { display: none; }
-body.vertical header { padding-right: 140px; }
 body.vertical #sys { top: auto; bottom: 40px; right: var(--safe); }
 /* the ID card is the top of the frame (with the camera in its photo), the code below it */
 body.vertical #card { top: 42px; left: 50%; right: auto; transform: translateX(-50%); width: min(340px, calc(100vw - 2 * var(--safe))); }
@@ -258,13 +265,12 @@ body.mini #card .c-fields > div:not(.c-title), body.mini #card .c-auth, body.min
 body.mini #card .c-fields { display: block; }
 body.mini.card-on #code { padding: 40px calc(var(--card-w, 160px) + 22px) 10px 14px; }
 body.mini header button:not(#b-mini) { display: none; }
-body.mini header { padding-right: 140px; }
 /* macOS draws the traffic lights in the header's left, and has no caption buttons on the
    right. Fullscreen hides the lights, so the gap goes with them. */
 .os-mac { display: none; }
 html.darwin .os-mac { display: inline; }
 html.darwin .os-win { display: none; }
-html.darwin header { padding-left: 78px; padding-right: 12px; }
+html.darwin header { left: 0; width: 100%; padding-left: 78px; padding-right: 12px; }
 html.darwin.full header { padding-left: 12px; }
 
 /* ---------- menu ---------- */

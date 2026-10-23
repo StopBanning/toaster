@@ -153,9 +153,15 @@ const DRUMS = ['bd', 'sd', 'hhc', 'hho'];
 const TOKEN = { bd: 'bd', sd: 'cp', hhc: 'hh', hho: 'oh' };
 const TOL = 0.35, MAXBARS = 16, CHORD_CONF = 0.6, LEAD_CONF = 0.5;
 
+// (a bar's steps for a part, worked out once per export (songSections starts it afresh): the
+// sections ask for them over and over, and a three-hour set took two seconds to write out)
+let stepMemo = new WeakMap();
 const steps = (b, p) => {
+  let m = stepMemo.get(b);
+  if (!m) stepMemo.set(b, (m = {}));
+  if (m[p]) return m[p];
   const v = b.parts?.[p === 'bassrhythm' ? 'bass' : p];
-  return Array.from({ length: 16 }, (_, s) => !!v?.[s]);
+  return (m[p] = Array.from({ length: 16 }, (_, s) => !!v?.[s]));
 };
 const has = (b, p) => {
   if (p === 'bass') return b.bass != null;
@@ -275,6 +281,7 @@ function samePart(a, b) {
 // repeat across the song (a growling bass misread as chords or lead), and reuses earlier parts when
 // a section returns.
 export function songSections(song) {
+  stepMemo = new WeakMap();
   const bars = song.bars || [];
   const blocks = [];
   for (let i = 0; i < bars.length; i += 4) blocks.push(bars.slice(i, i + 4));

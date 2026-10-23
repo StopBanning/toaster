@@ -205,9 +205,13 @@ function startFaces() {
     }
   });
   const done = () => {
-    if (faceProc === proc) faceProc = null;
+    if (faceProc !== proc) return; // an older helper mustn't empty the new one's replies
+    faceProc = null;
     faceWaiting.splice(0).forEach((reply) => reply({ faces: [] }));
   };
+  // The helper can exit between checking it and writing a frame. EPIPE belongs to the stream,
+  // not the child process's error event; release the waiting frames instead of crashing main.
+  proc.stdin.on('error', () => { done(); proc.kill(); });
   proc.on('exit', done);
   proc.on('error', done);
 }
@@ -384,12 +388,15 @@ function setUpIpc() {
     if (ours.some((dir) => { const rel = path.relative(dir, at); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); })) shell.showItemInFolder(at);
   });
   // Drop clips (J): each one arrives whole once it's done, beside the recordings in Videos\Toaster.
-  ipcMain.handle('clip:save', (_e, buf, ext) => {
+  // (its name taken at once, then written in the background: written in one go, the 16-26 MB held
+  // up the window and a recording's chunks meanwhile)
+  ipcMain.handle('clip:save', async (_e, buf, ext) => {
     const dir = path.join(app.getPath('videos'), 'Toaster');
     fs.mkdirSync(dir, { recursive: true });
     const dotExt = '.' + (ext === 'webm' ? 'webm' : 'mp4');
     const file = freeBase(path.join(dir, `toaster drop ${stamp()}`), [dotExt]) + dotExt;
-    fs.writeFileSync(file, Buffer.from(buf), { flag: 'wx' });
+    fs.closeSync(fs.openSync(file, 'wx'));
+    try { await fs.promises.writeFile(file, Buffer.from(buf)); } catch (err) { fs.rmSync(file, { force: true }); throw err; }
     return file;
   });
   // The hand log (Ctrl+Shift+H, renderer/handlog.js): lines of JSON (numbers only), in the
@@ -467,7 +474,9 @@ app.whenReady().then(() => {
   setUpCapture();
   setUpIpc();
   createWindow();
-  startNowPlaying();
+  // (the now-playing helper a moment after: PowerShell loading .NET took a core while the window and
+  // its graphics were starting; the page gets the latest reading whenever it comes)
+  setTimeout(startNowPlaying, 2000);
 });
 
 app.on('window-all-closed', () => {

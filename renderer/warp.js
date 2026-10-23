@@ -109,7 +109,7 @@ export function createWarp(canvas) {
   }
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ok = false; });
   canvas.addEventListener('webglcontextrestored', () => { tex = []; fbo = []; build(); });
-  build();
+  let built = false; // (built the first time it's shown, not at startup)
 
   return {
     get broken() { return !ok; },
@@ -117,6 +117,7 @@ export function createWarp(canvas) {
     // Not in use: drop the pictures' memory too (draw() makes them again).
     clear() { if (ok) { size(1, 1); } canvas.width = canvas.height = 1; },
     draw(t, eng, col) {
+      if (!built) { built = true; build(); }
       if (!ok) return;
       const W = Math.max(1, Math.round(innerWidth / 2)), H = Math.max(1, Math.round(innerHeight / 2));
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }

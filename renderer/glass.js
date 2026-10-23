@@ -139,6 +139,7 @@ export function createGlass(canvas, code) {
   // where the code is on screen (it drifts over that), measured as it's drawn
   let area = null;
   const seen = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+  let hidden = false, wordsShown = true; // (the code hidden (Z); whether the words canvas has it)
 
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; prog = null; });
   canvas.addEventListener('webglcontextrestored', () => { ready = false; prog = null; });
@@ -203,7 +204,8 @@ export function createGlass(canvas, code) {
     pulse *= Math.exp(-dt * 5);
     spin += dt * (0.25 + 0.9 * mid);
     const R = 0.18 * Math.min(W, H);
-    const code = seen.x1 > seen.x0 ? seen : { x0: W * 0.2, x1: W * 0.8, y0: H * 0.2, y1: H * 0.8 };
+    // (over the code; with it hidden (Z) or none yet, about the middle of the window)
+    const code = seen.x1 > seen.x0 && !hidden ? seen : { x0: W * 0.2, x1: W * 0.8, y0: H * 0.2, y1: H * 0.8 };
     if (!area) area = { ...code };
     for (const k of ['x0', 'x1', 'y0', 'y1']) area[k] = ease(area[k], code[k], 0.5);
     const cx = (area.x0 + area.x1) / 2 + (area.x1 - area.x0) * 0.3 * Math.sin(t * 0.09) * Math.cos(t * 0.05);
@@ -261,6 +263,13 @@ export function createGlass(canvas, code) {
   // cleared and drawn inside its own rectangle, on whole pixels, so lines never bleed into each
   // other. Returns the part of the picture that changed ({ x, y, w, h, full }), or null.
   function drawCode(H, dpr) {
+    // (with the code hidden (Z) the glass shows none of it: the words cleared once and left so; it's
+    // drawn again in full when the code comes back, as any change to the page's classes does)
+    if (hidden) {
+      if (wordsShown) { wordsShown = false; wx.clearRect(0, 0, words.width, words.height); return { full: true }; }
+      return null;
+    }
+    wordsShown = true;
     const sx = wx;
     const cs = getComputedStyle(code), size = parseFloat(cs.fontSize), family = cs.fontFamily;
     if (size !== font.size || family !== font.family) {
@@ -392,6 +401,7 @@ export function createGlass(canvas, code) {
       const dpr = Math.min(1.5, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
       const w = Math.round(W * dpr), h = Math.round(H * dpr);
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      hidden = document.body.classList.contains('nocode');
       const R = move(t, eng, W, H);
       compose(W, H, dpr, col, layers);
       gl.viewport(0, 0, w, h);
