@@ -432,12 +432,14 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       for (let k = this.band.ring[0]; k <= this.band.ring[1]; k++) ringE += 10 ** (db[k] / 10);
       this.ringT.push(t);
       this.ringV.push(10 * Math.log10(ringE + 1e-12));
-      if (this.ringT[0] < t - 1.2) { this.ringT.shift(); this.ringV.shift(); }
+      // (every one gone that's older than the window, not one a frame: after a pause in the music the
+      // ones from before it stayed on, seconds of them)
+      while (this.ringT[0] < t - 1.2) { this.ringT.shift(); this.ringV.shift(); }
       let bodyE = 0;
       for (let k = this.band.body[0]; k <= this.band.body[1]; k++) bodyE += 10 ** (db[k] / 10);
       this.bodyT.push(t);
       this.bodyV.push(10 * Math.log10(bodyE + 1e-12));
-      if (this.bodyT[0] < t - 2) { this.bodyT.shift(); this.bodyV.shift(); }
+      while (this.bodyT[0] < t - 2) { this.bodyT.shift(); this.bodyV.shift(); }
       this.pumpCheck(t);
       // (not the first frame after a reset or a silence: everything rises from nothing there).
       // Timed by the audio clock where there is one (audioT): the sound arrives in uneven slices
@@ -453,7 +455,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         }
         this.fluxT.push(at);
         this.fluxV.push(flux(this.band.all));
-        if (this.fluxT[0] < t - 11) { this.fluxT.shift(); this.fluxV.shift(); }
+        while (this.fluxT[0] < t - 11) { this.fluxT.shift(); this.fluxV.shift(); }
       }
       this.lastAudioT = audioT;
       prev.set(lg);
@@ -1564,8 +1566,11 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         }
       }
       const at = (o) => Math.round((o.t - phase) / q16), sets = { bd: new Set(), sd: new Set(), hh: new Set() };
-      for (const o of s) sets[o.id].add(at(o));
-      const share = (gap) => s.filter((o) => { const k = at(o), S = sets[o.id]; return S.has(k + gap) || S.has(k - gap); }).length / s.length;
+      // An off-grid hit isn't repetition evidence just because rounding puts it near another.
+      // Keep all hits in the denominator: a grid fitting only a few mustn't score a perfect loop.
+      const fitted = s.filter((o) => Math.abs(o.t - phase - at(o) * q16) < 0.015);
+      for (const o of fitted) sets[o.id].add(at(o));
+      const share = (gap) => fitted.filter((o) => { const k = at(o), S = sets[o.id]; return S.has(k + gap) || S.has(k - gap); }).length / s.length;
       const v = Math.max(share(16), share(8));
       this.repCache.set(key, v);
       return v;

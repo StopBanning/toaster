@@ -180,6 +180,10 @@ function drawBolt(g, S, rnd) {
   g.globalAlpha = 1;
 }
 
+// (a fresh compile is left a moment after it's done before it's drawn with, as the scenery's is; one
+// done within QUICK_MS of being asked came from the shader cache, and is used at once)
+const SETTLE_MS = 1500, QUICK_MS = 150;
+
 export function createChrome(canvas) {
   let gl = null, ok = false, stepProg, surfProg, showProg, colProg, buf, water = [], fbo = [], surfTex = null, surfFbo = null, imgTex = null, imgFbo = null, filmTex, boltTex, textTex;
   let ls = {}, lf = {}, lv = {}, lc = {}, i = 0, w = 0, h = 0, sw = 0, sh = 0, iw = 0, ih = 0;
@@ -192,15 +196,20 @@ export function createChrome(canvas) {
   const bg = boltCanvas.getContext('2d');
   let seed = 7;
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  const compile = (src, type) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  // A program started now, compiled in the background where the driver can (asked about at once,
+  // the first show on an empty shader cache held the whole window up 0.4 s); finish() looks at it
+  // once it's done.
   const program = (frag) => {
-    const pr = gl.createProgram();
-    gl.attachShader(pr, compile(VERT, gl.VERTEX_SHADER));
-    gl.attachShader(pr, compile(frag, gl.FRAGMENT_SHADER));
+    const pr = gl.createProgram(), fs = gl.createShader(gl.FRAGMENT_SHADER), vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, VERT);
+    gl.compileShader(vs);
+    gl.shaderSource(fs, frag);
+    gl.compileShader(fs);
+    gl.attachShader(pr, vs);
+    gl.attachShader(pr, fs);
     gl.bindAttribLocation(pr, 0, 'p');
     gl.linkProgram(pr);
-    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
-    return pr;
+    return { pr, fs };
   };
   const tex2d = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
   const target = (t) => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); return f; };
@@ -209,16 +218,13 @@ export function createChrome(canvas) {
     gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: false });
     // (the ripples need float pictures to draw into; without them the chrome stays off)
     if (!gl || !gl.getExtension('EXT_color_buffer_float')) return;
-    try { stepProg = program(STEP); surfProg = program(SURF); showProg = program(SHOW); colProg = program(COLLAGE); } catch (err) { console.error('chrome:', err); return; }
+    par = gl.getExtension('KHR_parallel_shader_compile');
+    jobs = { at: performance.now(), done: 0, progs: [STEP, SURF, SHOW, COLLAGE].map(program) };
     buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    ls = Object.fromEntries(['water', 'texel', 'damp', 'aspect', 'drops', 'nDrops'].map((k) => [k, gl.getUniformLocation(stepProg, k)]));
-    lf = Object.fromEntries(['water', 'texel', 'aspect', 'time', 'swell', 'ripple', 'thick'].map((k) => [k, gl.getUniformLocation(surfProg, k)]));
-    lv = Object.fromEntries(['surf', 'film', 'bolt', 'iris', 'flash', 'boltOn'].map((k) => [k, gl.getUniformLocation(showProg, k)]));
-    lc = Object.fromEntries(['img', 'surf', 'film', 'text', 'res', 'rects', 'kinds', 'nRects', 'time', 'pulse', 'tear'].map((k) => [k, gl.getUniformLocation(colProg, k)]));
     filmTex = tex2d();
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 512, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, filmStrip());
     boltTex = tex2d();
@@ -227,7 +233,28 @@ export function createChrome(canvas) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
     w = h = sw = sh = iw = ih = 0;
     layBar = null;
+  }
+  // The four programs done and settled (a fresh compile's driver work goes on a moment after it's
+  // done, a draw then waiting for it, as the scenery's does; one from the cache is used at once):
+  // their places found, and the chrome can draw. False till then, and for good if one failed.
+  function finish() {
+    if (!jobs) return false;
+    const now = performance.now();
+    if (!jobs.done) {
+      if (par && !jobs.progs.every((j) => gl.getProgramParameter(j.pr, par.COMPLETION_STATUS_KHR))) return false;
+      jobs.done = now;
+    }
+    if (par && jobs.done - jobs.at > QUICK_MS && now - jobs.done < SETTLE_MS) return false;
+    const bad = jobs.progs.find((j) => !gl.getProgramParameter(j.pr, gl.LINK_STATUS));
+    if (bad) { if (!gl.isContextLost()) console.error('chrome:', gl.getShaderInfoLog(bad.fs) || gl.getProgramInfoLog(bad.pr)); jobs = null; return false; }
+    [stepProg, surfProg, showProg, colProg] = jobs.progs.map((j) => j.pr);
+    jobs = null;
+    ls = Object.fromEntries(['water', 'texel', 'damp', 'aspect', 'drops', 'nDrops'].map((k) => [k, gl.getUniformLocation(stepProg, k)]));
+    lf = Object.fromEntries(['water', 'texel', 'aspect', 'time', 'swell', 'ripple', 'thick'].map((k) => [k, gl.getUniformLocation(surfProg, k)]));
+    lv = Object.fromEntries(['surf', 'film', 'bolt', 'iris', 'flash', 'boltOn'].map((k) => [k, gl.getUniformLocation(showProg, k)]));
+    lc = Object.fromEntries(['img', 'surf', 'film', 'text', 'res', 'rects', 'kinds', 'nRects', 'time', 'pulse', 'tear'].map((k) => [k, gl.getUniformLocation(colProg, k)]));
     ok = true;
+    return true;
   }
   // the water at a fifth of the window's size (ripples are smooth), in two pictures to bounce
   // between; the surface at a third; the chrome itself at full size, for the collage to cut up
@@ -257,7 +284,9 @@ export function createChrome(canvas) {
   }
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ok = false; });
   canvas.addEventListener('webglcontextrestored', () => { water = []; fbo = []; surfTex = imgTex = null; build(); });
-  build();
+  // (built the first time it's shown, not at startup: its four programs waited on the graphics
+  // card before Toaster could start listening, for a background most never pick)
+  let built = false, par = null, jobs = null;
 
   const drop = (x, y, r, depth) => { drops.push([x, y, r, depth]); if (drops.length > 12) drops.shift(); };
   const bolt = () => {
@@ -388,7 +417,8 @@ export function createChrome(canvas) {
     clear() { if (ok) size(1, 1, 1, 1, 1, 1); canvas.width = canvas.height = 1; since = null; layBar = null; lay = { rects: [], text: null }; },
     // song: { title, artist } (or null); calm: fewer flashes; collage: the collage over it or not
     draw(t, eng, { song = null, calm = false, collage = true } = {}) {
-      if (!ok) return;
+      if (!built) { built = true; build(); }
+      if (!ok && !finish()) return;
       if (since === null) since = t;
       for (const o of eng.onsets) {
         if (seen.has(o)) continue;

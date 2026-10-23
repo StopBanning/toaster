@@ -23,7 +23,8 @@ import { createChrome } from './chrome.js';
 import { createSpectro } from './spectro.js';
 import { createScenery } from './scenery.js';
 import { createCuts } from './cuts.js';
-import { createTape, songMidi, songStrudel } from './tape.js';
+import { createTape } from './tape.js';
+import { buildSongFiles } from './tape-export.js';
 import { createClips } from './clips.js';
 import { makeDemo } from './demo.js';
 import { NEWS, newsSince } from './news.js';
@@ -56,9 +57,24 @@ const eng = createEngine({ fast, mid, slow, sampleRate: ac.sampleRate });
 eng.tape = createTape(); // the song as heard, for X
 eng.tape.who = () => songNames(currentSong());
 const view = createCodeView(LINE_IDS);
-const field = createField($('field'));
-// the camera as text (C's fourth setting): a layer of its own, over whichever background is picked
-const asciiCam = createField($('asciicam'));
+let fieldView = null, fieldPool = '';
+const field = {
+  clear: () => fieldView?.clear(),
+  kick: (s) => fieldView?.kick(s),
+  setPool(text) { fieldPool = text; fieldView?.setPool(text); },
+  draw(...args) {
+    if (!fieldView) {
+      fieldView = createField($('field'));
+      if (fieldPool) fieldView.setPool(fieldPool);
+    }
+    fieldView.draw(...args);
+  },
+};
+// the camera as text (C's fourth setting): a layer of its own, over whichever background is picked,
+// made the first time it's shown (a graphics context and a window-sized buffer otherwise kept from
+// startup for a setting most never use)
+let asciiCamField = null;
+const asciiCam = { clear: () => asciiCamField?.clear(), draw: (...a) => (asciiCamField ??= createField($('asciicam'))).draw(...a) };
 const tunnel = createTunnel($('vis'));
 const spiral = createSpiral($('vis')), wheel = createWheel($('vis')); // on the tunnel's canvas
 const warp = createWarp($('warp'));
@@ -300,7 +316,17 @@ async function useFile(file) {
   node.connect(ac.destination);
   state.el = el;
   attach(node, 'file', file.name);
-  await el.play();
+  try { await el.play(); } catch (err) {
+    if (state.el !== el) return; // a newer source already took over
+    detach();
+    state.source = null;
+    state.label = '';
+    document.body.classList.remove('live');
+    $('status').classList.remove('on');
+    $('status').textContent = restingStatus();
+    throw err;
+  }
+  if (outdated(ticket)) el.pause();
 }
 
 async function chooseInput() {
@@ -310,8 +336,9 @@ async function chooseInput() {
   } catch {
     throw new Error('Allow microphone access so the inputs can be listed.');
   }
-  const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
-  probe.getTracks().forEach((t) => t.stop());
+  let inputs;
+  try { inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); }
+  finally { probe.getTracks().forEach((t) => t.stop()); }
   const list = $('device-list');
   list.innerHTML = '';
   for (const d of inputs) {
@@ -353,6 +380,7 @@ function showError(err) {
 // Where the code is on screen (its lines' text and the panels between them), for the worlds to
 // keep their words clear of it. Measured only when they cut to a new world.
 function codeBox() {
+  if (state.codeHidden) return null; // (hidden (Z): nothing to keep clear of)
   let top = Infinity, bottom = -Infinity, right = 0, lines = -Infinity;
   const panels = [];
   for (const el of document.querySelectorAll('#code .ln .txt, #code .panel')) {
@@ -503,7 +531,7 @@ function toggleSpectroColours() {
 }
 // A, while the scenery is on: the next scene (auto, a new one each song; then each by name), and
 // after the last, auto again in the theme's two colours rather than its own
-const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks' };
+const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond', basement: 'the basement show' };
 function nextScene() {
   const all = ['auto', ...scenery.scenes];
   if (state.sceneryTheme) { state.sceneryTheme = false; state.sceneryScene = 'auto'; }
@@ -714,15 +742,23 @@ function songNames(s) {
 // X: the song so far, decompiled: a MIDI file (drums, bass, chords, lead) and the whole song as
 // Strudel code (every 4 bars, the different ones named, in order with arrange()), into
 // Music\Toaster.
+let exporting = false;
 async function exportSong() {
+  if (exporting) return; // X held or pressed again mustn't build the same snapshot twice
+  if (!window.nc?.saveSong) { flashStatus('exporting works in the app, not in a browser'); return; }
   const song = eng.tape.song(eng.tempo.down);
   if (!song) { flashStatus('nothing to export yet: no beat found'); return; }
-  // (named after the song it was: X just after a song ends exports that one)
-  const { name, about } = song.who || songNames(currentSong());
-  const midi = songMidi(song, name), code = songStrudel(song, about);
-  if (!window.nc?.saveSong) { flashStatus('exporting works in the app, not in a browser'); return; }
-  const file = await window.nc.saveSong(name, midi, code);
-  showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')}`, file);
+  exporting = true;
+  clearTimeout(statusTimer);
+  $('status').textContent = 'exporting…';
+  try {
+    // song() makes a snapshot; the worker owns a copy while listening keeps adding to the tape.
+    // (named after the song it was: X just after a song ends exports that one)
+    const { name, about } = song.who || songNames(currentSong());
+    const { midi, code } = await buildSongFiles(song, name, about);
+    const file = await window.nc.saveSong(name, midi, code);
+    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')}`, file);
+  } finally { exporting = false; $('status').textContent = restingStatus(); }
 }
 
 // O: the code as it is now, opened in the Strudel REPL in your browser, to play and change.
@@ -778,30 +814,45 @@ async function toggleCam() {
 }
 
 async function toggleLayout() {
-  // not mid-recording: the window changes shape, and the video can't
-  if (rec.mr) { flashStatus(`the layout can't change while recording (${K('rec')} stops it)`); return; }
-  if (state.mini) await toggleMini(); // the full window back first
-  state.vertical = !state.vertical;
-  document.body.classList.toggle('vertical', state.vertical);
-  $('b-layout').textContent = state.vertical ? 'wide' : '9:16';
-  applyCard();
-  await window.nc?.setVertical(state.vertical);
-  // drop clips record the window's shape: start them again at the new one
-  if (clips.on) { await clips.toggle(); await new Promise((r) => setTimeout(r, 400)); await clips.toggle(); }
+  return changeWindowMode('vertical');
 }
 
 // The mini player (W), like Spotify's: the window shrinks to a small panel in the corner of the
 // screen, over everything else, still listening: the code over the background. W again (or its
 // button) brings the window back where it was.
 async function toggleMini() {
-  if (rec.mr) { flashStatus(`the window can't change size while recording (${K('rec')} stops it)`); return; }
-  if (!state.mini && state.vertical) await toggleLayout(); // from the wide layout
-  state.mini = !state.mini;
-  document.body.classList.toggle('mini', state.mini);
-  $('b-mini').textContent = state.mini ? 'back' : 'mini';
-  await window.nc?.setMini(state.mini);
-  // drop clips record the window's shape: start them again at the new one
-  if (clips.on) { await clips.toggle(); await new Promise((r) => setTimeout(r, 400)); await clips.toggle(); }
+  return changeWindowMode('mini');
+}
+
+let windowChanging = false;
+async function changeWindowMode(mode) {
+  if (rec.mr) { flashStatus(`the window can't change size while recording (${K('rec')} stops it)`); return false; }
+  if (windowChanging) return false;
+  windowChanging = true;
+  let changed = false;
+  const apply = async (which, on) => {
+    const method = which === 'mini' ? 'setMini' : 'setVertical';
+    // The desktop replies with the new state (false is a successful exit). A web adapter may
+    // refuse entry with false; a missing adapter or a rejected call is not a successful resize.
+    if (await window.nc?.[method]?.(on) !== on) throw new Error('This window layout is only available in the desktop app.');
+    state[which] = on;
+    changed = true;
+    document.body.classList.toggle(which, on);
+    $(which === 'mini' ? 'b-mini' : 'b-layout').textContent = which === 'mini' ? (on ? 'back' : 'mini') : (on ? 'wide' : '9:16');
+    if (which === 'vertical') applyCard();
+  };
+  try {
+    const on = !state[mode], other = mode === 'mini' ? 'vertical' : 'mini';
+    if (on && state[other]) await apply(other, false);
+    await apply(mode, on);
+    return true;
+  } catch (err) { showError(err); return false; }
+  finally {
+    try {
+      // A successful first resize still matters if the second call was refused.
+      if (changed && clips.on) { await clips.toggle(); await new Promise((r) => setTimeout(r, 400)); await clips.toggle(); }
+    } finally { windowChanging = false; }
+  }
 }
 
 // The ID card has its own on/off for each layout: off in the wide one until you turn it on, on in
@@ -1155,6 +1206,7 @@ function showLayers() {
 // drawing a still screen at 60). The next sound brings it straight back. Never while recording,
 // with the camera on or during a drop.
 let poolAt = 0, rollAt = 0, footerAt = 0, lastFrame = 0, windowShown = true;
+let worldsWarmScheduled = false;
 let trackShown = ''; // the tracking trouble last told about (see draw)
 window.nc?.onWindowShown((shown) => { windowShown = shown; });
 function frameGap(t) {
@@ -1189,10 +1241,18 @@ function draw(now) {
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
   else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
+  // Don't make the worlds' compiler compete with the first visual. In particular a cold scenery
+  // shader may take longer than 30 seconds: start that clock only once it actually draws.
+  const settled = mode === 'scenery' ? !!scenery.drawnScene : mode === 'worlds' ? !worlds.broken : mode === 'chrome' ? !chrome.broken : true;
+  if (!worldsWarmScheduled && settled) {
+    worldsWarmScheduled = true;
+    setTimeout(() => worlds.warm(), 30000);
+  }
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
-  if (t - poolAt > 2) { poolAt = t; field.setPool($('code').textContent); }
+  // (the code rain's characters: the code's lines, not the panels' boxes, which rained as +)
+  if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
   if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
   if (LAYER_ON.dotcam()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
@@ -1204,10 +1264,12 @@ function draw(now) {
     tracker.update(cam.video, state.eyes || windows || takeover.active || lens.showing || portal.wantsFace, ['cut-out', 'dots', 'voxels'].includes(CAM_FX[state.camFx]) || portal.wantsCut);
     // tracking that couldn't start is said (once, and again if it gives up), so the hand effects
     // not working isn't a mystery
-    const trouble = tracker.error ? `${tracker.error}|${tracker.gaveUp}` : '';
+    const optionalTrouble = Object.entries(tracker.featureErrors).filter(([, err]) => err);
+    const trouble = tracker.error ? `${tracker.error}|${tracker.gaveUp}` : JSON.stringify(optionalTrouble);
     if (trouble !== trackShown) {
       trackShown = trouble;
-      if (trouble) showNotice(tracker.gaveUp ? `Hand and face tracking is off (${tracker.error}). The camera still works; turning it off and on (C) tries again.` : `Hand and face tracking had trouble starting (${tracker.error}); trying again.`);
+      if (tracker.error) showNotice(tracker.gaveUp ? `Hand and face tracking is off (${tracker.error}). The camera still works; turning it off and on (C) tries again.` : `Hand and face tracking had trouble (${tracker.error}); trying again.`);
+      else if (optionalTrouble.length) showNotice(optionalTrouble.map(([name, err]) => `${name === 'face' ? 'Face tracking' : 'Cut-out'} is unavailable (${err.message}). ${err.retrying ? 'Trying again.' : 'Turn the camera off and on (C) to try again.'}`).join(' ') + ' Hand tracking still works.');
     }
     const where = { place: cam.place, crop: cam.drawCrop, rect: cam.rect, col };
     // a portal, while one is open, stands in for the finger frame (and the hand signs)
@@ -1250,6 +1312,11 @@ function showVisMenu(open) {
 $('b-visual').onclick = () => showVisMenu(visMenu.hidden);
 visMenu.onclick = (e) => { const b = e.target.closest('button'); if (b) { setVisual(+b.dataset.i); showVisMenu(false); } };
 addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closest('#vis-menu, #b-visual')) showVisMenu(false); }, true);
+// the koi pond: a click on the water (not on a button, a menu or a panel) drops food there, and the
+// koi nearest come to it
+addEventListener('click', (e) => {
+  if (VISUALS[state.visual] === 'scenery' && sceneShown() === 'koi' && !e.target.closest('button, a, input, select, dialog, [role="menu"], .panel, #menu, #bar, footer, #alerts, #notice, #err, #card')) scenery.feed(e.clientX, e.clientY);
+});
 $('b-blocks').onclick = () => nextBlocks();
 $('b-cam').onclick = () => toggleCam();
 $('b-card').onclick = () => toggleCard();
@@ -1290,7 +1357,10 @@ const ACTIONS = [
   { id: 'camfx', key: 'k', run: () => setCamFx((state.camFx + 1) % CAM_FX.length, true) },
   { id: 'tap', key: ' ', run: () => tapBeat() },
   { id: 'hush', key: 'q', run: () => setHush(!state.hushed) },
-  { id: 'drop', key: 'd', run: () => { if (DROPS[state.drop] === 'off') state.drop = 0; eng.on.drop(); } },
+  // (D: the drop, now, for everything that answers one: the drop effect (none when B has it off),
+  // the worlds' look, the chrome's splash, and the scenery's moment, which watches the engine's drop
+  // time: the toast pops, the koi gather, the sharks charge, the fireworks go up)
+  { id: 'drop', key: 'd', run: () => { eng.lastDrop = nowSec(); eng.on.drop(); } },
   { id: 'dropfx', key: 'b', run: () => { state.drop = (state.drop + 1) % DROPS.length; saveSettings(); flashStatus('drop fx: ' + DROPS[state.drop]); } },
   { id: 'machine', key: 'i', run: () => { state.info = !state.info; sys.show(state.info); } },
   { id: 'layout', key: 'l', run: () => toggleLayout() },

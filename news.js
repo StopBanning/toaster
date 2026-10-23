@@ -4,6 +4,32 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.13',
+    items: [
+      { act: 'strength', text: "every scene redrawn: water, rock, ground and buildings solid instead of loose characters, and pixel art where it looks better: the moon, a campfire, a leaping trout, the garden's koi, birds, a sailboat" },
+      { act: 'strength', text: 'the basement show in the scenery: the toaster at the mic with its guitar in a brick basement, a drummer behind, the cans sweeping the haze, smoke every 8 bars, and on a drop a strobe, confetti and every hand up' },
+      { act: 'drop', text: "the scenery's drop too: the toast pops, the koi dart in and ring the toaster, the sharks charge the bait ball, the festival's fireworks go up, the falls' trout leaps; with the drop effect off it stays off" },
+      { key: 'startup', text: 'starts quicker: each background is made the first time you pick it, the worlds getting ready once the first one is showing' },
+      { act: 'code', text: "hiding the code hides it everywhere: the error box and the glass too, and the worlds have the whole window; in a tall window the scenery's land rises clear of a reel's captions" },
+      { act: 'export', text: 'exporting a long set is ten times quicker, and the listening carries on while it does' },
+      { act: 'visual', text: 'the code rain rains your code again, not plus signs' },
+      { act: 'machine', text: 'the machine info off is off: no more empty box in the corner of every recording' },
+      { act: 'cam', text: "hand tracking says when the face or the cut-out can't start, and keeps the hands going" },
+      { key: 'resize', text: 'resizing the window keeps the sharks and the koi where they were; the window buttons fit a narrow window' },
+      { act: 'strength', text: "small fixes: a hand on every raised arm at the festival, the koi feeding tidily by the window's edge, the stingray and the pond's petals no longer jumping every 17 minutes" },
+    ],
+  },
+  {
+    version: '0.4.11',
+    items: [
+      { act: 'strength', text: 'the koi pond in the scenery: koi seen from above, lily pads, the toaster on a pad of its own; click the water to feed them, and on the drop they all gather round the toaster' },
+      { act: 'strength', text: "the festival in the scenery: the toaster DJing on a stage by a lake, beams sweeping with the bars, fireworks on the drop, the crowd's arms going up" },
+      { act: 'strength', text: 'the garden redrawn: the cherry tree in full blossom, a pagoda on the hill' },
+      { act: 'strength', text: 'the sharks have company: jellyfish, a fish made of code, a stingray' },
+      { key: 'startup', text: "no more freezes the first time after an update: the scenery makes its scenes one at a time, the one you're looking at first" },
+    ],
+  },
+  {
     version: '0.4.10',
     items: [
       { act: 'code', text: 'hide the code: just the visuals, for Toaster as a visualizer; the scenery opens out into the room' },

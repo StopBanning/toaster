@@ -191,8 +191,11 @@ export function createField(canvas) {
     f.grid = Array.from({ length: f.rows }, () => new Array(f.cols).fill(' '));
     f.drops = Array.from({ length: f.cols }, () => ({ y: Math.random() * -f.rows, v: 8 + Math.random() * 14 }));
   }
-  addEventListener('resize', measure);
-  document.fonts?.ready.then(measure);
+  // (sized again on a resize and once the font's in, unless it's off: then draw() sizes it when it's
+  // next shown, and a background that isn't up keeps no window-sized buffers)
+  const remeasure = () => { if (canvas.width) measure(); };
+  addEventListener('resize', remeasure);
+  document.fonts?.ready.then(remeasure);
   measure();
 
   return {
