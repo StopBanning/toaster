@@ -45,6 +45,16 @@ let miniFrom = null, miniBounds = null; // the window before the mini player, an
 // priority; listening alone costs about 2% of one core.
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
+// Keep the scenery's compiled shaders between launches. Chromium (Electron 44, Chrome 156 too)
+// writes a compiled program to the shader cache on disk (GPUCache, in the settings folder) only if
+// its link finishes while the graphics process is running the page's commands; one the driver takes
+// seconds over, as every scenery scene's does, finishes in between and was kept in memory only, so
+// every start compiled the first scene again (3 s, then the 1.5 s settle: the lake at about 5 s).
+// Chromium's per-context cache path hands every program to the disk cache; with it a restart
+// shows the first scene in about half a second.
+const features = app.commandLine.getSwitchValue('enable-features');
+app.commandLine.appendSwitch('enable-features', [features, 'ANGLEPerContextBlobCache'].filter(Boolean).join(','));
+
 function createWindow() {
   // Windows draws its caption buttons on the right (the overlay). macOS draws the traffic
   // lights on the left; the page leaves them a gap (see renderer/boot.js).

@@ -65,7 +65,7 @@ const visuals = await evaluate(`(() => { const out = []; for (let i = 0; i < 40;
 const steps = [];
 for (const v of visuals) if (!/scenery/i.test(v.name)) steps.push({ label: v.name || `visual ${v.i}`, js: `__nc.setVisual(${v.i})` });
 const scenery = visuals.find((v) => /scenery/i.test(v.name));
-for (const scene of ['lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls', 'halloween', 'sharks', 'festival', 'koi', 'basement']) {
+for (const scene of ['lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls', 'halloween', 'sharks', 'festival', 'koi', 'basement', 'space']) {
   steps.push({ label: `scenery: ${scene}`, js: `(__nc.state.sceneryScene = ${JSON.stringify(scene)}, __nc.state.sceneryTheme = false, __nc.setVisual(${scenery ? scenery.i : 9}))` });
 }
 
@@ -83,7 +83,8 @@ for (const round of [1, 2]) {
   const row = [];
   for (const s of steps) {
     const ms = await show(s.js);
-    if (round === 1) worst = Math.max(worst, ms);
+    // The second round is daily use: its stalls must fail the check too.
+    worst = Math.max(worst, ms);
     row.push(`${s.label} ${ms}${ms > limit ? ' !!' : ''}`);
   }
   console.log(`${round === 1 ? 'first time' : 'again     '}: ${row.join(' | ')}`);
