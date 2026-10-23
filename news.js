@@ -4,6 +4,16 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.14',
+    items: [
+      { act: 'strength', text: 'space in the scenery: on the moon, the toaster floating on its own power cord from a lander, the Earth, Saturn and an astronaut in the sky, the Milky Way across it; on a drop the toast pops and meteors streak by; night whatever the theme' },
+      { act: 'strength', text: "the koi pond's koi in pixels: clean patterns, see-through fins and tails, eyes, the gold ones glinting, and their shadows on the bottom by day" },
+      { key: 'startup', text: "the desktop app starts in about half a second: it keeps the scenery's compiled scenes between launches, where it was compiling the first one again every time (5 s and more)" },
+      { key: 'startup', text: 'the sharks get ready in half the time the first time after an update' },
+      { key: 'update', text: "updating is sturdier: a download that stalls or breaks gives up cleanly and leaves your Toaster as it was, and only GitHub's own downloads are taken" },
+    ],
+  },
+  {
     version: '0.4.13',
     items: [
       { act: 'strength', text: "every scene redrawn: water, rock, ground and buildings solid instead of loose characters, and pixel art where it looks better: the moon, a campfire, a leaping trout, the garden's koi, birds, a sailboat" },

@@ -15,6 +15,9 @@
 // Drawn with WebGL in two passes: the scene worked out a character cell at a time (a glyph, its
 // ink and its colour) into two small pictures, then the glyphs drawn from a sheet in the app's font.
 
+import { rolledSceneSource } from './scenery-source.js';
+import { SPACE_ART } from './space-art.js';
+
 const PX = 10; // a cell's height (CSS pixels), in a window 500 tall or more
 // (in a smaller one, the mini player, finer: the scenes' shapes are sized to the window and the cells
 // weren't, so in a 300 px window a koi was a column or two of cells wide and its edges broke up)
@@ -90,6 +93,17 @@ for (const L of [FESTIVAL_WIDE, FESTIVAL_TALL]) L.toaster = onStage(L, L.stage[0
 const BASEMENT_LOOK = { band: [5, 1.57, 0.1, 0.3], tint: [1.0, 0.92, 0.96], toneN: [0.12, 0.06, 0.1], toneD: [-0.06, -0.08, -0.1], paperN: [[6, 3, 8], [16, 7, 14]], paperD: [[214, 192, 168], [232, 212, 184]] };
 const BASEMENT_WIDE = { ...WIDE, ...BASEMENT_LOOK, stage: [0.5, 0.3, 0.6], lake: [0.3, 0], toaster: { x: 0.5, y: 1, on: 'mic' } };
 const BASEMENT_TALL = { ...TALL, ...BASEMENT_LOOK, stage: [0.5, 0.22, 0.27], lake: [0.22, 0], toaster: { x: 0.5, y: 1, on: 'mic' } };
+// space: on the moon, the Earth in its sky (its middle where the sun is: a share of the width, a height);
+// lake its ground's far edge and the lander's foot; the toaster floating over it on its cord (its middle:
+// a share of the width across, of the height up); Saturn small and far (planet), the astronaut on its
+// line from the window's top (astro: a share of the width across); the deep's paper by night, a pastel
+// dawn's by day. In a tall window the code and its panels fill the top and the left: the toaster floats on
+// the right beside them, the Earth rising over the horizon under it (the ground hiding its foot)
+// (space's Milky Way: its core (a share of the width, a height), its tilt and its width; night in every
+// theme, so its day paper is its night's)
+const SPACE_LOOK = { band: [0.6, 0.55, 0.46, 0.11], tint: [0.94, 0.94, 1.0], toneN: [0.06, 0.06, 0.1], toneD: [0.06, 0.06, 0.1], paperN: [[2, 3, 10], [10, 10, 26]], paperD: [[2, 3, 10], [10, 10, 26]] };
+const SPACE_WIDE = { ...WIDE, ...SPACE_LOOK, far: [0.22, 0, 0, 0.3], lake: [0.22, 0.1], sun: [0.79, 0.7], planet: [0.47, 0.86], astro: [0.94], toaster: { x: 0.82, y: 0.5, on: 'space' } };
+const SPACE_TALL = { ...TALL, ...SPACE_LOOK, band: [0.42, 0.3, 0.62, 0.085], far: [0.15, 0, 0, 0.3], lake: [0.15, 0.06], sun: [0.86, 0.21], planet: null, astro: null, bow: 0.35, toaster: { x: 0.84, y: 0.42, on: 'space' } };
 // (the stage's glow, by night, in the show's first colour of each 8 bars)
 const BASEMENT_GLOW = [[0.3, 0.08, 0.13], [0.3, 0.19, 0.06], [0.1, 0.15, 0.3], [0.24, 0.1, 0.3]];
 // (the stage's glow on the paper: the show's first colours, as the shader has them, dimmed)
@@ -116,10 +130,11 @@ const OPEN = {
   halloween: [null, { ...RAISE(HALLOWEEN_TALL, 0.18), moon: [0.5, 0.56, 0.22], sun: [0.5, 0.56], toaster: { x: 0.66, y: 0.6, on: 'broom' } }],
   festival: [{ stage: [0.5, FESTIVAL_WIDE.stage[1], FESTIVAL_WIDE.stage[2]], toaster: onStage(FESTIVAL_WIDE, 0.5) }, null],
   basement: [null, { stage: [0.5, 0.36, 0.27], lake: [0.36, 0] }],
+  space: [null, { ...RAISE(SPACE_TALL, 0.17), band: [0.45, 0.56, 0.62, 0.09], planet: [0.24, 0.8], toaster: { x: 0.62, y: 0.58, on: 'space' } }],
 };
 // (the land's parts that glide when Z raises it)
 const LAND = ['far', 'mid', 'near', 'lake', 'sun'];
-const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL], festival: [FESTIVAL_WIDE, FESTIVAL_TALL], koi: [KOI_WIDE, KOI_TALL], basement: [BASEMENT_WIDE, BASEMENT_TALL] };
+const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL], festival: [FESTIVAL_WIDE, FESTIVAL_TALL], koi: [KOI_WIDE, KOI_TALL], basement: [BASEMENT_WIDE, BASEMENT_TALL], space: [SPACE_WIDE, SPACE_TALL] };
 const SPEED = [1, 0.5, 0.25, 0.12, 0.2];
 // the glyphs the scene draws with (the first, blank, is nothing there)
 const GLYPHS = {
@@ -3909,6 +3924,7 @@ uniform vec2 koiS[65];      // the koi's spines, 13 points each from the snout (
 uniform vec4 koiK[5];       // each one's kind (0 a kohaku, 1 a showa, 2 a sanke, 3 a yamabuki, 4 an orange ogon), its length, how far its left and right pectorals are spread (0-1)
 uniform vec4 koiB[5];       // the box each one's in (x0, y0, x1, y1), none when x1 < x0
 uniform vec4 food;          // the last food on the water: where (units of the height), how long ago (s), how far it's spread
+uniform float koiCells;     // 1: the koi drawn here, in the cells (when the paint pass can't draw them in pixels: see KOI_PX)
 const vec2 SUN = vec2(-0.6, 0.8);
 // (where in a cell the koi and the pads are looked for, besides its middle)
 const vec2 SUB[4] = vec2[4](vec2(-0.27, 0.24), vec2(0.27, 0.2), vec2(-0.2, -0.26), vec2(0.24, -0.24));
@@ -4063,7 +4079,7 @@ void main() {
                   0.08 + 0.84 * h1(fk * 5.7 + 40.0) + 0.04 * sin(time * (0.3 + 0.2 * h1(fk * 1.9)) + fk));
     float bl = smoothstep(0.35, 1.0, 0.5 + 0.5 * sin(time * (1.3 + 1.5 * h1(fk * 4.4)) + fk * 7.0)) * (0.35 + 0.65 * fly);
     if (bl < 0.08) continue;
-    if (abs(X - f.x) < cw * 0.5 && abs(Y - f.y) < ch * 0.5) { tileC = rgb(255.0, 214.0, 96.0); tileA = 0.3 * bl; put(bl > 0.5 ? G_BULLET : G_MID, 0.45 + 0.55 * bl, rgb(255.0, 236.0, 150.0)); return; }
+    if (abs(X - f.x) < cw * 0.5 && abs(Y - f.y) < ch * 0.5) { tileC = rgb(255.0, 214.0, 96.0); tileA = 0.3 * bl; front = 0.75; put(bl > 0.5 ? G_BULLET : G_MID, 0.45 + 0.55 * bl, rgb(255.0, 236.0, 150.0)); return; }
     float d = length(vec2((X - f.x) / cw, (Y - f.y) / ch)) / 2.6;
     if (d < 1.0 && 0.22 * bl * (1.0 - d) * (1.0 - d) > tileA) { tileC = rgb(255.0, 210.0, 90.0); tileA = 0.22 * bl * (1.0 - d) * (1.0 - d); }
   }
@@ -4072,7 +4088,7 @@ void main() {
     float fk = float(k);
     vec2 f = vec2(mod(h1(fk * 2.3 + 60.0) * (asp + 0.2) + time * (0.004 + 0.003 * h1(fk + 61.0)), asp + 0.2) - 0.1,
                   0.05 + 0.9 * h1(fk * 4.9 + 60.0) + 0.02 * sin(time * 0.05 + fk));
-    if (abs(X - f.x) < cw * 0.5 && abs(Y - f.y) < ch * 0.5) { put(h1(fk + 62.0) < 0.5 ? G_COMMA : G_TICK, 0.95, rgb(255.0, 178.0, 208.0) * (day ? 1.0 : 0.6)); return; }
+    if (abs(X - f.x) < cw * 0.5 && abs(Y - f.y) < ch * 0.5) { front = 0.75; put(h1(fk + 62.0) < 0.5 ? G_COMMA : G_TICK, 0.95, rgb(255.0, 178.0, 208.0) * (day ? 1.0 : 0.6)); return; }
   }
   // --- food on the water (the toast's crumbs when it pops, or where it's dropped), spreading a little,
   // eaten a crumb at a time
@@ -4080,7 +4096,7 @@ void main() {
     float fk = float(k), seed = floor(food.x * 977.0 + food.y * 613.0);
     float a = 6.2832 * h1(fk * 5.3 + seed), r = food.w * (0.55 + 0.45 * h1(fk * 2.9 + seed)) + 0.004 * food.z;
     vec2 c = food.xy + r * vec2(cos(a), sin(a));
-    if (2.0 + 7.0 * h1(fk * 8.7 + seed) > food.z && abs(X - c.x) < cw * 0.5 && abs(Y - c.y) < ch * 0.5) { put(fk < 3.0 ? G_SMALLO : G_DOT, 0.9, rgb(214.0, 150.0, 76.0) * (day ? 1.0 : 0.7)); return; }
+    if (2.0 + 7.0 * h1(fk * 8.7 + seed) > food.z && abs(X - c.x) < cw * 0.5 && abs(Y - c.y) < ch * 0.5) { front = 0.75; put(fk < 3.0 ? G_SMALLO : G_DOT, 0.9, rgb(214.0, 150.0, 76.0) * (day ? 1.0 : 0.7)); return; }
   }
 
   // --- the lily pads: each leaf a tile, lit from the top left, its rim paler, veins running out
@@ -4094,6 +4110,7 @@ void main() {
       float fr = length(fd) / (0.6 * P0.z), fa = atan(fd.y, fd.x);
       float o1 = abs(mod(fa - P0.w, 0.7854) - 0.3927) / 0.3927, o2 = abs(mod(fa - P0.w + 0.3927, 0.7854) - 0.3927) / 0.3927;
       bool inner = fr < 0.68 - 0.38 * pow(o2, 0.8);
+      front = 1.0;
       if (fr < 0.2) { tileC = rgb(250.0, 200.0, 70.0) * dim; tileA = 1.0; put(G_STAR, 1.0, rgb(160.0, 100.0, 20.0) * dim); return; }
       if (inner || fr < 1.0 - 0.6 * pow(o1, 0.8)) {
         vec3 pc = mix(rgb(255.0, 248.0, 250.0), rgb(242.0, 128.0, 172.0), smoothstep(inner ? 0.35 : 0.5, inner ? 0.9 : 1.0, fr));
@@ -4101,12 +4118,14 @@ void main() {
         put(lineGlyph(fa), 1.0, mix(pc, rgb(150.0, 50.0, 100.0), 0.55) * dim);
         return;
       }
+      front = 0.5;
     }
     float dr, d2;
     int what = padAt(P0, p, dr);
     int n = what != 0 ? 1 : 0;
     for (int i = 0; i < 4; i++) if (padAt(P0, p + SUB[i] * vec2(cw, ch), d2) != 0) n++;
     if (n == 0) continue;
+    front = 1.0;
     vec3 dk = rgb(30.0, 84.0, 46.0), lt = rgb(112.0, 172.0, 86.0);
     if (what == 0 || n < 3) { put(n >= 2 ? G_COLON : G_DOT, 0.85, mix(dk, lt, 0.6) * dim); return; }
     float li = clamp(0.5 + 0.28 * dot(normalize(p - P0.xy + 1e-5), normalize(SUN)) * dr + 0.18 * (1.0 - dr), 0.0, 1.0);
@@ -4126,6 +4145,7 @@ void main() {
     float fade = exp(-q.z * 1.5), rad = q.w + q.z * 0.075, dr = length(p - q.xy) - rad;
     if (abs(dr) < cw * 0.55 && fade > 0.15 && h2(cell + 3.0) < 0.35 + 0.45 * fade) {
       vec2 dv = p - q.xy;
+      front = 0.75;
       put(lineGlyph(atan(dv.y, dv.x) + 1.5708), 0.25 + 0.6 * fade, P(rgb(150.0, 220.0, 200.0), rgb(244.0, 255.0, 250.0)));
       return;
     }
@@ -4144,7 +4164,7 @@ void main() {
   vec3 finC = vec3(0.0);
   int finG = 0;
   float finInk = 0.0;
-  for (int k = 0; k < 5; k++) {
+  if (koiCells > 0.5) for (int k = 0; k < 5; k++) {
     vec4 B = koiB[k];
     if (B.z < B.x || X < B.x || X > B.z || Y < B.y || Y > B.w) continue;
     int what = koiAt(k, p);
@@ -4197,7 +4217,7 @@ void main() {
       if (padAt(P0, p - vec2(0.022, -0.032), d2) != 0) { tone = 0.8; break; }
     }
     if (length(p - vec2(0.022, -0.032) - moon.xy) < moon.z) tone = 0.8;
-    if (tone == 0.0) for (int k = 0; k < 5; k++) {
+    if (tone == 0.0 && koiCells > 0.5) for (int k = 0; k < 5; k++) {
       vec4 B = koiB[k];
       vec2 q = p - vec2(0.014, -0.02);
       if (B.z < B.x || q.x < B.x || q.x > B.z || q.y < B.y || q.y > B.w) continue;
@@ -4560,7 +4580,167 @@ void main() {
 }
 `;
 
-const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS, festival: FESTIVAL, koi: KOI, basement: BASEMENT };
+// The space: on the moon, the Earth in its sky. Its ground in front, grey and rolling, its far edge
+// against the sky; craters in it, seen low (squashed with the distance), each lit on its far wall and dark
+// in its near, a rim round it; dust and stones, more toward you. Over it the stars, a few bright and most
+// a fine dust, thicker along the Milky Way, twinkling with the loudness, and a star falling every 8 bars;
+// the Milky Way itself across the sky, as it is with no air in the way, and Andromeda beside it. Night
+// whatever the theme: there's no day in space. On a drop, a shower of meteors. The Earth, Saturn, the astronaut, the lander and the toaster on its cord are in pixels (see
+// pixFor and drawSpace). (lake.x: the ground's far edge)
+const SPACE = `
+// the ground's far edge at x: rising to the right (as the stream's moon ground does), rolling a little
+float groundAt(float x, float aspect) {
+  return lake.x + 0.05 * (x / aspect - 0.5) + 0.012 * sin(x * 2.1 + 0.7) + 0.01 * (vn(x * 5.0 + 3.0) - 0.5) + 0.004 * (vn(x * 19.0) - 0.5);
+}
+// The Milky Way, broad across the sky and rising to the right (band: its core, its tilt, its width): its
+// light here, bright down its middle with a faint skirt either side and a bulge at the core; star clouds
+// along it, wisped; the dust in a rift wandering down its middle, deepest through the core, and in lanes
+// across it. warmth: how warm (the core's old stars); knot: a pink knot of glowing gas here
+float mwGlow(vec2 p, out float warmth, out float knot) {
+  vec2 dir = vec2(cos(band.z), sin(band.z)), nrm = vec2(-dir.y, dir.x);
+  vec2 r = p - band.xy;
+  float u = dot(r, dir), v = dot(r, nrm);
+  float w = band.w * (0.85 + 0.35 * vn(u * 2.2 + 4.0));
+  float mid = (vn(u * 1.6 + 9.0) - 0.5) * 0.35 * band.w;
+  float x = (v - mid) / w;
+  float prof = exp(-x * x * 1.3) + 0.22 * exp(-x * x * 0.18);
+  float cu = u / (2.4 * band.w), cv = (v - mid) / (1.3 * band.w);
+  float core = exp(-cu * cu - cv * cv);
+  vec2 q = vec2(u * 5.0, v * 11.0);
+  vec2 wq = q + 0.6 * vec2(fbm(q * 0.7 + 3.1), fbm(q * 0.7 + 7.7));
+  float clouds = fbm(wq);
+  float lum = prof * (0.3 + 1.3 * clouds * clouds) * (0.55 + 0.45 * exp(-u * u / (25.0 * band.w * band.w))) + 1.4 * core;
+  float rv = (v - mid - (vn(u * 3.3 + 1.0) - 0.5) * 0.4 * w) / (w * (0.15 + 0.1 * vn(u * 5.0 + 2.0)));
+  float rift = exp(-rv * rv) * smoothstep(0.15, 0.55, vn(u * 1.1 + 6.0) + 0.35 * core);
+  // (near the core the rift splits in two, a second lane above the first)
+  float rv2 = (v - mid - 0.42 * w - (vn(u * 4.1 + 8.0) - 0.5) * 0.3 * w) / (w * 0.11);
+  rift = max(rift, 0.8 * exp(-rv2 * rv2) * exp(-u * u / (10.0 * band.w * band.w)) * smoothstep(-0.2, 0.6, u / band.w + 0.5));
+  float n = fbm(wq * 1.9 + 11.0);
+  float lanes = smoothstep(0.62, 0.8, 1.0 - abs(2.0 * n - 1.0)) * exp(-x * x * 1.6);
+  float dust = clamp(0.85 * rift + 0.65 * lanes, 0.0, 0.92);
+  warmth = clamp(1.3 * core + 0.2 * prof * (1.0 - clouds), 0.0, 1.0);
+  knot = smoothstep(0.86, 0.96, vn2(vec2(u * 26.0, v * 30.0) + 21.0)) * smoothstep(0.45, 0.9, prof) * (1.0 - dust) * (1.0 - core);
+  return lum * (1.0 - dust);
+}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  float row = grid.y - 1.0 - cell.y, H = view.y;
+  cw = cellPx.x / H; ch = cellPx.y / H;
+  float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
+  day = false;   // (no day in space)
+  float h0 = h2(cell + 17.0);
+  float aspect = view.x / H;
+  float gy = groundAt(X, aspect);
+
+  // --- the ground, as the stream's moon ground is drawn: streaks of four colours drawn out along it, the
+  // darkest most of it, the lightest along the rises; finer and flatter toward the far edge; a little dust
+  if (Y < gy + 0.5 * ch) {
+    float d = max(gy - Y, 0.0), v = sqrt(d / max(gy, 0.05));
+    vec3 c0 = P(rgb(25.0, 23.0, 32.0), rgb(156.0, 146.0, 186.0)), c1 = P(rgb(35.0, 35.0, 44.0), rgb(174.0, 164.0, 202.0));
+    vec3 c2 = P(rgb(39.0, 51.0, 63.0), rgb(190.0, 190.0, 220.0)), c3 = P(rgb(63.0, 94.0, 92.0), rgb(232.0, 230.0, 246.0));
+    float n = fbm(vec2(X * 2.6 - v * 3.0, v * 9.0)) + 0.18 * (vn(X * 9.0 + v * 30.0) - 0.5);
+    vec3 c = n > 0.66 ? c3 : n > 0.55 ? c2 : n > 0.44 ? c1 : c0;
+    // the far edge against the sky, lit along it where it rises
+    if (abs(Y - gy) < 0.5 * ch) {
+      float l = groundAt(X - cw, aspect), r2 = groundAt(X + cw, aspect), rise = (r2 - l) / (2.0 * ch);
+      tileC = rise > -0.1 ? c3 : c2; tileA = clamp(0.5 + d / ch, 0.25, 1.0);
+      put(abs(rise) < 0.35 ? G_UNDER : rise > 0.0 ? G_SLASH : G_BACK, 0.8, mix(c3, P(rgb(190.0, 230.0, 226.0), rgb(255.0, 255.0, 255.0)), 0.4));
+      return;
+    }
+    int g = h0 < 0.01 + 0.05 * v ? (h0 < 0.004 + 0.01 * v ? G_SMALLO : G_DOT) : 0;
+    tileC = c; tileA = 1.0;
+    put(g, 0.35 + 0.3 * v, mix(c, P(rgb(120.0, 150.0, 150.0), rgb(252.0, 250.0, 255.0)), 0.45));
+    return;
+  }
+
+  // --- the sky (the furthest thing: the Earth, Saturn and the rest over it)
+  front = 0.0;
+  vec2 Pc = vec2(X, Y);
+  // a shower of meteors on a drop: twenty, one after another over two seconds, streaking out from a point
+  // up to the right and down across the sky, each a bright head glowing on the paper and a trail slanted
+  // along its way, fading behind it
+  float flare = 0.0;
+  if (leap.w > 0.5 && leap.y > 1.5 && leap.x < 3.0) {
+    flare = exp(-leap.x * 1.5);
+    // (in a tall window, where the code fills the top, from the right edge across the sky under it)
+    vec2 rad = aspect < 1.0 ? vec2(1.04 * aspect, 0.6) : vec2(0.97 * aspect, 1.06);
+    for (int k = 0; k < 20; k++) {
+      float fk = float(k), a0 = leap.x - fk * 0.11 - 0.08 * h1(fk * 3.1);
+      if (a0 < 0.0 || a0 > 0.75) continue;
+      float th = 3.14159 + 0.3 + 0.62 * h1(fk * 5.3);
+      vec2 dir = vec2(cos(th), sin(th));
+      vec2 head = rad + dir * (0.12 + 0.5 * h1(fk * 1.7) + 2.2 * a0);
+      vec2 rel = Pc - head;
+      float along = dot(rel, -dir), across = abs(dot(rel, vec2(-dir.y, dir.x)));
+      float fade = smoothstep(0.75, 0.45, a0), len = 0.3 * min(1.0, a0 * 6.0);
+      if (across < ch * 0.6 && along > -cw && along < len) {
+        float a = (1.0 - along / (len + 1e-3)) * fade;
+        if (a > 0.05) {
+          vec3 hot = rgb(255.0, 252.0, 240.0), tail = day ? rgb(236.0, 110.0, 168.0) : rgb(130.0, 150.0, 236.0);
+          bool level = abs(dir.y) < 0.4 * abs(dir.x);
+          if (along < cw) { tileC = mix(tail, hot, 0.7); tileA = 0.85 * fade; put(G_SPARK, 1.0, hot); return; }
+          if (along < 3.0 * cw) { tileC = mix(tail, hot, 0.4); tileA = 0.45 * a; }
+          // (the trail's glyph by where its line crosses the cell: low, middle or high, so a shallow streak
+          // runs on smoothly, not in steps; a steep one slanted)
+          float off = dot(rel, vec2(-dir.y, dir.x)) * sign(dir.x) / ch;
+          int gl = level || abs(dir.y) < 0.75 * abs(dir.x) ? (off > 0.18 ? G_UNDER : off < -0.18 ? G_TICK : G_DASH) : (dir.x * dir.y > 0.0 ? G_SLASH : G_BACK);
+          put(gl, 0.4 + 0.6 * a, mix(tail, hot, a));
+          return;
+        }
+      }
+    }
+  }
+  // a star falling, every 8 bars at night: a bright head, its trail fading behind it
+  if (shoot.w > 0.5 && shoot.z < 1.2) {
+    vec2 dir = normalize(vec2(-1.0, -0.42)), head = shoot.xy + dir * shoot.z * 0.55;
+    vec2 rel = Pc - head;
+    float along = dot(rel, -dir), across = abs(dot(rel, vec2(-dir.y, dir.x)));
+    float fade = smoothstep(1.2, 0.7, shoot.z), len = 0.22 * min(1.0, shoot.z * 4.0);
+    if (across < ch * 0.55 && along > -cw && along < len) {
+      float a = (1.0 - along / (len + 1e-3)) * fade;
+      if (a > 0.06) { put(along < cw ? G_SPARK : (a > 0.55 ? G_DBL : a > 0.3 ? G_LINE : G_DASH), 0.35 + 0.65 * a, mix(rgb(150.0, 170.0, 230.0), rgb(255.0, 252.0, 240.0), a)); return; }
+    }
+  }
+  // the Milky Way's glow, in the cells: cool along the arms, warm at the core, pink at the knots; then the
+  // stars over it
+  float warmth, knot, mw = mwGlow(Pc, warmth, knot);
+  if (mw > 0.06 || knot > 0.05) {
+    vec3 cool = rgb(118.0, 138.0, 214.0), warm = rgb(250.0, 206.0, 150.0), pink = rgb(232.0, 104.0, 156.0);
+    // (its heart whiter and brighter than the rest)
+    float heart = smoothstep(0.7, 1.0, warmth) * clamp(mw - 0.7, 0.0, 1.0);
+    tileC = mix(mix(mix(cool, warm, warmth), rgb(255.0, 242.0, 222.0), heart), pink, min(0.85, knot * 2.0));
+    tileA = min(0.6 + 0.2 * heart, 0.4 * clamp(mw, 0.0, 1.5) + 0.25 * knot);
+  }
+  // Andromeda, off the band and above it: a small tilted spiral, a bright core in a faint disk, a dust
+  // lane along one side
+  vec2 adir = vec2(cos(band.z + 0.55), sin(band.z + 0.55)), anrm = vec2(-adir.y, adir.x);
+  vec2 ar = Pc - (band.xy + vec2(-sin(band.z), cos(band.z)) * 0.3 + vec2(cos(band.z), sin(band.z)) * 0.16);
+  float au = dot(ar, adir) / 0.075, av = dot(ar, anrm) / 0.022, ae = au * au + av * av;
+  if (ae < 1.0) {
+    float lane = exp(-pow((av - 0.38) / 0.13, 2.0)) * (1.0 - exp(-ae * 6.0));
+    float ab = exp(-ae * 3.0) * (1.0 - 0.75 * lane);
+    tileC = mix(rgb(170.0, 182.0, 236.0), rgb(255.0, 236.0, 204.0), exp(-ae * 7.0));
+    tileA = max(tileA, 0.12 + 0.5 * ab);
+    if (ae < 0.05) { put(G_STAR, 1.0, rgb(255.0, 246.0, 226.0)); return; }
+    if (ae < 0.22 && h0 < 0.6) { put(G_MID, 0.75, rgb(255.0, 236.0, 210.0)); return; }
+  }
+  // the stars: their brightness by a power law, so a few stand out and most are a fine dust; far more
+  // along the Milky Way, brightest at its core; twinkling with the loudness
+  float gal = min(1.0, mw);
+  float sp = h2(cell + 91.0);
+  if (sp < 0.03 + 0.16 * gal * gal) {
+    float b = min(4.0, 0.22 * pow(max(h2(cell + 33.0), 1e-3), -0.83)) * (1.0 + 0.5 * warmth);
+    float tw = 0.75 + 0.25 * sin(time * (0.8 + 2.4 * h2(cell)) + sp * 60.0) * (0.5 + glow) + 0.8 * flare;
+    int g = b + 2.0 * flare < 0.4 ? G_DOT : b + 2.0 * flare < 0.75 ? G_MID : b + 2.0 * flare < 1.4 ? G_PLUS : b + 2.0 * flare < 2.6 ? G_STAR : G_SPARK;
+    put(g, clamp((0.35 + 0.3 * b) * tw, 0.0, 1.0), mix(starTint(h2(cell + 55.0)), rgb(255.0, 226.0, 180.0), 0.5 * warmth));
+    return;
+  }
+  // (the band's finest stars, unresolved: a dust of dots in its brighter clouds)
+  if (gal > 0.35 && h0 < 0.45 * (gal - 0.35)) { put(G_DOT, 0.55, mix(rgb(190.0, 205.0, 255.0), rgb(255.0, 232.0, 196.0), warmth)); return; }
+  put(0, 0.0, vec3(0.0));
+}`;
+
+const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS, festival: FESTIVAL, koi: KOI, basement: BASEMENT, space: SPACE };
 
 // The glyphs, each from the sheet, over the paper. In its own colours: each in its colour, on a
 // night sky (darkest overhead) or on the day's paper; or in the theme's: its ink in the theme's
@@ -4656,6 +4836,159 @@ void main() {
   }
   o = vec4(col, 1.0);
 }`;
+
+// The koi pond's koi in pixels, where the cells couldn't carry them (a skin of glyphs read as noise,
+// their fins as scratches): the paint pass's own copy for the koi pond (PAINT_KOI) draws them over the
+// water a pixel at a time, the pixel layer's pixels (koiPx, CSS pixels; 0 the window's own), under the
+// lily pads (a cell in front) and under what's on the water (a cell 0.75 near: the koi under it, its
+// glyph drawn again over them), each over the ones after it. Their shapes are the scene's (koiAt, the
+// same but for the dorsal fin's width); their skins in a few tones, as a pixel picture's: lit along the
+// back toward the sun, shaded down the far side, a pixel's rim darker still (the ogons' metal shining
+// along the back, glinting); the patterns' patches sharp-edged; dark beads of eyes, a glint in each; the
+// dorsal fin a line down the back; the fins and tails see-through films, their rays drawn, their edges
+// paler. By day their shadows on the bottom, in pixels too.
+const KOI_PX = `
+uniform vec2 koiS[65];
+uniform vec4 koiK[5];
+uniform vec4 koiB[5];
+uniform float koiPx;
+const vec2 KSUN = vec2(-0.6, 0.8);
+uint khu(uvec2 q) { q *= uvec2(1597334673u, 3812015801u); return (q.x ^ q.y) * 1597334673u; }
+float kh2(vec2 q) { return float(khu(uvec2(ivec2(floor(q)) + 32768))) / 4294967295.0; }
+float kvn2(vec2 q) { vec2 i = floor(q), e = fract(q), w = e * e * (3.0 - 2.0 * e); return mix(mix(kh2(i), kh2(i + vec2(1, 0)), w.x), mix(kh2(i + vec2(0, 1)), kh2(i + vec2(1, 1)), w.x), w.y); }
+float kbump(float x, float c, float w) { float d = (x - c) / w; return exp(-d * d); }
+vec3 krgb(float r, float g, float b) { return vec3(r, g, b) / 255.0; }
+// (where on koi fish p is, as the scene's koiAt has it; how far in from the edge of what it's on, in
+// pixels (kEdge); its body's half width there (kW))
+float kS = 0.0, kSide = 0.0, kR = 0.0, kRd = 0.0, kRidge = 0.0, kEdge = 0.0, kW = 0.0;
+vec2 kLf = vec2(0.0, 1.0);
+int koiAt(int fish, vec2 p, float px) {
+  vec4 K = koiK[fish];
+  float L = K.y, best = 9.0, bl = 0.0, s = 9.0, fk = float(fish);
+  vec2 pt = vec2(1.0, 0.0);
+  for (int i = 1; i <= 12; i++) {
+    vec2 q = koiS[fish * 13 + i], ba = koiS[fish * 13 + i - 1] - q, pa = p - q;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0), dl = length(pa - ba * h);
+    if (dl < best) { best = dl; s = i == 12 && dot(pa, ba) < 0.0 ? 9.0 : (float(i) - h) / 12.0; bl = sign(ba.x * pa.y - ba.y * pa.x) * dl; pt = normalize(-ba); }
+  }
+  kS = s; kSide = 0.0; kRidge = 0.0; kLf = vec2(pt.y, -pt.x);
+  if (s > 1.0) return 0;
+  float wm = 0.115 * L, ab = abs(bl), sd = sign(bl);
+  float x = 1.0 - min(1.0, s / 0.3), w = mix(wm * sqrt(1.0 - x * x), 0.33 * wm, smoothstep(0.45, 0.8, s));
+  kW = w;
+  if (ab < w && s < 0.8) {
+    kSide = bl / w; kEdge = (w - ab) / px; kRidge = s > 0.32 && s < 0.62 && ab < 0.6 * px ? 1.0 : 0.0;
+    return 1;
+  }
+  for (int f = 0; f < 2; f++) {
+    float at = f == 0 ? 0.24 : 0.52, spread = sd > 0.0 ? K.z : K.w;
+    float an = f == 0 ? 0.5 + 0.75 * spread + 0.08 * sin(time * 1.3 + fk * 2.3 + sd) : 0.5 + 0.2 * spread;
+    float a = (f == 0 ? 0.1 : 0.048) * L, b = (f == 0 ? 0.052 : 0.024) * L;
+    vec2 lp = vec2((s - at) * L, ab - (f == 0 ? 0.75 : 0.5) * wm), d = vec2(cos(an), sin(an)), c = lp - d * 0.9 * a;
+    float e1 = dot(c, d) / a, e2 = (d.x * c.y - d.y * c.x) / b, e = e1 * e1 + e2 * e2;
+    if (e < 1.0) {
+      float th = atan(lp.y, lp.x);
+      kSide = sd; kR = length(lp) / (1.9 * a); kEdge = (1.0 - sqrt(e)) * b / px;
+      kRd = abs(th - 0.36 * round(th / 0.36)) * length(lp);
+      return 2;
+    }
+  }
+  if (s > 0.76) {
+    float tx = (s - 0.76) / 0.24, span = wm * (0.3 + 1.1 * pow(tx, 0.55)) * (1.0 + 0.05 * sin(time * 2.2 + tx * 5.0 + fk));
+    float end = 0.62 + 0.38 * pow(min(1.0, ab / (1.4 * wm)), 0.8);
+    if (ab < span && tx < end) {
+      vec2 v = p - koiS[fish * 13 + 9];
+      float th = atan(pt.x * v.y - pt.y * v.x, dot(pt, v));
+      kSide = bl / span; kR = tx; kEdge = min(span - ab, (end - tx) * 0.24 * L) / px;
+      kRd = abs(th - 0.28 * round(th / 0.28)) * length(v);
+      return 3;
+    }
+  }
+  return 0;
+}
+// (its colours where it is, as the scene's koiSkin has them)
+vec3 koiBase(int kind, float s, float side, float seed) {
+  if (kind == 3) return krgb(242.0, 194.0, 76.0);
+  if (kind == 4) return krgb(244.0, 132.0, 42.0);
+  vec2 q = vec2(s * 7.0, side * 1.3) + seed * 9.7;
+  float n = kvn2(q) + 0.32 * kbump(s, 0.13, 0.055) - 0.35 * kbump(s, 0.245, 0.035) - (s < 0.045 ? 1.0 : 0.0);
+  bool hi = n > 0.52 && abs(side) < 0.92;
+  vec3 white = krgb(246.0, 243.0, 234.0), red = krgb(226.0, 70.0, 40.0), black = krgb(30.0, 29.0, 34.0);
+  if (kind == 1) return hi ? red : kvn2(q * 1.4 + 31.0) > 0.45 ? black : white;
+  if (kind == 2 && !hi && s > 0.22 && kvn2(vec2(s * 18.0, side * 3.0) + 51.0) > 0.74) return black;
+  return hi ? red : white;
+}
+// (a colour in one of its tones: 0 the rim, 1 in shade (cooler), 2 between, 3 lit, 4 the highlight)
+vec3 ktone(vec3 c, int t) {
+  bool dark = dot(c, vec3(0.3, 0.55, 0.15)) < 0.3;
+  if (t == 0) return dark ? c * 0.6 : c * vec3(0.52, 0.56, 0.66);
+  if (t == 1) return c * vec3(0.76, 0.8, 0.88);
+  if (t == 2) return c * vec3(0.9, 0.92, 0.95);
+  if (t == 3) return c;
+  return mix(c, vec3(1.0, 0.99, 0.94), dark ? 0.14 : 0.42);
+}
+vec3 koiFinC(int kind, float r) {
+  if (kind == 3) return krgb(250.0, 214.0, 120.0);
+  if (kind == 4) return krgb(250.0, 162.0, 82.0);
+  if (kind == 1) return mix(krgb(40.0, 38.0, 44.0), krgb(238.0, 238.0, 234.0), smoothstep(0.3, 0.55, r));
+  return krgb(244.0, 242.0, 236.0);
+}
+// (what of koi fish shows at p: its colour, and how opaque, 0 nothing)
+vec4 koiPix(int fish, vec2 p, float px) {
+  int what = koiAt(fish, p, px);
+  if (what == 0) return vec4(0.0);
+  int kind = int(koiK[fish].x + 0.5);
+  float L = koiK[fish].y, s = kS, side = kSide;
+  if (what == 1) {
+    vec2 e0 = koiS[fish * 13 + 1], ed = normalize(koiS[fish * 13] - koiS[fish * 13 + 2]), el = vec2(-ed.y, ed.x) * 0.055 * L;
+    for (int j = 0; j < 2; j++) {
+      vec2 d = (p - e0 - (j == 0 ? el : -el)) / px;
+      if (max(abs(d.x), abs(d.y)) < 1.0) return vec4(dot(d, KSUN) > 0.4 ? krgb(120.0, 124.0, 138.0) : krgb(18.0, 16.0, 22.0), 1.0);
+    }
+    vec3 base = koiBase(kind, s, side, float(fish));
+    float sd = clamp(side, -1.0, 1.0), li = cos(1.5 * sd) + 0.35 * sd * dot(kLf, KSUN);
+    bool metal = kind >= 3, dark = dot(base, vec3(0.3, 0.55, 0.15)) < 0.3;
+    int t = kEdge < 1.0 ? 0 : metal && li > 0.86 ? 4 : li > 0.74 ? 3 : li > 0.42 ? 2 : 1;
+    // (the dorsal fin, seen edge on: a line down the back, darker over the white and the red, paler
+    // over the black; the ogons' metal glinting a pixel at a time, now and then)
+    if (kRidge > 0.5) t = dark ? 4 : 2;
+    else if (metal && t >= 3 && kh2(vec2(floor(s * L / px), floor(sd * kW / px)) + floor(time * 2.5) * 7.1) > 0.992) return vec4(1.0, 1.0, 0.95, 1.0);
+    return vec4(ktone(base, t), 1.0);
+  }
+  vec3 fc = koiFinC(kind, kR);
+  float a = mix(0.62, 0.34, clamp(kR, 0.0, 1.0));
+  if (kRd < 0.5 * px) { a += 0.2; fc *= 0.88; }
+  if (kEdge < 1.0) { a = max(a, 0.66); fc = mix(fc, vec3(1.0), 0.3); }
+  return vec4(fc, a);
+}
+`;
+const KOI_PX_DRAW = `
+  {
+    float kHc = H / dpr, kp = max(koiPx, 1.0 / dpr) / kHc;
+    vec2 kpk = koiPx > 0.0 ? (floor(p / koiPx) + 0.5) * koiPx : p;
+    vec2 kq = vec2(kpk.x, kHc - kpk.y) / kHc;
+    float gA = own > 0.5 ? cov * c.g : cov * min(1.0, c.g * k) * (night > 0.5 ? clamp(dot(cc, vec3(0.3, 0.55, 0.15)) * 2.2, 0.0, 1.0) : 1.0);
+    bool kOn = false;
+    // (by day their shadows on the bottom, down and to the right of each, as the scene had them)
+    if (own > 0.5 && night < 0.5 && cellD < 0.8) for (int j = 0; j < 5; j++) {
+      vec4 B = koiB[j];
+      vec2 sq = kq - vec2(0.014, -0.02);
+      if (B.z < B.x || sq.x < B.x || sq.x > B.z || sq.y < B.y || sq.y > B.w) continue;
+      if (koiAt(j, sq, kp) == 1) { col += vec3(-0.08, -0.056, -0.048); break; }
+    }
+    if (cellD < 0.8) for (int j = 4; j >= 0; j--) {
+      vec4 B = koiB[j];
+      if (B.z < B.x || kq.x < B.x || kq.x > B.z || kq.y < B.y || kq.y > B.w) continue;
+      vec4 kc = koiPix(j, kq, kp);
+      if (kc.a <= 0.0) continue;
+      vec3 kcol = night > 0.5 ? kc.rgb * vec3(0.72, 0.76, 0.88) : kc.rgb;
+      col = mix(col, own > 0.5 ? kcol : mix(bg, fg, dot(kcol, vec3(0.3, 0.55, 0.15))), kc.a);
+      kOn = true;
+    }
+    if (kOn && cellD > 0.7) col = mix(col, own > 0.5 ? cc : fg, gA);
+  }
+`;
+const PAINT_KOI = PAINT.replace('void main() {', () => KOI_PX + 'void main() {').replace('  float cellD = float(u.w & 255u) / 255.0;\n', (m) => m + KOI_PX_DRAW);
 
 // The pixel layer: small things drawn in pixels over the glyphs, where a text cell can't carry the
 // detail, the way the toaster is: the basement's drummer at the kit, the garden's koi. Each picture is
@@ -5018,6 +5351,70 @@ function drawSail() {
   rows.forEach((r, y) => [...r].forEach((ch, x) => { if (col[ch]) g.set(x, y, col[ch]); }));
   return g;
 }
+// The space scene's art, from the user's stream (see space-art.js): a picture of one of them, a its
+// pixels' alpha (251: its own light, not the night's tint)
+const ART_KEYS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function drawArt(name, a = 255) {
+  const art = SPACE_ART[name], g = pixPicture(art.w, art.h), pal = art.pal.map((c) => hexA(c, a));
+  art.rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') g.set(x, y, pal[ART_KEYS.indexOf(ch)]); }));
+  return g;
+}
+// The space scene's lander, 24 x 22, on the moon's ground: its upper stage silver, its window, a dish to
+// one side, a mast with a lamp on top (lit by the kick at night: 254); its lower stage wrapped in gold foil,
+// crinkled; its nozzle; two of its four legs out to their pads; on its right the socket the toaster's cord
+// plugs into (LANDER_PLUG: the plug's pixel)
+const LANDER_W = 24, LANDER_H = 22, LANDER_PLUG = [19, 7];
+function drawLander() {
+  const g = pixPicture(LANDER_W, LANDER_H), C = hexA;
+  const rows = [
+    '..........r.............',
+    '..........m.............',
+    '..dd......m.............',
+    '.dddd.sssssssss.........',
+    '..dd.sSSSSSSSSss........',
+    '...msSwwwSSSSSsss.......',
+    '....sSwWwSSSSssss.......',
+    '....sSSwSSSSSsssskk.....',
+    '....ssSSSSSSSssss.......',
+    '...kkkkkkkkkkkkkkkk.....',
+    '..gGgYgGgYgGgYgGgYg.....',
+    '..GgYgGgYgGgYgGgYgG.....',
+    '..gYgGgYgGgYgGgYgGg.....',
+    '..YgGgYgGgYgGgYgGgY.....',
+    '..kkkkkkkkkkkkkkkkk.....',
+    '..l.......u.......l.....',
+    '.l.......uuu.......l....',
+    '.l.................l....',
+    'l...................l...',
+    'l...................l...',
+    'ppp................ppp..',
+    '........................',
+  ];
+  const col = { r: C('#ff5a5a', 254), m: C('#8a8a96'), d: C('#d8d8e4'), s: C('#9ca0b0'), S: C('#d4d8e4'), w: C('#262c48'), W: C('#7aa6e0'), k: C('#3a3a46'), g: C('#c8941e'), G: C('#f0c84a'), Y: C('#ffe48c'), l: C('#a0a0ae'), u: C('#5a5a66'), p: C('#707080') };
+  rows.forEach((r, y) => [...r].forEach((ch, x) => { if (col[ch]) g.set(x, y, col[ch]); }));
+  return g;
+}
+// A slice of the toast that popped in space, tumbling away, 14 x 14, turned k quarters of a turn (a slice
+// reads as one only upright or on its side: turned between, it's a coin): a slice's own shape, its crown a
+// dome wider than its body, a crust round it, its face toasted golden, darker just inside the crust,
+// lighter over the middle, a speck or two toasted darker
+const SLICE_D = 14;
+function drawToast(k) {
+  const g = pixPicture(SLICE_D, SLICE_D), a = (k * Math.PI) / 2, c = Math.round(Math.cos(a)), sn = Math.round(Math.sin(a)), mid = (SLICE_D - 1) / 2;
+  // (in the slice's own frame, y down: the dome over the body's shoulders)
+  const inside = (x, y) => ((x / 5.3) ** 2 + ((y + 1.5) / 3.6) ** 2 <= 1 && y <= -1.5) || (Math.abs(x) <= 4.2 && y >= -1.6 && y <= 5.0);
+  const at = (px, py) => { const dx = px - mid, dy = py - mid; return [c * dx + sn * dy, -sn * dx + c * dy]; };
+  const crust = hexA('#7e4a22'), rim = hexA('#b97836'), face = hexA('#d9994c'), heart = hexA('#eec27e');
+  for (let y = 0; y < SLICE_D; y++) for (let x = 0; x < SLICE_D; x++) {
+    const [u, v] = at(x, y);
+    if (!inside(u, v)) continue;
+    const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) => !inside(...at(x + ox, y + oy)));
+    const deep = [[2, 0], [-2, 0], [0, 2], [0, -2]].some(([ox, oy]) => !inside(...at(x + ox, y + oy)));
+    const speck = (Math.abs(u + 1.5) < 0.6 && Math.abs(v - 0.5) < 0.6) || (Math.abs(u - 1.8) < 0.6 && Math.abs(v - 2.4) < 0.6);
+    g.set(x, y, edge ? crust : deep ? rim : speck ? face : Math.abs(u) < 2.7 && v > -2.6 && v < 3.5 ? heart : face);
+  }
+  return g;
+}
 function pixAtlas() {
   if (PIX) return PIX;
   const pics = [];
@@ -5030,6 +5427,8 @@ function pixAtlas() {
   for (let set = 0; set < 3; set++) for (let k = 0; k < 6; k++) pics.push([`flame${set}_${k}`, drawFlame(set, k)]);
   pics.push(['fireback', drawFireBack()], ['firefront', drawFireFront()]);
   pics.push(['bird0', drawBird(true)], ['bird1', drawBird(false)], ['sail', drawSail()]);
+  pics.push(['earth', drawArt('earth', 251)], ['saturn', drawArt('saturn', 251)], ['astro0', drawArt('astro0')], ['astro1', drawArt('astro1')], ['lander', drawLander()]);
+  for (let k = 0; k < 4; k++) pics.push(['toast' + k, drawToast(k)]);
   const AW = 256, at = {};
   let x = 0, y = 0, rowH = 0;
   for (const [n, g] of pics) {
@@ -5118,6 +5517,30 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
     const k = Math.max(1, Math.ceil((2 * 0.07 * H) / MOON_D));
     out.push([A.moon, Math.round(V.sun[0] * W - (MOON_D * k) / 2), Math.round((1 - V.sun[1]) * H - (MOON_D * k) / 2), k, false, 0.25]);
   }
+  if (scene === 'space' && V.lake && V.sun) {
+    // the Earth where the sun is, Saturn small and far off (their own light, not the night's tint)
+    at(A.earth, V.sun[0] * W, (1 - V.sun[1]) * H + (A.earth[3] * S) / 2, S, false, 0.25, 1);
+    if (V.planet) at(A.saturn, V.planet[0] * W, (1 - V.planet[1]) * H + (A.saturn[3] * S) / 2, S, false, 0.25, 1);
+    // the astronaut, floating on its line from the window's top, a little up and down, now and then
+    // blinking
+    if (V.astro) {
+      const bob = Math.round(2 * S * (1 + Math.sin(t * 1.1)));
+      at(A[((beats % 16) + 16) % 16 > 15.6 ? 'astro1' : 'astro0'], V.astro[0] * W, (A.astro0[3] - 5) * S + bob, S, false, 0.6, 0.5);
+    }
+    // the lander on the ground, its lamp lit by the kick at night
+    const L = spaceLander(V, W, H, S);
+    at(A.lander, L.x, L.y, S, false, 0.75, 0.5);
+    // the toast that popped, a slice each way, tumbling away end over end (the two turning opposite ways)
+    const pa = t - popAt;
+    if (pa > 0.35 && pa < 10) {
+      const T = spaceToaster(V, W, H, t), age = pa - 0.35, k = 2 * S;
+      for (let i = 0; i < 2; i++) {
+        const x = T.x + (i ? 3 : -3) * k + (i ? 0.03 : -0.04) * age * H, y = T.y - 5 * k - (i ? 0.055 : 0.065) * age * H;
+        const turn = (Math.floor(age * 4) + i * 2) % 4;
+        if (y > -10 * k) at(A[`toast${i ? (4 - turn) % 4 : turn}`], x, y + (SLICE_D * S) / 2, S, false, 0.7, 0.5);
+      }
+    }
+  }
   if (scene === 'basement' && V.stage) {
     const k = kitScale(H, V.stage[2]);
     const pose = popAt === dropAt && t - popAt < 0.7 ? 2 : ((beats * 2) % 2 + 2) % 2 < 1 ? 0 : 1;
@@ -5137,13 +5560,70 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
   return out.slice(0, PIX_MAX);
 }
 
+// The space scene's toaster: its middle (CSS pixels), floating, drifting slowly to and fro and up and down
+const spaceToaster = (V, W, H, t) => ({ x: (V.toaster.x + 0.014 * Math.sin(t * 0.21)) * W, y: (1 - V.toaster.y - 0.02 * Math.sin(t * 0.37 + 1)) * H });
+// its lander: the foot's middle, and where the cord's plug goes (CSS pixels); S the pixels' size
+function spaceLander(V, W, H, S) {
+  const x = V.toaster.x * W - 0.19 * H, y = (1 - V.lake[1]) * H;
+  return { x, y, plug: [x + (LANDER_PLUG[0] - LANDER_W / 2) * S, y - (LANDER_H - LANDER_PLUG[1]) * S] };
+}
+// The cord, in the toaster's sprite, in the scene's own pixels: its curve (a Bezier's four points: from the
+// plug in the lander's socket, rising and bowing out to the left, round into the toaster's side, a little
+// sway in it) and the canvas to hold it all and the toaster (twice its size, as the basement's frontman:
+// its box at ox, oy), placed so the plug's pixel lands in the socket (the toaster moving a whole pixel at
+// a time with it); a kick's ripple running up it (wave: how far along, -1 none)
+function spaceCord(V, W, H, S, T, t, kickAge, night) {
+  const L = spaceLander(V, W, H, S);
+  const px = Math.round((L.plug[0] - (T.x - SW * S)) / S), py = Math.round((L.plug[1] - (T.y - SH * S)) / S);
+  const sx = Math.round(5 * Math.sin(t * 0.6)), sy = Math.round(4 * Math.sin(t * 0.45 + 1));
+  // (bow: how far out it bows, less in a tall window, where the code's panels are to that side)
+  const end = [30, 32], dy = Math.max(8, py - end[1]), bow = V.bow ?? 1;
+  const pts = [[px + 0.5, py + 0.5], [px - 0.25 * dy * bow + sx, py - 0.75 * dy], [end[0] - Math.max(12, 0.55 * dy) * bow, end[1] + 0.12 * dy + sy], end];
+  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+  const x0 = Math.floor(Math.min(0, ...xs)) - 6, y0 = Math.floor(Math.min(0, ...ys)) - 6;
+  const w = Math.ceil(Math.max(2 * SW, ...xs)) + 6 - x0, h = Math.ceil(Math.max(2 * SH, ...ys)) + 6 - y0;
+  const wave = kickAge < 0.7 ? Math.floor(kickAge * 24) : -1;
+  return { ox: -x0, oy: -y0, w, h, k: S, px: px - x0, py: py - y0, pts: pts.map(([x, y]) => [x - x0, y - y0]), wave, night, x: L.plug[0] - (px - x0) * S, y: L.plug[1] - (py - y0) * S, key: `${x0} ${y0} ${w} ${h} ${px} ${py} ${sx} ${sy} ${wave} ${night}` };
+}
+// The sprite: the toaster (see drawBoat, drawn at its own size and doubled), and behind it its cord;
+// paler at night (against the dark)
+function drawSpace(cv, g, boat, c) {
+  if (cv.width !== c.w || cv.height !== c.h) { cv.width = c.w; cv.height = c.h; }
+  g.clearRect(0, 0, c.w, c.h);
+  const tc = drawSpace.tc || (drawSpace.tc = Object.assign(document.createElement('canvas'), { width: SW, height: SH }));
+  drawBoat(tc.getContext('2d'), boat);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tc, c.ox, c.oy, 2 * SW, 2 * SH);
+  const [P0, P1, P2, P3] = c.pts;
+  const n = Math.ceil(Math.hypot(P3[0] - P0[0], P3[1] - P0[1]) * 4) + 30, core = new Map();
+  for (let i = 0; i <= n; i++) {
+    const s = i / n, u = 1 - s;
+    let x = u * u * u * P0[0] + 3 * u * u * s * P1[0] + 3 * u * s * s * P2[0] + s * s * s * P3[0];
+    let y = u * u * u * P0[1] + 3 * u * u * s * P1[1] + 3 * u * s * s * P2[1] + s * s * s * P3[1];
+    const tx = 3 * u * u * (P1[0] - P0[0]) + 6 * u * s * (P2[0] - P1[0]) + 3 * s * s * (P3[0] - P2[0]);
+    const ty = 3 * u * u * (P1[1] - P0[1]) + 6 * u * s * (P2[1] - P1[1]) + 3 * s * s * (P3[1] - P2[1]);
+    const tl = Math.hypot(tx, ty) || 1;
+    let nx = -ty / tl, ny = tx / tl;
+    if (ny > 0) { nx = -nx; ny = -ny; }
+    if (c.wave >= 0) { const at = c.wave / 17, bump = 3 * (1 - at) * Math.exp(-(((s - at) / 0.08) ** 2)); x += nx * bump; y += ny * bump; }
+    core.set(`${Math.floor(x)},${Math.floor(y)}`, [Math.floor(x), Math.floor(y)]);
+  }
+  g.globalCompositeOperation = 'destination-over';
+  g.fillStyle = c.night ? '#9a9ab4' : '#34343f';
+  for (const [X, Y] of core.values()) g.fillRect(X, Y, 1, 1);
+  g.globalCompositeOperation = 'source-over';
+  // the plug, in the socket
+  g.fillStyle = '#c9c9d4';
+  g.fillRect(c.px - 1, c.py - 1, 2, 2);
+}
+
 // The boat: a little toaster fishing from a rowboat on the lake, in pixels (after the stream's
 // fisher in a boat; the toaster is ours). It bobs a pixel a beat, the float dips on each kick, and
 // the toast pops up on a drop and every 8 bars. By the sea it fishes from a rock; at the campfire
 // it sits on a log, toasting a slice of bread on a stick (browning through each 8 bars). 40 x 28
 // pixels; the water's line (or the ground's) at 22.
 const SW = 40, SH = 28, WATER = 22.5;
-function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
+function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0, gone = false }) {
   g.clearRect(0, 0, SW, SH);
   const rect = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y + dy, w, h); };
   if (on === 'float' || on === 'pad') {
@@ -5186,7 +5666,7 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
   };
   // the toast, two slices (up out of their slots when it pops)
   const ty = 7 - pop;
-  for (const x of [14, 19]) { rect(x, ty, 3, 9 - ty, '#e0a860'); rect(x, ty, 3, 1, '#a8682e'); }
+  if (!gone) for (const x of [14, 19]) { rect(x, ty, 3, 9 - ty, '#e0a860'); rect(x, ty, 3, 1, '#a8682e'); }
   // the toaster: chrome, its edges darker, a highlight down its side, two eyes, a lever
   rect(13, 9, 10, 1, '#c9c9d4'); rect(12, 10, 12, 8, '#c9c9d4');
   rect(12, 10, 1, 8, '#86817a'); rect(23, 10, 1, 8, '#86817a'); rect(12, 17, 12, 1, '#6e6a64');
@@ -5209,6 +5689,8 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
     for (let x = 7; x < 33; x++) if (x < 12 || x > 23) rect(x, 17, 1, 1, seg(x));
     for (let x = 6; x < 34; x++) { rect(x, 18, 1, 1, seg(x)); rect(x, 19, 1, 1, seg(x)); }
     rect(9, 18, 4, 1, 'rgba(255,255,255,0.55)');
+  } else if (on === 'space') {
+    // (nothing under it: floating, on its cord: see drawSpace)
   } else if (on === 'bridge') {
     // (nothing under it: the bridge is drawn in glyphs)
   } else if (on === 'umbrella') {
@@ -5258,7 +5740,7 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0 }) {
     rect(14, 4 + hy, 1, 1, glint); rect(15, 3 + hy, 1, 1, glint); rect(16, 2 + hy, 1, 1, glint);
     return;
   }
-  if (on === 'bridge' || on === 'tube') return;
+  if (on === 'bridge' || on === 'tube' || on === 'space') return;
   if (on === 'umbrella') {
     // the umbrella, leant on the toaster's side over it: a red dome, scalloped, on a black shaft
     line(18, 4, 25, 16, '#2a2a33');
@@ -5929,7 +6411,7 @@ function pondKoi(pond, spine, kinds, boxes) {
 }
 
 export function createScenery(canvas) {
-  let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
+  let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, koiPaint = null, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
   const boatCv = Object.assign(document.createElement('canvas'), { width: SW, height: SH }), boatG = boatCv.getContext('2d');
   let popAt = -9, dipAt = -9, dropSeen = -99;
   // the music: the walk (in beats, kept on the beat), the wind, the glow, the fireflies, the
@@ -6006,6 +6488,7 @@ export function createScenery(canvas) {
     background = !!par;
     scenes = {};
     paint = program(PAINT);
+    koiPaint = null;
     // (when the driver can compile in the background, the scene asked for is started now and the
     // rest one at a time once it's up (in draw): all started at once, a new version's eleven fought
     // over the processor, the window freezing for up to 3 s at a time and the first scene taking 9 s
@@ -6030,10 +6513,22 @@ export function createScenery(canvas) {
   }
   // each scene's program (the library and its own part): where the driver compiles in the
   // background, the one shown first made when the scenery starts and the rest one at a time after
-  // it; otherwise each the first time it's shown
+  // it; otherwise each the first time it's shown. (The koi pond's paint program with it: its koi in
+  // pixels, see KOI_PX)
   const sceneProgram = (name) => {
     if (scenes[name]) return scenes[name];
-    try { return (scenes[name] = makeProgram(LIB + (MAINS[name] || MAINS.lake))); }
+    if (name === 'koi' && !koiPaint) {
+      try { koiPaint = makeProgram(PAINT_KOI); }
+      catch (err) {
+        if (gl?.isContextLost()) throw err;
+        console.error('scenery: the koi in pixels', err);
+        koiPaint = { done: () => true, ready: () => false, settled: () => false, failed: () => true };
+      }
+    }
+    try {
+      const source = LIB + (MAINS[name] || MAINS.lake);
+      return (scenes[name] = makeProgram(name === 'sharks' ? rolledSceneSource(source) : source));
+    }
     catch (err) {
       if (gl?.isContextLost()) throw err;
       console.error('scenery:', name, err);
@@ -6110,6 +6605,7 @@ export function createScenery(canvas) {
       try {
         let busy = false;
         for (const k in scenes) if (!scenes[k].done()) busy = true;
+        if (koiPaint && !koiPaint.done()) busy = true;
         sp = sceneProgram(scene);
         if (background && !busy && (sp.settled() || sp.failed())) {
           const all = Object.keys(MAINS), at = all.indexOf(scene), next = [...all.slice(at + 1), ...all.slice(0, at)].find((k) => !scenes[k]);
@@ -6122,7 +6618,8 @@ export function createScenery(canvas) {
           sp = scenes[up];
         }
         const before = shownScene && shownScene !== scene && paint.ready() && scenes[shownScene]?.ready();
-        if (!paint.settled() || !sp.settled()) {
+        // (the koi pond waits for its paint program too; if that failed, its koi are in the cells)
+        if (!paint.settled() || !sp.settled() || (scene === 'koi' && koiPaint && !koiPaint.failed() && !koiPaint.settled())) {
           if (!before) return;
           scene = shownScene;
           sp = scenes[scene];
@@ -6132,6 +6629,7 @@ export function createScenery(canvas) {
       // a strength, so those of the scene before go when it changes)
       if (shownScene !== scene) rips.length = 0;
       shownScene = scene;
+      const pondPx = scene === 'koi' && !!koiPaint?.settled();
       const dpr = Math.min(1.5, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
       if (!dims || dims.W !== W || dims.H !== H || dims.dpr !== dpr) layout(W, H, dpr);
       const dt = Math.min(0.1, Math.max(0, t - last));
@@ -6176,7 +6674,8 @@ export function createScenery(canvas) {
       // (where the toaster's going, for the koi: they make for that, not for where it's gliding past)
       const goal = V.toaster;
       V = { ...V, ...glide.land, toaster: { ...V.toaster, x: glide.x, y: glide.y }, ...(glide.moon ? { moon: glide.moon, sun: glide.moon.slice(0, 2) } : {}), ...(glide.stage ? { stage: glide.stage } : {}) };
-      const night = col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
+      // (space has no day: night there whatever the theme)
+      const night = scene === 'space' || col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
       // a ripple on the lake for each kick (while the kick's in the song), somewhere on it
       const kick = eng.v.bd.lastHit;
       if (kick.t > kickAt && t - kick.t < 0.3) {
@@ -6221,12 +6720,23 @@ export function createScenery(canvas) {
       // (the toaster on its broom: flying across the moon, drifting to and fro, rising and falling,
       // slowly; its middle, CSS pixels)
       const Sz = Math.max(1, Math.round(H / 270));
-      const flight = V.toaster.on === 'broom' ? { x: (V.toaster.x + 0.03 * Math.sin(t * 0.17)) * W, y: (1 - V.toaster.y - 0.012 * Math.sin(t * 0.71)) * H } : null;
+      const flight = V.toaster.on === 'broom' ? { x: (V.toaster.x + 0.03 * Math.sin(t * 0.17)) * W, y: (1 - V.toaster.y - 0.012 * Math.sin(t * 0.71)) * H } : V.toaster.on === 'space' ? spaceToaster(V, W, H, t) : null;
       // (drawn again only when it changes: a pixel's move on the beat, the toast's pop, the float's
       // dip, the campfire toast browning a step; the float's and the pad's are drawn a pixel at a time)
       const boat = { dy: (V.toaster.on === 'broom' ? 5 : 0) + (['boat', 'tube', 'broom', 'float', 'pad', 'mic'].includes(V.toaster.on) ? Math.floor(walkB) % 2 : 0), pop: pa < 0.7 ? Math.round(5 * Math.sin((Math.PI * pa) / 0.7)) : 0, dip: t - dipAt < 0.2 ? 1 : 0, on: V.toaster.on, toast: V.toaster.on === 'log' ? Math.round((walkB % 32) * 2) / 64 : 0 };
-      const bk = `${boat.on} ${boat.dy} ${boat.pop} ${boat.dip} ${boat.toast}`;
-      if (bk !== boatKey) { boatKey = bk; drawBoat(boatG, boat); }
+      // (in space: the toast gone from its slots once it's popped, till a new slice is in; its cord, and the
+      // sprite's canvas made big enough to hold it all)
+      const cord = V.toaster.on === 'space' ? spaceCord(V, W, H, Sz, flight, t, t - dipAt, night) : null;
+      if (cord) boat.gone = pa > 0.35 && pa < 4;
+      const bk = cord ? `space ${boat.pop} ${boat.gone} ${cord.key}` : `${boat.on} ${boat.dy} ${boat.pop} ${boat.dip} ${boat.toast}`;
+      if (bk !== boatKey) {
+        boatKey = bk;
+        if (cord) drawSpace(boatCv, boatG, boat, cord);
+        else {
+          if (boatCv.width !== SW || boatCv.height !== SH) { boatCv.width = SW; boatCv.height = SH; }
+          drawBoat(boatG, boat);
+        }
+      }
       const shoot = falling ? [falling.x, falling.y, t - falling.t, 1] : [0, 0, 0, 0];
       // (the sharks' water: stepped on, a 60th of a second a step and at most 4 a frame, with the
       // kicks, the hunger a drop or the toast's pop brings, the loudness; its cells and the sharks
@@ -6320,7 +6830,7 @@ export function createScenery(canvas) {
       gl.uniform4fv(u('birds'), birds);
       gl.uniform4fv(u('shoot'), shoot);
       gl.uniform4fv(u('car'), flight ? [(flight.x - 20 * Sz) / H, 1 - (flight.y + 9.5 * Sz) / H, 0, 1] : carU);
-      gl.uniform4f(u('leap'), t - popAt, scene === 'basement' ? (popAt === dropAt ? 2 : 1) : Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'basement' ? 1 : 0);
+      gl.uniform4f(u('leap'), t - popAt, scene === 'basement' || scene === 'space' ? (popAt === dropAt ? 2 : 1) : Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'basement' || scene === 'space' ? 1 : 0);
       const M = V.stage || V.moon; // (halloween's moon, or the festival's stage)
       gl.uniform4f(u('moon'), (M?.[0] ?? 0) * aspect, M?.[1] ?? 0, M?.[2] ?? 0, 0);
       if (scene === 'sharks') {
@@ -6347,16 +6857,24 @@ export function createScenery(canvas) {
         gl.uniform4fv(u('koiK'), koiKV);
         gl.uniform4fv(u('koiB'), koiBV);
         gl.uniform4f(u('food'), food?.x ?? 0, food?.y ?? 0, food ? t - food.t : 99, food?.r ?? 0);
+        gl.uniform1f(u('koiCells'), pondPx ? 0 : 1);
         // (moon: the toaster's lily pad, its middle and its radius)
         gl.uniform4f(u('moon'), V.toaster.x * aspect, V.toaster.y, (12.6 * Math.max(1, Math.round(H / 270))) / H, 0);
       }
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-      // the glyphs onto the window
+      // the glyphs onto the window (the koi pond's with its koi in pixels: see KOI_PX)
+      const pp = pondPx ? koiPaint : paint;
       gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.useProgram(paint.p);
-      const p = paint.u;
+      gl.useProgram(pp.p);
+      const p = pp.u;
+      if (pondPx) {
+        gl.uniform2fv(p('koiS'), koiV);
+        gl.uniform4fv(p('koiK'), koiKV);
+        gl.uniform4fv(p('koiB'), koiBV);
+        gl.uniform1f(p('koiPx'), Math.max(1, Math.round(H / 270)));
+      }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, cellTex);
       gl.uniform1i(p('cells'), 0);
@@ -6403,8 +6921,9 @@ export function createScenery(canvas) {
         : (1 - (V.lake[1] + (V.lake[0] - V.lake[1]) * V.toaster.y)) * H;
       const bx = flying ? flight.x - bw / 2 : (V.toaster.on === 'bridge' ? (0.5 + 0.14 * wideF) * W : V.toaster.x * W) - bw / 2;
       const by = flying ? flight.y - bh / 2 : waterY - (V.toaster.on === 'tube' ? 20 : V.toaster.on === 'float' || V.toaster.on === 'pad' ? SH / 2 : WATER) * S;
-      gl.uniform4f(p('spr'), bx, by, bw, bh);
-      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float', 'pad', 'decks', 'mic'].includes(V.toaster.on) ? 1e6 : waterY);
+      if (cord) gl.uniform4f(p('spr'), cord.x, cord.y, cord.w * cord.k, cord.h * cord.k);
+      else gl.uniform4f(p('spr'), bx, by, bw, bh);
+      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float', 'pad', 'decks', 'mic', 'space'].includes(V.toaster.on) ? 1e6 : waterY);
       gl.uniform1f(p('night'), night);
       gl.uniform3fv(p('tint'), night ? V.tint || [0.8, 0.82, 0.96] : [1, 1, 1]);
       gl.uniform3fv(p('toneC'), night ? V.toneN || [0.1, 0.12, 0.17] : V.toneD || [-0.075, -0.045, -0.015]);
