@@ -27,6 +27,22 @@ tools/skullmesh.mjs)
 JetBrains Mono (the typeface)
   Included in renderer/fonts; SIL Open Font License 1.1 (renderer/fonts/OFL.txt).
 
+The eye scene's footage, in renderer/eye/eye.mp4 (its first seconds, slowed, looped, smoothed)
+  "Close-up of a Human Brown Eye Flickering" by Emirhan Emiroğlu, Pexels video 32198166.
+  Pexels License (https://www.pexels.com/license/): free to use and to change.
+  From https://www.pexels.com/video/close-up-of-a-human-brown-eye-flickering-32198166/
+
+The galaxy and Saturn in the eye's pupil, in renderer/eye/galaxy.jpg and renderer/eye/saturn.jpg
+  "Out of this whirl: The Whirlpool Galaxy (M51) and companion galaxy". Credit: NASA, ESA,
+    S. Beckwith (STScI), and The Hubble Heritage Team (STScI/AURA). Cropped round the
+    galaxy, its sky taken to black, its contrast and colour graded, drawn in characters.
+    From https://esahubble.org/images/heic0506a/
+  "Latest Saturn Portrait". Credit: NASA, ESA, A. Simon (Goddard Space Flight Center), and
+    M.H. Wong (University of California, Berkeley). Cropped, drawn in characters.
+    From https://esahubble.org/images/heic1917a/
+  ESA/Hubble images: Creative Commons Attribution 4.0 International
+    (https://creativecommons.org/licenses/by/4.0/; https://esahubble.org/copyright/).
+
 The ideas and looks it's after (none of their code is in Toaster, but for the orb's above):
   DJ_Dave, whose way of performing live code the code view follows: named lines typed
     from a blank window, lighting up as they play. Toaster is an independent project,
@@ -55,6 +71,9 @@ The ideas and looks it's after (none of their code is in Toaster, but for the or
     scene's look (a tile of colour under each glyph, a shimmering hide) and the way its
     sharks swim.
   quanhoangindex's ascii-reveal, a page decoding into place glyph by glyph in a wave:
-    the scenery's change of scene and its field of glyphs while it gets ready.
+    the scenery's change of scene and its field of glyphs while it gets ready (and the worlds'
+    and the chrome's).
   Animate UI's GitHub Stars Button (Skyleen), its count rolling up while its star fills
     and then bursts: the website's star links.
+  Emad Eddin's (@emaaad.d) eye in code, a video played as coloured characters that dives
+    into the eye's pupil onto space: the scenery's eye scene.

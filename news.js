@@ -4,6 +4,16 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.17',
+    items: [
+      { act: 'strength', text: "the eye, a new scene: a real eye drawn in glyphs that looks out at you and blinks; on a drop the view glides into its pupil, a window onto space: Hubble's Whirlpool galaxy and Saturn, drawn in glyphs too" },
+      { key: 'startup', text: 'the worlds, the chrome and the spectrogram wait in the same field of glyphs while they get ready, not a black window, and the spectrogram no longer holds the window up the first time' },
+      { key: 'startup', text: 'the worlds get ready in about half the time the first time after an update' },
+      { act: 'layout', text: 'leaving 9:16 always gives the window back its old shape' },
+      { key: 'mac', text: 'a Mac download on every release: one app for Intel and Apple silicon (the first time, open it from System Settings, Privacy & Security, Open Anyway)' },
+    ],
+  },
+  {
     version: '0.4.16',
     items: [
       { act: 'strength', text: 'the city, the campfire and the snow by day, redrawn: brick, glass and striped awnings in the rain, a meadow of wildflowers round the fire, a clear winter sky over white peaks' },

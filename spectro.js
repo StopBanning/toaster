@@ -33,6 +33,10 @@ const MAPS = {
 };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
 const css = (c, a) => `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
+// (its program compiled in the background where the driver can, and a fresh one left a moment after
+// it's done before it's drawn with, as the chrome's is; one done within QUICK_MS of being asked came
+// from the shader cache, and is used at once)
+const SETTLE_MS = 1500, QUICK_MS = 150;
 // The levels: each row's usual level (its last 6 s or so) taken off; the floor where FLOOR_AT of the
 // rows are now, at least MIN_SPAN dB under the peak; the FLOOR_DB under it rising gently to FLOOR_V
 // (so quiet sound still ripples the floor); eased over TAU s.
@@ -111,26 +115,27 @@ const project = (m, p, W, H) => {
 
 export function createSpectro(canvas, boxCanvas) {
   const og = boxCanvas.getContext('2d');
-  let gl = null, prog = null, vao = null, tex = null, count = 0, U = null, broken = false;
+  let gl = null, par = null, job = null, prog = null, vao = null, tex = null, count = 0, U = null, broken = false;
   let lastCol = null, last = 0, peak = -30, floor = NaN, avg = null, blank = null;
   let heard = {}, bassAt = -1, chordWas = null;
   const pins = [], chords = [];
   const column = new Float32Array(ROWS), quiet = new Float32Array(ROWS), raw = new Float32Array(ROWS), tmp = new Float32Array(ROWS), sorted = new Float32Array(ROWS);
 
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); prog = null; });
-  canvas.addEventListener('webglcontextrestored', () => { prog = null; lastCol = null; });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); prog = job = null; });
+  canvas.addEventListener('webglcontextrestored', () => { prog = job = null; lastCol = null; });
 
   function build() {
     gl = canvas.getContext('webgl2', { alpha: false, antialias: true, depth: true });
     if (!gl) { broken = true; return; }
-    const shader = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
-    prog = gl.createProgram();
-    gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-    const loc = {};
-    U = (n) => loc[n] ??= gl.getUniformLocation(prog, n);
+    // (the program started, not waited for: asked about at once, a first show on an empty shader
+    // cache held the whole window up 0.1 s; finish() takes it up once it's done)
+    par = gl.getExtension('KHR_parallel_shader_compile');
+    const shader = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const pr = gl.createProgram(), vs = shader(gl.VERTEX_SHADER, VS), fs = shader(gl.FRAGMENT_SHADER, FS);
+    gl.attachShader(pr, vs);
+    gl.attachShader(pr, fs);
+    gl.linkProgram(pr);
+    job = { pr, vs, fs, at: performance.now(), done: 0 };
     const grid = new Float32Array(NX * NZ * 2);
     for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) grid.set([i / (NX - 1), j / (NZ - 1)], (j * NX + i) * 2);
     const tris = new Uint16Array((NX - 1) * (NZ - 1) * 6);
@@ -151,6 +156,25 @@ export function createSpectro(canvas, boxCanvas) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, COLS, ROWS, 0, gl.RED, gl.FLOAT, new Float32Array(COLS * ROWS));
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.REPEAT], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
     lastCol = null;
+  }
+  // The program done (and settled, if it was a fresh one): its places found, and the landscape can
+  // draw. False till then; throws if it failed.
+  function finish() {
+    const now = performance.now();
+    if (!job.done) {
+      if (par && !gl.getProgramParameter(job.pr, par.COMPLETION_STATUS_KHR)) return false;
+      job.done = now;
+    }
+    if (par && job.done - job.at > QUICK_MS && now - job.done < SETTLE_MS) return false;
+    if (!gl.getProgramParameter(job.pr, gl.LINK_STATUS)) {
+      const bad = [job.vs, job.fs].find((sh) => !gl.getShaderParameter(sh, gl.COMPILE_STATUS));
+      throw new Error(bad ? gl.getShaderInfoLog(bad) : gl.getProgramInfoLog(job.pr));
+    }
+    prog = job.pr;
+    job = null;
+    const loc = {};
+    U = (n) => loc[n] ??= gl.getUniformLocation(prog, n);
+    return true;
   }
 
   // A column: each row's level, from the analysis that resolves it best (the 4096-point one up to
@@ -283,6 +307,8 @@ export function createSpectro(canvas, boxCanvas) {
 
   return {
     get broken() { return broken; },
+    // (compiling: its program started and not yet done)
+    get waiting() { return !!job; },
     // (the levels' history wiped too, so coming back to it doesn't show the sound of minutes ago
     // rolling past; the canvases shrunk, their full-window buffers freed while it's off)
     clear() {
@@ -300,8 +326,10 @@ export function createSpectro(canvas, boxCanvas) {
     draw(t, eng, { theme, themed = false, offset = 0 } = {}) {
       if (broken || gl?.isContextLost()) return;
       if (!prog) {
-        try { build(); } catch (err) { broken = true; console.error('spectrogram:', err); return; }
-        if (broken) return;
+        try {
+          if (!job) build();
+          if (broken || !finish()) return;
+        } catch (err) { broken = true; job = null; console.error('spectrogram:', err); return; }
       }
       const dt = Math.min(0.1, Math.max(0.001, t - last));
       last = t;
