@@ -4,6 +4,14 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.15',
+    items: [
+      { act: 'strength', text: 'the sharks in pixels: clean shapes and fins under their shimmering letters, and the stingray and the jellyfish redrawn with them' },
+      { act: 'strength', text: 'a change of scene decodes in from the toaster, a cell at a time' },
+      { key: 'startup', text: 'while the scenery gets ready (the first start after an update, a first visit to the website) a field of glyphs shows instead of a black window' },
+    ],
+  },
+  {
     version: '0.4.14',
     items: [
       { act: 'strength', text: 'space in the scenery: on the moon, the toaster floating on its own power cord from a lander, the Earth, Saturn and an astronaut in the sky, the Milky Way across it; on a drop the toast pops and meteors streak by; night whatever the theme' },
