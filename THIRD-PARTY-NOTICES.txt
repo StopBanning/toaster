@@ -54,3 +54,5 @@ The ideas and looks it's after (none of their code is in Toaster, but for the or
   stackedlol's ascii-sharks, sharks and fish drawn as ASCII on a canvas: the sharks
     scene's look (a tile of colour under each glyph, a shimmering hide) and the way its
     sharks swim.
+  quanhoangindex's ascii-reveal, a page decoding into place glyph by glyph in a wave:
+    the scenery's change of scene and its field of glyphs while it gets ready.

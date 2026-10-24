@@ -2979,6 +2979,7 @@ uniform vec4 shkK[3];       // each one's kind (0 a hammerhead, 1 a blacktip, 2 
 uniform vec4 shkB[3];       // the box each one's in (x0, y0, x1, y1), none when x1 < x0
 uniform vec4 shkD[3];       // how near each one is (1 the nearest), a number of its own
 uniform sampler2D life;     // a cell at a time: a fish there (R, how bright), the water stirred (G), a splash where one was caught (B)
+uniform float sharkCells;   // 1: the sharks, the stingray and the jellyfish drawn here, in the cells (when the paint pass can't draw them in pixels: see SHARK_PX); 0: only their skins' glyphs, for the pixels
 const vec2 SUN = vec2(-0.6, 0.8);
 // (where in a cell the sharks are looked for, besides its middle)
 const vec2 SUB[4] = vec2[4](vec2(-0.27, 0.24), vec2(0.27, 0.2), vec2(-0.2, -0.26), vec2(0.24, -0.24));
@@ -3221,7 +3222,11 @@ void main() {
   // shaded by the light, its glyph from the skin's (keyed to a place on the skin, so it rides along
   // with it), a shade of the skin itself (sparse where it's lit, dense in its shadow), now and then
   // flashing a colour or white, so the hide shimmers; and round their edges, where a cell's only
-  // partly covered, a light glyph on a tile as faint as the cover, so each one reads as one smooth form
+  // partly covered, a light glyph on a tile as faint as the cover, so each one reads as one smooth form.
+  // With them in pixels (see SHARK_PX) only their skins' glyphs from here: where a cell's well inside
+  // one, its glyph laid over whatever's there, the shark's number in the cell's front (124 + which one),
+  // so the paint pass lays it on that shark's pixels and nowhere else; its ink full for a flash of colour
+  // or white (in that colour), else a hair under (the paint pass inks it in the skin's own tone, darker)
   for (int k = 0; k < 3; k++) {
     vec4 B = shkB[k];
     if (B.z < B.x || X < B.x || X > B.z || Y < B.y || Y > B.w) continue;
@@ -3233,6 +3238,20 @@ void main() {
     vec4 K = shkK[k], D = shkD[k];
     float kind = K.x, cover = float(n) / 5.0, near = 0.74 + 0.26 * D.x;
     float key = h2(vec2(floor(s * 52.0 + 0.5), floor(v * K.y / cw + 0.5)) + D.y * 37.0);
+    int g = wh > 4.5 ? (key < 0.33 ? G_HASH : key < 0.67 ? G_PCT : G_AT)
+          : wh > 3.5 ? G_SMALLO
+          : wh > 2.5 ? (key < 0.33 ? G_AT : key < 0.67 ? G_EIGHT : G_PCT)
+          : wh > 1.5 ? (key < 0.2 ? G_PCT : key < 0.4 ? G_SEMI : key < 0.6 ? G_SMALLI : key < 0.8 ? G_LS : G_COLON)
+          : RAMP[clamp(int((1.0 - li) * 9.99) + int(fract(key * 13.7) * 3.0) - 1, 0, 9)];
+    // (the shimmer: each glyph rolls again a couple of times a second, each on its own beat)
+    float roll = h2(vec2(floor(key * 4096.0), floor(time * 2.4 + fract(key * 31.0) * 10.0)));
+    if (sharkCells < 0.5) {
+      if (mid && n >= 3 && (wh < 3.5 || wh > 4.5)) {
+        over = g; overInk = roll < 0.05 && wh < 3.5 ? 1.0 : 0.996; overC = roll < 0.035 ? accent(key) : vec3(1.0);
+        front = (124.0 + float(k)) / 255.0;
+      }
+      break;
+    }
     // (its colours, in shadow and lit: the hammerhead olive bronze, the blacktip grey, the zebra
     // shark sand; by night in the moonlight)
     vec3 dk = kind < 0.5 ? rgb(78.0, 76.0, 58.0) : kind < 1.5 ? rgb(70.0, 80.0, 94.0) : rgb(122.0, 98.0, 60.0);
@@ -3249,13 +3268,6 @@ void main() {
     vec3 c = wh > 4.5 ? dk * 0.38 : wh > 3.5 ? rgb(16.0, 16.0, 20.0) : wh > 2.5 ? mix(lt, vec3(1.0), 0.25) : mix(dk, lt, wh > 1.5 ? 0.15 + 0.7 * li : li);
     c *= 1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.02;
     tileC = c; tileA = 1.0;
-    int g = wh > 4.5 ? (key < 0.33 ? G_HASH : key < 0.67 ? G_PCT : G_AT)
-          : wh > 3.5 ? G_SMALLO
-          : wh > 2.5 ? (key < 0.33 ? G_AT : key < 0.67 ? G_EIGHT : G_PCT)
-          : wh > 1.5 ? (key < 0.2 ? G_PCT : key < 0.4 ? G_SEMI : key < 0.6 ? G_SMALLI : key < 0.8 ? G_LS : G_COLON)
-          : RAMP[clamp(int((1.0 - li) * 9.99) + int(fract(key * 13.7) * 3.0) - 1, 0, 9)];
-    // (the shimmer: each glyph rolls again a couple of times a second, each on its own beat)
-    float roll = h2(vec2(floor(key * 4096.0), floor(time * 2.4 + fract(key * 31.0) * 10.0)));
     vec3 ink = wh > 4.5 ? dk * 0.6 : wh > 3.5 ? rgb(154.0, 160.0, 173.0) : roll < 0.035 ? accent(key) : roll < 0.05 ? vec3(1.0)
              : day ? c * (0.7 - 0.12 * li) : min(c * (1.3 + 0.2 * li), vec3(1.0));
     put(g, 1.0, ink);
@@ -3263,7 +3275,7 @@ void main() {
   }
 
   // --- by day, their shadows on the bottom, down and to the right of each
-  if (day) for (int k = 0; k < 3; k++) {
+  if (day && sharkCells > 0.5) for (int k = 0; k < 3; k++) {
     vec4 B = shkB[k];
     vec2 q = p - vec2(0.02, -0.026);
     if (B.z < B.x || q.x < B.x || q.x > B.z || q.y < B.y || q.y > B.w) continue;
@@ -3308,6 +3320,8 @@ void main() {
       float key = h2(vec2(floor(s * F / cw * 1.4 + 0.5), floor(side * 3.0 + 0.5)) + 71.0);
       vec3 dk = rgb(44.0, 62.0, 104.0), lt = rgb(176.0, 196.0, 224.0);
       if (!day) { dk *= vec3(0.55, 0.62, 0.8); lt *= vec3(0.6, 0.68, 0.86); }
+      // (its cells marked (front 127), so the jellyfish and the stingray in pixels pass behind it)
+      if (n > 0 && over == 0) front = 127.0 / 255.0;
       if (n > 0 && (what == 0 || n < 3)) {
         put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, mix(dk, lt, 0.35));
         return;
@@ -3360,30 +3374,41 @@ void main() {
       bool mid = bellAt(p, c, a, b, hh);
       int n = mid ? 1 : 0;
       for (int i = 0; i < 4; i++) if (bellAt(p + SUB[i] * vec2(cw, ch), c, a, b, hh)) n++;
+      if (sharkCells < 0.5 && n == 0) continue;
       float x = clamp((X - c.x) / a, -0.999, 0.999), w = 1.0 - x * x, yT = b * sqrt(w), yB = hh * w, dy = Y - c.y;
       float vv = clamp((dy - yB) / max(yT - yB, 1e-4), 0.0, 1.0);                  // (0 its underside, 1 its top)
       float key = h2(vec2(floor((X - c.x) / cw + 0.5), floor((dy - yB) / ch + 0.5)) + fk * 37.0);
+      // (glowing at its skin, along its top and down its sides, see-through inside; lit from above)
+      float skin = max(smoothstep(0.5, 1.0, vv), smoothstep(0.55, 1.0, abs(x)));
+      float li = clamp(0.08 + 0.8 * skin + 0.15 * vv, 0.0, 1.0);
+      bool rim = (dy - yB) < ch * 0.9;                                            // (its rim, glowing: a row along its base)
+      bool ring = false;                                                          // (its four rings, in a row)
+      for (int i = 0; i < 4; i++) if (abs(x - (-0.54 + 0.36 * float(i))) * a < cw * 0.6 && abs(vv - 0.32) * (yT - yB) < ch * 0.55) ring = true;
+      // (the shimmer: each glyph rolls again a couple of times a second, on its own beat; more as it beats)
+      float roll = h2(vec2(floor(key * 4096.0), floor(time * 2.4 + fract(key * 31.0) * 10.0)));
+      // (fine grain on its skin, nearly clear inside: a fleck here and there)
+      int grain = li > 0.6 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < (li > 0.3 ? 0.35 : 0.14) ? G_MID : 0);
+      // (with them in pixels (see SHARK_PX), only that grain from here, where a cell's well inside its
+      // bell (none on its rim or its rings: the pixels' own), laid over whatever's there, the
+      // jellyfish's number in the cell's front (120 + which one); its ink full for a flash of white)
+      if (sharkCells < 0.5) {
+        if (over == 0 && mid && n >= 3 && !rim && !ring && grain != 0) {
+          over = grain; overInk = roll < 0.05 + 0.08 * pulse ? 1.0 : 0.996; overC = vec3(1.0); front = (120.0 + fk) / 255.0;
+        }
+        break;
+      }
       if (n > 0 && (!mid || n < 3)) {
         // (its edge: a light glyph, no tile)
         put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, day ? mix(dk, lt, 0.2) * 0.85 : mix(dk, lt, 0.7) * 1.3);
         return;
       }
       if (n > 0) {
-        // (glowing at its skin, along its top and down its sides, see-through inside; lit from above)
-        float skin = max(smoothstep(0.5, 1.0, vv), smoothstep(0.55, 1.0, abs(x)));
-        float li = clamp(0.08 + 0.8 * skin + 0.15 * vv, 0.0, 1.0);
-        bool rim = (dy - yB) < ch * 0.9;                                            // (its rim, glowing: a row along its base)
-        bool ring = false;                                                          // (its four rings, in a row)
-        for (int i = 0; i < 4; i++) if (abs(x - (-0.54 + 0.36 * float(i))) * a < cw * 0.6 && abs(vv - 0.32) * (yT - yB) < ch * 0.55) ring = true;
         vec3 tc = rim ? (day ? rgb(236.0, 206.0, 244.0) : glowC * (0.62 + 0.3 * pulse))
                 : ring ? (day ? rgb(236.0, 160.0, 214.0) : mix(glowC, vec3(1.0), 0.2) * 0.62)
                 : mix(dk, lt, li) * (1.0 + 0.25 * pulse * (day ? 0.0 : 1.0));
         tc *= 1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.05;
         tileC = tc; tileA = day ? 0.88 : 1.0;
-        // (the shimmer: each glyph rolls again a couple of times a second, on its own beat; more as it beats)
-        float roll = h2(vec2(floor(key * 4096.0), floor(time * 2.4 + fract(key * 31.0) * 10.0)));
-        // (fine grain on its skin, nearly clear inside: a fleck here and there)
-        int g = rim ? (mod(cell.x + fk, 2.0) < 1.0 ? G_TILDE : G_DASH) : ring ? G_SMALLO : (li > 0.6 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < (li > 0.3 ? 0.35 : 0.14) ? G_MID : 0));
+        int g = rim ? (mod(cell.x + fk, 2.0) < 1.0 ? G_TILDE : G_DASH) : ring ? G_SMALLO : grain;
         vec3 ink = roll < 0.05 + 0.08 * pulse ? vec3(1.0) : (day ? tc * (ring ? 0.62 : 0.72) : tc * (ring ? 1.5 : 1.55));
         put(g, 1.0, ink);
         return;
@@ -3439,53 +3464,63 @@ void main() {
       int what = rayAt(p, u, asp, lane, Lb, Wb, T, al, ac, r, td);
       vec3 night = day ? vec3(1.0) : vec3(0.6, 0.68, 0.86);
       if (what == 3) {
-        // (its tail: a line along its way, sand banded blue, a wisp at its end)
-        float ta = mod(atan(td.y / ch, td.x / cw), 3.14159265);
-        int tg = r > 0.85 ? G_MID : (r < 0.45 && (ta < 0.4 || ta > 2.74) ? G_HHEAVY : (r < 0.45 && abs(ta - 1.5708) < 0.4 ? G_VHEAVY : lineGlyph(atan(td.y, td.x))));
-        put(tg, 1.0, (mod(r * 14.0, 2.0) < 1.0 ? rgb(70.0, 150.0, 250.0) : rgb(176.0, 144.0, 88.0)) * night);
-        return;
-      }
-      int n = what != 0 ? 1 : 0;
-      float a2, c2, r2; vec2 t2;
-      for (int i = 0; i < 4; i++) { int w2 = rayAt(p + SUB[i] * vec2(cw, ch), u, asp, lane, Lb, Wb, T, a2, c2, r2, t2); if (w2 != 0 && w2 != 3) n++; }
-      float key = h2(vec2(floor(al * Lb / cw * 1.3 + 0.5), floor(ac * Wb / ch * 1.3 + 0.5)) + 53.0);
-      vec3 dk = rgb(150.0, 114.0, 64.0), lt = rgb(238.0, 210.0, 148.0);
-      if (n > 0 && (what == 0 || n < 3)) {
-        put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, mix(dk, lt, 0.5) * night);
-        return;
-      }
-      if (what != 0) {
+        // (its tail: a line along its way, sand banded blue, a wisp at its end; in pixels, the pixels')
+        if (sharkCells > 0.5) {
+          float ta = mod(atan(td.y / ch, td.x / cw), 3.14159265);
+          int tg = r > 0.85 ? G_MID : (r < 0.45 && (ta < 0.4 || ta > 2.74) ? G_HHEAVY : (r < 0.45 && abs(ta - 1.5708) < 0.4 ? G_VHEAVY : lineGlyph(atan(td.y, td.x))));
+          put(tg, 1.0, (mod(r * 14.0, 2.0) < 1.0 ? rgb(70.0, 150.0, 250.0) : rgb(176.0, 144.0, 88.0)) * night);
+          return;
+        }
+      } else {
+        int n = what != 0 ? 1 : 0;
+        float a2, c2, r2; vec2 t2;
+        for (int i = 0; i < 4; i++) { int w2 = rayAt(p + SUB[i] * vec2(cw, ch), u, asp, lane, Lb, Wb, T, a2, c2, r2, t2); if (w2 != 0 && w2 != 3) n++; }
+        float key = h2(vec2(floor(al * Lb / cw * 1.3 + 0.5), floor(ac * Wb / ch * 1.3 + 0.5)) + 53.0);
+        vec3 dk = rgb(150.0, 114.0, 64.0), lt = rgb(238.0, 210.0, 148.0);
         // (lit from above: domed a little, brighter toward the light; its wings' edges paler)
         vec2 rdir = normalize(p - c0 + vec2(1e-5));
         float li = clamp(0.5 + 0.3 * dot(rdir, normalize(SUN)) * min(1.0, r) + 0.25 * (1.0 - min(1.0, r)), 0.0, 1.0);
-        vec3 c = mix(dk, lt, li);
-        // (its body raised down its middle, a little darker and richer, a faint line where its wings
-        // begin; the wings' thin edges paler)
-        float wing = abs(ac) / 0.34;
-        if (what == 1 && wing < 1.0) c = mix(c, c * vec3(0.86, 0.8, 0.72), 0.7);
-        if (what == 1 && abs(wing - 1.0) < 0.09 && abs(al) < 0.82) c *= 0.84;
-        if (what == 2) c = mix(c, rgb(250.0, 236.0, 200.0), 0.35);
-        if (what == 6) c *= 0.85;
         // (its spots: electric blue, spread evenly over its wings and the back of its disc, one to a
         // patch of it, riding along with it; none on its edge, none round its eyes)
         float span0 = al > -0.08 ? pow(clamp((1.0 - al) / 1.08, 0.0, 1.0), 0.72) : pow(clamp((al + 1.0) / 0.92, 0.0, 1.0), 0.9);
         vec2 sg = vec2(al * Lb, ac * Wb) / 0.028, gi = floor(sg);
         vec2 sc = gi + 0.3 + 0.4 * vec2(h2(gi + 3.1), h2(gi + 9.7));
         bool spot = what == 1 && (span0 - abs(ac)) * Wb > 1.3 * max(cw, ch) && !(al > 0.15 && abs(ac) < 0.3) && h2(gi + 5.3) < 0.5 && length(sg - sc) < 0.26;
-        if (spot) c = rgb(60.0, 150.0, 255.0);
-        if (what == 4) c = rgb(36.0, 30.0, 22.0);
-        if (what == 5) c = mix(dk, rgb(36.0, 30.0, 22.0), 0.5);
-        c *= night * (1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.04);
-        tileC = c; tileA = 1.0;
         int g = what == 4 ? G_SMALLO : what == 5 ? G_DOT : spot ? G_SMALLO : RAMP[clamp(int((1.0 - li) * 9.99) + int(fract(key * 13.7) * 3.0) - 1, 0, 9)];
-        vec3 ink = what == 4 ? rgb(200.0, 190.0, 160.0) * night : spot ? rgb(190.0, 230.0, 255.0) * night
-                 : day ? c * (li > 0.55 ? 0.42 : 0.52) : li > 0.55 ? rgb(16.0, 15.0, 14.0) : rgb(30.0, 28.0, 26.0);
-        put(g, 1.0, ink);
-        return;
+        // (with it in pixels (see SHARK_PX), only its skin's glyphs from here, on its disc and wings where
+        // a cell's well inside it (none on its eyes, spiracles or spots: the pixels' own), laid over
+        // whatever's there; its front 123)
+        if (sharkCells < 0.5) {
+          if (over == 0 && n >= 3 && (what == 1 || what == 2 || what == 6) && !spot) { over = g; overInk = 0.996; overC = vec3(0.0); front = 123.0 / 255.0; }
+        } else {
+          if (n > 0 && (what == 0 || n < 3)) {
+            put(n >= 2 ? (key < 0.5 ? G_COLON : G_SEMI) : (key < 0.25 ? G_DOT : key < 0.5 ? G_TICK : key < 0.75 ? G_COMMA : G_GRAVE), 0.9, mix(dk, lt, 0.5) * night);
+            return;
+          }
+          if (what != 0) {
+            vec3 c = mix(dk, lt, li);
+            // (its body raised down its middle, a little darker and richer, a faint line where its wings
+            // begin; the wings' thin edges paler)
+            float wing = abs(ac) / 0.34;
+            if (what == 1 && wing < 1.0) c = mix(c, c * vec3(0.86, 0.8, 0.72), 0.7);
+            if (what == 1 && abs(wing - 1.0) < 0.09 && abs(al) < 0.82) c *= 0.84;
+            if (what == 2) c = mix(c, rgb(250.0, 236.0, 200.0), 0.35);
+            if (what == 6) c *= 0.85;
+            if (spot) c = rgb(60.0, 150.0, 255.0);
+            if (what == 4) c = rgb(36.0, 30.0, 22.0);
+            if (what == 5) c = mix(dk, rgb(36.0, 30.0, 22.0), 0.5);
+            c *= night * (1.0 + (h2(cell + floor(time * 6.0) * 1.3) - 0.5) * 0.04);
+            tileC = c; tileA = 1.0;
+            vec3 ink = what == 4 ? rgb(200.0, 190.0, 160.0) * night : spot ? rgb(190.0, 230.0, 255.0) * night
+                     : day ? c * (li > 0.55 ? 0.42 : 0.52) : li > 0.55 ? rgb(16.0, 15.0, 14.0) : rgb(30.0, 28.0, 26.0);
+            put(g, 1.0, ink);
+            return;
+          }
+        }
       }
     }
-    // (its shadow close under it on the bottom by day: it swims low)
-    if (day && length(p - c0) < Lb + Wb + T + 0.08) {
+    // (its shadow close under it on the bottom by day: it swims low; in pixels, the pixels')
+    if (sharkCells > 0.5 && day && length(p - c0) < Lb + Wb + T + 0.08) {
       float a2, c2, r2; vec2 t2;
       if (rayAt(p - vec2(0.012, -0.016), u, asp, lane, Lb, Wb, T, a2, c2, r2, t2) != 0) tone = 0.8;
     }
@@ -4768,11 +4803,33 @@ uniform int pixN;
 uniform vec4 pixR[16], pixU[16], pixF[16];
 uniform vec3 pixC, pixC2;
 uniform float pixK, pixH;
+// the decode (a scene change): the window's picture before it; the wave: where it starts (CSS pixels),
+// how long ago (s), on (1); how many glyphs the sheet has, to flicker through
+uniform sampler2D before;
+uniform vec4 wave;
+uniform float glyphs;
+uniform float idle;      // (1: the scenery getting ready, nothing to show yet: the field of glyphs)
 out vec4 o;
+uint whu(uvec2 q) { q *= uvec2(1597334673u, 3812015801u); return (q.x ^ q.y) * 1597334673u; }
+float wh2(vec2 q) { return float(whu(uvec2(ivec2(floor(q)) + 32768))) / 4294967295.0; }
 vec3 boat(vec4 sp) { return own > 0.5 ? sp.rgb * tint : mix(bg, fg, dot(sp.rgb, vec3(0.3, 0.55, 0.15))); }
 void main() {
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y) / dpr;
   vec2 cell = floor(p / cellPx);
+  // the scenery getting ready (its first scene still compiling): glyphs flickering in the theme's ink,
+  // more of them and brighter where a slow swell passes out from the middle, over a faint grid of dots,
+  // the grid the scene will decode into
+  if (idle > 0.5) {
+    vec2 fr = (p - cell * cellPx) / cellPx;
+    float r = length((cell + 0.5) * cellPx - 0.5 * grid * cellPx) / (H / dpr);
+    float swell = 0.5 + 0.5 * sin(r * 9.0 - time * 2.4);
+    float flick = floor(time * 8.0 + wh2(cell + 3.0) * 8.0);
+    float gI = 1.0 + floor(wh2(cell + flick * 2.7) * (glyphs - 1.0));
+    float gc = step(0.93 - 0.2 * swell, wh2(cell + flick * 1.3)) * texture(sheet, (vec2(mod(gI, perRow), floor(gI / perRow)) + fr) * slot / sheetSize).a;
+    float dotk = mod(cell.x, 2.0) < 0.5 && mod(cell.y, 2.0) < 0.5 ? smoothstep(0.16, 0.05, length(fr - 0.5)) : 0.0;
+    o = vec4(mix(bg, fg, max(gc * (0.12 + 0.4 * swell), dotk * 0.2)), 1.0);
+    return;
+  }
   ivec2 at = ivec2(int(cell.x), int(grid.y) - 1 - int(cell.y));
   // (the cell unpacked: its glyph, ink and tone; its colour; its tile)
   uvec4 u = texelFetch(cells, at, 0);
@@ -4832,6 +4889,24 @@ void main() {
     if (below > 0.0 && below < spr.w * 0.45) {
       vec2 rq = (vec2(p.x + 1.5 * sin(p.y * 0.45 + time * 2.5), water - below) - spr.xy) / spr.zw;
       if (rq.x >= 0.0 && rq.x < 1.0 && rq.y >= 0.0 && rq.y < 1.0 && mod(floor(below / 3.0), 2.0) < 1.0) { vec4 sp = texture(sprite, rq); if (sp.a > 0.5) col = mix(col, boat(sp), 0.32); }
+    }
+  }
+  // the decode: the new scene spreading from the toaster, a cell at a time, each flickering through
+  // glyphs as the wave reaches it (bright at the wave's edge, settling into the new scene's colours),
+  // the picture before it beyond the wave
+  if (wave.w > 0.5) {
+    float Hc = H / dpr, d = length((cell + 0.5) * cellPx - wave.xy) / Hc;
+    float pr = (wave.z - d * 0.5 - 0.07 * wh2(cell + 7.0)) / 0.1;
+    vec3 old = texelFetch(before, ivec2(gl_FragCoord.xy), 0).rgb;
+    if (pr < 0.0) col = old;
+    else if (pr < 1.0) {
+      // (a glyph in most of the cells at a time, not all, so the wave breathes; each in the old scene's
+      // colour, lightened, at the wave's edge and the new one's as it settles)
+      float flick = floor(time * 24.0);
+      float g2 = 1.0 + floor(wh2(cell + flick * 3.1) * (glyphs - 1.0));
+      float cov2 = step(0.3, wh2(cell + flick * 1.7 + 11.0)) * texture(sheet, (vec2(mod(g2, perRow), floor(g2 / perRow)) + f) * slot / sheetSize).a;
+      vec3 ink2 = mix(mix(old, vec3(1.0), 0.6), own > 0.5 ? max(cc, vec3(0.45)) : fg, pr);
+      col = mix(mix(old, col, pr), ink2, cov2 * (1.0 - 0.4 * pr));
     }
   }
   o = vec4(col, 1.0);
@@ -4989,6 +5064,359 @@ const KOI_PX_DRAW = `
   }
 `;
 const PAINT_KOI = PAINT.replace('void main() {', () => KOI_PX + 'void main() {').replace('  float cellD = float(u.w & 255u) / 255.0;\n', (m) => m + KOI_PX_DRAW);
+
+// The sharks in pixels, where the cells drew them chunky (a cell's blocks for a skin, its edges in
+// steps): the paint pass's own copy for the sharks (PAINT_SHARK) draws them over the water a pixel at a
+// time, the pixel layer's pixels (sharkPx, CSS pixels; 0 the window's own), the nearest over the
+// others. Their shapes are the scene's (sharkAt: the same spines, widths, heads and fins); their skins
+// in a few tones, as a pixel picture's: lit across the back toward the sun, falling into shade down the
+// flanks, a pixel's rim darker still; the dorsal fin a ridge down the back, lit on the sun's side; the
+// gill slits; eyes, a glint in each; the blacktip's black tips, the zebra shark's ridges and spots. Over
+// them their skins' glyphs still, from the cells (see SHARKS: keyed to the skin, shimmering), and the
+// stingray's and the jellyfish's over theirs; by day their shadows on the bottom.
+const SHARK_PX = `
+uniform vec2 shk[48];
+uniform vec4 shkK[3];
+uniform vec4 shkB[3];
+uniform vec4 shkD[3];
+uniform float sharkPx;
+const vec2 SSUN = vec2(-0.6, 0.8);
+uint shu(uvec2 q) { q *= uvec2(1597334673u, 3812015801u); return (q.x ^ q.y) * 1597334673u; }
+float sh2(vec2 q) { return float(shu(uvec2(ivec2(floor(q)) + 32768))) / 4294967295.0; }
+vec3 srgb(float r, float g, float b) { return vec3(r, g, b) / 255.0; }
+float scr(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
+// (how far q is inside the triangle a b c, in its own units: below 0 outside)
+float sTri(vec2 q, vec2 a, vec2 b, vec2 c) {
+  float g = scr(b - a, c - a) < 0.0 ? -1.0 : 1.0;
+  return min(min(g * scr(b - a, q - a) / length(b - a), g * scr(c - b, q - b) / length(c - b)), g * scr(a - c, q - c) / length(a - c));
+}
+// (as the scene's bodyW and spotAt)
+float sBodyW(float s, float kind) {
+  if (kind > 1.5) {
+    if (s < 0.09) return 0.074 * pow(sin(1.5708 * s / 0.09), 0.7);
+    if (s < 0.26) return mix(0.074, 0.097, smoothstep(0.09, 0.26, s));
+    if (s < 0.52) return 0.027 + 0.07 * pow(1.0 - (s - 0.26) / 0.26, 1.15);
+    float k = (s - 0.52) / 0.48;
+    return 0.026 * (1.0 - k * k) + 0.016 * sin(k * 3.14159);
+  }
+  if (s < 0.12) return kind < 0.5 ? (s < 0.01 ? 0.0 : 0.036) : 0.085 * pow(sin(1.5708 * s / 0.12), 0.9);
+  if (s < 0.3) return mix(kind < 0.5 ? 0.036 : 0.085, 0.1, smoothstep(0.12, 0.3, s));
+  if (s < 0.84) return 0.018 + 0.082 * pow(1.0 - (s - 0.3) / 0.54, 1.3);
+  float k = (s - 0.84) / 0.16;
+  return 0.017 * (1.0 - k) + 0.009 * sin(k * 3.14159);
+}
+bool sSpot(float s, float v, float id) {
+  vec2 g = vec2(s / 0.05, v / 0.036), c = floor(g);
+  vec2 o = 0.25 + 0.5 * vec2(sh2(c + id * 7.0), sh2(c + id * 7.0 + 19.0));
+  return length(g - c - o) < 0.2 + 0.13 * sh2(c + id * 7.0 + 41.0);
+}
+// what of shark k is at p (units of the height), px a pixel there: 0 nothing, 1 its body, 2 a fin, 3
+// its dorsal fin, 4 an eye, 5 a dark mark, 6 the hammerhead's head; how lit (sLit), how far along it
+// and across it (sS; sV, signed, units of its length), how far in from its edge (sEdge, pixels)
+float sLit = 0.0, sS = 0.0, sV = 0.0, sEdge = 0.0;
+vec2 sNrm = vec2(0.0);
+int sharkAtPx(int k, vec2 p, float px) {
+  vec4 K = shkK[k];
+  float kind = K.x, L = K.y, best = 1e9, arc = 0.0, at = 0.0, side = 1.0;
+  vec2 nrm = vec2(0.0);
+  for (int j = 0; j < 15; j++) {
+    vec2 a = shk[k * 16 + j], ab = shk[k * 16 + j + 1] - a;
+    float l = max(length(ab), 1e-6), u = clamp(dot(p - a, ab) / (l * l), 0.0, 1.0);
+    vec2 d = p - a - ab * u;
+    float dd = dot(d, d);
+    if (dd < best) { best = dd; at = arc + u * l; side = scr(ab, d) < 0.0 ? -1.0 : 1.0; nrm = side * vec2(-ab.y, ab.x) / l; }
+    arc += l;
+  }
+  arc = max(arc, 1e-6);
+  float a = sqrt(best) / L, s = at / arc, pl = px / L;
+  sS = s; sV = side * a; sNrm = nrm;
+  if (kind < 0.5) {
+    float r = a / 0.15, front = 0.03 * r * r, deep = 0.07 * (1.0 - 0.3 * r * r * r * r);
+    if (r <= 1.0 && s >= front && s <= front + deep) {
+      sEdge = min(min(s - front, front + deep - s) * arc / L, 0.15 - a) / pl;
+      // (its eyes on the wing's ends)
+      float em = front + 0.5 * deep;
+      if (r > 0.86 && abs(s - em) * arc / px < 1.6) { sLit = 0.0; return 4; }
+      sLit = (s - front) * arc / L < 0.012 ? 0.8 : 0.55 - 0.1 * r;
+      return 6;
+    }
+  }
+  float w = sBodyW(s, kind);
+  if (a <= w) {
+    float c = a / max(w, 1e-5);
+    sEdge = (w - a) / pl;
+    sLit = 0.58 - 0.3 * c * c + 0.15 * dot(nrm, SSUN) * c;
+    vec2 d1 = kind < 0.5 ? vec2(0.3, 0.43) : kind < 1.5 ? vec2(0.33, 0.45) : vec2(0.35, 0.43);
+    vec2 d2 = kind > 1.5 ? vec2(0.47, 0.51) : vec2(0.7, 0.745);
+    vec2 gi = kind < 0.5 ? vec2(0.15, 0.25) : kind < 1.5 ? vec2(0.17, 0.27) : vec2(0.13, 0.2);
+    // (its eyes: a dot each side of its head, out near its edge)
+    if (kind > 0.5) {
+      float es = kind < 1.5 ? 0.1 : 0.07, ea = 0.8 * sBodyW(es, kind);
+      vec2 ed = vec2((s - es) * arc, (a - ea) * L) / px;
+      if (dot(ed, ed) < 1.5) { sLit = 0.0; return 4; }
+    }
+    if (s > d1.x && s < d1.y + 0.04) {
+      float ft = (s - d1.x) / (d1.y + 0.04 - d1.x), fw = 0.3 * (1.0 - ft) * (1.0 - ft) + 0.02;
+      bool sunny = dot(nrm, SSUN) > 0.0;
+      if (c < fw) { sLit = sunny ? 1.0 : 0.25; sEdge = min(sEdge, (fw - c) * w / pl); return kind > 0.5 && kind < 1.5 && ft > 0.55 ? 5 : 3; }
+      if (!sunny && c < fw + 0.22 && ft < 0.9) sLit -= 0.22;
+    }
+    if (s > d2.x && s < d2.y && c < 0.4) sLit = max(sLit, 0.8);
+    else if (s > gi.x && s < gi.y && c > 0.55 && fract((s - gi.x) / (gi.y - gi.x) * 5.0) < 0.3) sLit *= 0.55;
+    else if (s < 0.045) sLit = max(sLit, 0.7);
+    else if (kind > 1.5 && s > 0.08 && s < 0.52 && (c < 0.08 || abs(c - 0.62) < 0.06)) sLit = max(sLit, 0.82);
+    else if (kind > 1.5 && s > 0.07 && sSpot(s, sV, shkD[k].y)) return 5;
+    return 1;
+  }
+  vec2 q = vec2(s, a);
+  vec4 pc = kind < 0.5 ? vec4(0.17, 0.41, 0.51, 0.23) : kind < 1.5 ? vec4(0.15, 0.42, 0.53, 0.25) : vec4(0.12, 0.31, 0.37, 0.2);
+  float tip = pc.w * (side > 0.0 ? K.z : K.w);
+  float fe = sTri(q, vec2(pc.x, 0.0), vec2(pc.y, 0.0), vec2(pc.z, tip));
+  if (fe >= 0.0 && (kind > 1.5 || sTri(q, vec2(pc.y, 0.0), vec2(mix(pc.y, pc.z, 0.42), 0.55 * tip), vec2(pc.z, tip)) < 0.0)) {
+    sEdge = fe / pl;
+    sLit = 0.38 + 0.22 * (1.0 - clamp(a / max(tip, 1e-4), 0.0, 1.0));
+    if (kind > 0.5 && kind < 1.5 && a > 0.66 * tip) return 5;
+    if (kind > 1.5 && sSpot(s, sV, shkD[k].y)) return 5;
+    return 2;
+  }
+  vec4 pv = kind > 1.5 ? vec4(0.43, 0.49, 0.52, 0.06) : vec4(0.57, 0.64, 0.68, 0.07);
+  float pe = sTri(q, vec2(pv.x, 0.0), vec2(pv.y, 0.0), vec2(pv.z, pv.w));
+  float te = kind < 1.5 ? sTri(q, vec2(0.85, 0.0), vec2(0.94, 0.0), vec2(1.0, kind < 0.5 ? 0.09 : 0.075)) : -1.0;
+  if (pe >= 0.0 || te >= 0.0) {
+    sEdge = max(pe, te) / pl;
+    sLit = 0.36;
+    return kind > 0.5 && kind < 1.5 && s > 0.95 ? 5 : 2;
+  }
+  return 0;
+}
+// (the stingray and the jellyfish, as the scene has them: sea its beats and swims, sView the window
+// (CSS pixels))
+uniform vec4 sea;
+uniform vec2 sView;
+float sh1(float x) { return sh2(vec2(x, 7.0)); }
+vec2 sRayWay(float u, float asp, float lane) { return vec2(asp + 0.3 - u, lane + 0.05 * sin(u * 2.3 + 0.7) + 0.02 * sin(u * 5.1)); }
+// (as the scene's rayAt: 0 nothing, 1 its disc, 2 its wings' thin edges, 3 its tail, 4 an eye, 5 a
+// spiracle, 6 a pelvic fin)
+int sRayAt(vec2 p, float u, float asp, float lane, float Lb, float Wb, float T, float px, out float al, out float ac, out float r, out vec2 td) {
+  vec2 c = sRayWay(u, asp, lane), d = normalize(c - sRayWay(u - 0.01, asp, lane)), sd = vec2(-d.y, d.x), q = p - c;
+  al = dot(q, d) / Lb; ac = dot(q, sd) / Wb; r = 9.0; td = -d;
+  float edge = (1.0 + 0.09 * smoothstep(0.35, 1.0, abs(ac)) * sin(7.0 * al + time * 2.6 + (ac > 0.0 ? 0.0 : 1.4))) * (1.0 + 0.04 * sin(time * 1.5));
+  float wt = -0.08, span = al > wt ? pow(clamp((1.0 - al) / (1.0 - wt), 0.0, 1.0), 0.72) : pow(clamp((al + 1.0) / (wt + 1.0), 0.0, 1.0), 0.9);
+  span = min(span * edge, 0.98);
+  r = max(abs(ac) / max(span, 1e-3), abs(al) * 0.9);
+  if (abs(al) < 1.0 && abs(ac) < span) {
+    if (abs(al - 0.42) < 0.09 && abs(abs(ac) - 0.16) < 0.06) return 4;
+    if (abs(al - 0.27) < 0.06 && abs(abs(ac) - 0.21) < 0.05) return 5;
+    return r > 0.86 ? 2 : 1;
+  }
+  if (length(vec2((al + 0.97) * Lb, (abs(ac) - 0.17) * Wb)) < 0.17 * Lb) return 6;
+  if (al < -0.8) {
+    float best = 9.0, bt = 0.0;
+    vec2 prev = c - d * Lb;
+    for (int i = 1; i <= 10; i++) {
+      float t = float(i) / 10.0, back = Lb + t * T;
+      vec2 w = sRayWay(u - back, asp, lane), wd = normalize(sRayWay(u - back + 0.01, asp, lane) - w);
+      w += vec2(-wd.y, wd.x) * 0.02 * t * sin(t * 7.0 - time * 2.2);
+      vec2 pa = p - prev, ba = w - prev;
+      float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0), dl = length(pa - ba * h);
+      if (dl < best) { best = dl; bt = (float(i - 1) + h) / 10.0; td = normalize(ba); }
+      prev = w;
+    }
+    if (best < mix(0.12 * Lb, 0.02 * Lb, bt) + 0.6 * px) { r = bt; return 3; }
+  }
+  return 0;
+}
+// the stingray in pixels: its disc sandy gold, domed a little toward the light in four tones, its body
+// raised down its middle, its wings' thin edges paler and rimmed; electric blue spots; its eyes and
+// spiracles; its tail banded blue. (shadow: only whether it's there.) rPlain: the pixel's its plain skin
+// (its disc, its wings' edges, a pelvic fin: not a spot, an eye or a spiracle), for its glyph
+bool rPlain = false;
+vec4 rayPix(vec2 p, float px, float asp, bool shadow) {
+  rPlain = false;
+  float wide = clamp((asp - 0.56) / 1.22, 0.0, 1.0), sz = min(1.0, 0.55 + 0.45 * asp);
+  float Lb = 0.075 * sz, Wb = 0.105 * sz, T = 0.26 * sz, lane = mix(0.84, 0.8, wide);
+  float u = mod(time * 0.011 + sea.y * 0.006 + 0.9, asp + 0.65 + T);
+  vec2 c0 = sRayWay(u, asp, lane);
+  if (length(p - c0) > Lb + Wb + T + 0.06) return vec4(0.0);
+  float al, ac, r;
+  vec2 td;
+  int what = sRayAt(p, u, asp, lane, Lb, Wb, T, px, al, ac, r, td);
+  if (what == 0) return vec4(0.0);
+  if (shadow) return vec4(1.0);
+  if (what == 3) return vec4(mod(r * 14.0, 2.0) < 1.0 ? srgb(70.0, 150.0, 250.0) : srgb(176.0, 144.0, 88.0), 1.0);
+  vec3 dk = srgb(150.0, 114.0, 64.0), lt = srgb(238.0, 210.0, 148.0);
+  vec2 rdir = normalize(p - c0 + vec2(1e-5));
+  float li = clamp(0.5 + 0.3 * dot(rdir, normalize(SSUN)) * min(1.0, r) + 0.25 * (1.0 - min(1.0, r)), 0.0, 1.0);
+  vec3 c = mix(dk, lt, floor(li * 4.0 + 0.5) / 4.0);
+  float wing = abs(ac) / 0.34;
+  if (what == 1 && wing < 1.0) c = mix(c, c * vec3(0.86, 0.8, 0.72), 0.7);
+  if (what == 1 && abs(wing - 1.0) < 0.06 && abs(al) < 0.82) c *= 0.84;
+  if (what == 2) c = r > 0.96 ? dk * 0.72 : mix(c, srgb(250.0, 236.0, 200.0), 0.35);
+  if (what == 6) c *= 0.85;
+  float span0 = al > -0.08 ? pow(clamp((1.0 - al) / 1.08, 0.0, 1.0), 0.72) : pow(clamp((al + 1.0) / 0.92, 0.0, 1.0), 0.9);
+  vec2 sg = vec2(al * Lb, ac * Wb) / 0.028, gi = floor(sg);
+  vec2 sc = gi + 0.3 + 0.4 * vec2(sh2(gi + 3.1), sh2(gi + 9.7));
+  bool spot = what == 1 && (span0 - abs(ac)) * Wb > 3.0 * px && !(al > 0.15 && abs(ac) < 0.3) && sh2(gi + 5.3) < 0.5 && length(sg - sc) < 0.26;
+  if (spot) c = length(sg - sc) < 0.12 ? srgb(150.0, 210.0, 255.0) : srgb(60.0, 150.0, 255.0);
+  if (what == 4) c = srgb(36.0, 30.0, 22.0);
+  if (what == 5) c = mix(dk, srgb(36.0, 30.0, 22.0), 0.5);
+  rPlain = !spot && what != 4 && what != 5;
+  return vec4(c, 1.0);
+}
+// the jellyfish in pixels, seen from the side as the scene has them, beating every two beats (squeezing,
+// a surge up, gliding on): the bell see-through, its skin brighter toward its top and sides in four
+// tones, outlined bright; its rim glowing; its four rings showing through; a fringe of short tentacles
+// under the rim; long tentacles a pixel wide, swaying, fading as they go; the frilled arms wider. They
+// glow at night. (jWho: which one the pixel's of, when jPlain: it's its bell's plain skin, for its grain)
+int jWho = -1;
+bool jPlain = false;
+vec4 jellyPix(vec2 p, float px, float asp) {
+  jWho = -1; jPlain = false;
+  float s2 = sea.z * 0.5, b2 = fract(s2), pulse = exp(-b2 * 6.0);
+  float rise = floor(s2) + (1.0 - exp(-b2 * 5.0)) / (1.0 - exp(-5.0));
+  bool day = night < 0.5;
+  for (int k = 0; k < 3; k++) {
+    float fk = float(k);
+    bool big = k == 0;
+    float sz = min(1.0, 0.55 + 0.45 * asp);
+    float a = (big ? 0.105 : 0.066) * sz * (1.0 - 0.14 * pulse), b = (big ? 0.1 : 0.064) * sz * (1.0 + 0.12 * pulse);
+    float hh = (big ? 0.014 : 0.009) * sz * (1.0 + 1.2 * pulse), L = (big ? 0.3 : 0.19) * sz;
+    vec2 c = vec2((k == 0 ? 0.24 : (k == 1 ? 0.58 : 0.86)) * asp + 0.03 * sin(time * 0.11 + fk * 2.1),
+                  mod(0.1 + 0.53 * fk + rise * (big ? 0.022 : 0.016), 1.75) - 0.4);
+    if (abs(p.x - c.x) > a + 0.06 || p.y > c.y + b + 0.02 || p.y < c.y - L - 0.02) continue;
+    vec3 glowC = k == 1 ? srgb(190.0, 150.0, 255.0) : (k == 2 ? srgb(120.0, 230.0, 255.0) : srgb(255.0, 150.0, 220.0));
+    vec3 dk = day ? srgb(178.0, 206.0, 232.0) : glowC * 0.12, lt = day ? srgb(248.0, 242.0, 255.0) : glowC * 0.7;
+    float x = (p.x - c.x) / a, dy = p.y - c.y;
+    if (abs(x) < 1.0) {
+      float w = 1.0 - x * x, yT = b * sqrt(w), yB = hh * w;
+      if (dy < yT && dy > yB) {
+        float vv = clamp((dy - yB) / max(yT - yB, 1e-4), 0.0, 1.0);
+        float ed = min(yT - dy, (1.0 - abs(x)) * a) / px;
+        float skin = max(smoothstep(0.55, 1.0, vv), smoothstep(0.6, 1.0, abs(x)));
+        bool ring = false;
+        for (int i = 0; i < 4; i++) if (abs(x - (-0.54 + 0.36 * float(i))) * a < 2.2 * px && abs(vv - 0.32) * (yT - yB) < 1.8 * px) ring = true;
+        if (ed < 1.0) return vec4(day ? lt : glowC * 0.95, 0.95);
+        if ((dy - yB) < 2.0 * px) return vec4(day ? srgb(236.0, 206.0, 244.0) : glowC * (0.65 + 0.3 * pulse), 0.92);
+        if (ring) return vec4(day ? srgb(232.0, 150.0, 210.0) : mix(glowC, vec3(1.0), 0.25) * 0.75, 0.9);
+        float li = clamp(0.08 + 0.8 * skin + 0.15 * vv, 0.0, 1.0);
+        vec3 tc = mix(dk, lt, floor(li * 4.0 + 0.5) / 4.0) * (day ? 1.0 : 1.0 + 0.3 * pulse);
+        jWho = k; jPlain = true;
+        return vec4(tc, day ? 0.5 + 0.35 * skin : 0.4 + 0.5 * skin);
+      }
+    }
+    float yBr = hh * max(0.0, 1.0 - x * x);
+    if (abs(x) < 0.98 && dy < yBr && dy > yBr - 4.0 * px && mod(floor(p.x / px) + fk, 3.0) < 1.0) return vec4(day ? dk * 0.85 : glowC * 0.75, 0.8);
+    int N = big ? 5 : 3;
+    for (int j = 0; j < 5; j++) {
+      if (j >= N) break;
+      float fj = float(j), u = (fj / float(N - 1) - 0.5) * 1.7;
+      float len = L * (0.75 + 0.25 * sh1(fj * 3.7 + fk * 11.0));
+      float xa = c.x + u * a, ya = c.y + hh * (1.0 - u * u) - 2.0 * px;
+      float down = ya - p.y;
+      if (down < 0.0 || down >= len) continue;
+      float t0 = down / len, A = big ? 0.012 : 0.0075, ph = time * 1.3 + fj * 1.1 + fk * 2.0;
+      float x1 = xa + A * pow(t0, 0.8) * sin(ph - down * 40.0);
+      if (abs(p.x - x1) < 0.6 * px) return vec4((day ? dk * 0.8 : glowC * 0.8) * (1.0 - 0.4 * t0), 0.8 - 0.45 * t0);
+    }
+    for (int j = 0; j < 2; j++) {
+      if (!big && j == 1) break;
+      float fj = float(j), len = L * 0.58;
+      float xa = c.x + (big ? (fj - 0.5) * 0.36 : 0.0) * a, ya = c.y + hh - 2.0 * px;
+      float down = ya - p.y;
+      if (down < 0.0 || down >= len) continue;
+      float t0 = down / len, x1 = xa + 0.0105 * pow(t0, 0.7) * sin(time * 0.8 + fj * 2.5 + fk - down * 28.0);
+      if (abs(p.x - x1) < (2.2 - 1.2 * t0) * px * (1.0 + 0.4 * sin(down * 260.0))) return vec4(day ? mix(dk, srgb(200.0, 100.0, 180.0), 0.5) : mix(glowC, vec3(1.0), 0.2), 0.82 - 0.35 * t0);
+    }
+  }
+  return vec4(0.0);
+}
+// (what of shark k shows at p: its colour, and how opaque, 0 nothing)
+vec4 sharkPix(int k, vec2 p, float px) {
+  int what = sharkAtPx(k, p, px);
+  if (what == 0) return vec4(0.0);
+  float kind = shkK[k].x, near = 0.74 + 0.26 * shkD[k].x;
+  // (its colours, in shadow and lit: the hammerhead olive bronze, the blacktip grey, the zebra shark sand)
+  vec3 dk = kind < 0.5 ? srgb(78.0, 76.0, 58.0) : kind < 1.5 ? srgb(70.0, 80.0, 94.0) : srgb(122.0, 98.0, 60.0);
+  vec3 lt = kind < 0.5 ? srgb(176.0, 170.0, 134.0) : kind < 1.5 ? srgb(176.0, 188.0, 202.0) : srgb(230.0, 204.0, 146.0);
+  if (what == 4) {
+    // (an eye: dark, a glint on the sun's side)
+    return vec4(srgb(14.0, 14.0, 18.0), 1.0);
+  }
+  if (what == 5) return vec4(kind > 1.5 ? dk * 0.42 : srgb(22.0, 24.0, 30.0), 1.0);
+  // (the light across it in four steps, as a pixel picture's; a pixel's rim darker; the fins a little duller)
+  float li = clamp((sLit - 0.22) / 0.56, 0.0, 1.0);
+  float lq = floor(li * 4.0 + 0.5) / 4.0;
+  vec3 c = mix(dk, lt, what == 2 ? 0.08 + 0.5 * lq : lq);
+  if (what == 1 && abs(sV) < 0.012 && sS > 0.05 && sS < 0.8) c = mix(c, lt * 1.08, 0.5);
+  if (what == 3) c = sLit > 0.9 ? mix(lt, vec3(1.0), 0.32) : dk * 0.62;
+  // (the hammerhead's wing lit along its front edge, darker behind)
+  if (what == 6) c = sLit > 0.66 ? mix(lt, vec3(1.0), 0.18) : mix(dk, lt, 0.55);
+  if (sEdge < 1.0) c = dk * (what == 2 ? 0.5 : 0.7);
+  return vec4(c * near, 1.0);
+}
+`;
+const SHARK_PX_DRAW = `
+  {
+    float sHc = H / dpr, spx = max(sharkPx, 1.0 / dpr) / sHc;
+    // (a cell holding a skin's glyph (see SHARKS: whose, in its front: 120-122 a jellyfish's, 123 the
+    // stingray's, 124-126 a shark's): the water there drawn again without it, the glyph laid on that
+    // one's pixels below; 127 the code fish, in front of the jellyfish and the stingray (and the
+    // shadows), the sharks over it)
+    float sk = cellD * 255.0 - 120.0;
+    int skin = sk > -0.5 && sk < 6.5 ? int(sk + 0.5) : -1;
+    bool fish = sk > 6.5 && sk < 7.5;
+    if (skin >= 0) {
+      if (own > 0.5) {
+        vec3 pap = mix(top, low, smoothstep(0.0, horizon, p.y / sHc)) + toneC * c.b;
+        col = rim ? mix(pap, night > 0.5 ? pap + 0.05 : pap * 0.9, gridK) : mix(pap, tl.rgb, tl.a);
+      } else col = rim ? mix(bg, fg, 0.05 * gridK) : mix(bg, fg, 0.22 * tl.a * min(1.0, k));
+    }
+    vec2 spk = sharkPx > 0.0 ? (floor(p / sharkPx) + 0.5) * sharkPx : p;
+    vec2 sq = vec2(spk.x, sHc - spk.y) / sHc;
+    // (by day their shadows on the bottom, down and to the right of each, as the scene had them)
+    float sAsp = sView.x / max(sView.y, 1.0);
+    bool shade = false;
+    if (own > 0.5 && night < 0.5 && !fish) {
+      for (int j = 0; j < 3; j++) {
+        vec4 B = shkB[j];
+        vec2 dq = sq - vec2(0.02, -0.026);
+        if (B.z < B.x || dq.x < B.x || dq.x > B.z || dq.y < B.y || dq.y > B.w) continue;
+        if (sharkAtPx(j, dq, spx) != 0) { shade = true; break; }
+      }
+      if (!shade && rayPix(sq - vec2(0.012, -0.016), spx, sAsp, true).a > 0.0) shade = true;
+      if (shade) col *= vec3(0.8, 0.85, 0.88);
+    }
+    vec4 rc = fish ? vec4(0.0) : rayPix(sq, spx, sAsp, false);
+    if (rc.a > 0.0) {
+      vec3 rcol = night > 0.5 ? rc.rgb * vec3(0.6, 0.68, 0.86) : rc.rgb;
+      // (its skin's glyph from the cell, on its plain skin: the skin's tone darker)
+      if (skin == 3 && rPlain && cov > 0.0) rcol = mix(rcol, rcol * 0.5, cov);
+      col = mix(col, own > 0.5 ? rcol : mix(bg, fg, dot(rcol, vec3(0.3, 0.55, 0.15))), rc.a);
+    }
+    vec4 jc = fish ? vec4(0.0) : jellyPix(sq, spx, sAsp);
+    if (jc.a > 0.0) {
+      vec3 jcol = jc.rgb;
+      // (the grain on its bell from the cell: its skin's tone darker (by night lighter, glowing), or a
+      // flash of white)
+      if (skin == jWho && jPlain && cov > 0.0) jcol = mix(jcol, c.g > 0.998 ? vec3(1.0) : night > 0.5 ? min(jcol * 1.55, vec3(1.0)) : jcol * 0.72, cov);
+      col = mix(col, own > 0.5 ? jcol : mix(bg, fg, dot(jcol, vec3(0.3, 0.55, 0.15))), jc.a);
+    }
+    // (the nearest first: the first one there is drawn)
+    for (int j = 0; j < 3; j++) {
+      vec4 B = shkB[j];
+      if (B.z < B.x || sq.x < B.x || sq.x > B.z || sq.y < B.y || sq.y > B.w) continue;
+      vec4 sc = sharkPix(j, sq, spx);
+      if (sc.a <= 0.0) continue;
+      vec3 scol = night > 0.5 ? sc.rgb * vec3(0.6, 0.68, 0.86) : sc.rgb;
+      // (its skin's glyph from the cell, on its pixels: the skin's own tone darker (by night lighter,
+      // glowing), or as it shimmers a flash of colour or white)
+      if (skin == j + 4 && cov > 0.0) scol = mix(scol, c.g > 0.998 ? cc : night > 0.5 ? min(scol * 1.5, vec3(1.0)) : scol * 0.62, cov);
+      col = mix(col, own > 0.5 ? scol : mix(bg, fg, dot(scol, vec3(0.3, 0.55, 0.15))), sc.a);
+      break;
+    }
+  }
+`;
+const PAINT_SHARK = PAINT.replace('void main() {', () => SHARK_PX + 'void main() {').replace('  float cellD = float(u.w & 255u) / 255.0;\n', (m) => m + SHARK_PX_DRAW);
 
 // The pixel layer: small things drawn in pixels over the glyphs, where a text cell can't carry the
 // detail, the way the toaster is: the basement's drummer at the kit, the garden's koi. Each picture is
@@ -6411,7 +6839,7 @@ function pondKoi(pond, spine, kinds, boxes) {
 }
 
 export function createScenery(canvas) {
-  let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, koiPaint = null, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
+  let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, koiPaint = null, sharkPaint = null, beforeTex = null, beforeFbo = null, beforeOk = false, beforeN = 0, wave = null, fromIdle = false, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
   const boatCv = Object.assign(document.createElement('canvas'), { width: SW, height: SH }), boatG = boatCv.getContext('2d');
   let popAt = -9, dipAt = -9, dropSeen = -99;
   // the music: the walk (in beats, kept on the beat), the wind, the glow, the fireflies, the
@@ -6489,6 +6917,7 @@ export function createScenery(canvas) {
     scenes = {};
     paint = program(PAINT);
     koiPaint = null;
+    sharkPaint = null;
     // (when the driver can compile in the background, the scene asked for is started now and the
     // rest one at a time once it's up (in draw): all started at once, a new version's eleven fought
     // over the processor, the window freezing for up to 3 s at a time and the first scene taking 9 s
@@ -6508,6 +6937,7 @@ export function createScenery(canvas) {
     spriteTex = gl.createTexture();
     pixTex = gl.createTexture(); pixUp = false;
     fbo = gl.createFramebuffer();
+    beforeTex = gl.createTexture(); beforeFbo = gl.createFramebuffer(); beforeOk = false; wave = null;
     dims = null;
     ready = true;
   }
@@ -6517,6 +6947,13 @@ export function createScenery(canvas) {
   // pixels, see KOI_PX)
   const sceneProgram = (name) => {
     if (scenes[name]) return scenes[name];
+    if (name === 'sharks' && !sharkPaint) {
+      try { sharkPaint = makeProgram(PAINT_SHARK); }
+      catch (err) {
+        console.error('scenery: the sharks in pixels', err);
+        sharkPaint = { done: () => true, ready: () => false, settled: () => false, failed: () => true };
+      }
+    }
     if (name === 'koi' && !koiPaint) {
       try { koiPaint = makeProgram(PAINT_KOI); }
       catch (err) {
@@ -6535,6 +6972,46 @@ export function createScenery(canvas) {
       return (scenes[name] = { done: () => true, ready: () => false, settled: () => false, failed: () => true });
     }
   };
+
+  // The scenery getting ready, nothing to show yet (its first scene compiling): the paint pass alone, the
+  // field of glyphs (see PAINT's idle), kept as the picture before, so the first scene decodes in over it
+  function drawIdle(t, col) {
+    const dpr = Math.min(1.5, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+    if (!dims || dims.W !== W || dims.H !== H || dims.dpr !== dpr) layout(W, H, dpr);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.bindVertexArray(vao);
+    gl.useProgram(paint.p);
+    const p = paint.u;
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, cellTex); gl.uniform1i(p('cells'), 0);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, sheetTex); gl.uniform1i(p('sheet'), 2);
+    gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, beforeTex); gl.uniform1i(p('before'), 6);
+    // (every sampler on a unit of its own, as the scene's draw has them: left on unit 0 with the cells'
+    // integer texture, the boat's and the pixel layer's would make the draw fail, the window black)
+    gl.uniform1i(p('sprite'), 3);
+    gl.uniform1i(p('pixAt'), 4);
+    gl.uniform1f(p('idle'), 1);
+    gl.uniform1f(p('time'), t % CLOCK);
+    gl.uniform2f(p('grid'), dims.cols, dims.rows);
+    gl.uniform2f(p('cellPx'), dims.cw, dims.px);
+    gl.uniform2f(p('slot'), dims.sw, dims.sh);
+    gl.uniform2f(p('sheetSize'), dims.sheetW, dims.sheetH);
+    gl.uniform1f(p('perRow'), dims.perRow);
+    gl.uniform1f(p('dpr'), dpr);
+    gl.uniform1f(p('H'), canvas.height);
+    gl.uniform1f(p('glyphs'), SHEET.length);
+    gl.uniform3f(p('bg'), col.bg[0] / 255, col.bg[1] / 255, col.bg[2] / 255);
+    gl.uniform3f(p('fg'), col.fg[0] / 255, col.fg[1] / 255, col.fg[2] / 255);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.uniform1f(p('idle'), 0);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, beforeFbo);
+    gl.blitFramebuffer(0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    beforeOk = true; fromIdle = true;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindVertexArray(null);
+  }
 
   // The grid of cells for the window (the scene's picture: each cell packed, glyph and ink, colour, tile), and the
   // sheet: each glyph in a slot the size of a cell, in device pixels.
@@ -6566,6 +7043,13 @@ export function createScenery(canvas) {
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cellTex, 0);
+    // (the picture before a change of scene, the window's size: kept anew, a change mid-wave cut short)
+    gl.bindTexture(gl.TEXTURE_2D, beforeTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, beforeFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, beforeTex, 0);
+    beforeOk = false; wave = null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     dims = { W, H, dpr, cw, px, cols, rows, sw, sh, perRow, sheetW: sheet.width, sheetH: sheet.height };
   }
@@ -6606,6 +7090,7 @@ export function createScenery(canvas) {
         let busy = false;
         for (const k in scenes) if (!scenes[k].done()) busy = true;
         if (koiPaint && !koiPaint.done()) busy = true;
+        if (sharkPaint && !sharkPaint.done()) busy = true;
         sp = sceneProgram(scene);
         if (background && !busy && (sp.settled() || sp.failed())) {
           const all = Object.keys(MAINS), at = all.indexOf(scene), next = [...all.slice(at + 1), ...all.slice(0, at)].find((k) => !scenes[k]);
@@ -6619,8 +7104,9 @@ export function createScenery(canvas) {
         }
         const before = shownScene && shownScene !== scene && paint.ready() && scenes[shownScene]?.ready();
         // (the koi pond waits for its paint program too; if that failed, its koi are in the cells)
-        if (!paint.settled() || !sp.settled() || (scene === 'koi' && koiPaint && !koiPaint.failed() && !koiPaint.settled())) {
-          if (!before) return;
+        if (!paint.settled() || !sp.settled() || (scene === 'koi' && koiPaint && !koiPaint.failed() && !koiPaint.settled()) || (scene === 'sharks' && sharkPaint && !sharkPaint.failed() && !sharkPaint.settled())) {
+          // (nothing up yet: the field of glyphs, once the paint pass is ready)
+          if (!before) { if (paint.ready()) drawIdle(t, col); return; }
           scene = shownScene;
           sp = scenes[scene];
         }
@@ -6628,8 +7114,12 @@ export function createScenery(canvas) {
       // (each scene's ripples are its own: the koi pond's start at their own size, the others' at
       // a strength, so those of the scene before go when it changes)
       if (shownScene !== scene) rips.length = 0;
+      // (a change of scene with the picture before it kept: the decode, from where the toaster is)
+      if (((shownScene && shownScene !== scene) || fromIdle) && beforeOk) wave = { t0: t };
+      fromIdle = false;
       shownScene = scene;
       const pondPx = scene === 'koi' && !!koiPaint?.settled();
+      const sharksPx = scene === 'sharks' && !!sharkPaint?.settled();
       const dpr = Math.min(1.5, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
       if (!dims || dims.W !== W || dims.H !== H || dims.dpr !== dpr) layout(W, H, dpr);
       const dt = Math.min(0.1, Math.max(0, t - last));
@@ -6849,6 +7339,7 @@ export function createScenery(canvas) {
           for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
         } else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, dims.cols, dims.rows, gl.RGBA, gl.UNSIGNED_BYTE, sea.data);
         gl.uniform1i(u('life'), 5);
+        gl.uniform1f(u('sharkCells'), sharksPx ? 0 : 1);
         // (moon: the toaster's ring, its middle and its radius)
         gl.uniform4f(u('moon'), V.toaster.x * aspect, V.toaster.y, (12.6 * Math.max(1, Math.round(H / 270))) / H, 0);
       }
@@ -6865,7 +7356,7 @@ export function createScenery(canvas) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
       // the glyphs onto the window (the koi pond's with its koi in pixels: see KOI_PX)
-      const pp = pondPx ? koiPaint : paint;
+      const pp = pondPx ? koiPaint : sharksPx ? sharkPaint : paint;
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.useProgram(pp.p);
       const p = pp.u;
@@ -6874,6 +7365,15 @@ export function createScenery(canvas) {
         gl.uniform4fv(p('koiK'), koiKV);
         gl.uniform4fv(p('koiB'), koiBV);
         gl.uniform1f(p('koiPx'), Math.max(1, Math.round(H / 270)));
+      }
+      if (sharksPx) {
+        gl.uniform2fv(p('shk'), shkV);
+        gl.uniform4fv(p('shkK'), shkKV);
+        gl.uniform4fv(p('shkB'), shkBV);
+        gl.uniform4fv(p('shkD'), shkDV);
+        gl.uniform1f(p('sharkPx'), Math.max(1, Math.round(H / 270)));
+        gl.uniform4f(p('sea'), beamB * Math.PI / 4, swimB, walkB, Math.exp(-Math.max(0, t - dipAt) * 4));
+        gl.uniform2f(p('sView'), W, H);
       }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, cellTex);
@@ -6984,7 +7484,22 @@ export function createScenery(canvas) {
       const paper = night ? V.paperN || [[4, 5, 13], [14, 18, 46]] : V.paperD || (V.cool ? [[222, 230, 242], [244, 247, 251]] : [[238, 232, 214], [248, 244, 232]]);
       gl.uniform3f(p('top'), paper[0][0] / 255, paper[0][1] / 255, paper[0][2] / 255);
       gl.uniform3f(p('low'), paper[1][0] / 255, paper[1][1] / 255, paper[1][2] / 255);
+      // (the decode: from the toaster's middle, over by the time it's crossed the window)
+      if (wave && t - wave.t0 > Math.hypot(aspect, 1) * 0.5 + 0.2) wave = null;
+      gl.activeTexture(gl.TEXTURE6);
+      gl.bindTexture(gl.TEXTURE_2D, beforeTex);
+      gl.uniform1i(p('before'), 6);
+      gl.uniform4f(p('wave'), bx + bw / 2, by + bh / 2, wave ? t - wave.t0 : 0, wave ? 1 : 0);
+      gl.uniform1f(p('glyphs'), SHEET.length);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      // (the picture kept for the next change of scene, every third frame, none while one's spreading)
+      if (!wave && (++beforeN % 3 === 0 || !beforeOk)) {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, beforeFbo);
+        gl.blitFramebuffer(0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        beforeOk = true;
+      }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindVertexArray(null);
     },
