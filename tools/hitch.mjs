@@ -65,7 +65,7 @@ const visuals = await evaluate(`(() => { const out = []; for (let i = 0; i < 40;
 const steps = [];
 for (const v of visuals) if (!/scenery/i.test(v.name)) steps.push({ label: v.name || `visual ${v.i}`, js: `__nc.setVisual(${v.i})` });
 const scenery = visuals.find((v) => /scenery/i.test(v.name));
-for (const scene of ['lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls', 'halloween', 'sharks', 'festival', 'koi', 'basement', 'space']) {
+for (const scene of ['lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls', 'halloween', 'sharks', 'festival', 'koi', 'basement', 'space', 'eye']) {
   steps.push({ label: `scenery: ${scene}`, js: `(__nc.state.sceneryScene = ${JSON.stringify(scene)}, __nc.state.sceneryTheme = false, __nc.setVisual(${scenery ? scenery.i : 9}))` });
 }
 

@@ -21,7 +21,8 @@ import { createWarp } from './warp.js';
 import { createWorlds } from './worlds.js';
 import { createChrome } from './chrome.js';
 import { createSpectro } from './spectro.js';
-import { createScenery } from './scenery.js';
+import { createScenery, FIELD } from './scenery.js';
+import { createWait } from './wait.js';
 import { createCuts } from './cuts.js';
 import { createTape } from './tape.js';
 import { buildSongFiles } from './tape-export.js';
@@ -82,6 +83,7 @@ const worlds = createWorlds($('worlds'), $('worldwords'));
 const chrome = createChrome($('chrome'));
 const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the pins over it
 const scenery = createScenery($('scenery'));
+const wait = createWait($('wait'), FIELD);
 const cuts = createCuts($('vis')); // on the tunnel's canvas too
 const punch = createPunchcard($('punch')); // its own layer, so it can sit on top of any background
 const cam = createWebcam($('cam'));
@@ -524,7 +526,7 @@ function toggleSpectroColours() {
 }
 // A, while the scenery is on: the next scene (auto, a new one each song; then each by name), and
 // after the last, auto again in the theme's two colours rather than its own
-const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond', basement: 'the basement show', space: 'space' };
+const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond', basement: 'the basement show', space: 'space', eye: 'the eye' };
 function nextScene() {
   const all = ['auto', ...scenery.scenes];
   if (state.sceneryTheme) { state.sceneryTheme = false; state.sceneryScene = 'auto'; }
@@ -1273,6 +1275,8 @@ function draw(now) {
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
   else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
+  // (a background still compiling, the window black: the field of glyphs over it, see wait.js)
+  wait.draw(t, !!{ worlds, chrome, spectrogram: spectro }[mode]?.waiting, col);
   // Don't make the worlds' compiler compete with the first visual. In particular a cold scenery
   // shader may take longer than 30 seconds: start that clock only once it actually draws.
   const settled = mode === 'scenery' ? !!scenery.drawnScene : mode === 'worlds' ? !worlds.broken : mode === 'chrome' ? !chrome.broken : true;

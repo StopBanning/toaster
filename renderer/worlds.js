@@ -19,9 +19,11 @@ const VERT = `#version 300 es
 in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
+// loopZero is never set, so it stays 0. It is added to loop bounds the driver would otherwise unroll.
+// Unrolled, this program's cold compile took more than twice as long.
 const WORLD = `#version 300 es
 precision highp float;
-precision highp int;
+precision highp int; uniform int loopZero;
 
 uniform vec2 uRes;       // render target, pixels
 uniform float uScale;    // render pixels per design pixel (design frame is 1920x1080)
@@ -70,13 +72,13 @@ float vn(vec2 p) {
 }
 float fbm(vec2 p, int oct) {
   float a = 0.5; float s = 0.0; mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
-  for (int i = 0; i < 7; i++) { if (i >= oct) break; s += a * vn(p); p = m * p; a *= 0.5; }
+  for (int i = 0; i < oct + loopZero; i++) { s += a * vn(p); p = m * p; a *= 0.5; }
   return s;
 }
 // x: distance to the nearest feature point, y: distance to the cell edge, z: cell id
 vec3 voro(vec2 p) {
   vec2 i = floor(p); vec2 f = fract(p); float d1 = 9.0; float d2 = 9.0; float id = 0.0;
-  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+  for (int y = -1; y <= 1 + loopZero; y++) for (int x = -1; x <= 1 + loopZero; x++) {
     vec2 g = vec2(float(x), float(y)); vec2 o = h22(i + g); vec2 r = g + o - f; float d = dot(r, r);
     if (d < d1) { d2 = d1; d1 = d; id = h21(i + g); } else if (d < d2) { d2 = d; }
   }
@@ -248,7 +250,7 @@ vec4 wGold(vec2 st, vec3 n) {
 vec4 wLeaf(vec2 st, vec3 n, float dl) {
   // bites out of the edge
   float notch = 0.0;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5 + loopZero; i++) {
     float fi = float(i);
     float cx = -760.0 + fi * 380.0 + 110.0 * h21(vec2(fi, 3.0));
     float rr = 30.0 + 34.0 * h21(vec2(fi, 9.0));
@@ -272,7 +274,7 @@ vec4 wBlueprint(vec2 st, vec3 n) {
   vec3 paper = vec3(0.15, 0.36, 0.66) * (0.88 + 0.14 * fbm(st / 7.0, 4));
   vec2 gr = abs(fract(st / 84.0) - 0.5) * 84.0;
   float g = smoothstep(1.3, 0.2, min(gr.x, gr.y)) * 0.22;
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 8 + loopZero; i++) {
     float fi = float(i);
     float ang = -1.25 + fi * 0.36;
     vec2 o = vec2(-380.0 + fi * 55.0, 980.0);
@@ -280,7 +282,7 @@ vec4 wBlueprint(vec2 st, vec3 n) {
     vec2 w = st - o;
     g = max(g, smoothstep(5.0, 1.6, abs(w.x * d.y - w.y * d.x)) * 0.92);
   }
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4 + loopZero; i++) {
     float rad = 300.0 + float(i) * 150.0;
     g = max(g, smoothstep(4.5, 1.3, abs(length(st - vec2(320.0, 760.0)) - rad)) * 0.85);
   }
@@ -450,7 +452,7 @@ vec4 wPCB(vec2 st, vec3 n) {
 vec4 wCutouts(vec2 st, vec3 n) {
   vec3 col = vec3(0.1, 0.14, 0.32) * (0.92 + 0.1 * fbm(st / 6.0, 3));
   vec2 s = st / 290.0;
-  for (int k = 0; k < 2; k++) {
+  for (int k = 0; k < 2 + loopZero; k++) {
     vec2 ss = s + float(k) * vec2(0.5, 0.37);
     vec2 id = floor(ss); vec2 f = fract(ss) - 0.5;
     float h = h21(id + float(k) * 13.0);
@@ -763,7 +765,7 @@ vec4 wHoney(vec2 st, vec3 n, float dl) {
   vec3 base = mix(vec3(1.0, 0.68, 0.16), vec3(0.55, 0.22, 0.02), depth * 0.8 + 0.25 * streak);
   base *= 0.85 + 0.3 * streak;
   float specks = 0.0;
-  for (int k = 0; k < 3; k++) {
+  for (int k = 0; k < 3 + loopZero; k++) {
     float fk = float(k);
     vec2 p = st / (26.0 + fk * 22.0) + fk * 17.0; vec2 id = floor(p); vec2 f = fract(p) - 0.5;
     vec2 o = (h22(id + fk) - 0.5) * 0.7;
@@ -968,7 +970,7 @@ vec4 material(int id, vec2 st, vec3 n, vec3 T, vec3 B, float dl, vec2 frag) {
 int quiltCell(vec2 frag, inout vec2 st, out float seam) {
   vec2 lo = vec2(0.0, uCircle.y - uCircle.z - 12.0), hi = uRes / uScale;
   float node = 1.0;
-  for (int L = 0; L < 7; L++) {
+  for (int L = 0; L < 7 + loopZero; L++) {
     vec2 sz = hi - lo;
     if (L >= 2 && h21(vec2(node + 0.5, uCutSeed + 3.0)) < 0.22) break;
     if (max(sz.x, sz.y) < 90.0) break;
@@ -1222,7 +1224,7 @@ export function createWorlds(canvas, wordsCanvas) {
   function makeCanvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return c; }
   // A program, started now and compiled in the background where the driver can (on an empty
   // shader cache, a new install's first start or the first after a graphics driver update, the
-  // world's takes about a minute, and waited for it held the whole window up that long); ready()
+  // world's takes about twelve seconds, and waited for it held the whole window up that long); ready()
   // says it's done (throwing if it failed), and nothing may ask it anything before (that would wait
   // for it); settled() says it's been done a while (the driver finishing a new shader on its own
   // threads for a moment after, a draw then waiting for it).
@@ -1395,9 +1397,9 @@ export function createWorlds(canvas, wordsCanvas) {
   }
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ok = false; });
   canvas.addEventListener('webglcontextrestored', () => { fbo = fboTex = fbo2 = fbo2Tex = skyFbo = skyTex = skyFor = null; lookProgs.clear(); looksStarted = 0; for (const k in lookPics) delete lookPics[k]; build(); });
-  // (the worlds' shader, the biggest, about a minute to compile the first time: started when the
+  // (the worlds' shader, the biggest, about twelve seconds to compile the first time: started when the
   // worlds are first shown, or warmed by the app once its first visual has settled; at startup it worked
-  // through that minute alongside whatever was being shown, after every update that changed it.
+  // through that alongside whatever was being shown, after every update that changed it.
   // Started early, it's asked after now and then till it's done, where the driver compiles in the
   // background, so the settling's long over by the time the worlds are picked and they show at once)
   const warm = () => { try { if (par && jobs && !gl.isContextLost() && !(jobs.world.ready() && jobs.post.ready())) setTimeout(warm, 1000); } catch {} };
@@ -1649,6 +1651,8 @@ export function createWorlds(canvas, wordsCanvas) {
 
   return {
     get broken() { return !ok; },
+    // (compiling: its programs started and not yet done, or its context lost and not yet back)
+    get waiting() { return !!jobs && !ok; },
     warm() { if (!gl) { build(); warm(); } },
     get world() { return card ? 'dawn' : shotNow?.w.key; },
     // a kick: its light, and the next world if it's the bar's first (onOne; null before the beat

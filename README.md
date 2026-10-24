@@ -7,14 +7,14 @@ Strudel.
 
 ![Toaster writing out Venjent's "Calling for You" over the scenery, a new scene each bar](docs/hero.webp)
 
-**[Download for Windows](../../releases/latest)** · on a Mac, [run it from source](#build-it-yourself)
+**[Download for Windows or Mac](../../releases/latest)**
 
 It finds the beat, the kick, clap and hats, the bass line, the chords and the key, and keeps
 rewriting the code as the song moves. It's a live reconstruction for show, not an exact
 transcription. Press X and it hands you the whole song as Strudel code and as a MIDI file. Press Z
 to hide the code and keep just the visuals.
 
-![The scenery's twelve scenes: the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, Halloween, the sharks, the festival, the koi pond and the basement show](docs/scenery.webp)
+![The scenery's fourteen scenes: the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, Halloween, the sharks, the festival, the koi pond, the basement show, space, and the eye, which dives into its pupil onto a galaxy](docs/scenery.webp)
 
 ## Get it
 
@@ -25,11 +25,12 @@ unzip it anywhere and double-click `Toaster.exe`. The first time, Windows may sa
 protected your PC" (the app isn't signed): click **More info**, then **Run anyway**. It starts
 listening straight away; there's no prompt.
 
-**Mac.** There's no Mac download yet: run it from source (see Build it yourself below), or make
-the app with `npm run package:mac`. It asks to record system audio. Allow it. That's how Toaster
-hears what's playing; it doesn't record the screen, and the camera stays off until you press C. A
-packaged copy may be stopped the first time: open **System Settings → Privacy & Security** and
-click **Open Anyway**.
+**Mac.** Download `Toaster-<version>-mac-universal.zip` from the [Releases](../../releases) page
+(one app for Intel and Apple silicon), unzip it and drag Toaster into Applications. It isn't
+signed by Apple, so the first time the Mac won't open it: open **System Settings → Privacy &
+Security**, scroll down to Toaster and click **Open Anyway**. It asks to record system audio. Allow
+it. That's how Toaster hears what's playing; it doesn't record the screen, and the camera stays off
+until you press C.
 
 Play some music: within a few seconds it finds the beat and starts typing. Press **?** for the keys.
 
@@ -179,7 +180,8 @@ npm run package    # build for the OS you're on: dist/Toaster-win32-x64, or dist
 
 On a Mac, `npm start` compiles the Swift helpers (now playing, and faces) the first time, with
 Xcode's command line tools. `npm run package:win` and `npm run package:mac` build the other OS's
-app; the Mac app has to be built on a Mac.
+app; the Mac app has to be built on a Mac. Each release's Mac app is built on GitHub's Macs
+(.github/workflows/mac.yml), signed ad hoc.
 
 How it works inside, and the test songs it's checked against: [docs/how-it-works.md](docs/how-it-works.md).
 

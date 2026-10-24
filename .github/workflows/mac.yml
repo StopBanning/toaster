@@ -1,0 +1,52 @@
+# The Mac app, built on GitHub's Macs: on every release (the zip goes onto it, beside the Windows one)
+# and on a push to mac-build (a test: the zip and a screenshot of it running, as the run's artifact).
+# Signed ad hoc only, so a Mac asks before its first start (see the README).
+name: Mac build
+on:
+  release:
+    types: [published]
+  push:
+    branches: [mac-build]
+permissions:
+  contents: write
+jobs:
+  mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run package:mac
+      - name: Sign it ad hoc, check it, zip it
+        run: |
+          APP=dist/Toaster-darwin-universal/Toaster.app
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          lipo -archs "$APP/Contents/MacOS/Toaster"
+          lipo -archs "$(find "$APP" -name nowplaying -type f | head -1)"
+          V=$(node -p "require('./package.json').version")
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "Toaster-$V-mac-universal.zip"
+          echo "ZIP=Toaster-$V-mac-universal.zip" >> "$GITHUB_ENV"
+          ls -l "Toaster-$V-mac-universal.zip"
+      - name: Start it, and a screenshot 25 s in
+        run: |
+          open dist/Toaster-darwin-universal/Toaster.app
+          sleep 25
+          pgrep -lx Toaster
+          screencapture -x shot.png || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: toaster-mac
+          path: |
+            ${{ env.ZIP }}
+            shot.png
+          if-no-files-found: ignore
+      - name: Onto the release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" "$ZIP" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

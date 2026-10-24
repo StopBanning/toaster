@@ -105,6 +105,18 @@ const BASEMENT_TALL = { ...TALL, ...BASEMENT_LOOK, stage: [0.5, 0.22, 0.27], lak
 const SPACE_LOOK = { band: [0.6, 0.55, 0.46, 0.11], tint: [0.94, 0.94, 1.0], toneN: [0.06, 0.06, 0.1], toneD: [0.06, 0.06, 0.1], paperN: [[2, 3, 10], [10, 10, 26]], paperD: [[2, 3, 10], [10, 10, 26]] };
 const SPACE_WIDE = { ...WIDE, ...SPACE_LOOK, far: [0.22, 0, 0, 0.3], lake: [0.22, 0.1], sun: [0.79, 0.7], planet: [0.47, 0.86], astro: [0.94], toaster: { x: 0.82, y: 0.5, on: 'space' } };
 const SPACE_TALL = { ...TALL, ...SPACE_LOOK, band: [0.42, 0.3, 0.62, 0.085], far: [0.15, 0, 0, 0.3], lake: [0.15, 0.06], sun: [0.86, 0.21], planet: null, astro: null, bow: 0.35, toaster: { x: 0.84, y: 0.42, on: 'space' } };
+// the eye: a real eye's footage drawn in glyphs, filling the window (see EYE and EYE_CLIP); its own
+// paper, near black, night whatever the theme (as space). No toaster in it: its space is photos drawn in
+// glyphs, and the toaster in pixels there looked pasted on (its place below only where it glides from when
+// the scene changes)
+const EYE_LOOK = { band: [5, 1.57, 0.1, 0.3], tint: [1.0, 0.96, 0.92], toneN: [0.04, 0.03, 0.03], toneD: [0.04, 0.03, 0.03], paperN: [[3, 2, 2], [8, 6, 5]], paperD: [[3, 2, 2], [8, 6, 5]] };
+// (moon: the eye's middle, a share of the width and of the height up, and the share of the window's width
+// it spans: beside the code in a wide window, under it in a tall one)
+// (planet: where Saturn comes to in the pupil's space, a share of the width across and of the height up;
+// gal: the galaxy's radius once the dive's in (window heights) and its middle (from the pupil's, in that
+// radius): clear of the code either way (in a tall window, all under its panels))
+const EYE_WIDE = { ...WIDE, ...EYE_LOOK, moon: [0.62, 0.5, 0.6], planet: [0.87, 0.8], satW: 0.13, gal: [0.42, 0.45, -0.25], toaster: { x: 0.5, y: 0.16, on: 'eye' } };
+const EYE_TALL = { ...TALL, ...EYE_LOOK, moon: [0.5, 0.15, 0.86], planet: [0.8, 0.26], satW: 0.085, gal: [0.25, 0, 0.12], toaster: { x: 0.2, y: 0.08, on: 'eye' } };
 // (the stage's glow, by night, in the show's first colour of each 8 bars)
 const BASEMENT_GLOW = [[0.3, 0.08, 0.13], [0.3, 0.19, 0.06], [0.1, 0.15, 0.3], [0.24, 0.1, 0.3]];
 // (the stage's glow on the paper: the show's first colours, as the shader has them, dimmed)
@@ -132,10 +144,11 @@ const OPEN = {
   festival: [{ stage: [0.5, FESTIVAL_WIDE.stage[1], FESTIVAL_WIDE.stage[2]], toaster: onStage(FESTIVAL_WIDE, 0.5) }, null],
   basement: [null, { stage: [0.5, 0.36, 0.27], lake: [0.36, 0] }],
   space: [null, { ...RAISE(SPACE_TALL, 0.17), band: [0.45, 0.56, 0.62, 0.09], planet: [0.24, 0.8], toaster: { x: 0.62, y: 0.58, on: 'space' } }],
+  eye: [{ moon: [0.5, 0.5, 0.72] }, { moon: [0.5, 0.48, 0.96] }],
 };
 // (the land's parts that glide when Z raises it)
 const LAND = ['far', 'mid', 'near', 'lake', 'sun'];
-const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL], festival: [FESTIVAL_WIDE, FESTIVAL_TALL], koi: [KOI_WIDE, KOI_TALL], basement: [BASEMENT_WIDE, BASEMENT_TALL], space: [SPACE_WIDE, SPACE_TALL] };
+const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL], festival: [FESTIVAL_WIDE, FESTIVAL_TALL], koi: [KOI_WIDE, KOI_TALL], basement: [BASEMENT_WIDE, BASEMENT_TALL], space: [SPACE_WIDE, SPACE_TALL], eye: [EYE_WIDE, EYE_TALL] };
 const SPEED = [1, 0.5, 0.25, 0.12, 0.2];
 // the glyphs the scene draws with (the first, blank, is nothing there)
 const GLYPHS = {
@@ -151,6 +164,9 @@ const GLYPHS = {
 // past 63, so never in the art below, which keeps its glyph under 64)
 const EXTRA = [...'0123456789!?&[]{}'];
 const SHEET = [...Object.values(GLYPHS), ...EXTRA];
+// the field of glyphs while the scenery gets ready (PAINT's idle) draws with every glyph but the blank, a
+// cell the size the scenes' are; the app's other backgrounds wait in the same field (wait.js)
+export const FIELD = { glyphs: SHEET.slice(1), cellPx: cellPxFor };
 const DEFS = Object.keys(GLYPHS).map((k, i) => `#define G_${k} ${i}`).join('\n');
 // the code fish's characters, as places on the sheet: digits and the code's punctuation
 const CODE_CHARS = [...'0123456789$%#@*+=-~<>/!?&[]{}'].map((c) => SHEET.indexOf(c));
@@ -4870,7 +4886,181 @@ void main() {
   put(0, 0.0, vec3(0.0));
 }`;
 
-const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS, festival: FESTIVAL, koi: KOI, basement: BASEMENT, space: SPACE };
+// The eye, after @emaaad.d's eye in code: a real eye's footage (EYE_CLIP) drawn in glyphs, as his is.
+// Each cell a glyph by how bright the eye is there (the light's slow slope taken out, so the white
+// and the skin read apart), in the clip's own colour over a faint tile of it; the strong edges (the
+// lids, the iris's rim) drawn as strokes along them; the iris's brown drawn by its colour as well; the
+// eye in the dark round it. It looks out at you, calm, and blinks now and then (the clip at half speed,
+// looping there and back). On a drop it's held where it is, and the window glides slowly into the pupil, a
+// window onto space (see space): a galaxy and Saturn, photos drawn in glyphs as the eye is; after 8 bars,
+// back out. Night whatever the theme.
+const EYE = `
+uniform sampler2D eyeVid;   // the clip's frame now, mipmapped
+uniform vec4 eyeF;   // the clip in the window: the eye's middle in it (u; v down), how much of its height a window's height shows, its aspect
+uniform vec4 eyeP;   // the pupil (where the clip's held for a dive), in the window's units: its middle, its radius; the clip ready (1) or not yet (0)
+uniform vec4 eyeZ;   // the dive: how much bigger it's drawn about the pupil (1 none), how long since it began (s), the kick (0-1), the drop's flare (0-1)
+uniform vec4 eyeS;   // the space: the galaxy's photo's half width in the window now (window heights), its middle (from the pupil's, in that); unused
+uniform vec4 eyeL;   // the levels the clip's read at: a cell's (its mip), the light's slope (a blur's); the eye's middle in the window
+uniform vec4 eyeD;   // the dive: how far in (0-1), the pupil's rim (window heights from its middle; 0 not diving); unused
+uniform sampler2D eyeSky;   // the galaxy: Hubble's photo of M51, the Whirlpool, graded, square, its core in the middle; mipmapped
+uniform sampler2D eyeSat;   // Saturn: Hubble's photo of it (2019), cropped to its rings, 1024 x 484; mipmapped
+uniform vec4 eyeT;   // Saturn in the window: its middle (window heights, y up), its half width (window heights; 0 not out); unused
+// the brightness ramp: the scene's glyphs by their ink in the app's font, blank to @, sixteen steps
+const float EYE_W = 0.62;
+const vec4 EYE_PANES = vec4(0.75, 4.0, -1.5, 1.0);   // (the reflection: from x to x, from y to y, y up)   // (the eye's width in the clip, as EYE_CLIP's)
+const int RAMP[16] = int[16](0, G_DOT, G_COLON, G_SEMI, G_EQ, G_PLUS, G_LL, G_SMALLX, G_SMALLO, G_LS, G_LE, G_HASH, G_EIGHT, G_PCT, G_DOLLAR, G_AT);
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+// the clip's colour at uv, at a mip level
+vec3 eyeAt(vec2 uv, float lod) { return textureLod(eyeVid, uv, lod).rgb; }
+// the space's light at q (window heights from the pupil's middle), averaged over a patch px across (window
+// heights): the galaxy turning slowly, the corners of its photo faded off, its core brighter on the kick;
+// Saturn in front of it (nearer), its dark see-through (the gaps in its rings, the space round it) but not
+// its disc (its shadowed bands)
+vec3 skyAt(vec2 q, float px, out float sat) {
+  float L = eyeS.x;
+  vec2 g = q / L - eyeS.yz;
+  float ang = 0.3 + time * 0.012, ca = cos(ang), sa = sin(ang);
+  g = vec2(ca * g.x - sa * g.y, sa * g.x + ca * g.y);
+  float r = length(g);
+  vec3 c = textureLod(eyeSky, vec2(0.5 + 0.5 * g.x, 0.5 - 0.5 * g.y), log2(max(1.0, px * 512.0 / L))).rgb;
+  c *= smoothstep(1.0, 0.6, r) * (1.0 + 0.7 * eyeZ.z * exp(-r * 8.0));
+  sat = 0.0;
+  if (eyeT.z > 0.0) {
+    vec2 d = (q + eyeP.xy - eyeT.xy) / eyeT.z, su = vec2(0.5 + 0.5 * d.x, 0.5 - 0.5 * d.y * (1024.0 / 484.0));
+    if (su.x > 0.0 && su.x < 1.0 && su.y > 0.0 && su.y < 1.0) {
+      vec3 sc = textureLod(eyeSat, su, log2(max(1.0, px * 512.0 / eyeT.z))).rgb;
+      float disc = 1.0 - smoothstep(0.94, 1.0, length((su * vec2(1024.0, 484.0) - vec2(512.0, 242.0)) / vec2(187.0, 172.0)));
+      sat = max(smoothstep(0.03, 0.14, luma(sc)), disc);
+      c = mix(c, sc, sat);
+    }
+  }
+  return c;
+}
+// space, as the pupil holds it: photos (see skyAt) drawn as the eye is, a glyph by how bright it is there
+// (its own light, so the dark stays dark, lifted a little against what's round it), its colour richer, and
+// under each glyph a tile of its light, stronger than the eye's (the galaxy's arms are in its light more
+// than its edges). The galaxy's glyphs follow its light a little smoothed (2.5 cells), so they run along
+// its arms rather than flicker with each knot of stars; Saturn's its own, sharp, its bands in them. The
+// strong edges as strokes along them (Saturn's rings and limb; on the galaxy only the strongest). In the
+// dark the stars in layers (each a grid, one at most to a square, shown once they're more than a cell and
+// a half apart: they spread as it dives in, finer ones coming out), twinkling. S the cell's middle in the
+// window, P the pupil's middle, edge how far in from the pupil's rim (window heights)
+void space(vec2 S, vec2 P, float edge) {
+  front = 0.0;   // (the furthest thing)
+  float kick = eyeZ.z;
+  // (out of the pupil's dark as it's drawn bigger; dimmer just inside its rim)
+  float open = smoothstep(1.1, 3.0, eyeZ.x) * smoothstep(0.0, 3.0 * ch, edge);
+  vec2 q = S - P;
+  float sat, sat2, sat3, sat4;   // (how much of each sample is Saturn)
+  vec3 c = skyAt(q, ch, sat);
+  float lumF = luma(c), lum = mix(luma(skyAt(q, 2.5 * ch, sat2)), lumF, sat), base = luma(skyAt(q, 12.0 * ch, sat3)) + 0.004;
+  float v = mix(pow(clamp(1.4 * lum + 0.6 * (lum - base), 0.0, 1.0), 1.3), pow(clamp(0.8 * lumF + 0.4 * (lumF - base), 0.0, 1.0), 1.8), sat);
+  float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+  float chroma = (mx - mn) / (mx + 0.04) * sqrt(clamp(mx / 0.8, 0.0, 1.0));
+  v = max(v, 0.8 * chroma * smoothstep(0.03, 0.1, lumF));
+  // the edges: the light's slope across the cell's neighbours, the strong ones drawn as strokes
+  float lR = luma(skyAt(q + vec2(cw, 0.0), ch, sat4)), lL = luma(skyAt(q - vec2(cw, 0.0), ch, sat4));
+  float lU = luma(skyAt(q + vec2(0.0, ch), ch, sat4)), lD = luma(skyAt(q - vec2(0.0, ch), ch, sat4));
+  vec2 gr = vec2(lR - lL, lU - lD) / (base + 0.06) * 0.5;
+  float mag = length(gr) * smoothstep(0.04, 0.12, lumF), thr = mix(0.7, 0.3, sat);
+  float a = mod(degrees(atan(gr.y, gr.x)) + 90.0, 180.0);   // (the edge's own way, y up)
+  // (the tile's strength in its alpha, by how bright it is there, so in the theme's colours its ink
+  // follows the galaxy's light rather than filling its disc)
+  float ta = clamp(lumF * 2.5, 0.0, 1.0);
+  tileC = min(c * 0.7 / max(ta, 0.05), vec3(1.0)); tileA = ta * open;
+  if (v > 0.06 || mag > thr) {
+    int gi = mag > thr ? (a < 22.5 || a >= 157.5 ? G_DASH : a < 67.5 ? G_SLASH : a < 112.5 ? G_BAR : G_BACK) : RAMP[clamp(int(v * 15.0 + 0.5), 0, 15)];
+    // (the galaxy's glyphs richer than its light, so its arms read blue and its knots pink)
+    vec3 cg = max(mix(vec3(lumF), c, mix(1.35, 1.0, sat)), 0.0);
+    vec3 col = clamp(cg * 1.7 + 0.8 * chroma * cg / (mx + 1e-3), 0.0, 1.0);
+    put(gi, clamp(0.82 + 0.14 * kick, 0.0, 1.0) * open, col);
+    return;
+  }
+  // the stars: their brightness by a power law, so a few stand out and most are a fine dust; twinkling
+  // with the loudness (a layer's squares as many cells across as up; in window heights, so they spread as
+  // the galaxy's drawn bigger)
+  float L = eyeS.x;
+  vec2 sq = q / L, s = vec2(cw, ch) / L, sk = vec2(cw / ch, 1.0);
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i), gs = 0.5 * pow(0.45, fi);
+    float vis = smoothstep(1.5, 3.0, gs / s.y);
+    if (vis <= 0.0) continue;
+    vec2 gv = gs * sk, kk = floor(sq / gv);
+    float hh = h2(kk + fi * 31.0 + 7.0);
+    if (hh > 0.3) continue;
+    vec2 sp = (kk + 0.5 + 0.8 * (vec2(h2(kk + 3.1 + fi), h2(kk + 9.7 + fi)) - 0.5)) * gv;
+    if (abs(sq.x - sp.x) < 0.5 * s.x && abs(sq.y - sp.y) < 0.5 * s.y) {
+      float b = min(4.0, 0.22 * pow(max(h2(kk + 51.0 + fi), 1e-3), -0.83));
+      float tw = 0.75 + 0.25 * sin(time * (0.8 + 2.4 * hh) + hh * 60.0) * (0.5 + glow) + 0.3 * kick;
+      int gl = b < 0.4 ? G_DOT : b < 0.75 ? G_MID : b < 1.4 ? G_PLUS : b < 2.6 ? G_STAR : G_SPARK;
+      put(gl, clamp((0.35 + 0.3 * b) * tw * vis * open, 0.0, 1.0), starTint(h2(kk + 77.0 + fi)));
+      return;
+    }
+  }
+  put(0, 0.0, vec3(0.0));
+}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  float row = grid.y - 1.0 - cell.y, H = view.y, aspect = view.x / view.y;
+  cw = cellPx.x / H; ch = cellPx.y / H;
+  vec2 S = vec2((cell.x + 0.5) * cw, 1.0 - (row + 0.5) * ch);
+  day = false;   // (night whatever the theme, as space)
+  float Z = eyeZ.x;
+  vec2 P = eyeP.xy;
+  float Rp = eyeP.z;
+  // the point of the window this cell shows (drawn Z times bigger about the pupil as it dives in)
+  vec2 p = P + (S - P) / Z;
+  // (the dive: the pupil a window onto space; across its rim the space shows through a cell at a time)
+  float inF = eyeD.y - length(S - P), band = 1.5 * ch;
+  if (eyeD.y > 0.0 && inF > 0.0 && (inF > band || h2(cell + 5.0) < inF / band)) { space(S, P, inF); return; }
+  if (eyeP.w < 0.5) { put(0, 0.0, vec3(0.0)); return; }
+  // the clip's point there; nothing past its edges (the dark round the eye)
+  vec2 uv = vec2(eyeF.x + (p.x - eyeL.z) * eyeF.z / eyeF.w, eyeF.y - (p.y - eyeL.w) * eyeF.z);
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) { put(0, 0.0, vec3(0.0)); return; }
+  float lod = max(0.0, eyeL.x - log2(Z)), blur = max(1.0, eyeL.y - log2(Z));
+  // (the window's reflection on the iris, a blue pane and a white one just right of the pupil (EYE_PANES,
+  // in pupil radii from its middle), is the eye's catchlight at rest, but drawn bigger it's a block of flat
+  // light: as it dives in, those cells are drawn from the iris across the pupil from them instead, a few
+  // more each frame, and no strokes round where it was (the cells beside it read its light as an edge))
+  vec2 dq = (p - P) / Rp;
+  float near = Z > 1.01 ? smoothstep(1.0, 1.4, Z) * step(EYE_PANES.x - 0.4, dq.x) * step(dq.x, EYE_PANES.y + 0.4) * step(EYE_PANES.z - 0.4, dq.y) * step(dq.y, EYE_PANES.w + 0.4) : 0.0;
+  if (near > h2(cell + 9.0)) {
+    vec2 m = 2.0 * P - p;
+    uv = vec2(eyeF.x + (m.x - eyeL.z) * eyeF.z / eyeF.w, eyeF.y - (m.y - eyeL.w) * eyeF.z);
+  }
+  vec3 c = eyeAt(uv, lod);
+  float lum = luma(c), base = luma(eyeAt(uv, blur)) + 0.004;
+  // the level: the light's slow slope taken out (each cell against what's round it), mostly; spread over
+  // the ramp as the clip's own levels lie (the skin about the middle, the white and the glints the top)
+  float rel = min(lum / base * 0.5, 1.2) * 0.75 + lum * 0.29;
+  float v = pow(clamp((rel - 0.17) / 0.56, 0.0, 1.0), 1.35);
+  // (colour draws too: the iris's brown is dark, but rich)
+  float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+  float chroma = (mx - mn) / (mx + 0.04) * sqrt(clamp(mx / 0.8, 0.0, 1.0));
+  // the eye in the dark round it, opening a little on the kick and on the drop
+  float hw = 0.5 * EYE_W * eyeF.w / eyeF.z;   // (the eye's half width in the window)
+  vec2 vq = vec2((S.x - eyeL.z) / (1.45 * hw), (S.y - eyeL.w) / (1.0 * hw));
+  float vig = pow(clamp(1.15 + 0.08 * eyeZ.z + 0.25 * eyeZ.w - dot(vq, vq), 0.0, 1.0), 0.7);
+  // (and toward the clip's own edges, so they never show)
+  vig *= smoothstep(0.0, 0.06, uv.x) * smoothstep(1.0, 0.94, uv.x) * smoothstep(0.0, 0.06, uv.y) * smoothstep(1.0, 0.94, uv.y);
+  v = max(v, 1.5 * chroma) * vig;
+  // the edges: the level's slope across the cell's neighbours; the strong ones drawn as strokes
+  vec2 du = vec2(cw * eyeF.z / eyeF.w, ch * eyeF.z) / Z;
+  float lR = luma(eyeAt(uv + vec2(du.x, 0.0), lod)), lL = luma(eyeAt(uv - vec2(du.x, 0.0), lod));
+  float lU = luma(eyeAt(uv - vec2(0.0, du.y), lod)), lD = luma(eyeAt(uv + vec2(0.0, du.y), lod));
+  vec2 gr = vec2(lR - lL, lU - lD) / base * 0.5;
+  float mag = length(gr) * vig * (1.0 - near);
+  float a = mod(degrees(atan(gr.y, gr.x)) + 90.0, 180.0);   // (the edge's own way, y up)
+  int gi = mag > 0.2 ? (a < 22.5 || a >= 157.5 ? G_DASH : a < 67.5 ? G_SLASH : a < 112.5 ? G_BAR : G_BACK) : RAMP[clamp(int(v * 15.0 + 0.5), 0, 15)];
+  // its colour: the clip's own, lifted (glyphs are thin), and the brown's richness; a faint tile of it
+  // under the glyph; a few cells shimmering with the hats
+  vec3 col = clamp(c * (1.55 * vig) + 0.8 * chroma * c / (mx + 1e-3) * vig, 0.0, 1.0);
+  float sh = step(0.985 - 0.04 * wind, h2(cell + floor(time * 12.0)));
+  // (its strength in its alpha, not its colour, so in the theme's colours the dark stays the theme's dark)
+  tileC = c * 0.34; tileA = vig * smoothstep(0.0, 0.15, lum);
+  put(gi, clamp(0.82 + 0.14 * eyeZ.z + 0.25 * eyeZ.w + 0.3 * sh, 0.0, 1.0), col);
+}`;
+const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS, festival: FESTIVAL, koi: KOI, basement: BASEMENT, space: SPACE, eye: EYE };
 
 // The glyphs, each from the sheet, over the paper. In its own colours: each in its colour, on a
 // night sky (darkest overhead) or on the day's paper; or in the theme's: its ink in the theme's
@@ -5993,7 +6183,7 @@ const kitScale = (H, sw) => Math.max(1, Math.min(2 * Math.max(1, Math.round(H / 
 // how near (see LIB's front)]. The moon in the night sky, behind everything else; the kit on the
 // basement's riser; the garden's koi swimming their rounds in the pond (nearer ones drawn last),
 // turning as they go, their tails swishing, behind the lily pads.
-function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, chPx, kick = 0, birds = null }) {
+function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, chPx, kick = 0, birds = null, eye = null }) {
   const A = pixAtlas().at, S = Math.max(1, Math.round(H / 270)), out = [];
   const aspect = W / H, wide = Math.min(1, Math.max(0, (aspect - 0.56) / 1.22)), cw = cwPx / H, ch = chPx / H;
   const mix = (a, b, k) => a + (b - a) * k;
@@ -6104,6 +6294,41 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
   return out.slice(0, PIX_MAX);
 }
 
+// The eye's clip: renderer/eye/eye.mp4, 960x540, 30 frames a second, 15.8 s: Pexels video 32198166 (a
+// brown eye, close), its first 3.95 s at half speed (shot at 60 a second, so every frame its own), a little
+// smoothed, played forward and then back, so it loops without a seam: it looks out, calm, and at the turn
+// blinks. Where the eye sits in it (its middle: shares of the width and the height down); eyeW, how much of
+// the clip's width it's shown across; when it's blinking (no pupil to dive into, s); the pupil as it
+// drifts (every 0.5 s of the clip's first half, mirrored in its second: its middle, shares of the width
+// and the height) and its radius (a share of the height)
+const EYE_CLIP = {
+  box: [0.66, 0.47], eyeW: 0.62, aspect: 16 / 9, len: 15.77, blink: [6.6, 9.17], r: 0.0769,
+  pupil: [[0.6516, 0.4684], [0.6534, 0.469], [0.6555, 0.4701], [0.6575, 0.4696], [0.66, 0.4696], [0.6616, 0.4695], [0.6638, 0.4687], [0.6657, 0.4657], [0.6676, 0.465], [0.6731, 0.4652], [0.6747, 0.4653], [0.6749, 0.4649], [0.6744, 0.4619], [0.6736, 0.4603], [0.6756, 0.4507]],
+};
+// how much of the clip's height the window's height shows, for the eye to span `span` of its width
+const eyeShow = (aspect, span) => (EYE_CLIP.eyeW * EYE_CLIP.aspect) / (span * aspect);
+// the pupil in the window at the clip's time c: its middle (window heights, y up) and its radius; E the
+// eye's middle in the window (window heights, y up), k as eyeShow
+function eyePupil(E, k, c) {
+  const n = EYE_CLIP.pupil.length, f = Math.min(n - 1, Math.max(0, (c > EYE_CLIP.len / 2 ? EYE_CLIP.len - c : c) / 0.5));
+  const a = EYE_CLIP.pupil[Math.floor(f)], b = EYE_CLIP.pupil[Math.min(n - 1, Math.floor(f) + 1)], w = f - Math.floor(f);
+  const u = a[0] + (b[0] - a[0]) * w, v = a[1] + (b[1] - a[1]) * w, [bu, bv] = EYE_CLIP.box;
+  return [E[0] + ((u - bu) * EYE_CLIP.aspect) / k, E[1] - (v - bv) / k, EYE_CLIP.r / k];
+}
+// The eye's dive into its pupil (see EYE): how far in at t, 0 (not diving) to 1: in over EYE_DIVE s from
+// diveAt, held, out over EYE_DIVE s from outAt
+const EYE_DIVE = 4;
+function eyeDive(e, t) {
+  if (t < e.diveAt || t > e.outAt + EYE_DIVE) return 0;
+  return t < e.outAt ? Math.min(1, (t - e.diveAt) / EYE_DIVE) : 1 - Math.min(1, (t - e.outAt) / EYE_DIVE);
+}
+// how much bigger it's drawn about the pupil, s in (1: not diving), till the pupil fills the window (zmax):
+// eased, creeping in a little while held
+function eyeZoom(e, t, s, zmax) {
+  if (s <= 0) return 1;
+  const k = s * s * (3 - 2 * s), held = Math.max(0, Math.min(t, e.outAt) - e.diveAt - EYE_DIVE);
+  return Math.exp(k * Math.log(zmax)) * (1 + 0.004 * held * k);
+}
 // The space scene's toaster: its middle (CSS pixels), floating, drifting slowly to and fro and up and down
 const spaceToaster = (V, W, H, t) => ({ x: (V.toaster.x + 0.014 * Math.sin(t * 0.21)) * W, y: (1 - V.toaster.y - 0.02 * Math.sin(t * 0.37 + 1)) * H });
 // its lander: the foot's middle, and where the cord's plug goes (CSS pixels); S the pixels' size
@@ -6233,8 +6458,8 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0, gone = false }) {
     for (let x = 7; x < 33; x++) if (x < 12 || x > 23) rect(x, 17, 1, 1, seg(x));
     for (let x = 6; x < 34; x++) { rect(x, 18, 1, 1, seg(x)); rect(x, 19, 1, 1, seg(x)); }
     rect(9, 18, 4, 1, 'rgba(255,255,255,0.55)');
-  } else if (on === 'space') {
-    // (nothing under it: floating, on its cord: see drawSpace)
+  } else if (on === 'space' || on === 'eye') {
+    // (nothing under it: floating, on its cord (see drawSpace); the eye's isn't drawn)
   } else if (on === 'bridge') {
     // (nothing under it: the bridge is drawn in glyphs)
   } else if (on === 'umbrella') {
@@ -6284,7 +6509,7 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0, gone = false }) {
     rect(14, 4 + hy, 1, 1, glint); rect(15, 3 + hy, 1, 1, glint); rect(16, 2 + hy, 1, 1, glint);
     return;
   }
-  if (on === 'bridge' || on === 'tube' || on === 'space') return;
+  if (on === 'bridge' || on === 'tube' || on === 'space' || on === 'eye') return;
   if (on === 'umbrella') {
     // the umbrella, leant on the toaster's side over it: a red dome, scalloped, on a black shaft
     line(18, 4, 25, 16, '#2a2a33');
@@ -6958,6 +7183,30 @@ export function createScenery(canvas) {
   let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, koiPaint = null, sharkPaint = null, beforeTex = null, beforeFbo = null, beforeOk = false, beforeN = 0, wave = null, fromIdle = false, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
   const boatCv = Object.assign(document.createElement('canvas'), { width: SW, height: SH }), boatG = boatCv.getContext('2d');
   let popAt = -9, dipAt = -9, dropSeen = -99;
+  // the eye's state while it's up (its gaze, its dive), what its shader's told; its clip and that clip's
+  // texture (made the first time it's shown), whether a frame's waiting to go up, whether one has
+  let eye = null, eyeU = null, eyeVid = null, eyeTex = null, eyeDirty = false, eyeHave = false;
+  // the photos in its pupil's space (the galaxy, Saturn: see EYE's skyAt), loaded with the clip; their
+  // textures (a blank till the photo's decoded)
+  let eyePics = null;
+  const eyeSkyTex = [null, null];
+  const eyeSpacePics = () => {
+    if (!eyePics) {
+      eyePics = ['galaxy', 'saturn'].map((n) => {
+        const pic = { img: Object.assign(new Image(), { src: new URL(`./eye/${n}.jpg`, import.meta.url).href }), ok: false, up: false };
+        pic.img.decode().then(() => { pic.ok = true; }, () => {});
+        return pic;
+      });
+    }
+    return eyePics;
+  };
+  const eyeClip = () => {
+    if (!eyeVid) {
+      eyeVid = Object.assign(document.createElement('video'), { muted: true, loop: true, playsInline: true, preload: 'auto', src: new URL('./eye/eye.mp4', import.meta.url).href });
+      for (const ev of ['loadeddata', 'seeked']) eyeVid.addEventListener(ev, () => { eyeDirty = true; });
+    }
+    return eyeVid;
+  };
   // the music: the walk (in beats, kept on the beat), the wind, the glow, the fireflies, the
   // ripples, the birds or a falling star
   let last = 0, walkB = 0, beamB = 0, swimB = 0, car = null, wind = 0.25, glowV = 0, flyV = 0, kickAt = -1, lastBar = null, flock = null, falling = null, glide = null;
@@ -7054,6 +7303,8 @@ export function createScenery(canvas) {
     pixTex = gl.createTexture(); pixUp = false;
     fbo = gl.createFramebuffer();
     beforeTex = gl.createTexture(); beforeFbo = gl.createFramebuffer(); beforeOk = false; wave = null;
+    eyeTex = null; eyeSkyTex[0] = eyeSkyTex[1] = null;
+    if (eyePics) for (const pic of eyePics) pic.up = false;
     dims = null;
     ready = true;
   }
@@ -7281,7 +7532,7 @@ export function createScenery(canvas) {
       const goal = V.toaster;
       V = { ...V, ...glide.land, toaster: { ...V.toaster, x: glide.x, y: glide.y }, ...(glide.moon ? { moon: glide.moon, sun: glide.moon.slice(0, 2) } : {}), ...(glide.stage ? { stage: glide.stage } : {}) };
       // (space has no day: night there whatever the theme)
-      const night = scene === 'space' || col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
+      const night = scene === 'space' || scene === 'eye' || col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
       // a ripple on the lake for each kick (while the kick's in the song), somewhere on it
       const kick = eng.v.bd.lastHit;
       if (kick.t > kickAt && t - kick.t < 0.3) {
@@ -7323,6 +7574,29 @@ export function createScenery(canvas) {
       }
       if ((eng.lastDrop ?? -99) > dropSeen) { dropSeen = eng.lastDrop; if (t - eng.lastDrop < 1) popAt = dropAt = t; }
       const pa = t - popAt;
+      // (the eye: its clip looping, so it looks out at you, calm, and blinks now and then; on a drop the clip's
+      // held where it is (out of a blink first, if it's in one) and the window glides into the pupil till it
+      // fills it, 8 bars in its space (4 in a slow song), and back out)
+      if (scene === 'eye') {
+        const vid = eyeClip();
+        eyeSpacePics();
+        if (!eye) eye = { tried: -9, diveAt: -99, outAt: -99, want: false, at: 0, drop: dropAt };
+        const holding = () => t >= eye.diveAt && t <= eye.outAt + EYE_DIVE;
+        if (dropAt > eye.drop) { eye.drop = dropAt; if (t - dropAt < 1 && !holding()) eye.want = true; }
+        if (eye.want) {
+          const c = vid.currentTime;
+          if (!(c > EYE_CLIP.blink[0] && c < EYE_CLIP.blink[1]) || t - dropAt > 4) {
+            const bpm2 = T.locked ? T.bpm : 120;
+            eye.want = false; eye.at = c; vid.pause(); vid.playbackRate = 1;
+            eye.diveAt = t; eye.outAt = t + EYE_DIVE + ((bpm2 < 100 ? 4 : 8) * 4 * 60) / bpm2;
+          } else vid.playbackRate = 2.5;
+        }
+        if (!holding() && !eye.want && vid.paused && t - eye.tried > 1) { eye.tried = t; vid.play().catch(() => {}); }
+        const ek = eyeShow(aspect, V.moon[2]), E = [V.moon[0] * aspect, V.moon[1]], P = eyePupil(E, ek, holding() ? eye.at : vid.currentTime);
+        const far = Math.max(...[[0, 0], [aspect, 0], [0, 1], [aspect, 1]].map(([x, y]) => Math.hypot(x - P[0], y - P[1])));
+        const zmax = Math.max(12, (1.08 * far) / P[2]), s = eyeDive(eye, t), z = eyeZoom(eye, t, s, zmax);
+        eyeU = { k: ek, e: E, p: P, zmax, z: [z, Math.max(0, t - eye.diveAt), Math.exp(-Math.max(0, t - dipAt) * 6), Math.exp(-Math.max(0, t - dropAt) * 3)], d: [s, s > 0 ? P[2] * z : 0] };
+      } else if (eye) { if (eyeVid) { eyeVid.pause(); eyeVid.playbackRate = 1; } eye = null; eyeU = null; }
       // (the toaster on its broom: flying across the moon, drifting to and fro, rising and falling,
       // slowly; its middle, CSS pixels)
       const Sz = Math.max(1, Math.round(H / 270));
@@ -7470,6 +7744,59 @@ export function createScenery(canvas) {
         // (moon: the toaster's lily pad, its middle and its radius)
         gl.uniform4f(u('moon'), V.toaster.x * aspect, V.toaster.y, (12.6 * Math.max(1, Math.round(H / 270))) / H, 0);
       }
+      if (scene === 'eye' && eyeU) {
+        // the clip's frame now into its texture (each time it's moved on: playing, or a seek landed),
+        // mipmapped (the cells read it at their own size, and the light's slope much coarser)
+        gl.activeTexture(gl.TEXTURE5);
+        if (!eyeTex) {
+          eyeTex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, eyeTex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+          for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+          eyeHave = false; eyeDirty = true;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, eyeTex);
+        if (eyeVid.readyState >= 2 && (eyeDirty || !eyeVid.paused)) {
+          eyeDirty = false;
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, eyeVid);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          eyeHave = true;
+        }
+        gl.uniform1i(u('eyeVid'), 5);
+        const cellLod = Math.log2(Math.max(1, (dims.px / H) * eyeU.k * 540));
+        gl.uniform4f(u('eyeF'), EYE_CLIP.box[0], EYE_CLIP.box[1], eyeU.k, EYE_CLIP.aspect);
+        gl.uniform4f(u('eyeP'), eyeU.p[0], eyeU.p[1], eyeU.p[2], eyeHave ? 1 : 0);
+        gl.uniform4fv(u('eyeZ'), eyeU.z);
+        gl.uniform4f(u('eyeD'), eyeU.d[0], eyeU.d[1], 0, 0);
+        // (the galaxy drawn bigger as the dive comes in, but slower than the eye: further off)
+        const G = V.gal || [0.4, 0, 0];
+        gl.uniform4f(u('eyeS'), G[0] * Math.pow(eyeU.z[0] / eyeU.zmax, 0.6), G[1], G[2], 0);
+        gl.uniform4f(u('eyeL'), cellLod, cellLod + 3.8, eyeU.e[0], eyeU.e[1]);
+        // the space's photos into their textures once they're decoded, mipmapped (read at the cells' size and
+        // much coarser)
+        eyePics.forEach((pic, i) => {
+          gl.activeTexture(gl.TEXTURE7 + i);
+          if (!eyeSkyTex[i]) {
+            eyeSkyTex[i] = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, eyeSkyTex[i]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+            for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+          }
+          gl.bindTexture(gl.TEXTURE_2D, eyeSkyTex[i]);
+          if (pic.ok && !pic.up) {
+            pic.up = true;
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pic.img);
+            gl.generateMipmap(gl.TEXTURE_2D);
+          }
+          gl.uniform1i(u(i ? 'eyeSat' : 'eyeSky'), 7 + i);
+        });
+        // (Saturn: nearer than the galaxy, so drawn bigger faster as the dive comes in, out from by the
+        // pupil's middle to its place; none till the dive's begun)
+        const SP = V.planet || [0.86, 0.74], sm = Math.pow(eyeU.z[0] / eyeU.zmax, 0.9);
+        gl.uniform4f(u('eyeT'), eyeU.p[0] + (SP[0] * aspect - eyeU.p[0]) * sm, eyeU.p[1] + (SP[1] - eyeU.p[1]) * sm, eyeU.d[0] > 0 ? (V.satW ?? 0.15) * sm : 0, 0);
+      }
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
@@ -7519,7 +7846,7 @@ export function createScenery(canvas) {
         pixUp = true;
       }
       gl.uniform1i(p('pixAt'), 4);
-      const pics = pixFor(scene, W, H, V, { t, beats: walkB, swim: swimB, popAt, dropAt, night, cwPx: dims.cw, chPx: dims.px, kick: Math.exp(-Math.max(0, t - dipAt) * 4), birds });
+      const pics = pixFor(scene, W, H, V, { t, beats: walkB, swim: swimB, popAt, dropAt, night, cwPx: dims.cw, chPx: dims.px, kick: Math.exp(-Math.max(0, t - dipAt) * 4), birds, eye: eyeU });
       const pR = new Float32Array(PIX_MAX * 4), pU = new Float32Array(PIX_MAX * 4), pF = new Float32Array(PIX_MAX * 4);
       pics.forEach(([f, x, y, k, flip, near, keep = 0], i) => { pR.set([x, y, f[2] * k, f[3] * k], i * 4); pU.set(f, i * 4); pF.set([flip ? 1 : 0, 1, near, keep], i * 4); });
       gl.uniform1i(p('pixN'), pics.length);
@@ -7540,8 +7867,9 @@ export function createScenery(canvas) {
       const bx = flying ? flight.x - bw / 2 : (V.toaster.on === 'bridge' ? (0.5 + 0.14 * wideF) * W : V.toaster.x * W) - bw / 2;
       const by = flying ? flight.y - bh / 2 : waterY - (V.toaster.on === 'tube' ? 20 : V.toaster.on === 'float' || V.toaster.on === 'pad' ? SH / 2 : WATER) * S;
       if (cord) gl.uniform4f(p('spr'), cord.x, cord.y, cord.w * cord.k, cord.h * cord.k);
+      else if (V.toaster.on === 'eye') gl.uniform4f(p('spr'), 0, 0, 0, 0);   // (none in the eye: see EYE_LOOK)
       else gl.uniform4f(p('spr'), bx, by, bw, bh);
-      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float', 'pad', 'decks', 'mic', 'space'].includes(V.toaster.on) ? 1e6 : waterY);
+      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float', 'pad', 'decks', 'mic', 'space', 'eye'].includes(V.toaster.on) ? 1e6 : waterY);
       gl.uniform1f(p('night'), night);
       gl.uniform3fv(p('tint'), night ? V.tint || [0.8, 0.82, 0.96] : [1, 1, 1]);
       gl.uniform3fv(p('toneC'), night ? V.toneN || [0.1, 0.12, 0.17] : V.toneD || [-0.075, -0.045, -0.015]);

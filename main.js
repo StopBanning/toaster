@@ -287,22 +287,24 @@ function setUpIpc() {
     if (was?.max) win.maximize();
     if (was?.full) win.setFullScreen(true);
   };
-  // Vertical mode: a 9:16 window sized for recording TikToks and Shorts.
+  // Vertical mode: a 9:16 window sized for recording TikToks and Shorts. (Asked for twice, as the
+  // mini player is, it keeps the window it came from: saving the 9:16 one over it left the window
+  // that shape for good.)
   let normalWas = null;
   ipcMain.handle('win:vertical', async (_e, on) => {
     if (!win) return false;
     const was = await unbig();
-    if (on) {
+    if (on && !normalBounds) {
       normalBounds = win.getBounds();
       normalWas = was;
       const area = screen.getDisplayMatching(normalBounds).workArea;
       const h = Math.round(area.height * 0.94);
       const w = Math.round((h * 9) / 16);
       win.setBounds({ x: area.x + Math.round((area.width - w) / 2), y: area.y + Math.round((area.height - h) / 2), width: w, height: h });
-    } else if (normalBounds) {
+    } else if (!on && normalBounds) {
       win.setBounds(normalBounds);
       rebig(normalWas);
-      normalWas = null;
+      normalBounds = normalWas = null;
     }
     return on;
   });

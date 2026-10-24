@@ -411,6 +411,8 @@ export function createChrome(canvas) {
   let since = null, root = -1;
   return {
     get broken() { return !ok; },
+    // (compiling: its programs started and not yet done)
+    get waiting() { return !!jobs && !ok; },
     // a drop (the kick back after a break): a big bead in the middle, and a bolt
     splash(calm) { if (!ok) return; drop(0.5, 0.5, 0.08, 2.4); pulse = 1; if (!calm) { boltAt = last; bolt(); } },
     // Not in use: let the pictures go (draw() makes them again) and start afresh next time.
