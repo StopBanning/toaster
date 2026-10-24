@@ -9,7 +9,8 @@
 // drops out, the film goes to its title card, dawn over a dark planet with the whole title, until
 // the kick comes back. The terminal world shows the code, the ledger keeps the song's bars, the
 // engraving has the title cut into it.
-import { LOOKS, blueNoise, onePart } from './worldlooks.js';
+import { LOOKS, onePart } from './worldlooks.js';
+import { WORLD_NOISE } from './world-noise.js';
 import { RAMP } from './visuals.js';
 // how long a look's program has been done before it's shown (ms): the graphics driver's own
 // finishing of a shader new to it, about half a second, over by then (as the scenery has it)
@@ -1346,7 +1347,7 @@ export function createWorlds(canvas, wordsCanvas) {
         gl.activeTexture(gl.TEXTURE4);
         gl.bindTexture(gl.TEXTURE_2D, lookPics.noise);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, blueNoise());
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 64, 64, 0, gl.RED, gl.UNSIGNED_BYTE, WORLD_NOISE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       } else if (need === 'codegrid') {

@@ -47,11 +47,12 @@ const SEA_TALL = { ...TALL, far: [0.24, 0.045, 0.3, 0.3], lake: [0.24, 0.085], s
 const FIRE_WIDE = { ...WIDE, far: [0.42, 0.06, 0.5, 0.3], lake: [0.36, 0.14], sun: [0.8, 0.84], band: [0.04, 0.95, 0.13, 0.3], toaster: { x: 0.42, y: 0, on: 'log' }, tint: [1.08, 0.9, 0.76] };
 const FIRE_TALL = { ...TALL, far: [0.36, 0.05, 0.5, 0.3], lake: [0.3, 0.1], sun: [0.82, 0.52], band: [0.0, 1.1, 0.12, 0.3], toaster: { x: 0.25, y: 0, on: 'log' }, tint: [1.08, 0.9, 0.76] };
 // the snow: far is its mountains; lake the frozen lake's far shore and its near one
-const SNOW_WIDE = { ...WIDE, far: [0.4, 0.2, 0.36, 0.3], lake: [0.3, 0.09], sun: [0.82, 0.82], band: [5, 1.57, 0.1, 0.3], toaster: { x: 0.38, y: 0.45, on: 'ice' }, tint: [0.82, 0.95, 0.94], cool: true };
-const SNOW_TALL = { ...TALL, far: [0.34, 0.18, 0.36, 0.3], lake: [0.26, 0.07], sun: [0.86, 0.905], band: [5, 1.57, 0.1, 0.3], toaster: { x: 0.3, y: 0.45, on: 'ice' }, tint: [0.82, 0.95, 0.94], cool: true };
+// (by day a clear winter sky, so the snow stands out against it)
+const SNOW_WIDE = { ...WIDE, far: [0.4, 0.2, 0.36, 0.3], lake: [0.3, 0.09], sun: [0.82, 0.82], band: [5, 1.57, 0.1, 0.3], toaster: { x: 0.38, y: 0.45, on: 'ice' }, tint: [0.82, 0.95, 0.94], cool: true, paperD: [[124, 170, 224], [206, 224, 244]] };
+const SNOW_TALL = { ...TALL, far: [0.34, 0.18, 0.36, 0.3], lake: [0.26, 0.07], sun: [0.86, 0.905], band: [5, 1.57, 0.1, 0.3], toaster: { x: 0.3, y: 0.45, on: 'ice' }, tint: [0.82, 0.95, 0.94], cool: true, paperD: [[124, 170, 224], [206, 224, 244]] };
 // the city: lake is the far kerb (where the buildings stand) and the near kerb
-const CITY_WIDE = { ...WIDE, lake: [0.24, 0.12], toaster: { x: 0.7, y: -0.6, on: 'umbrella' }, tint: [1.02, 0.9, 0.86], cool: true, toneN: [0.17, 0.08, 0.15] };
-const CITY_TALL = { ...TALL, lake: [0.2, 0.1], toaster: { x: 0.55, y: -0.6, on: 'umbrella' }, tint: [1.02, 0.9, 0.86], cool: true, toneN: [0.17, 0.08, 0.15] };
+const CITY_WIDE = { ...WIDE, lake: [0.24, 0.12], toaster: { x: 0.7, y: -0.6, on: 'umbrella' }, tint: [1.02, 0.9, 0.86], cool: true, toneN: [0.17, 0.08, 0.15], paperD: [[180, 189, 208], [226, 230, 238]] };
+const CITY_TALL = { ...TALL, lake: [0.2, 0.1], toaster: { x: 0.55, y: -0.6, on: 'umbrella' }, tint: [1.02, 0.9, 0.86], cool: true, toneN: [0.17, 0.08, 0.15], paperD: [[180, 189, 208], [226, 230, 238]] };
 // the garden: lake is the pond's far bank and its near one
 const GARDEN_WIDE = { ...WIDE, lake: [0.3, 0.05], sun: [0.58, 0.83], band: [0.2, 0.7, 0.12, 0.3], toaster: { x: 0.66, y: 0, on: 'bridge' } };
 const GARDEN_TALL = { ...TALL, lake: [0.26, 0.05], sun: [0.86, 0.905], band: [0.1, 1.0, 0.1, 0.3], toaster: { x: 0.62, y: 0, on: 'bridge' } };
@@ -900,7 +901,8 @@ void main() {
 // side, the toaster on a log toasting bread on a stick. Pines frame it, a treeline of them closes the
 // clearing, and over it the sky (lake.x: where the clearing ends; lake.y: the fire's foot). The
 // flames leap on each kick, sparks fly up when the hats are busy, the firelight breathes with the
-// loudness. By day: a sunny clearing, the fire low, its smoke rising.
+// loudness. By day: a sunny clearing, the fire low, its smoke rising; the grass in patches and
+// clumps, wildflowers in drifts, the earth worn bare round the fire.
 const FIRE = `
 // the treeline closing the clearing: pines of all heights, crowding (row 0 in front; row 1 behind it,
 // taller, in the mist). In one at p? Its centre if so, else -9.
@@ -1039,6 +1041,34 @@ void main() {
   // warmed by its light
   if (Y < back) {
     float near = 1.0 - Y / back;
+    // (by day the meadow in the sun: the grass in patches, lighter where it's dry and darker where it's
+    // lush, its blades in clumps, thicker toward you; wildflowers in drifts, each its own colour; the
+    // earth round the fire bare to a clear edge, darker where it's burnt, grit and pebbles on it)
+    if (day) {
+      float clump = vn2(vec2(X * 34.0 + 3.0, Y * 40.0));
+      float d = length(vec2(r.x * 0.55, r.y)) + 0.022 * (clump - 0.5), rim = smoothstep(0.07, 0.1, d);
+      int g = 0;
+      float ink = 0.8;
+      vec3 gc;
+      if (d < 0.1 && h2(cell + 5.0) >= 0.85 * rim) {
+        tileC = mix(mix(rgb(104.0, 80.0, 60.0), rgb(158.0, 126.0, 88.0), smoothstep(0.03, 0.06, d)), rgb(130.0, 120.0, 72.0), rim * 0.6);
+        g = h0 > 0.975 ? G_BULLET : (h0 < 0.1 ? G_DOT : (h0 < 0.16 ? G_COMMA : 0));
+        gc = h0 > 0.975 ? rgb(146.0, 142.0, 136.0) : rgb(112.0, 86.0, 62.0);
+      } else {
+        float pat = vn2(vec2(X * 5.0, Y * 16.0)), fl = smoothstep(0.72, 0.86, vn2(vec2(X * 12.0 + 11.0, Y * 24.0)));
+        vec3 grass = mix(rgb(104.0, 150.0, 72.0), rgb(62.0, 112.0, 50.0), near);
+        grass = mix(grass, rgb(150.0, 168.0, 86.0), 0.35 * smoothstep(0.58, 0.72, pat));
+        tileC = mix(grass, rgb(48.0, 98.0, 48.0), 0.4 * smoothstep(0.38, 0.24, pat));
+        float dense = 0.07 + 0.12 * near + 0.45 * smoothstep(0.52, 0.78, clump), q = h0 / dense, hue = vn(X * 3.0 + Y * 7.0 + 40.0);
+        gc = q > 0.9 ? rgb(156.0, 194.0, 98.0) : tileC * 0.6;
+        if (h0 > 0.996) { g = G_STAR; ink = 1.0; gc = rgb(232.0, 80.0, 90.0); }    // (a wildflower on its own)
+        else if (fl > 0.0 && h0 < 0.6 * fl) { g = h0 < 0.35 * fl && near > 0.3 ? G_STAR : (h0 < 0.4 * fl ? G_MID : G_DOT); ink = 1.0; gc = hue < 0.42 ? rgb(248.0, 246.0, 234.0) : hue < 0.62 ? rgb(250.0, 210.0, 76.0) : rgb(196.0, 150.0, 232.0); }
+        else if (h0 < dense) g = q < 0.35 ? G_QUOTE : (q < 0.6 ? (near > 0.55 ? G_VEE : G_TICK) : G_COMMA);
+      }
+      tileA = 1.0;
+      put(g, ink, gc);
+      return;
+    }
     float worn = smoothstep(0.14, 0.05, length(vec2(r.x * 0.55, r.y)));
     int g = 0;
     if (h0 < (0.06 + 0.3 * near) * (1.0 - worn)) g = h0 < 0.04 ? G_QUOTE : (h0 < 0.12 ? G_COMMA : (h0 < 0.2 ? G_TICK : G_DOT));
@@ -1070,6 +1100,8 @@ void main() {
       return;
     }
   }
+  // (by day no sky between the trees' feet: the misty row behind carried down to the clearing)
+  if (day && Y < back + 0.03) { tileC = rgb(150.0, 174.0, 156.0); tileA = 0.95; put(h0 < 0.45 ? G_CARET : (h0 < 0.75 ? G_TRI : 0), 0.65, rgb(120.0, 150.0, 132.0)); return; }
   sky(cell, X, Y, h0, farL.x, farL.x + 0.05);
 }`;
 
@@ -1142,7 +1174,7 @@ void main() {
     if (h2(gi + fk * 7.0) < 0.07 + 0.18 * fly && floor(q.x) - gi.x * G == sub.x && floor(q.y) - gi.y * G == sub.y) {
       over = k == 0 ? G_STAR : (k == 1 ? (h0 < 0.5 ? G_BULLET : G_PLUS) : G_MID);
       overInk = 0.85 - 0.2 * fk;
-      overC = P(rgb(226.0, 234.0, 255.0), rgb(140.0, 160.0, 196.0));
+      overC = P(rgb(226.0, 234.0, 255.0), rgb(236.0, 242.0, 252.0));
       break;
     }
   }
@@ -1294,8 +1326,8 @@ void main() {
       float s = X < pk.y ? -1.0 : 1.0;
       bool lit = (X - (pk.y + (pk.z - Y) * 0.2)) * (sunAt.x - pk.y) > 0.0;
       float up = clamp((Y - farL.x) / max(1e-3, pk.z - farL.x), 0.0, 1.0);
-      vec3 snowL = P(rgb(158.0, 176.0, 232.0), rgb(244.0, 247.0, 255.0)), snowS = P(rgb(62.0, 76.0, 136.0), rgb(176.0, 192.0, 224.0));
-      vec3 rock = P(rgb(30.0, 36.0, 72.0), rgb(110.0, 118.0, 150.0)), haze = P(rgb(14.0, 18.0, 42.0), rgb(196.0, 208.0, 234.0));
+      vec3 snowL = P(rgb(158.0, 176.0, 232.0), rgb(244.0, 247.0, 255.0)), snowS = P(rgb(62.0, 76.0, 136.0), rgb(156.0, 176.0, 214.0));
+      vec3 rock = P(rgb(30.0, 36.0, 72.0), rgb(110.0, 118.0, 150.0)), haze = P(rgb(14.0, 18.0, 42.0), rgb(204.0, 222.0, 242.0));
       vec3 face = lit ? snowL : snowS;
       // (rock showing through in ribs down the shaded faces, broken along their length; on the lit
       // ones only low down, where the snow thins)
@@ -1339,7 +1371,9 @@ void main() {
 // behind, low cloud lit orange from below. The toaster waits on the near pavement under an
 // umbrella, a streetlamp beside it (lake.x: the far kerb, where the buildings stand; lake.y: the
 // near kerb). The rain falls harder when the hats are busy, the puddles ripple on each kick, the
-// towers' lights blink on the beat, a car goes by every 8 bars. By day: a grey rainy day.
+// towers' lights blink on the beat, a car goes by every 8 bars. By day: a rainy day under low
+// cloud, the row across the street in brick, stucco, slate and sage, its windows glass, awnings
+// over the shops, the towers behind in glass or stone, all of it in the wet road.
 const CITY = `
 // the row across the street: the building at x (its left edge, its width, its height above the
 // pavement, and which one), their edges a little uneven
@@ -1352,6 +1386,8 @@ vec4 bldg(float x) {
   float r = h1(k * 3.7 + 1.0);
   return vec4(b0, b1 - b0, 0.16 + 0.4 * r * r, k);
 }
+// a building's wall by day, by its look: red brick, cream stucco, slate, sage
+vec3 dayWall(float look) { return look < 0.4 ? rgb(168.0, 90.0, 72.0) : look < 0.6 ? rgb(212.0, 198.0, 166.0) : look < 0.8 ? rgb(116.0, 134.0, 160.0) : rgb(138.0, 154.0, 132.0); }
 // whether a building's shop is lit (the one under the sign always is)
 bool shopLit(vec4 b, float signX) { return h1(b.w * 2.3 + 7.0) < 0.6 || (signX >= b.x && signX < b.x + b.y); }
 // the towers behind it: the one at x (its centre, half width, height, which one), or height -1
@@ -1451,7 +1487,7 @@ void main() {
     float pud = vn2(vec2(X * 9.0, Y * 30.0));
     if (pud > 0.66) {
       // (by day the pale sky in it, by night the dark)
-      tileC = P(rgb(16.0, 18.0, 34.0), rgb(196.0, 204.0, 220.0));
+      tileC = P(rgb(16.0, 18.0, 34.0), rgb(184.0, 192.0, 208.0));
       // a puddle: the neon and the lamp in it, broken by the rain
       bool pink = abs(X - signX) < 0.06 && !day, warm = abs(X - head.x) < 0.04 && !day;
       if (pink || warm) tileC = mix(tileC, pink ? neon : lampC, 0.3);
@@ -1471,7 +1507,10 @@ void main() {
   if (Y < base) {
     float m = (base - Y) / (base - kerb);               // (0 at the far kerb, 1 at the near)
     // (solid: wet asphalt, the lights across the street drawn down it in colour)
-    vec3 tar = mix(P(rgb(20.0, 22.0, 38.0), rgb(134.0, 138.0, 152.0)), P(rgb(14.0, 16.0, 30.0), rgb(112.0, 116.0, 130.0)), m);
+    vec3 tar = mix(P(rgb(20.0, 22.0, 38.0), rgb(100.0, 104.0, 118.0)), P(rgb(14.0, 16.0, 30.0), rgb(84.0, 88.0, 100.0)), m);
+    // (by day the row across the street in it, faint, broken by the rain, fading toward the near kerb)
+    vec4 b = bldg(X);
+    if (day) tar = mix(tar, dayWall(h1(b.w * 5.3 + 2.0)) * 0.82, 0.3 * (1.0 - m) * (0.7 + 0.3 * vn(cell.x * 0.7 + row * 1.3 - time)));
     tileC = tar; tileA = 1.0;
     // ripples
     for (int i = 0; i < 4; i++) {
@@ -1483,7 +1522,6 @@ void main() {
     float run = vn(row * 0.8 - time * 2.5 + cell.x * 13.7);       // (the breaks, running down the streaks)
     bool colOn = h1(cell.x * 3.7) < 0.7;
     if (abs(X - signX) < 4.5 * cw && colOn && run > 0.3 + 0.5 * m) { tileC = mix(tar, day ? rgb(200.0, 140.0, 170.0) : neon, (day ? 0.12 : 0.3) * (1.0 - 0.6 * m)); put(run > 0.62 ? G_BAR : G_COLON, (day ? 0.35 : 0.85) - 0.4 * m, day ? rgb(200.0, 140.0, 170.0) : neon); return; }
-    vec4 b = bldg(X);
     float bx = X - b.x;
     if (shopLit(b, signX) && bx > b.y * 0.15 && bx < b.y * 0.85 && colOn && run > 0.42 + 0.5 * m) { tileC = mix(tar, day ? rgb(220.0, 180.0, 130.0) : rgb(255.0, 196.0, 120.0), (day ? 0.1 : 0.22) * (1.0 - 0.6 * m)); put(run > 0.7 ? G_BAR : G_COLON, (day ? 0.3 : 0.6) - 0.3 * m, day ? rgb(220.0, 180.0, 130.0) : rgb(255.0, 196.0, 120.0)); return; }
     if (abs(Y - (base + kerb) * 0.5) < ch * 0.5 && mod(cell.x, 6.0) < 3.0) { put(G_DASH, 0.6, P(rgb(200.0, 200.0, 210.0), rgb(250.0, 250.0, 250.0)) * (day ? 0.6 : 0.8)); return; }
@@ -1495,7 +1533,8 @@ void main() {
   // --- the far pavement, the sign over the shop, the buildings
   // (people with umbrellas walk the far pavement: in pixels, over the glyphs: see drawWalker)
   if (Y < foot) {
-    tone = day ? 0.55 : 0.1;
+    if (day) { tileC = rgb(150.0, 154.0, 166.0) * (0.96 + 0.06 * h2(vec2(floor(cell.x / 5.0), row))); tileA = 1.0; }
+    else tone = 0.1;
     put(foot - Y < ch ? G_UNDER : (h0 < 0.12 ? G_DOT : 0), 0.6, P(rgb(80.0, 84.0, 116.0), rgb(120.0, 122.0, 140.0)));
     return;
   }
@@ -1515,13 +1554,15 @@ void main() {
   }
   vec4 b = bldg(X);
   float bh = b.z, top = foot + bh, kk = b.w, look = h1(kk * 5.3 + 2.0);
-  if (day && Y < top) tone = 0.45;
   vec3 wall = look < 0.4 ? P(rgb(96.0, 54.0, 60.0), rgb(150.0, 90.0, 80.0)) : (look < 0.75 ? P(rgb(60.0, 66.0, 100.0), rgb(120.0, 124.0, 144.0)) : P(rgb(74.0, 70.0, 92.0), rgb(140.0, 132.0, 140.0)));
+  // (by day solid: the wall in its material, a little lighter up its height (the sky on it))
+  vec3 dw = dayWall(look);
+  if (day && Y < top) { wall = dw; tileC = dw * (0.93 + 0.1 * clamp((Y - foot) / max(bh, 1e-3), 0.0, 1.0)); tileA = 1.0; }
   vec3 rim = P(rgb(190.0, 150.0, 200.0), rgb(90.0, 84.0, 100.0));        // (the edges catching the glow)
   if (Y < top) {
     float cx = floor((X - b.x) / cw), ncol = floor(b.y / cw), ry = floor((top - Y) / ch), nrow = floor(bh / ch);
-    if (cx < 1.0 || cx >= ncol - 1.0) { put(G_BAR, 0.9, mix(wall * 0.75, rim, day ? 0.0 : 0.35)); return; }
-    if (ry < 1.0) { put(G_LINE, 1.0, mix(wall * 1.1, rim, day ? 0.2 : 0.75)); return; }
+    if (cx < 1.0 || cx >= ncol - 1.0) { if (day) tileC = dw * 0.78; put(G_BAR, 0.9, mix(wall * 0.75, rim, day ? 0.0 : 0.35)); return; }
+    if (ry < 1.0) { if (day) tileC = dw * 0.7; put(G_LINE, 1.0, day ? min(dw * 1.3, vec3(1.0)) : mix(wall * 1.1, rim, 0.75)); return; }
     // a tall sign down the side of some: HOTEL, its letters chasing on the beats, all on at each bar
     if (!day && bh > 0.3 && h1(kk * 6.6) < 0.45 && cx >= ncol - 4.0 && cx <= ncol - 2.0 && ry >= 2.0 && ry <= 12.0) {
       solid = true;
@@ -1540,8 +1581,22 @@ void main() {
       if (oc >= 0.0 && oc <= 5.0 && row == orow) {
         solid = true;
         bool lit = !day && h1(floor(time * 7.0) + kk) > 0.03;
-        vec3 c = day ? rgb(120.0, 150.0, 170.0) : rgb(80.0, 220.0, 255.0) * (lit ? 1.0 : 0.3);
+        vec3 c = day ? rgb(150.0, 214.0, 240.0) : rgb(80.0, 220.0, 255.0) * (lit ? 1.0 : 0.3);
+        if (day) tileC = rgb(40.0, 46.0, 60.0);           // (by day on a dark board, so it reads)
         put(oc == 0.0 || oc == 5.0 ? G_BAR : oc == 1.0 ? G_BIGO : oc == 2.0 ? G_LP2 : oc == 3.0 ? G_LE : G_LN, 1.0, oc > 0.0 && oc < 5.0 && lit ? mix(c, rgb(220.0, 250.0, 255.0), 0.4) : c);
+        return;
+      }
+    }
+    // (by day an awning over the shops with no sign over them: striped in two colours of its own, its
+    // edge darker)
+    if (day && shopLit(b, signX) && !(signX >= b.x && signX < b.x + b.y) && h1(kk * 4.1) >= 0.45 && Y >= foot + 0.05 && Y < foot + 0.05 + 1.5 * ch) {
+      float u = (X - b.x) / b.y;
+      if (u > 0.08 && u < 0.92) {
+        float pick = h1(kk * 8.9);
+        vec3 c1 = pick < 0.33 ? rgb(196.0, 64.0, 56.0) : pick < 0.66 ? rgb(52.0, 120.0, 88.0) : rgb(60.0, 92.0, 160.0), c2 = rgb(236.0, 228.0, 210.0);
+        bool low = Y < foot + 0.05 + 0.5 * ch;
+        tileC = mod(cell.x, 2.0) < 1.0 ? c1 : c2;
+        put(low ? G_UNDER : 0, 1.0, c1 * 0.7);
         return;
       }
     }
@@ -1550,11 +1605,15 @@ void main() {
       bool lit = shopLit(b, signX);
       float u = (X - b.x) / b.y;
       if (u > 0.12 && u < 0.88 && Y > foot + ch) {
-        if (abs(u - 0.7) < 0.06) { put(G_MEDIUM, 0.9, P(rgb(60.0, 40.0, 40.0), rgb(90.0, 60.0, 50.0))); return; }
-        if (!lit) { put(mod(row, 2.0) < 1.0 ? G_DBL : G_LINE, 0.7, P(rgb(80.0, 84.0, 100.0), rgb(130.0, 130.0, 140.0))); return; }
-        put(mod(cx, 6.0) < 1.0 ? G_BAR : G_MEDIUM, 0.9, mod(cx, 6.0) < 1.0 ? wall * 0.6 : (day ? rgb(230.0, 200.0, 150.0) : rgb(255.0, 190.0, 110.0)));
+        if (abs(u - 0.7) < 0.06) { if (day) tileC = dw * 0.5; put(G_MEDIUM, 0.9, P(rgb(60.0, 40.0, 40.0), rgb(90.0, 60.0, 50.0))); return; }
+        if (!lit) { if (day) tileC = rgb(150.0, 152.0, 162.0); put(mod(row, 2.0) < 1.0 ? G_DBL : G_LINE, 0.7, P(rgb(80.0, 84.0, 100.0), rgb(116.0, 118.0, 128.0))); return; }
+        // (by day the window lit warm behind its glass, the mullions dark)
+        if (day) tileC = mod(cx, 6.0) < 1.0 ? dw * 0.6 : rgb(240.0, 214.0, 164.0);
+        bool goods = day && h2(cell + 41.0) < 0.12;
+        put(mod(cx, 6.0) < 1.0 ? G_BAR : (goods ? G_DOT : G_MEDIUM), 0.9, mod(cx, 6.0) < 1.0 ? wall * 0.6 : (day ? (goods ? rgb(200.0, 150.0, 96.0) : tileC) : rgb(255.0, 190.0, 110.0)));
         return;
       }
+      if (day) tileC = dw * 0.86;
       put(G_EQ, 0.5, wall * 0.8);
       return;
     }
@@ -1574,13 +1633,21 @@ void main() {
       vec2 id = vec2(floor((cx - 1.0) / 3.0), floor((ry - 1.0) / 2.0)) + kk * 17.0;
       bool on = (h2(id) < 0.34) != (h2(id + bar * 1.37) < 0.05);
       bool screen = h2(id + 5.0) < 0.12;
-      if (on) { put(G_DARK, 1.0, screen ? rgb(120.0, 170.0, 255.0) * (0.85 + 0.15 * sin(time * 9.0 + id.x)) : (day ? rgb(240.0, 200.0, 140.0) : rgb(255.0, 196.0, 110.0))); return; }
-      put(G_LIGHT, 0.7, P(rgb(40.0, 46.0, 80.0), rgb(110.0, 130.0, 160.0)));
+      if (day) {
+        tileC = on ? (screen ? rgb(150.0, 186.0, 236.0) : rgb(238.0, 206.0, 148.0)) : mix(rgb(160.0, 178.0, 204.0), rgb(196.0, 208.0, 226.0), h2(id + 9.0));
+        // (a lit one's glyph in its own colour: nothing on the glass, but in the theme's colours lit)
+        if (on) { put(G_DARK, 1.0, tileC); return; }
+        bool glint = h2(id + 23.0) < 0.22 && wc < 1.0;
+        put(glint ? G_SLASH : G_UNDER, glint ? 0.6 : 0.9, glint ? rgb(232.0, 238.0, 246.0) : min(dw * 1.3, vec3(1.0)));
+        return;
+      }
+      if (on) { put(G_DARK, 1.0, screen ? rgb(120.0, 170.0, 255.0) * (0.85 + 0.15 * sin(time * 9.0 + id.x)) : rgb(255.0, 196.0, 110.0)); return; }
+      put(G_LIGHT, 0.7, rgb(40.0, 46.0, 80.0));
       return;
     }
     // the wall: brick in rows, or concrete
-    if (look < 0.4) { put(mod(row, 2.0) < 1.0 ? (mod(cell.x + mod(row, 4.0), 4.0) < 1.0 ? G_BAR : G_UNDER) : 0, 0.35, wall); return; }
-    put(h0 < 0.1 ? G_DOT : 0, 0.4, wall);
+    if (look < 0.4) { put(mod(row, 2.0) < 1.0 ? (mod(cell.x + mod(row, 4.0), 4.0) < 1.0 ? G_BAR : G_UNDER) : 0, day ? 0.5 : 0.35, day ? rgb(214.0, 168.0, 150.0) : wall); return; }
+    put(h0 < 0.1 ? G_DOT : 0, 0.4, day ? dw * 0.82 : wall);
     return;
   }
   // (on one roof a cat: in pixels, over the glyphs: see drawCat)
@@ -1611,10 +1678,13 @@ void main() {
       // windows lit here and there)
       float face = clamp((Y - foot) / 0.4, 0.0, 1.0);
       bool sunny = day && (X - tw.x) * (sunAt.x - tw.x) > 0.0;
-      tileC = P(rgb(18.0, 20.0, 38.0), mix(rgb(144.0, 150.0, 170.0), rgb(180.0, 186.0, 202.0), face) * (sunny ? 1.08 : 1.0)) * (edge ? 0.9 : 1.0); tileA = 1.0;
+      // (by day each in its material: blue glass, or warm stone)
+      bool stone = h1(tw.w * 3.3 + 1.0) < 0.4;
+      vec3 dayFace = stone ? mix(rgb(160.0, 154.0, 152.0), rgb(194.0, 188.0, 182.0), face) : mix(rgb(138.0, 150.0, 174.0), rgb(178.0, 190.0, 210.0), face);
+      tileC = P(rgb(18.0, 20.0, 38.0), dayFace * (sunny ? 1.08 : 1.0)) * (edge ? 0.9 : 1.0); tileA = 1.0;
       if (ry < 2.0) tileC = P(rgb(30.0, 32.0, 56.0), rgb(120.0, 126.0, 146.0));
       bool grid = day && !edge && ry >= 2.0 && mod(cell.x, 2.0) < 1.0 && mod(row, 2.0) < 1.0;
-      if (grid) tileC = mix(tileC, rgb(196.0, 210.0, 230.0), 0.35);
+      if (grid) tileC = mix(tileC, stone ? rgb(120.0, 130.0, 150.0) : rgb(200.0, 214.0, 234.0), stone ? 0.3 : 0.35);
       if (win) tileC = day ? mix(tileC, rgb(214.0, 196.0, 150.0), 0.55) : rgb(255.0, 206.0, 120.0) * (0.55 + 0.35 * h2(cell + tw.w + 3.0));
       put(edge ? G_BAR : 0, 0.4, P(rgb(44.0, 46.0, 78.0), rgb(140.0, 146.0, 166.0)));
       return;
@@ -1624,6 +1694,8 @@ void main() {
   float cl = fbm(vec2(X * 2.2 + time * 0.012, Y * 14.0));
   float under = smoothstep(0.95, 0.4, Y);
   if (!day) tone = 0.75 * smoothstep(0.95, foot + 0.05, Y);
+  // (by day in banks, darker where it's thickest, thinning into the haze over the roofs)
+  else { tileC = rgb(150.0, 158.0, 180.0); tileA = 0.55 * smoothstep(0.46, 0.66, cl) * smoothstep(foot + 0.15, 0.75, Y); }
   if (cl > 0.54 && h0 < (cl - 0.54) * 2.5) {
     put(cl > 0.64 ? G_TILDE : G_DASH, day ? 0.4 : 0.22 + 0.3 * under, day ? rgb(140.0, 146.0, 170.0) : mix(rgb(80.0, 74.0, 110.0), rgb(210.0, 130.0, 96.0), under * 0.75));
     return;
@@ -3999,6 +4071,29 @@ float bump(float x, float c, float w) { float d = (x - c) / w; return exp(-d * d
 // kRay the way its rays run there (on the screen) and kRd how far from the nearest of them
 float kS = 0.0, kSide = 0.0, kR = 0.0, kRay = 0.0, kRd = 0.0, kRidge = 0.0;
 vec2 kLf = vec2(0.0, 1.0);
+// Coverage and shadows only need the body; leave fins and tail out of these repeated samples.
+int koiBodyAt(int k, vec2 p) {
+  vec4 K = koiK[k];
+  float L = K.y, best = 9.0, bl = 0.0, s = 9.0, fk = float(k);
+  vec2 pt = vec2(1.0, 0.0);
+  for (int i = 1; i <= 12; i++) {
+    vec2 q = koiS[k * 13 + i], ba = koiS[k * 13 + i - 1] - q, pa = p - q;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0), dl = length(pa - ba * h);
+    if (dl < best) { best = dl; s = i == 12 && dot(pa, ba) < 0.0 ? 9.0 : (float(i) - h) / 12.0; bl = sign(ba.x * pa.y - ba.y * pa.x) * dl; pt = normalize(-ba); }
+  }
+  kS = s; kSide = 0.0; kRidge = 0.0; kLf = vec2(pt.y, -pt.x);
+  if (s > 1.0) return 0;
+  float wm = 0.115 * L, ab = abs(bl), sd = sign(bl);
+  // (its body: a round head, full from its shoulders to halfway down, then narrowing to the root of
+  // its tail)
+  float x = 1.0 - min(1.0, s / 0.3), w = mix(wm * sqrt(1.0 - x * x), 0.33 * wm, smoothstep(0.45, 0.8, s));
+  if (ab < w && s < 0.8) {
+    // (its dorsal fin along the middle of its back, seen edge on: a cell wide)
+    kSide = bl / w; kRidge = s > 0.3 && s < 0.64 && ab < 0.5 * (abs(pt.x) * ch + abs(pt.y) * cw) ? 1.0 : 0.0;
+    return 1;
+  }
+  return 0;
+}
 int koiAt(int k, vec2 p) {
   vec4 K = koiK[k];
   float L = K.y, best = 9.0, bl = 0.0, s = 9.0, fk = float(k);
@@ -4206,7 +4301,7 @@ void main() {
     float s = kS, side = kSide, r = kR, ray = kRay, rd = kRd, ridge = kRidge, fk = float(k), L = koiK[k].y;
     vec2 lf = kLf;
     int n = what == 1 ? 1 : 0;
-    for (int i = 0; i < 4; i++) if (koiAt(k, p + SUB[i] * vec2(cw, ch)) == 1) n++;
+    for (int i = 0; i < 4; i++) if (koiBodyAt(k, p + SUB[i] * vec2(cw, ch)) == 1) n++;
     int kind = int(koiK[k].x + 0.5);
     float key = h2(vec2(floor(s * L / cw * 1.3 + 0.5), floor(side * 2.5 + 0.5)) + fk * 41.0);
     if (what == 1 && n >= 3) {
@@ -4256,7 +4351,7 @@ void main() {
       vec4 B = koiB[k];
       vec2 q = p - vec2(0.014, -0.02);
       if (B.z < B.x || q.x < B.x || q.x > B.z || q.y < B.y || q.y > B.w) continue;
-      if (koiAt(k, q) == 1) { tone = 0.8; break; }
+      if (koiBodyAt(k, q) == 1) { tone = 0.8; break; }
     }
   }
 
@@ -4937,6 +5032,27 @@ vec3 krgb(float r, float g, float b) { return vec3(r, g, b) / 255.0; }
 // pixels (kEdge); its body's half width there (kW))
 float kS = 0.0, kSide = 0.0, kR = 0.0, kRd = 0.0, kRidge = 0.0, kEdge = 0.0, kW = 0.0;
 vec2 kLf = vec2(0.0, 1.0);
+// Coverage and shadows only need the body; leave fins and tail out of these repeated samples.
+int koiBodyAt(int fish, vec2 p, float px) {
+  vec4 K = koiK[fish];
+  float L = K.y, best = 9.0, bl = 0.0, s = 9.0, fk = float(fish);
+  vec2 pt = vec2(1.0, 0.0);
+  for (int i = 1; i <= 12; i++) {
+    vec2 q = koiS[fish * 13 + i], ba = koiS[fish * 13 + i - 1] - q, pa = p - q;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0), dl = length(pa - ba * h);
+    if (dl < best) { best = dl; s = i == 12 && dot(pa, ba) < 0.0 ? 9.0 : (float(i) - h) / 12.0; bl = sign(ba.x * pa.y - ba.y * pa.x) * dl; pt = normalize(-ba); }
+  }
+  kS = s; kSide = 0.0; kRidge = 0.0; kLf = vec2(pt.y, -pt.x);
+  if (s > 1.0) return 0;
+  float wm = 0.115 * L, ab = abs(bl), sd = sign(bl);
+  float x = 1.0 - min(1.0, s / 0.3), w = mix(wm * sqrt(1.0 - x * x), 0.33 * wm, smoothstep(0.45, 0.8, s));
+  kW = w;
+  if (ab < w && s < 0.8) {
+    kSide = bl / w; kEdge = (w - ab) / px; kRidge = s > 0.32 && s < 0.62 && ab < 0.6 * px ? 1.0 : 0.0;
+    return 1;
+  }
+  return 0;
+}
 int koiAt(int fish, vec2 p, float px) {
   vec4 K = koiK[fish];
   float L = K.y, best = 9.0, bl = 0.0, s = 9.0, fk = float(fish);
@@ -5049,7 +5165,7 @@ const KOI_PX_DRAW = `
       vec4 B = koiB[j];
       vec2 sq = kq - vec2(0.014, -0.02);
       if (B.z < B.x || sq.x < B.x || sq.x > B.z || sq.y < B.y || sq.y > B.w) continue;
-      if (koiAt(j, sq, kp) == 1) { col += vec3(-0.08, -0.056, -0.048); break; }
+      if (koiBodyAt(j, sq, kp) == 1) { col += vec3(-0.08, -0.056, -0.048); break; }
     }
     if (cellD < 0.8) for (int j = 4; j >= 0; j--) {
       vec4 B = koiB[j];
@@ -6851,7 +6967,7 @@ export function createScenery(canvas) {
   let sea = null, seaKick = false, seaPop = -9;
   // (the toaster's sprite as last drawn and as last sent up, and the size the sharks' cells texture
   // was made at: each done again only when it changes)
-  let boatKey = null, boatUp = null, lifeSize = null, pixTex = null, pixUp = false;
+  let boatKey = null, boatUp = null, lifeSize = null, lifeData = null, lifeDirty = false, pixTex = null, pixUp = false;
   // the koi pond's koi while its scene is up (the last pop it saw, the last drop); the koi for the
   // shader: spines, kinds, boxes
   let pond = null, pondPop = -9, dropAt = -99;
@@ -6932,7 +7048,7 @@ export function createScenery(canvas) {
     gl.bindVertexArray(null);
     cellTex = gl.createTexture();
     lifeTex = gl.createTexture();
-    boatUp = null; lifeSize = null;
+    boatUp = null; lifeSize = null; lifeData = null;
     sheetTex = gl.createTexture();
     spriteTex = gl.createTexture();
     pixTex = gl.createTexture(); pixUp = false;
@@ -6964,7 +7080,7 @@ export function createScenery(canvas) {
     }
     try {
       const source = LIB + (MAINS[name] || MAINS.lake);
-      return (scenes[name] = makeProgram(name === 'sharks' ? rolledSceneSource(source) : source));
+      return (scenes[name] = makeProgram(['sharks', 'garden', 'koi', 'halloween'].includes(name) ? rolledSceneSource(source) : source));
     }
     catch (err) {
       if (gl?.isContextLost()) throw err;
@@ -7248,7 +7364,7 @@ export function createScenery(canvas) {
           steps++;
         }
         if (steps === 4) sea.acc = 0;
-        if (steps) seaCells(sea);
+        if (steps) { seaCells(sea); lifeDirty = true; }
         seaSharks(sea, shkV, shkKV, shkBV, shkDV);
       } else { sea = null; seaKick = false; }
       // (the koi pond: stepped on as the sharks' water is, with the kicks and the loudness; the
@@ -7331,13 +7447,15 @@ export function createScenery(canvas) {
         gl.activeTexture(gl.TEXTURE5);
         gl.bindTexture(gl.TEXTURE_2D, lifeTex);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        // (made once for the window's cells, then refilled)
+        // (made for the window's cells; refilled only when the water stepped or was made again)
         const size = `${dims.cols}x${dims.rows}`;
         if (lifeSize !== size) {
           lifeSize = size;
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, dims.cols, dims.rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, sea.data);
           for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-        } else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, dims.cols, dims.rows, gl.RGBA, gl.UNSIGNED_BYTE, sea.data);
+        } else if (lifeDirty || lifeData !== sea.data) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, dims.cols, dims.rows, gl.RGBA, gl.UNSIGNED_BYTE, sea.data);
+        lifeData = sea.data;
+        lifeDirty = false;
         gl.uniform1i(u('life'), 5);
         gl.uniform1f(u('sharkCells'), sharksPx ? 0 : 1);
         // (moon: the toaster's ring, its middle and its radius)

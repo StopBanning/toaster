@@ -299,6 +299,18 @@ html.web .card .get { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 
 header > #b-star { margin-left: 12px; flex-shrink: 0; font-size: 12px; padding: 3px 9px; border: 1px solid var(--dim); color: inherit; text-decoration: none; white-space: nowrap; -webkit-app-region: no-drag; }
 header > #b-star:hover, header > #b-star:focus-visible { background: var(--faint); border-color: var(--fg); outline: none; }
 .star-n:not(:empty) { margin-left: 6px; padding-left: 6px; border-left: 1px solid var(--dim); }
+/* (the star: dim, filling with gold from the bottom as the count rolls up (--fill, 0-1); the count on
+   odometer wheels, a digit a line; the glyphs it bursts into; a press sinks the link a little) */
+:root { --gold: #e8b730; }
+:root[data-theme="whitescreen"] { --gold: #b98500; }
+.star-i { position: relative; display: inline-block; color: var(--dim); --fill: 0; }
+.star-i::after { content: '★'; position: absolute; left: 0; top: 0; color: var(--gold); clip-path: inset(calc((1 - var(--fill)) * 100%) 0 0 0); }
+.odo-d { display: inline-block; height: 1.32em; overflow: hidden; vertical-align: text-top; }
+.odo-s { display: block; white-space: pre; }
+.odo-n { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.star-spark { position: fixed; z-index: 1000; pointer-events: none; color: var(--gold); font-size: 11px; line-height: 1; }
+#b-star, .star-link { transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+#b-star:active, .star-link:active { transform: scale(.96); }
 @media (max-width: 640px) { header > #b-star { margin-left: 4px; padding-left: 4px; padding-right: 4px; } }
 /* (a phone: the options one under another, each with its line under it) */
 @media (max-width: 640px) {

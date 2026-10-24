@@ -24,8 +24,10 @@ export function createClips(deps) {
     return { video, dest, delay, node: null };
   }
   function letGo(src) {
-    if (!src || (on && src === source) || stretches.some((st) => st.source === src)) return;
+    if (!src || src.released || (on && src === source) || stretches.some((st) => st.source === src)) return;
+    src.released = true;
     src.video.getTracks().forEach((t) => t.stop());
+    src.dest.stream.getTracks().forEach((t) => t.stop());
     try { src.node?.disconnect(src.delay); } catch { /* gone */ }
     src.delay.disconnect();
   }
@@ -43,16 +45,52 @@ export function createClips(deps) {
     const src = source;
     const mr = new MediaRecorder(new MediaStream([...src.video.getVideoTracks(), ...src.dest.stream.getAudioTracks()]), { mimeType: type, videoBitsPerSecond: 8e6, audioBitsPerSecond: 192e3 });
     const st = { mr, type, chunks: [], at: performance.now(), kept: false, source: src };
-    mr.ondataavailable = (e) => { if (e.data.size) st.chunks.push(e.data); };
-    mr.start(1000);
     stretches.push(st);
+    mr.ondataavailable = (e) => { if (!st.finished && e.data.size) st.chunks.push(e.data); };
+    mr.onerror = (e) => finish(st, e.error?.message || 'the clip recorder failed');
+    mr.onstop = () => finish(st, st.ending ? null : 'the clip recorder stopped unexpectedly');
+    try { mr.start(1000); } catch (err) { finish(st, err?.message || err); throw err; }
   }
   const forget = (st) => { const i = stretches.indexOf(st); if (i >= 0) stretches.splice(i, 1); };
+  // All ways a recorder can end come here, including an encoder that is already inactive.
+  // Forget it and release its source even if conversion or saving fails. Other stretches still
+  // get their own cleanup, and a source shared by them is released exactly once.
+  async function finish(st, why) {
+    if (st.finished) return;
+    st.finished = true;
+    clearTimeout(st.timer);
+    clearTimeout(st.deadline);
+    try {
+      if (why) {
+        try { if (st.mr.state !== 'inactive') st.mr.stop(); } catch { /* already gone */ }
+        deps.said('drop clips stopped: ' + why);
+        stop();
+      } else if (st.save) {
+        const buf = await new Blob(st.chunks, { type: st.type }).arrayBuffer();
+        const file = await deps.save(buf, st.type.startsWith('video/mp4') ? 'mp4' : 'webm');
+        deps.said(`saved a drop clip: ${file.split(/[\\/]/).pop()}`, file);
+      }
+    } catch (err) {
+      deps.said('could not save the drop clip: ' + (err?.message || err));
+    } finally {
+      st.chunks.length = 0;
+      forget(st);
+      letGo(st.source);
+    }
+  }
+  function stopStretch(st, save = false) {
+    if (st.finished || st.ending) return;
+    st.ending = true;
+    st.save = save;
+    if (st.mr.state === 'inactive') { finish(st, 'the clip recorder stopped unexpectedly'); return; }
+    st.deadline = setTimeout(() => finish(st, 'the clip recorder did not finish'), 5000);
+    try { st.mr.stop(); } catch (err) { finish(st, err?.message || err); }
+  }
   // a new stretch every 10 seconds; the ones no clip could want any more let go
   function roll() {
     const now = performance.now();
-    for (const st of stretches.filter((s) => !s.kept && now - s.at >= LONGEST)) { st.mr.stop(); forget(st); }
-    startStretch();
+    for (const st of stretches.filter((s) => !s.kept && now - s.at >= LONGEST)) stopStretch(st);
+    if (on) try { startStretch(); } catch { /* finish reported it */ }
   }
 
   async function start() {
@@ -68,7 +106,7 @@ export function createClips(deps) {
       // half started: let go of all of it
       on = false;
       clearInterval(timer);
-      for (const st of stretches.filter((s) => !s.kept)) { try { st.mr.stop(); } catch { /* never started */ } forget(st); }
+      for (const st of stretches.filter((s) => !s.kept)) stopStretch(st);
       letGo(source);
       source = null;
       throw err;
@@ -80,10 +118,11 @@ export function createClips(deps) {
   function stop() {
     on = false;
     clearInterval(timer);
-    for (const st of stretches.filter((s) => !s.kept)) { st.mr.stop(); forget(st); }
     const src = source;
     source = null;
+    for (const st of stretches.filter((s) => !s.kept)) stopStretch(st);
     letGo(src); // (not while a clip from it is still being finished)
+    deps.stopped?.();
   }
 
   return {
@@ -106,20 +145,7 @@ export function createClips(deps) {
       const st = free.filter((s) => now - s.at >= PRE).sort((a, b) => b.at - a.at)[0] || free.sort((a, b) => a.at - b.at)[0];
       if (!st) return false;
       st.kept = true;
-      setTimeout(() => {
-        st.mr.onstop = async () => {
-          forget(st);
-          letGo(st.source);
-          try {
-            const buf = await new Blob(st.chunks, { type: st.type }).arrayBuffer();
-            const file = await deps.save(buf, st.type.startsWith('video/mp4') ? 'mp4' : 'webm');
-            deps.said(`saved a drop clip: ${file.split(/[\\/]/).pop()}`, file);
-          } catch (err) {
-            deps.said('could not save the drop clip: ' + (err?.message || err));
-          }
-        };
-        st.mr.stop();
-      }, AFTER);
+      st.timer = setTimeout(() => stopStretch(st, true), AFTER);
       return true;
     },
   };

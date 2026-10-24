@@ -15,6 +15,47 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="icon.png" />
 <link rel="stylesheet" href="style.css" />
+<link rel="preload" href="nc.js" as="script" />
+<link rel="preload" href="boot.js" as="script" />
+<link rel="modulepreload" href="app.js" />
+<link rel="modulepreload" href="engine.js" />
+<link rel="modulepreload" href="codegen.js" />
+<link rel="modulepreload" href="codeview.js" />
+<link rel="modulepreload" href="visuals.js" />
+<link rel="modulepreload" href="dominoes.js" />
+<link rel="modulepreload" href="orb.js" />
+<link rel="modulepreload" href="glitchorb.js" />
+<link rel="modulepreload" href="dotcam.js" />
+<link rel="modulepreload" href="voxcam.js" />
+<link rel="modulepreload" href="fx.js" />
+<link rel="modulepreload" href="storm.js" />
+<link rel="modulepreload" href="card.js" />
+<link rel="modulepreload" href="glass.js" />
+<link rel="modulepreload" href="tracking.js" />
+<link rel="modulepreload" href="smooth.js" />
+<link rel="modulepreload" href="lens.js" />
+<link rel="modulepreload" href="portal.js" />
+<link rel="modulepreload" href="segcam.js" />
+<link rel="modulepreload" href="gestures.js" />
+<link rel="modulepreload" href="handlog.js" />
+<link rel="modulepreload" href="rings.js" />
+<link rel="modulepreload" href="warp.js" />
+<link rel="modulepreload" href="worlds.js" />
+<link rel="modulepreload" href="worldlooks.js" />
+<link rel="modulepreload" href="world-noise.js" />
+<link rel="modulepreload" href="chrome.js" />
+<link rel="modulepreload" href="collage.js" />
+<link rel="modulepreload" href="spectro.js" />
+<link rel="modulepreload" href="scenery.js" />
+<link rel="modulepreload" href="scenery-source.js" />
+<link rel="modulepreload" href="space-art.js" />
+<link rel="modulepreload" href="cuts.js" />
+<link rel="modulepreload" href="tape.js" />
+<link rel="modulepreload" href="tape-export.js" />
+<link rel="modulepreload" href="clips.js" />
+<link rel="modulepreload" href="demo.js" />
+<link rel="modulepreload" href="news.js" />
+<link rel="preload" href="fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
 </head>
 <body>
 <script src="nc.js"></script>
@@ -54,7 +95,7 @@
   <button id="b-mini" class="grp" data-act="mini" data-title="Mini player: a small window in the corner, over everything else" title="Mini player: a small window in the corner, over everything else (W)">mini</button>
   <button id="b-layout" class="wide-only" data-act="layout" data-title="Vertical layout for TikTok/Shorts" title="Vertical layout for TikTok/Shorts (L)">9:16</button>
   <button id="b-help" class="grp" title="Keys and how it works">?</button>
-  <a id="b-star" class="os-web" href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener" title="Toaster is free and open source: a star on GitHub helps people find it">★ star<span class="star-n"></span></a>
+  <a id="b-star" class="os-web" href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener" title="Toaster is free and open source: a star on GitHub helps people find it"><span class="star-i" aria-hidden="true">★</span> star<span class="star-n"></span></a>
 </header>
 
 <main id="code">
@@ -111,7 +152,7 @@
     </div>
     <p class="tip">Nothing is recorded or uploaded. Esc closes this.</p>
     <p class="tip os-web-b">? shows the keys and how it works. The desktop app hears everything your PC plays by itself, no sharing.</p>
-    <p class="get os-web-b"><a href="https://github.com/StopBanning/toaster/releases/latest" target="_blank" rel="noopener">⇩ get the desktop app</a><a href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener">★ star it on GitHub<span class="star-n"></span></a></p>
+    <p class="get os-web-b"><a href="https://github.com/StopBanning/toaster/releases/latest" target="_blank" rel="noopener">⇩ get the desktop app</a><a class="star-link" href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener"><span class="star-i" aria-hidden="true">★</span> star it on GitHub<span class="star-n"></span></a></p>
   </div>
 </div>
 <input type="file" id="file" accept="audio/*" hidden />

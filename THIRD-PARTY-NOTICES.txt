@@ -56,3 +56,5 @@ The ideas and looks it's after (none of their code is in Toaster, but for the or
     sharks swim.
   quanhoangindex's ascii-reveal, a page decoding into place glyph by glyph in a wave:
     the scenery's change of scene and its field of glyphs while it gets ready.
+  Animate UI's GitHub Stars Button (Skyleen), its count rolling up while its star fills
+    and then bursts: the website's star links.
