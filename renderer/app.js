@@ -995,7 +995,15 @@ const REC_TYPES = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=a
 // what's drawn late for your ears gets the sound held back to match: that, less 12 ms (system
 // audio, drawn 50 ms earlier, lands 12 ms early, which looks in time), and your sync trim.
 const recDelay = () => Math.max(0, heardAfter() - 12 - state.syncTrim) / 1000;
-const rec = { mr: null, video: null, tap: null, busy: false, op: Promise.resolve(), write: Promise.resolve(), noticeTimer: 0 };
+// At most 32 MiB waits for disk. Ten seconds without a completed write stops the recording;
+// stopping has a 15-second total deadline, including the recorder's last piece and file close.
+const REC_BUFFER = 32 * 1024 * 1024, REC_PROGRESS_MS = 10000, REC_STOP_MS = 15000;
+const rec = { session: null, get mr() { return this.session?.mr || null; }, busy: false, op: Promise.resolve(), noticeTimer: 0 };
+const recCurrent = (s) => rec.session === s && s.active;
+function recWithin(promise, ms, why) {
+  let timer;
+  return Promise.race([promise, new Promise((_r, reject) => { timer = setTimeout(() => reject(new Error(why)), ms); })]).finally(() => clearTimeout(timer));
+}
 
 async function toggleRecording() {
   if (rec.busy) return;
@@ -1006,9 +1014,8 @@ async function toggleRecording() {
       else await startRecording();
     } catch (err) {
       console.error('recording:', err);
-      endRecordingTracks();
-      await window.nc?.recStop?.();
-      showNotice('could not record: ' + (err?.message || err));
+      if (rec.session) recordingFailed(rec.session, err?.message || err);
+      else showNotice('could not record: ' + (err?.message || err));
     } finally {
       rec.busy = false;
     }
@@ -1033,72 +1040,111 @@ async function startRecording() {
   // (hidden once recording had begun, it was in the first second of the video)
   hideNotice();
   await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, 100); });
-  rec.video = await windowStream();
+  const s = { active: true, mr: null, video: null, tap: null, queue: [], pending: 0, writing: false, write: Promise.resolve(), lastWrite: Date.now() };
+  rec.session = s;
+  s.video = await windowStream();
   const dest = ac.createMediaStreamDestination(), delay = ac.createDelay(1);
   delay.connect(dest);
-  rec.tap = { dest, delay, node: null };
+  s.tap = { dest, delay, node: null };
   tapRecording();
   const type = REC_TYPES.find((m) => MediaRecorder.isTypeSupported(m));
   if (!type) throw new Error('no video format to record in');
-  await window.nc.recStart(type.startsWith('video/mp4') ? 'mp4' : 'webm');
-  const mr = new MediaRecorder(new MediaStream([...rec.video.getVideoTracks(), ...dest.stream.getAudioTracks()]), { mimeType: type, videoBitsPerSecond: 8e6, audioBitsPerSecond: 192e3 });
-  rec.write = Promise.resolve();
-  // each piece on to the file in turn; one that can't be written stops the recording (and a
-  // failure never jams the line for the pieces after it)
+  const started = await window.nc.recStart(type.startsWith('video/mp4') ? 'mp4' : 'webm');
+  s.token = started.token;
+  const mr = s.mr = new MediaRecorder(new MediaStream([...s.video.getVideoTracks(), ...dest.stream.getAudioTracks()]), { mimeType: type, videoBitsPerSecond: 8e6, audioBitsPerSecond: 192e3 });
+  // Every piece belongs to this session, through conversion and IPC. Failure drops the waiting
+  // pieces at once; a late conversion or disk callback can never write to a replacement file.
   mr.ondataavailable = (e) => {
-    if (!e.data.size) return;
-    rec.write = rec.write.then(() => e.data.arrayBuffer()).then((b) => window.nc.recChunk(b))
-      .then((ok) => { if (!ok) recordingFailed('the file could not be written'); }, (err) => recordingFailed(err?.message || err));
+    if (!recCurrent(s) || !e.data.size) return;
+    if (s.pending + e.data.size > REC_BUFFER) { recordingFailed(s, 'the file is too slow (32 MiB waiting to be written)'); return; }
+    if (!s.pending) s.lastWrite = Date.now();
+    s.pending += e.data.size;
+    s.queue.push(e.data);
+    if (!s.writing) s.write = writeRecording(s);
   };
-  mr.onerror = (e) => recordingFailed(e.error?.message || 'the recorder stopped');
+  s.stopped = new Promise((resolve) => { mr.onstop = () => { resolve(); if (recCurrent(s) && !s.stopping) recordingFailed(s, 'the recorder stopped unexpectedly'); }; });
+  mr.onerror = (e) => recordingFailed(s, e.error?.message || 'the recorder stopped');
+  s.watch = setInterval(() => {
+    if (recCurrent(s) && s.pending && Date.now() - s.lastWrite >= REC_PROGRESS_MS) recordingFailed(s, 'the file has not made progress for 10 seconds');
+  }, 250);
   mr.start(1000);
-  rec.mr = mr;
   document.body.classList.add('recording');
   $('b-rec').textContent = '■ stop';
+}
+
+async function writeRecording(s) {
+  s.writing = true;
+  try {
+    while (recCurrent(s) && s.queue.length) {
+      const chunk = s.queue.shift(), buf = await chunk.arrayBuffer();
+      if (!recCurrent(s)) return;
+      const ok = await window.nc.recChunk(s.token, buf);
+      if (!recCurrent(s)) return;
+      if (!ok) throw new Error('the file could not be written');
+      s.pending -= chunk.size;
+      s.lastWrite = Date.now();
+    }
+  } catch (err) { recordingFailed(s, err?.message || err); }
+  finally { s.writing = false; }
 }
 
 // The sound comes from the app's own audio graph, from whatever it's listening to (the music as
 // it arrives, not after the speakers), held back recDelay(), and follows a change of source
 // mid-recording.
 function tapRecording() {
-  if (!rec.tap || rec.tap.node === state.node) return;
-  try { rec.tap.node?.disconnect(rec.tap.delay); } catch { /* gone */ }
-  rec.tap.node = state.node;
-  rec.tap.delay.delayTime.value = recDelay();
-  state.node?.connect(rec.tap.delay);
+  const tap = rec.session?.tap;
+  if (!tap || tap.node === state.node) return;
+  try { tap.node?.disconnect(tap.delay); } catch { /* gone */ }
+  tap.node = state.node;
+  tap.delay.delayTime.value = recDelay();
+  state.node?.connect(tap.delay);
 }
 
 async function stopRecording() {
-  const mr = rec.mr;
-  await new Promise((resolve) => { mr.onstop = resolve; mr.stop(); });
-  await rec.write;
-  endRecordingTracks();
-  const file = await window.nc.recStop();
-  if (file) showNotice('saved ' + file.split(/[\\/]/).pop(), file);
+  const s = rec.session;
+  if (!s) return;
+  s.stopping = true;
+  await recWithin((async () => {
+    if (s.mr.state !== 'inactive') s.mr.stop();
+    await s.stopped;
+    await s.write;
+    if (!recCurrent(s)) return;
+    const file = await window.nc.recStop(s.token);
+    if (!recCurrent(s)) return;
+    endRecordingTracks(s);
+    if (file) showNotice((file.endsWith('.part') ? 'recording stopped before the file could be finished; kept ' : 'saved ') + file.split(/[\\/]/).pop(), file);
+  })(), REC_STOP_MS, 'finishing the recording took more than 15 seconds');
 }
 
 // The recording can't go on (the disk is full, the recorder broke): stop it, keeping what was
 // written (main.js leaves that as a .part file), and say so, once.
-function recordingFailed(why) {
-  if (!rec.mr || rec.failing) return;
-  rec.failing = true;
-  try { rec.mr.ondataavailable = null; rec.mr.stop(); } catch { /* already stopping */ }
-  endRecordingTracks();
-  const stop = Promise.resolve(window.nc?.recStop?.()).finally(() => { rec.failing = false; });
-  rec.op = rec.op.then(() => stop, () => stop);
+function recordingFailed(s, why) {
+  if (!recCurrent(s)) return;
+  s.active = false;
+  s.queue.length = 0;
+  s.pending = 0;
+  try { s.mr.ondataavailable = null; if (s.mr.state !== 'inactive') s.mr.stop(); } catch { /* already stopping */ }
+  endRecordingTracks(s);
+  if (s.token !== undefined) recWithin(Promise.resolve(window.nc?.recStop?.(s.token, true)), 5000, 'file close timed out').catch(() => {});
   showNotice('recording stopped: ' + why);
 }
 // The window is closing mid-recording (main.js asks): finish the video properly, then close.
 window.nc?.onRecFinish?.(async () => {
   try { await rec.op; if (rec.mr) await toggleRecording(); } finally { window.nc.closeWindow(); }
 });
-window.nc?.onRecFailed?.((why) => recordingFailed(why));
+window.nc?.onRecFailed?.((token, why) => { if (rec.session?.token === token) recordingFailed(rec.session, why); });
 
-function endRecordingTracks() {
-  rec.video?.getTracks().forEach((t) => t.stop());
-  try { rec.tap?.node?.disconnect(rec.tap.delay); } catch { /* gone */ }
-  rec.tap?.delay.disconnect();
-  rec.mr = rec.video = rec.tap = null;
+function endRecordingTracks(s) {
+  if (s.released) return;
+  s.released = true;
+  s.active = false;
+  clearInterval(s.watch);
+  s.video?.getTracks().forEach((t) => t.stop());
+  s.tap?.dest.stream.getTracks().forEach((t) => t.stop());
+  try { s.tap?.node?.disconnect(s.tap.delay); } catch { /* gone */ }
+  s.tap?.delay.disconnect();
+  if (rec.session !== s) return;
+  rec.session = null;
   document.body.classList.remove('recording');
   $('b-rec').textContent = '● rec';
 }
@@ -1109,6 +1155,7 @@ const clips = createClips({
   ac, types: REC_TYPES, stream: windowStream, node: () => state.node, delay: recDelay,
   save: (buf, ext) => window.nc.saveClip(buf, ext),
   said: (text, file) => showNotice(text, file),
+  stopped: () => document.body.classList.remove('clips-on'),
 });
 async function toggleClips() {
   if (!window.nc?.saveClip) { flashStatus('drop clips work in the app, not in a browser'); return; }

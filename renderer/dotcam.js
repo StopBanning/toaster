@@ -178,8 +178,9 @@ export function createDotCam(canvas) {
         const h = Math.min(left, 1 / 240), a = 256 * (kickV - pulse) - 32 * pulseV;
         pulseV += a * h; pulse += pulseV * h;
       }
-      // the palette: on each new chord, or every 4 bars without one
-      if (eng.lastChord && eng.lastChord !== chord) { chord = eng.lastChord; slide(eng.bar); }
+      // the palette: on each new chord (by its name: the engine hands over a new chord every bar, the
+      // same one too), or every 4 bars without one
+      if (eng.lastChord && eng.lastChord.name !== chord?.name) { chord = eng.lastChord; slide(eng.bar); }
       else if (eng.bar !== null && (slidBar === null || eng.bar - slidBar >= 4)) slide(eng.bar);
       hue += (hueTo - hue) * (1 - Math.exp(-dt / 0.6));
 

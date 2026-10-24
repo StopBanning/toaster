@@ -4,6 +4,16 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.16',
+    items: [
+      { act: 'strength', text: 'the city, the campfire and the snow by day, redrawn: brick, glass and striped awnings in the rain, a meadow of wildflowers round the fire, a clear winter sky over white peaks' },
+      { key: 'startup', text: 'the garden, the koi pond and Halloween get ready in a third to a half less time the first time after an update' },
+      { act: 'rec', text: "recording is sturdier: a slow or failing disk stops it cleanly and keeps what was written, it can't spill into the next recording, and stopping always finishes" },
+      { act: 'clips', text: 'drop clips clean up after a broken recorder and say so, and switch off instead of jamming' },
+      { act: 'visual', text: 'the spectrogram and the dots camera mark a change of chord only when the chord really changes' },
+    ],
+  },
+  {
     version: '0.4.15',
     items: [
       { act: 'strength', text: 'the sharks in pixels: clean shapes and fins under their shimmering letters, and the stingray and the jellyfish redrawn with them' },

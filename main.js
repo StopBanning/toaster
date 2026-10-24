@@ -371,24 +371,29 @@ function setUpIpc() {
     const stem = path.join(dir, `toaster ${stamp()}`);
     const file = freeBase(stem, [dotExt, dotExt + '.part']) + dotExt;
     const out = fs.createWriteStream(file + '.part', { flags: 'wx' });
-    recording = { stem, ext: dotExt, file, out, failed: false };
+    const token = ++recordingId;
+    recording = { token, stem, ext: dotExt, file, out, failed: false };
     // The file can't be written (the disk is full, say): tell the page once, which stops the
     // recording and says so, and take no more of it. (Unhandled, the error would end the app.)
     out.on('error', (err) => {
       if (recording?.out !== out || recording.failed) return;
       recording.failed = true;
-      win?.webContents.send('rec:failed', String(err?.message || err));
+      win?.webContents.send('rec:failed', token, String(err?.message || err));
     });
     win?.setProgressBar(1, { mode: 'error' });
     win?.setTitle('● recording - Toaster');
-    return file;
+    return { token, file };
   });
   // true once the piece is on disk, false if it couldn't be written
-  ipcMain.handle('rec:chunk', (_e, buf) => new Promise((resolve) => {
-    if (!recording || recording.failed) { resolve(false); return; }
+  ipcMain.handle('rec:chunk', (_e, token, buf) => new Promise((resolve) => {
+    if (!recording || recording.token !== token || recording.failed) { resolve(false); return; }
     recording.out.write(Buffer.from(buf), (err) => resolve(!err));
   }));
-  ipcMain.handle('rec:stop', () => endRecording());
+  ipcMain.handle('rec:stop', (_e, token, failed) => {
+    if (!recording || recording.token !== token) return null;
+    if (failed) recording.failed = true;
+    return endRecording();
+  });
   ipcMain.handle('win:close', () => win?.close());
   ipcMain.handle('rec:show', (_e, file) => {
     // only files inside our own folders (resolved first, so a .. in the path can't step out)
@@ -453,7 +458,7 @@ function freeBase(stem, exts) {
 
 // Finishes the file being recorded (also when the app closes mid-recording): what has arrived
 // becomes the video, under its proper name.
-let recording = null, endingRec = Promise.resolve(null);
+let recording = null, recordingId = 0, endingRec = Promise.resolve(null);
 // (A file that failed partway stays as .part, so it isn't taken for a whole video; and the close
 // never waits more than 5 seconds on a stream that has gone wrong.)
 function endRecording() {
@@ -468,10 +473,14 @@ function endRecording() {
     return endingRec;
   }
   endingRec = new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(file + '.part'), 5000);
+    let done = false;
+    const finish = (dest) => { if (done) return; done = true; clearTimeout(timer); resolve(dest); };
+    const timer = setTimeout(() => { out.destroy(); finish(file + '.part'); }, 5000);
+    out.once('error', () => finish(file + '.part'));
     out.end(() => {
+      if (done) return;
       const dest = fs.existsSync(file) ? freeBase(stem, [ext, ext + '.part']) + ext : file;
-      fs.rename(file + '.part', dest, (err) => { clearTimeout(timer); resolve(err ? file + '.part' : dest); });
+      fs.rename(file + '.part', dest, (err) => finish(err ? file + '.part' : dest));
     });
   });
   return endingRec;

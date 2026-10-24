@@ -1,0 +1,14 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const output = process.argv.find((a) => a.startsWith('--output='))?.slice(9) || path.join(root, '_checks', 'result.json');
+const log = fs.createWriteStream(output + '.log');
+const child = spawn(createRequire(import.meta.url)('electron'), [path.join(root, 'tools/isolated.cjs'), '--remote-debugging-port=9347', '--mute-audio', ...process.argv.slice(2)], { cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+console.log('owned Electron PID', child.pid);
+child.stdout.on('data', (b) => log.write(b)); child.stderr.on('data', (b) => log.write(b));
+const exit = await new Promise((resolve, reject) => { child.on('error', reject); child.on('close', resolve); });
+log.end(); console.log('Electron exited', exit, output);
+process.exitCode = exit;

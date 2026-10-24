@@ -21,12 +21,12 @@ contextBridge.exposeInMainWorld('nc', {
   // Recording (M): a capture id for the page itself, then the video to a file, piece by piece.
   recSource: () => ipcRenderer.invoke('rec:source'),
   recStart: (ext) => ipcRenderer.invoke('rec:start', ext),
-  recChunk: (buf) => ipcRenderer.invoke('rec:chunk', buf),
-  recStop: () => ipcRenderer.invoke('rec:stop'),
+  recChunk: (token, buf) => ipcRenderer.invoke('rec:chunk', token, buf),
+  recStop: (token, failed = false) => ipcRenderer.invoke('rec:stop', token, failed),
   recShow: (file) => ipcRenderer.invoke('rec:show', file),
   // the file couldn't be written (fn gets why); the window is closing mid-recording (fn finishes
   // the video, then calls closeWindow)
-  onRecFailed: (fn) => ipcRenderer.on('rec:failed', (_e, why) => fn(why)),
+  onRecFailed: (fn) => ipcRenderer.on('rec:failed', (_e, token, why) => fn(token, why)),
   onRecFinish: (fn) => ipcRenderer.on('rec:finish', () => fn()),
   closeWindow: () => ipcRenderer.invoke('win:close'),
   // Song export (X): the song as MIDI bytes and as Strudel code, into Music\Toaster.

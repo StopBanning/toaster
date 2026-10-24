@@ -223,8 +223,9 @@ export function createSpectro(canvas, boxCanvas) {
       }
       pins.push({ kind: 'bass', t: b.t, f, label, born: t });
     }
+    // (a change of chord by its name: the engine hands over a new chord every bar, the same one too)
     const ch = eng.lastChord;
-    if (ch && ch !== chordWas) { chordWas = ch; chords.push({ t, label: NOTES[ch.root] + (ch.third === 3 ? 'm' : '') }); }
+    if (ch && ch.name !== chordWas?.name) { chordWas = ch; chords.push({ t, label: NOTES[ch.root] + (ch.third === 3 ? 'm' : '') }); }
   }
 
   // Over it: the frequencies marked along the back, the chords named at the far end of their lines,

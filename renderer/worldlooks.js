@@ -502,9 +502,9 @@ function vhsOverlay(g, { W, H, k, t }) {
 }
 
 // Blue noise: 64 x 64 thresholds whose dots scatter evenly (void and cluster), for the dithered
-// looks. Worked out once, the first time one is used. (The tightest and loosest dots are kept row
-// by row, and only the rows a dot's splat reaches are looked through again: 22 ms, not 56, the
-// thresholds the same to the byte)
+// looks. Shipped in world-noise.js, rather than worked out while drawing. To regenerate its base64:
+// node --input-type=module -e "import {blueNoise} from './renderer/worldlooks.js'; console.log(Buffer.from(blueNoise(64,5)).toString('base64'))"
+// (The tightest and loosest dots are kept row by row; only changed rows are looked through again.)
 export function blueNoise(n = 64, seed = 5) {
   const N = n * n, sigma = 1.9, R = Math.ceil(sigma * 3.5), K = (2 * R + 1) ** 2;
   const kx = new Int32Array(K), ky = new Int32Array(K), kw = new Float64Array(K);
