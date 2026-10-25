@@ -314,10 +314,12 @@ html.web .os-web-b { display: block; }
 html.web .card .get { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; }
 .card .get a { font-size: 13px; padding: 8px 14px; border: 1px solid var(--fg); color: var(--fg); text-decoration: none; }
 .card .get a:hover, .card .get a:focus-visible { background: var(--fg); color: var(--bg); outline: none; }
-/* (a page's start menu: its star link, GitHub's count after a rule; a press sinks it a little) */
-.star-link { transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+/* (a page's start menu: its star button, as the header's: GitHub's logo, its words, the count after a
+   rule, the star; a gold edge so it reads as the one to press; a press sinks it a little) */
+.card .get a.star-link { display: inline-flex; align-items: center; gap: 8px; border-color: var(--gold); transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
 .star-link:active { transform: scale(.96); }
-.star-link .star-n:not(:empty) { margin-left: 6px; padding-left: 6px; border-left: 1px solid var(--dim); }
+.star-link .gh { width: 15px; height: 15px; flex-shrink: 0; }
+.star-link .star-n:not(:empty) { padding-left: 8px; border-left: 1px solid var(--dim); }
 @media (max-width: 640px) { header > #b-star { margin-left: 4px; padding-left: 4px; padding-right: 4px; } }
 /* (a phone: the options one under another, each with its line under it) */
 @media (max-width: 640px) {
