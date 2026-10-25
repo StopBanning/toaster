@@ -6,6 +6,21 @@ const os = require('node:os');
 const fs = require('node:fs');
 const { spawn, spawnSync } = require('node:child_process');
 const updates = require('./update.js');
+// The header's star button: the project's page, and its star count on GitHub, asked at most once every
+// ten minutes (null when it can't be had). (Kept out of update.js: a change there only shows at the next
+// update.)
+const REPO_PAGE = 'https://github.com/StopBanning/toaster';
+let starsKept = null;
+async function repoStars() {
+  if (starsKept && Date.now() - starsKept.at < 600000) return starsKept.n;
+  const { net } = require('electron');
+  const res = await net.fetch('https://api.github.com/repos/StopBanning/toaster', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Toaster/${app.getVersion()}` } });
+  if (!res.ok) return null;
+  const n = (await res.json()).stargazers_count;
+  if (typeof n !== 'number') return null;
+  starsKept = { n, at: Date.now() };
+  return n;
+}
 
 const mac = process.platform === 'darwin';
 
@@ -345,6 +360,9 @@ function setUpIpc() {
     return true;
   });
   ipcMain.handle('update:page', () => shell.openExternal(updates.page()));
+  // The header's star button: the project's star count, and its page in the browser.
+  ipcMain.handle('repo:stars', () => repoStars().catch(() => null));
+  ipcMain.handle('repo:open', () => shell.openExternal(REPO_PAGE));
   ipcMain.handle('win:titlebar', (_e, color, symbolColor) => {
     try { win?.setTitleBarOverlay({ color, symbolColor }); } catch { /* not supported */ }
   });

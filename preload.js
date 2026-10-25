@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('nc', {
   updateInstall: () => ipcRenderer.invoke('update:install'),
   updatePage: () => ipcRenderer.invoke('update:page'),
   onUpdateProgress: (fn) => ipcRenderer.on('update:progress', (_e, p) => fn(p)),
+  // The header's star button: GitHub's star count (or null), and the project's page in the browser.
+  stars: () => ipcRenderer.invoke('repo:stars'),
+  openRepo: () => ipcRenderer.invoke('repo:open'),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),
   handLogAdd: (text) => ipcRenderer.invoke('handlog:add', text),

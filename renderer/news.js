@@ -4,6 +4,19 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.18',
+    items: [
+      { act: 'strength', text: "the sea redone round its lighthouse: the keeper's cottage, beams sweeping with the beat, the Milky Way over the water; it and the festival are night scenes now, under a richer sky" },
+      { act: 'strength', text: "the festival's lake and crowd cleaned up: a calm column of the stage's light, the crowd in silhouette" },
+      { act: 'strength', text: "the eye without the window that was reflected in it, and every stroke drawn in glyphs clean at any screen size: the dive's stars no longer turn to white blocks" },
+      { act: 'camfx', text: 'the dots, the voxels, the cut-out, the windows and big eyes come on without the picture freezing the first time' },
+      { key: 'startup', text: 'the warp, the spectrum, the rain and the scope get ready in the background the first time, in the field of glyphs' },
+      { act: 'strength', text: 'scenes changed in quick succession each decode from the one before, not from a scene long gone' },
+      { act: 'dropfx', text: 'the drop effect starts off: the scenes take the drop themselves, and B picks one' },
+      { act: 'strength', text: 'the basement show leaves the scenery' },
+    ],
+  },
+  {
     version: '0.4.17',
     items: [
       { act: 'strength', text: "the eye, a new scene: a real eye drawn in glyphs that looks out at you and blinks; on a drop the view glides into its pupil, a window onto space: Hubble's Whirlpool galaxy and Saturn, drawn in glyphs too" },

@@ -27,7 +27,7 @@ for (const name of Object.getOwnPropertyNames(WebGL2RenderingContext.prototype).
 
 const SCENES = [
   'lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls',
-  'halloween', 'sharks', 'festival', 'koi', 'basement', 'space',
+  'halloween', 'sharks', 'festival', 'koi', 'space',
 ];
 const eng = {
   tempo: { locked: true, bpm: 120, P: 0.5 },

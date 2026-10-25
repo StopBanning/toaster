@@ -5,6 +5,8 @@
 // punches the zoom, the bass widens the stripes, the hats spin it, and how loud it is sets how
 // bright the new stripes come in. Worked out at half the window's size (feedback is soft anyway)
 // and stretched to fit, on the graphics card: a couple of calls a frame.
+import { compileProgram } from './program.js';
+
 const VERT = `#version 300 es
 in vec2 p;
 out vec2 uv;
@@ -45,6 +47,7 @@ void main() { float v = texture(frame, uv).r; color = vec4(mix(bg, fg, v), 1.0);
 
 export function createWarp(canvas) {
   let gl = null, ok = false, stepProg, showProg, buf, tex = [], fbo = [], loc = {}, show = {}, i = 0, w = 0, h = 0;
+  let jobs = null;
   let pulse = 0, last = 0, spin = 0;
   const band = (eng, lo, hi) => {
     const db = eng.fastDb, hz = eng.hzFast;
@@ -52,24 +55,20 @@ export function createWarp(canvas) {
     for (let k = Math.max(1, Math.floor(lo / hz)); k <= Math.min(db.length - 1, Math.ceil(hi / hz)); k++) m = Math.max(m, db[k]);
     return Math.min(1, Math.max(0, (m + 90) / 60));
   };
-  const compile = (src, type) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
-  const program = (frag) => {
-    const pr = gl.createProgram();
-    gl.attachShader(pr, compile(VERT, gl.VERTEX_SHADER));
-    gl.attachShader(pr, compile(frag, gl.FRAGMENT_SHADER));
-    gl.bindAttribLocation(pr, 0, 'p');
-    gl.linkProgram(pr);
-    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
-    return pr;
-  };
   function build() {
-    ok = false;
+    ok = false; jobs = null;
     gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false });
     if (!gl) return;
     try {
-      stepProg = program(FRAG);
-      showProg = program(SHOW);
+      jobs = [compileProgram(gl, VERT, FRAG, [[0, 'p']]), compileProgram(gl, VERT, SHOW, [[0, 'p']])];
+      [stepProg, showProg] = jobs.map((job) => job.program);
     } catch (err) { console.error('warp:', err); return; }
+  }
+  function finish() {
+    if (!jobs) return;
+    try { if (!jobs.every((job) => job.ready())) return; }
+    catch (err) { jobs = null; console.error('warp:', err); return; }
+    jobs = null;
     buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -107,17 +106,19 @@ export function createWarp(canvas) {
     });
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ok = false; });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ok = false; jobs = null; });
   canvas.addEventListener('webglcontextrestored', () => { tex = []; fbo = []; build(); });
   let built = false; // (built the first time it's shown, not at startup)
 
   return {
     get broken() { return !ok; },
+    get waiting() { return !built || !!jobs; },
     kick(s) { pulse = Math.max(pulse, 0.5 + 0.5 * Math.min(1, s)); },
     // Not in use: drop the pictures' memory too (draw() makes them again).
     clear() { if (ok) { size(1, 1); } canvas.width = canvas.height = 1; },
     draw(t, eng, col) {
       if (!built) { built = true; build(); }
+      if (!ok) finish();
       if (!ok) return;
       const W = Math.max(1, Math.round(innerWidth / 2)), H = Math.max(1, Math.round(innerHeight / 2));
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }

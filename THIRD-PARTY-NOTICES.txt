@@ -27,7 +27,8 @@ tools/skullmesh.mjs)
 JetBrains Mono (the typeface)
   Included in renderer/fonts; SIL Open Font License 1.1 (renderer/fonts/OFL.txt).
 
-The eye scene's footage, in renderer/eye/eye.mp4 (its first seconds, slowed, looped, smoothed)
+The eye scene's footage, in renderer/eye/eye.mp4 (its first seconds, slowed, looped, smoothed, a
+  window's reflection on the iris painted out)
   "Close-up of a Human Brown Eye Flickering" by Emirhan Emiroğlu, Pexels video 32198166.
   Pexels License (https://www.pexels.com/license/): free to use and to change.
   From https://www.pexels.com/video/close-up-of-a-human-brown-eye-flickering-32198166/

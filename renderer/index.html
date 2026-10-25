@@ -29,6 +29,7 @@
 <header id="bar">
   <span id="status" class="tag">○ idle</span>
   <span class="appname">toaster</span>
+  <a id="b-star" href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener" title="Toaster is free and open source: a star on GitHub helps people find it"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span class="star-n"></span><span class="star-i" aria-hidden="true">★</span></a>
   <span class="spacer"></span>
   <!-- in groups, as in the help: source | look | camera | save & share | window | help -->
   <button id="b-source" class="grp" data-act="source" data-title="Audio source" title="Audio source (S)">source</button>
@@ -112,13 +113,13 @@
 <dialog id="help">
   <h2>how it works <small class="ver"></small></h2>
   <p>Toaster listens to whatever your <span class="os-win">PC</span><span class="os-mac">Mac</span> plays and writes it out as Strudel code, live: the drums on a 16-step grid, the tempo, bass, chords, key and lead line. A new song starts a fresh page. It's a reconstruction for show, not an exact transcription; steady beats work best.</p>
-  <p>When the kick comes back after a break, the drop effect takes over the screen. The camera features run on this <span class="os-win">PC</span><span class="os-mac">Mac</span>; nothing is uploaded. Your picks are remembered, except the camera, which always starts off.</p>
+  <p>When the kick comes back after a break, the backgrounds answer the drop, and the drop effect, if you've picked one with <kbd data-k="dropfx">B</kbd>, takes over the screen. The camera features run on this <span class="os-win">PC</span><span class="os-mac">Mac</span>; nothing is uploaded. Your picks are remembered, except the camera, which always starts off.</p>
   <label class="calm"><input type="checkbox" id="calm" /><span><b>Fewer flashes</b>: no full-screen flashes, hard cuts or colour flashes. On from the start if <span class="os-win">Windows' "Show animations" is off</span><span class="os-mac">the Mac's Reduce motion setting is on</span>.</span></label>
   <label class="calm"><input type="checkbox" id="updates" /><span><b>Updates</b>: when it starts, Toaster asks GitHub whether there's a newer version, and offers it if there is. Nothing else is sent.</span></label>
   <table>
     <tr class="sec"><th colspan="2">look</th></tr>
     <tr data-act="visual"><td>V</td><td>background: spectrum, tunnel, spiral, pitch wheel, warp, cuts, worlds, chrome, spectrogram, scenery, rain, scope, off</td></tr>
-    <tr data-act="strength"><td>A</td><td>background strength; with worlds, their look: night (no light skies), film, ASCII, code, ink, risograph, cyanotype, receipt, thermal, night vision, CRT, VHS, quadtree, cells, auto; with chrome, the collage on or off; with the spectrogram, its colours: rainbow or the theme's; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween (auto picks it in October), the sharks, the festival, the koi pond (click the water to feed the koi), the basement show, then auto in the theme's colours</td></tr>
+    <tr data-act="strength"><td>A</td><td>background strength; with worlds, their look: night (no light skies), film, ASCII, code, ink, risograph, cyanotype, receipt, thermal, night vision, CRT, VHS, quadtree, cells, auto; with chrome, the collage on or off; with the spectrogram, its colours: rainbow or the theme's; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween (auto picks it in October), the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye, then auto in the theme's colours</td></tr>
     <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen</td></tr>
     <tr data-act="orb"><td>R</td><td>orb: dots that take a new form every 8 bars, moved by the kick, clap and hats</td></tr>
     <tr data-act="blocks"><td>P</td><td>blocks: punchcard, then dominoes, then off</td></tr>
@@ -131,7 +132,7 @@
     <tr data-act="tap"><td>Space</td><td>tap the beat (four taps) when it gets the tempo wrong</td></tr>
     <tr data-act="hush"><td>Q</td><td>hush every part; <kbd data-k="hush">Q</kbd> again or an open hand brings them back</td></tr>
     <tr data-act="drop"><td>D</td><td>the drop, now: the drop effect, and the backgrounds' drop moments (the scenery's toast pops, the koi gather, the sharks charge, the fireworks go up)</td></tr>
-    <tr data-act="dropfx"><td>B</td><td>drop effect: XP takeover, blue screen, not responding, off</td></tr>
+    <tr data-act="dropfx"><td>B</td><td>drop effect: XP takeover, blue screen, not responding, off (off until you pick one)</td></tr>
     <tr class="sec"><th colspan="2">save &amp; share</th></tr>
     <tr data-act="rec"><td>M</td><td>record the window with sound, into <span class="os-win">Videos\Toaster</span><span class="os-mac">Movies/Toaster</span> (for TikTok or Shorts, <kbd data-k="layout">L</kbd> first)</td></tr>
     <tr data-act="clips"><td>J</td><td>save the first two drops of each song as clips</td></tr>
@@ -163,5 +164,6 @@
 </dialog>
 
 <script type="module" src="app.js"></script>
+<script type="module" src="stars.js"></script>
 </body>
 </html>

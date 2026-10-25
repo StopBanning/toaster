@@ -265,6 +265,25 @@ body.mini #card .c-fields > div:not(.c-title), body.mini #card .c-auth, body.min
 body.mini #card .c-fields { display: block; }
 body.mini.card-on #code { padding: 40px calc(var(--card-w, 160px) + 22px) 10px 14px; }
 body.mini header button:not(#b-mini) { display: none; }
+/* the star button after the name: GitHub's logo, the project's star count, a star; it fades in with
+   its count (stars.js). (The star: dim, filling with gold from the bottom as the count rolls up (--fill,
+   0-1); the count on odometer wheels, a digit a line; the glyphs it bursts into; a press sinks it.) */
+header > #b-star { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; flex-shrink: 0; padding: 3px 9px; border: 1px solid var(--dim); color: inherit; text-decoration: none; white-space: nowrap; -webkit-app-region: no-drag; opacity: 0; transition: opacity .5s, transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+header > #b-star.ready { opacity: 1; }
+header > #b-star:hover, header > #b-star:focus-visible { background: var(--faint); border-color: var(--fg); outline: none; }
+header > #b-star:active { transform: scale(.97); }
+#b-star .gh { width: 13px; height: 13px; flex-shrink: 0; }
+#b-star .star-n:empty { display: none; }
+body.mini header > #b-star { display: none; }
+:root { --gold: #e8b730; }
+:root[data-theme="whitescreen"] { --gold: #b98500; }
+.star-i { position: relative; display: inline-block; color: var(--dim); --fill: 0; }
+.star-i::after { content: '★'; position: absolute; left: 0; top: 0; color: var(--gold); clip-path: inset(calc((1 - var(--fill)) * 100%) 0 0 0); }
+.star-n { position: relative; font-variant-numeric: tabular-nums; }
+.odo-d { display: inline-block; height: 1.32em; overflow: hidden; vertical-align: text-top; }
+.odo-s { display: block; white-space: pre; }
+.odo-n { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.star-spark { position: fixed; z-index: 1000; pointer-events: none; color: var(--gold); font-size: 11px; line-height: 1; }
 /* macOS draws the traffic lights in the header's left, and has no caption buttons on the
    right. Fullscreen hides the lights, so the gap goes with them. */
 .os-mac { display: none; }

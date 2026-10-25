@@ -8,7 +8,7 @@ function fakeCanvas() {
   const calls = { drawImage: 0, fillText: [], clearRect: 0 };
   const ctx = { calls, font: '', fillStyle: '', globalAlpha: 1, globalCompositeOperation: 'source-over', textBaseline: '', textAlign: '',
     measureText: (s) => ({ width: 6 * s.length }), fillText: (c) => calls.fillText.push(c), drawImage: () => { calls.drawImage++; }, clearRect: () => { calls.clearRect++; },
-    fillRect() {}, beginPath() {}, moveTo() {}, ellipse() {}, fill() {}, createRadialGradient: () => ({ addColorStop() {} }) };
+    fillRect() {}, beginPath() {}, moveTo() {}, ellipse() {}, fill() {}, rect() {}, clip() {}, save() {}, restore() {}, createRadialGradient: () => ({ addColorStop() {} }) };
   return { width: 300, height: 150, hidden: true, ctx, getContext: () => ctx };
 }
 function fixture(W = 1280, H = 800) {
