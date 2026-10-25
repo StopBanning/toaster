@@ -3,6 +3,7 @@
 // blocks, and the webcam tinted to the theme.
 import { VOICES } from './engine.js';
 import { createDominoes } from './dominoes.js';
+import { compileProgram } from './program.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 export const RAMP = ' .:-=+*#%@';
@@ -74,15 +75,17 @@ function glField(canvas) {
     uniform vec3 color;
     out vec4 o;
     void main() { float a = texture(glyphs, uv).a; o = vec4(color * a, a); }`;
-  let prog, vao, cells, tex, u, dims = null, last = null, data = new Float32Array(0);
+  let prog, vao, cells, tex, u, job, ready = false, failed = false, dims = null, last = null, data = new Float32Array(0);
   // Everything on the GPU side; again after the GPU drops it (a driver reset, say).
   function build() {
-    const shader = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return sh; };
-    prog = gl.createProgram();
-    gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
+    ready = false; failed = false; dims = null;
+    try { job = compileProgram(gl, VS, FS); prog = job.program; }
+    catch (err) { failed = true; console.error('field:', err); }
+  }
+  function finish() {
+    if (ready || failed || gl.isContextLost()) return ready;
+    try { if (!job.ready()) return false; }
+    catch (err) { failed = true; console.error('field:', err); return false; }
     u = Object.fromEntries(['view', 'step', 'box', 'inset', 'sheet', 'perRow', 'color', 'glyphs'].map((n) => [n, gl.getUniformLocation(prog, n)]));
     vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
@@ -98,15 +101,20 @@ function glField(canvas) {
     gl.vertexAttribDivisor(aCell, 1);
     tex = gl.createTexture();
     dims = null;
+    ready = true;
     if (last) api.setup(...last);
     return true;
   }
-  canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; });
   canvas.addEventListener('webglcontextrestored', () => build());
   const api = {
+    ready: finish,
+    get failed() { return failed; },
+    get waiting() { return !failed && !ready; },
     // The sheet of glyphs for this cell width and pixel ratio.
     setup(cw, dpr, font) {
       last = [cw, dpr, font];
+      if (!ready) return;
       const pad = 2, bw = Math.ceil((cw + 2 * pad) * dpr), bh = Math.ceil(FIELD_PX * 1.5 * dpr), perRow = 16;
       const sheet = document.createElement('canvas');
       sheet.width = perRow * bw;
@@ -161,14 +169,15 @@ function glField(canvas) {
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n / 3);
     },
   };
-  return build() ? api : null;
+  build();
+  return api;
 }
 
 export function createField(canvas) {
   let gpu = glField(canvas);
   // (if WebGL started but its shaders didn't, this canvas can't draw text any more: use a new one)
   if (!gpu && canvas.getContext('webgl2')) { const fresh = canvas.cloneNode(); canvas.replaceWith(fresh); canvas = fresh; }
-  const ctx = gpu ? null : canvas.getContext('2d');
+  let ctx = gpu ? null : canvas.getContext('2d');
   const meter = document.createElement('canvas').getContext('2d');
   const f = { cols: 0, rows: 0, cw: 8.4, spec: null, band: null, heights: null, grid: [], rings: [], drops: [], last: 0, pool: 'strudel$:()[]<>~*.' };
   function measure() {
@@ -199,6 +208,7 @@ export function createField(canvas) {
   measure();
 
   return {
+    get waiting() { return !!gpu?.waiting; },
     kick(s) {
       f.rings.push({ t: performance.now() / 1000, s: 0.8 + 0.2 * Math.min(1.5, s) });
       if (f.rings.length > 5) f.rings.shift();
@@ -210,6 +220,13 @@ export function createField(canvas) {
     // or, with its cut-out, so the others leave room for you (the camera as text is a layer of its
     // own, over this one)
     draw(t, eng, mode, col, cam) {
+      // Poll even between text frames. Locations and the glyph texture wait for linking;
+      // a failed link still gets the existing 2D fallback, on a fresh canvas.
+      if (gpu && !gpu.ready()) {
+        if (!gpu.failed) return;
+        const fresh = canvas.cloneNode(); canvas.replaceWith(fresh); canvas = fresh;
+        gpu = null; ctx = canvas.getContext('2d'); measure();
+      }
       if (t - f.last < 1 / 24) return; // 24 fps is plenty for text art
       if (!canvas.width) measure();
       const dt = Math.min(0.1, t - f.last);

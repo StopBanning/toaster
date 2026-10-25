@@ -60,6 +60,7 @@ eng.tape.who = () => songNames(currentSong());
 const view = createCodeView(LINE_IDS);
 let fieldView = null, fieldPool = '';
 const field = {
+  get waiting() { return !fieldView || fieldView.waiting; },
   clear: () => fieldView?.clear(),
   kick: (s) => fieldView?.kick(s),
   setPool(text) { fieldPool = text; fieldView?.setPool(text); },
@@ -75,7 +76,7 @@ const field = {
 // made the first time it's shown (a graphics context and a window-sized buffer otherwise kept from
 // startup for a setting most never use)
 let asciiCamField = null;
-const asciiCam = { clear: () => asciiCamField?.clear(), draw: (...a) => (asciiCamField ??= createField($('asciicam'))).draw(...a) };
+const asciiCam = { get waiting() { return !asciiCamField || asciiCamField.waiting; }, clear: () => asciiCamField?.clear(), draw: (...a) => (asciiCamField ??= createField($('asciicam'))).draw(...a) };
 const tunnel = createTunnel($('vis'));
 const spiral = createSpiral($('vis')), wheel = createWheel($('vis')); // on the tunnel's canvas
 const warp = createWarp($('warp'));
@@ -167,9 +168,10 @@ function loadSettings() {
   if (name === 'orb' || name === 'scenes') { state.orb = true; state.visual = VISUALS.indexOf('off'); }
   else state.visual = Math.max(0, VISUALS.indexOf(name));
   if (!(state.theme in THEMES)) state.theme = 0;
-  // the drop effect too (older versions saved its number, in a list without "not responding")
+  // the drop effect too (older versions saved its number, in a list without "not responding"); off till
+  // it's set: the scenes take the drop themselves, and a takeover over them was clunky
   const dropName = typeof saved.dropName === 'string' ? saved.dropName : ['xp takeover', 'blue screen', 'off'][saved.drop];
-  state.drop = Math.max(0, DROPS.indexOf(dropName));
+  state.drop = DROPS.includes(dropName) ? DROPS.indexOf(dropName) : DROPS.indexOf('off');
   if (!Number.isFinite(state.syncTrim)) state.syncTrim = 0;
   if (!(state.strength in STRENGTHS)) state.strength = 1;
   if (!(state.camFx in CAM_FX)) state.camFx = 0;
@@ -533,7 +535,7 @@ function toggleSpectroColours() {
 }
 // A, while the scenery is on: the next scene (auto, a new one each song; then each by name), and
 // after the last, auto again in the theme's two colours rather than its own
-const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond', basement: 'the basement show', space: 'space', eye: 'the eye' };
+const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond', space: 'space', eye: 'the eye' };
 function nextScene() {
   const all = ['auto', ...scenery.scenes];
   if (state.sceneryTheme) { state.sceneryTheme = false; state.sceneryScene = 'auto'; }
@@ -1225,10 +1227,14 @@ setInterval(() => {
 
 // Layers whose feature is off are taken out of the page: an empty full-window canvas still costs
 // the GPU every frame (measured: about 2% of a core for the four that used to stay up).
+const dotCamOn = () => cam.on && !state.ascii && CAM_FX[state.camFx] === 'dots' && !camCovered();
+const voxCamOn = () => cam.on && !state.ascii && CAM_FX[state.camFx] === 'voxels' && !camCovered();
 const LAYER_ON = {
-  cam: () => cam.on && !state.ascii && !['windows', 'dots', 'voxels'].includes(CAM_FX[state.camFx]), // (still read for the ASCII camera, the windows, the dots and the voxels, just not shown)
-  dotcam: () => cam.on && !state.ascii && CAM_FX[state.camFx] === 'dots' && !camCovered(),
-  voxcam: () => cam.on && !state.ascii && CAM_FX[state.camFx] === 'voxels' && !camCovered(),
+  // Keep the ordinary picture until its replacement can draw. The active effects are
+  // still polled below while hidden, so hiding one never prevents its compile finishing.
+  cam: () => cam.on && CAM_FX[state.camFx] !== 'windows' && (state.ascii ? asciiCam.waiting : CAM_FX[state.camFx] === 'dots' ? dotCam.waiting || dotCam.broken : CAM_FX[state.camFx] === 'voxels' ? voxCam.waiting || voxCam.broken : true),
+  dotcam: () => dotCamOn() && !dotCam.waiting && !dotCam.broken,
+  voxcam: () => voxCamOn() && !voxCam.waiting && !voxCam.broken,
   vis: () => ON_VIS.includes(VISUALS[state.visual]),
   warp: () => VISUALS[state.visual] === 'warp',
   worlds: () => VISUALS[state.visual] === 'worlds',
@@ -1238,7 +1244,7 @@ const LAYER_ON = {
   spectrobox: () => VISUALS[state.visual] === 'spectrogram',
   scenery: () => VISUALS[state.visual] === 'scenery',
   field: () => FIELD_VIS.includes(VISUALS[state.visual]),
-  asciicam: () => cam.on && state.ascii,
+  asciicam: () => cam.on && state.ascii && !asciiCam.waiting,
   orb: () => state.orb,
   punch: () => state.blocks,
   segcam: () => cam.on && (state.eyes || CAM_FX[state.camFx] === 'windows'),
@@ -1291,7 +1297,7 @@ function draw(now) {
   else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
   // (a background still compiling, the window black: the field of glyphs over it, see wait.js)
-  wait.draw(t, !!{ worlds, chrome, spectrogram: spectro }[mode]?.waiting, col);
+  wait.draw(t, !!{ worlds, chrome, spectrogram: spectro, warp, spectrum: field, rain: field, scope: field }[mode]?.waiting, col);
   // Don't make the worlds' compiler compete with the first visual. In particular a cold scenery
   // shader may take longer than 30 seconds: start that clock only once it actually draws.
   const settled = mode === 'scenery' ? !!scenery.drawnScene : mode === 'worlds' ? !worlds.broken : mode === 'chrome' ? !chrome.broken : true;
@@ -1306,8 +1312,8 @@ function draw(now) {
   if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
   if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
-  if (LAYER_ON.dotcam()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
-  if (LAYER_ON.voxcam()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
+  if (dotCamOn()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
+  if (voxCamOn()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
   if (cam.on) {
     // (the face is looked for while the finger frame is open too: a wink changes its filter; and for
     // the portals' skull)

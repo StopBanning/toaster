@@ -42,8 +42,8 @@ const TALL = { far: [0.26, 0.4, 0.4, 0.32], mid: [0.22, 0.2, 0.27, 0.56], near: 
 WIDE.toaster = { x: 0.58, y: 0.7, on: 'boat' };
 TALL.toaster = { x: 0.42, y: 0.7, on: 'boat' };
 // the sea: far is its islands on the horizon; lake its horizon and its shore
-const SEA_WIDE = { ...WIDE, far: [0.4, 0.055, 0.3, 0.3], lake: [0.4, 0.16], sun: [0.55, 0.86], band: [0.42, 0.78, 0.15, 0.2], toaster: { x: 0.42, y: 0.12, on: 'rock' } };
-const SEA_TALL = { ...TALL, far: [0.24, 0.045, 0.3, 0.3], lake: [0.24, 0.085], sun: [0.86, 0.905], band: [0.62, 1.25, 0.14, 0.16], toaster: { x: 0.3, y: 0.12, on: 'rock' } };
+const SEA_WIDE = { ...WIDE, far: [0.4, 0.055, 0.3, 0.3], lake: [0.4, 0.16], sun: [0.55, 0.86], band: [0.38, 1.2, 0.11, 0.4], toaster: { x: 0.42, y: 0.12, on: 'rock' } };
+const SEA_TALL = { ...TALL, far: [0.24, 0.045, 0.3, 0.3], lake: [0.24, 0.085], sun: [0.86, 0.905], band: [5, 1.57, 0.1, 0.3], toaster: { x: 0.3, y: 0.12, on: 'rock' } };
 const FIRE_WIDE = { ...WIDE, far: [0.42, 0.06, 0.5, 0.3], lake: [0.36, 0.14], sun: [0.8, 0.84], band: [0.04, 0.95, 0.13, 0.3], toaster: { x: 0.42, y: 0, on: 'log' }, tint: [1.08, 0.9, 0.76] };
 const FIRE_TALL = { ...TALL, far: [0.36, 0.05, 0.5, 0.3], lake: [0.3, 0.1], sun: [0.82, 0.52], band: [0.0, 1.1, 0.12, 0.3], toaster: { x: 0.25, y: 0, on: 'log' }, tint: [1.08, 0.9, 0.76] };
 // the snow: far is its mountains; lake the frozen lake's far shore and its near one
@@ -83,17 +83,10 @@ const KOI_TALL = { ...TALL, ...KOI_LOOK, toaster: { x: 0.6, y: 0.17, on: 'pad' }
 // foot) and its near one (where the crowd stands); stage its middle (a share of the width), its
 // floor and its half width (units of the height), handed to the shader as moon; the toaster at its
 // decks, on the floor
-const FESTIVAL_WIDE = { ...WIDE, far: [0.36, 0.3, 0.4, 0.32], mid: [0.33, 0.15, 0.27, 0.56], near: [0.32, 0.022, 3.2, 0.86], lake: [0.32, 0.12], stage: [0.63, 0.335, 0.21], sun: [0.9, 0.86], band: [0.1, 0.72, 0.13, 0.25], tint: [1.0, 0.88, 1.0] };
+const FESTIVAL_WIDE = { ...WIDE, far: [0.36, 0.3, 0.4, 0.32], mid: [0.33, 0.15, 0.27, 0.56], near: [0.32, 0.022, 3.2, 0.86], lake: [0.32, 0.12], stage: [0.63, 0.335, 0.21], sun: [0.9, 0.86], band: [0.62, 1.28, 0.11, 0.35], tint: [1.0, 0.88, 1.0] };
 const FESTIVAL_TALL = { ...TALL, far: [0.27, 0.28, 0.4, 0.32], mid: [0.24, 0.14, 0.27, 0.56], near: [0.23, 0.018, 3.2, 0.86], lake: [0.23, 0.08], stage: [0.5, 0.243, 0.17], sun: [0.86, 0.55], band: [5, 1.57, 0.1, 0.3], tint: [1.0, 0.88, 1.0] };
 const onStage = (L, x) => ({ x, y: (L.stage[1] - L.lake[1]) / (L.lake[0] - L.lake[1]), on: 'decks' });
 for (const L of [FESTIVAL_WIDE, FESTIVAL_TALL]) L.toaster = onStage(L, L.stage[0]);
-// the basement show: a stage across most of the room, seen from the crowd; stage its middle (a share
-// of the width), its front edge and its half width (units of the height), handed to the shader as
-// moon; lake its front edge and the floor, so the toaster at its mic stands on the stage; its own
-// paper, a dark room by night, the house lights' warm wash by day
-const BASEMENT_LOOK = { band: [5, 1.57, 0.1, 0.3], tint: [1.0, 0.92, 0.96], toneN: [0.12, 0.06, 0.1], toneD: [-0.06, -0.08, -0.1], paperN: [[6, 3, 8], [16, 7, 14]], paperD: [[214, 192, 168], [232, 212, 184]] };
-const BASEMENT_WIDE = { ...WIDE, ...BASEMENT_LOOK, stage: [0.5, 0.3, 0.6], lake: [0.3, 0], toaster: { x: 0.5, y: 1, on: 'mic' } };
-const BASEMENT_TALL = { ...TALL, ...BASEMENT_LOOK, stage: [0.5, 0.22, 0.27], lake: [0.22, 0], toaster: { x: 0.5, y: 1, on: 'mic' } };
 // space: on the moon, the Earth in its sky (its middle where the sun is: a share of the width, a height);
 // lake its ground's far edge and the lander's foot; the toaster floating over it on its cord (its middle:
 // a share of the width across, of the height up); Saturn small and far (planet), the astronaut on its
@@ -115,10 +108,8 @@ const EYE_LOOK = { band: [5, 1.57, 0.1, 0.3], tint: [1.0, 0.96, 0.92], toneN: [0
 // (planet: where Saturn comes to in the pupil's space, a share of the width across and of the height up;
 // gal: the galaxy's radius once the dive's in (window heights) and its middle (from the pupil's, in that
 // radius): clear of the code either way (in a tall window, all under its panels))
-const EYE_WIDE = { ...WIDE, ...EYE_LOOK, moon: [0.62, 0.5, 0.6], planet: [0.87, 0.8], satW: 0.13, gal: [0.42, 0.45, -0.25], toaster: { x: 0.5, y: 0.16, on: 'eye' } };
-const EYE_TALL = { ...TALL, ...EYE_LOOK, moon: [0.5, 0.15, 0.86], planet: [0.8, 0.26], satW: 0.085, gal: [0.25, 0, 0.12], toaster: { x: 0.2, y: 0.08, on: 'eye' } };
-// (the stage's glow, by night, in the show's first colour of each 8 bars)
-const BASEMENT_GLOW = [[0.3, 0.08, 0.13], [0.3, 0.19, 0.06], [0.1, 0.15, 0.3], [0.24, 0.1, 0.3]];
+const EYE_WIDE = { ...WIDE, ...EYE_LOOK, moon: [0.62, 0.5, 0.6], planet: [0.87, 0.8], satW: 0.13, gal: [0.5, 0.4, -0.22], toaster: { x: 0.5, y: 0.16, on: 'eye' } };
+const EYE_TALL = { ...TALL, ...EYE_LOOK, moon: [0.5, 0.15, 0.86], planet: [0.8, 0.26], satW: 0.085, gal: [0.3, 0, 0.1], toaster: { x: 0.2, y: 0.08, on: 'eye' } };
 // (the stage's glow on the paper: the show's first colours, as the shader has them, dimmed)
 const FESTIVAL_GLOW = [[0.3, 0.1, 0.25], [0.3, 0.21, 0.08], [0.12, 0.3, 0.2], [0.21, 0.16, 0.3]];
 // With the code hidden (Z), what changes where the code kept room: the sharks' float comes to the
@@ -142,13 +133,12 @@ const OPEN = {
   koi: [{ toaster: { x: 0.5, y: 0.45, on: 'pad' } }, { toaster: { x: 0.5, y: 0.42, on: 'pad' } }],
   halloween: [null, { ...RAISE(HALLOWEEN_TALL, 0.18), moon: [0.5, 0.56, 0.22], sun: [0.5, 0.56], toaster: { x: 0.66, y: 0.6, on: 'broom' } }],
   festival: [{ stage: [0.5, FESTIVAL_WIDE.stage[1], FESTIVAL_WIDE.stage[2]], toaster: onStage(FESTIVAL_WIDE, 0.5) }, null],
-  basement: [null, { stage: [0.5, 0.36, 0.27], lake: [0.36, 0] }],
   space: [null, { ...RAISE(SPACE_TALL, 0.17), band: [0.45, 0.56, 0.62, 0.09], planet: [0.24, 0.8], toaster: { x: 0.62, y: 0.58, on: 'space' } }],
   eye: [{ moon: [0.5, 0.5, 0.72] }, { moon: [0.5, 0.48, 0.96] }],
 };
 // (the land's parts that glide when Z raises it)
 const LAND = ['far', 'mid', 'near', 'lake', 'sun'];
-const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL], festival: [FESTIVAL_WIDE, FESTIVAL_TALL], koi: [KOI_WIDE, KOI_TALL], basement: [BASEMENT_WIDE, BASEMENT_TALL], space: [SPACE_WIDE, SPACE_TALL], eye: [EYE_WIDE, EYE_TALL] };
+const LAYOUT = { lake: [WIDE, TALL], sea: [SEA_WIDE, SEA_TALL], fire: [FIRE_WIDE, FIRE_TALL], snow: [SNOW_WIDE, SNOW_TALL], city: [CITY_WIDE, CITY_TALL], garden: [GARDEN_WIDE, GARDEN_TALL], falls: [FALLS_WIDE, FALLS_TALL], halloween: [HALLOWEEN_WIDE, HALLOWEEN_TALL], sharks: [SHARKS_WIDE, SHARKS_TALL], festival: [FESTIVAL_WIDE, FESTIVAL_TALL], koi: [KOI_WIDE, KOI_TALL], space: [SPACE_WIDE, SPACE_TALL], eye: [EYE_WIDE, EYE_TALL] };
 const SPEED = [1, 0.5, 0.25, 0.12, 0.2];
 // the glyphs the scene draws with (the first, blank, is nothing there)
 const GLYPHS = {
@@ -255,6 +245,7 @@ float front = 0.5;       // (how near for the pixel layer: 0 the sky, 0.5 most t
 // net under them)
 vec3 tileC = vec3(0.0);
 float tileA = 0.0;
+float richSky = 0.0;      // (the night-only scenes' sky: a gradient, the moon's wash, the Milky Way in haze)
 void put(int g, float ink, vec3 c) {
   if (over != 0 && !solid) { g = over; ink = overInk; c = overC; }
   o = uvec4((uint(g) & 255u) | (b8(ink) << 8) | (b8(tone) << 16), b8(c.r) | (b8(c.g) << 8) | (b8(c.b) << 16),
@@ -421,6 +412,12 @@ float galaxy(vec2 p, float horizon, out float warm) {
 float pineW(float u, float w0, float tiers) {
   return u < 0.0 || u > 1.0 ? -1.0 : w0 * (1.0 - u) * (1.0 - 0.38 * fract(u * tiers));
 }
+// the night-only scenes' sky colour at height Y: deep navy overhead, lifting to a dusky violet over the
+// horizon
+vec3 nightGrad(float Y, float horizon) {
+  float up = smoothstep(horizon, 1.0, Y);
+  return mix(mix(rgb(52.0, 34.0, 84.0), rgb(20.0, 22.0, 62.0), smoothstep(0.0, 0.35, up)), rgb(5.0, 7.0, 24.0), smoothstep(0.3, 1.0, up));
+}
 // The sky, for every scene: birds or a falling star, the sun and its rays or the moon and its halo, the
 // stars and the Milky Way (above horizon), the airglow (above glowAt), the clouds; else nothing.
 void sky(vec2 cell, float X, float Y, float h0, float horizon, float glowAt) {
@@ -451,6 +448,12 @@ void sky(vec2 cell, float X, float Y, float h0, float horizon, float glowAt) {
     // the moon: drawn in pixels over the sky (see drawMoon), so nothing here but the dark it sits in;
     // a halo round it
     float rmoon = length(Pc - sun) / R;
+    if (richSky > 0.5) {
+      // (the gradient; the moon's light washed round it)
+      tileC = nightGrad(Y, horizon);
+      tileC += rgb(70.0, 80.0, 130.0) * 0.5 * exp(-max(rmoon - 1.0, 0.0) * 0.55);
+      tileA = 1.0;
+    }
     if (rmoon < 1.0) { put(0, 0.0, vec3(0.0)); return; }
     float rm = rmoon;
     if (rm > 1.35 && rm < 2.6 && h0 < 0.5 * exp(-(rm - 1.35) * 1.6)) { put(rm < 1.6 ? G_MID : G_DOT, 0.8, rgb(150.0, 160.0, 205.0) * (1.25 - 0.3 * rm)); return; }
@@ -470,7 +473,8 @@ void sky(vec2 cell, float X, float Y, float h0, float horizon, float glowAt) {
     float warm;
     float gal = galaxy(Pc, horizon, warm);
     float sp = h2(cell + 91.0);
-    float chance = 0.035 * (1.0 + 4.0 * min(1.0, gal));
+    float chance = (richSky > 0.5 ? 0.05 : 0.035) * (1.0 + 4.0 * min(1.0, gal));
+    if (richSky > 0.5 && gal > 0.02 && Y > horizon + 0.01) tileC = mix(tileC, mix(rgb(84.0, 96.0, 160.0), rgb(170.0, 128.0, 140.0), warm), clamp(0.4 * gal, 0.0, 0.42));
     if (Y > horizon + 0.02 && sp < chance) {
       float b = min(4.0, 0.22 * pow(max(h2(cell + 33.0), 1e-3), -0.83));
       float tw = 0.75 + 0.25 * sin(time * (0.8 + 2.4 * h2(cell)) + sp * 60.0) * (0.5 + glow);
@@ -697,13 +701,24 @@ const SEA = `
 // the headland's top at x: rising from the right edge to a crown under the lighthouse, then a
 // rounded shoulder falling to the sea about a third of the way in; jagged a little (on the right,
 // out from under the code)
-float cliffTop(float x, float aspect) {
+// (its smooth line, before the shelf and the jags)
+float cliffLine(float x, float aspect) {
   float a = 1.0 - x / aspect;
   float crown = lake.x + mix(0.1, 0.12, clamp((aspect - 0.56) / 1.22, 0.0, 1.0));
   float rise = mix(0.72, 1.0, smoothstep(-0.05, 0.16, a));
   float fall = 1.0 - smoothstep(0.17, 0.35, a);
-  float top = lake.y + (crown - lake.y) * rise * pow(fall, 0.6);
-  return top + 0.014 * (vn(x * 23.0) - 0.5) * fall + 0.007 * (vn(x * 91.0) - 0.5);
+  return lake.y + (crown - lake.y) * rise * pow(fall, 0.6);
+}
+float cliffTop(float x, float aspect) {
+  float a = 1.0 - x / aspect, fall = 1.0 - smoothstep(0.17, 0.35, a);
+  float top = cliffLine(x, aspect);
+  // a level shelf for the keeper's cottage, from the lighthouse's foot out past the cottage's far
+  // wall, its edge rounding off (where the crown's wide enough for the cottage: see pixFor)
+  float S = max(1.0, floor(view.y / 270.0 + 0.5)), lx = 0.84 * aspect, kx = lx - 31.0 * S / view.y, edge = kx - 15.0 * S / view.y;
+  float T = cliffLine(lx, aspect);
+  if (x < lx && cliffLine(kx, aspect) > T - 0.09) top = max(top, mix(top, T, smoothstep(edge - 0.1, edge, x)));
+  float jag = smoothstep(0.02, 0.06, abs(x - 0.84 * aspect + 0.05) - 0.1);   // (none on the lighthouse's crown)
+  return top + (0.014 * (vn(x * 23.0) - 0.5) * fall + 0.007 * (vn(x * 91.0) - 0.5)) * jag;
 }
 // a beam's glyph by its direction on the screen (a, radians), the cells being taller than wide
 int beamGlyph(float a) {
@@ -715,7 +730,7 @@ void main() {
   float row = grid.y - 1.0 - cell.y, H = view.y;
   cw = cellPx.x / H; ch = cellPx.y / H;
   float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
-  day = night < 0.5;
+  day = false; richSky = 1.0;     // (night only, whatever the theme)
   float h0 = h2(cell + 17.0);
   float aspect = view.x / H, horizon = lake.x, shore = lake.y;
 
@@ -730,7 +745,15 @@ void main() {
     // (solid: the sand pale where it's dry, darker toward the water where it's wet; its grains and the
     // shells over it)
     float fr = clamp((shore - Y) / max(shore, 1e-3), 0.0, 1.0);
-    tileC = mix(mix(P(rgb(64.0, 62.0, 92.0), rgb(236.0, 212.0, 160.0)), P(rgb(52.0, 50.0, 80.0), rgb(222.0, 194.0, 140.0)), fr), P(rgb(40.0, 44.0, 76.0), rgb(196.0, 168.0, 122.0)), wet); tileA = 1.0;
+    // (ripples the wind left in the sand, a little lighter on their crests)
+    float rip = 0.94 + 0.08 * sin(Y * 260.0 + 4.0 * vn(X * 7.0));
+    tileC = mix(mix(P(rgb(64.0, 62.0, 92.0), rgb(236.0, 212.0, 160.0)), P(rgb(52.0, 50.0, 80.0), rgb(222.0, 194.0, 140.0)), fr), P(rgb(40.0, 44.0, 76.0), rgb(196.0, 168.0, 122.0)), wet) * rip; tileA = 1.0;
+    // the light's path carried on across the wet sand, a smear of it fading up the beach
+    float sheen = wet * (1.0 - smoothstep(0.01, 0.035 + 0.02 * wet, abs(X - sunAt.x + 0.004 * sin(Y * 120.0))));
+    if (sheen > 0.05) {
+      tileC = mix(tileC, P(rgb(200.0, 196.0, 190.0), rgb(250.0, 236.0, 196.0)), 0.45 * sheen);
+      if (h2(cell + floor(time * 3.0)) < 0.5 * sheen) { put(G_DASH, 0.5 + 0.4 * sheen, P(rgb(242.0, 236.0, 208.0), rgb(255.0, 240.0, 200.0))); return; }
+    }
     put(g, 0.7, mix(P(rgb(84.0, 80.0, 112.0), rgb(186.0, 158.0, 108.0)), P(rgb(52.0, 56.0, 92.0), rgb(140.0, 120.0, 90.0)), wet) * (h0 < 0.012 ? 1.3 : 1.0));
     return;
   }
@@ -739,35 +762,14 @@ void main() {
   // its top; the lighthouse on it
   float ct = cliffTop(X, aspect);
   float wide = clamp((aspect - 0.56) / 1.22, 0.0, 1.0);       // (0 in a tall window, 1 in a wide one)
-  // the lighthouse: a tapering tower, white with red bands, a railed gallery, the lantern, its roof
-  // (on a column's middle, each part an odd number of cells across, so it stands straight; oc: the
-  // columns from its middle; gr: the gallery's row, the lantern on the row above it, the roof above)
-  float lc = floor(0.84 * aspect / cw), lx = (lc + 0.5) * cw, lb = cliffTop(lx, aspect), LH = mix(0.11, 0.17, wide);
-  float oc = cell.x - lc, gr = floor((1.0 - lb - LH) / ch);
-  vec2 lamp = vec2(lx, 1.0 - (gr - 0.5) * ch);
+  // the lighthouse and the keeper's cottage are in pixels (see drawLighthouse): its foot on the crown at
+  // 0.84 of the width, the lamp LIGHT_H - LIGHT_LAMP of its pixels up (S of them to a pixel, as pixFor has it)
+  float S = max(1.0, floor(H / 270.0 + 0.5)), lx = 0.84 * aspect, lb = cliffTop(lx, aspect);
+  vec2 lamp = vec2(lx, lb + (78.0 - 17.0 - 1.5) * S / H);
+  float lampRow = floor((1.0 - lamp.y) / ch), lampCol = floor(lamp.x / cw), oc = cell.x - lampCol;
   float flare = day ? 0.0 : smoothstep(0.86, 1.0, abs(cos(sea.x)));      // (a beam facing you)
   // (the headland and the lighthouse are the nearest things: the sailboat in pixels passes behind them)
-  if ((Y < ct + 0.5 * ch && ct > horizon) || (abs(oc) < 4.0 && Y < lb + LH + 0.05 && Y > lb - ch)) front = 1.0;
-  {
-    float u = (Y - lb) / LH;
-    if (u > 0.0 && row > gr) {
-      float k = max(1.0, floor(mix(0.017, 0.011, u) * mix(0.85, 1.0, wide) / cw + 0.25));
-      if (abs(oc) <= k) {
-        bool band = fract(u * 4.2) < 0.38;
-        vec3 c = band ? P(rgb(190.0, 70.0, 80.0), rgb(200.0, 60.0, 60.0)) : P(rgb(206.0, 210.0, 232.0), rgb(120.0, 120.0, 140.0));
-        put(abs(oc) == k ? (oc < 0.0 ? G_SLASH : G_BACK) : G_DARK, 1.0, c * (oc > 0.0 ? 0.82 : 1.0));
-        return;
-      }
-    }
-    float kt = max(1.0, floor(0.011 * mix(0.85, 1.0, wide) / cw + 0.25));
-    if (row == gr && abs(oc) <= kt + 1.0) { put(G_DBL, 1.0, P(rgb(150.0, 152.0, 176.0), rgb(60.0, 60.0, 80.0))); return; }
-    if (row == gr - 1.0 && abs(oc) <= 1.0) {
-      put(oc == 0.0 ? G_DARK : G_BAR, 1.0, oc == 0.0 ? P(rgb(255.0, 226.0, 140.0), rgb(255.0, 196.0, 90.0)) * (day ? 0.9 : 0.85 + 0.15 * glow + 0.3 * flare) : P(rgb(150.0, 152.0, 176.0), rgb(60.0, 60.0, 80.0)));
-      return;
-    }
-    if (row == gr - 2.0 && abs(oc) <= 1.0) { put(oc == 0.0 ? G_DARK : (oc < 0.0 ? G_SLASH : G_BACK), 1.0, P(rgb(150.0, 64.0, 74.0), rgb(110.0, 44.0, 44.0))); return; }
-    if (row == gr - 3.0 && oc == 0.0) { put(G_CARET, 1.0, P(rgb(150.0, 64.0, 74.0), rgb(110.0, 44.0, 44.0))); return; }
-  }
+  if ((Y < ct + 0.5 * ch && ct > horizon) || (abs(X - lx) < 16.0 * S / H && Y < lb + 78.0 * S / H && Y > lb - ch)) front = 1.0;
   if (Y < ct) {
     float d = ct - Y;
     // grass along the top, a flower here and there
@@ -777,17 +779,22 @@ void main() {
       float fo = smoothstep(shore + 0.025, shore, Y) * (0.5 + 0.5 * sea.w);
       if (h0 < fo * 0.6) { put(h0 < fo * 0.3 ? G_BULLET : G_TILDE, 0.9, P(rgb(206.0, 218.0, 246.0), rgb(110.0, 140.0, 190.0))); return; }
     }
-    // the face: strata (darker lines across it, wavering), the part turned to the light hatched, the
-    // rest in shade (blocks under the top, thinning down)
-    // (lit where the slope falls toward the light, on the left; a little way down from the top
-    // whatever the slope, the face is in shade)
+    // the face: rough rock, broken into facets that catch the light (those turned up and to the left,
+    // toward it) or fall into shade, the cracks between them dark; the side turned to the light lighter
+    // as a whole; deeper in shade further down
+    // (lit where the slope falls toward the light; a little way down from the top whatever the
+    // slope, the face is in shade)
     float slope = cliffTop(X + cw, aspect) - cliffTop(X - cw, aspect);
     bool lit = slope > 0.004 && d < 0.09;
     float down = smoothstep(0.03, 0.22, d);           // (0 under the top, 1 far down the face)
-    vec3 rock = lit ? P(rgb(84.0, 80.0, 132.0), rgb(176.0, 164.0, 168.0)) : mix(P(rgb(48.0, 42.0, 82.0), rgb(128.0, 114.0, 124.0)), P(rgb(26.0, 24.0, 52.0), rgb(88.0, 78.0, 94.0)), down);
-    float strata = fract(Y * 46.0 + 0.6 * vn(X * 17.0));
-    tileC = rock * (strata < 0.13 ? 0.78 : 1.0); tileA = 1.0;
-    put(strata < 0.13 && h0 < 0.5 ? G_DASH : (h0 < 0.04 ? G_DOT : 0), 0.5, rock * 0.62);
+    vec3 rock = lit ? P(rgb(84.0, 80.0, 132.0), rgb(176.0, 164.0, 168.0)) : mix(P(rgb(54.0, 48.0, 90.0), rgb(128.0, 114.0, 124.0)), P(rgb(28.0, 26.0, 56.0), rgb(88.0, 78.0, 94.0)), down);
+    vec2 q = vec2(X * 9.0, Y * 13.0);
+    float n = fbm(q), facet = clamp(0.5 + 5.0 * (fbm(q - vec2(0.3, 0.0)) - fbm(q + vec2(0.0, 0.3))) + 3.0 * (n - 0.5), 0.0, 1.0);
+    float crack = abs(fbm(q * vec2(0.7, 1.4) + 40.0) - 0.5);
+    vec3 c = rock * (0.62 + 0.62 * facet);
+    tileC = crack < 0.022 ? rock * 0.4 : c; tileA = 1.0;
+    int g = crack < 0.022 ? (h0 < 0.5 ? G_SLASH : G_BAR) : facet > 0.72 ? (h0 < 0.55 ? G_SLASH : 0) : facet < 0.25 && h0 < 0.4 ? G_DOT : 0;
+    put(g, crack < 0.022 ? 0.4 : 0.42, crack < 0.022 ? rock * 0.25 : c * 1.35);
     return;
   }
 
@@ -807,7 +814,6 @@ void main() {
   {
     float sx = fract(time * 0.0035 + 0.3) * (aspect + 0.3) - 0.15, c0 = floor(sx / cw), r0 = floor((1.0 - horizon) / ch);
     float o = cell.x - c0;
-    // (by day the sailboat is in pixels: see drawSail)
     if (!day && row == r0 && o >= 0.0 && o < 6.0) {
       vec3 c = o == 0.0 ? rgb(255.0, 80.0, 80.0) : (o == 5.0 ? rgb(90.0, 255.0, 140.0) : rgb(255.0, 226.0, 160.0));
       if (o == 0.0 || o == 5.0 || h1(o + 3.0) < 0.7) { put(G_MID, 0.95, c); return; }
@@ -836,11 +842,15 @@ void main() {
       if (dn > 0.82) { tileC = mix(sea0, foam, 0.7); g = h0 < 0.4 ? G_TILDE : 0; c = foam; ink = 0.8; }
       else { tileC = mix(sea0, P(rgb(60.0, 90.0, 160.0), rgb(170.0, 214.0, 240.0)), 0.18 + 0.5 * dn); g = dn > 0.55 && h0 < 0.5 ? G_TILDE : 0; c = P(rgb(96.0, 130.0, 200.0), rgb(206.0, 232.0, 248.0)); ink = 0.5 + 0.3 * dn; }
     } else if (h0 < 0.02) { g = G_DASH; ink = 0.35; c = P(rgb(50.0, 74.0, 130.0), rgb(150.0, 196.0, 232.0)); }
-    float path = abs(X - sunAt.x) - 0.012 - 0.09 * dn;
+    // (the light's path: a narrow column of it broken on the waves, the crests catching it in strokes
+    // across, wider toward you; a glint between them here and there, twinkling)
+    float path = abs(X - sunAt.x + 0.006 * sin(Y * 90.0 + time * 1.3)) - 0.008 - 0.05 * dn;
     if (path < 0.0) {
-      float tw = h2(vec2(cell.x, row) + floor(time * 2.0));
-      tileC = mix(tileC, P(rgb(242.0, 236.0, 208.0), rgb(255.0, 230.0, 170.0)), 0.16);
-      if (tw > (day ? 0.6 : 0.42) - 0.1 * fly) { g = tw > 0.93 ? G_STAR : tw > 0.75 ? G_DBL : G_DASH; c = P(rgb(242.0, 236.0, 208.0), rgb(255.0, 206.0, 130.0)); ink = 0.95; }
+      float tw = h2(vec2(cell.x, row) + floor(time * 3.0)), edge = clamp(-path / (0.008 + 0.05 * dn), 0.0, 1.0);
+      tileC = mix(tileC, P(rgb(242.0, 236.0, 208.0), rgb(255.0, 230.0, 170.0)), 0.1 + 0.12 * edge);
+      vec3 lit = P(rgb(242.0, 236.0, 208.0), rgb(255.0, 206.0, 130.0));
+      if (crest && tw > 0.25 - 0.2 * edge) { g = G_LINE; c = lit; ink = 0.6 + 0.35 * edge; }
+      else if (tw > 0.9 - 0.05 * fly) { g = tw > 0.97 ? G_STAR : G_DASH; c = lit; ink = 0.8; }
     }
     put(g, ink, c);
     return;
@@ -891,15 +901,16 @@ void main() {
       if (z < 0.08) continue;
       // (its half width there on the screen; fading as it goes, and where it would rear up steeply,
       // nearly at you: the flare's there instead)
-      float w = (0.006 + 0.07 * k) / z;
-      float a = (1.0 - smoothstep(0.4 * w, w, d)) * exp(-0.8 * k) * mix(0.55, 1.0, max(0.0, -dz)) * smoothstep(0.15, 0.5, z) * (1.0 - smoothstep(0.35, 0.75, abs(u.y)));
+      float w = (0.009 + 0.09 * k) / z;
+      float a = (1.0 - smoothstep(0.4 * w, w, d)) * exp(-0.55 * k) * mix(0.55, 1.0, max(0.0, -dz)) * smoothstep(0.15, 0.5, z) * (1.0 - smoothstep(0.35, 0.75, abs(u.y)));
       if (a > best) { best = a; bg = beamGlyph(atan(u.y, u.x)); }
     }
     // (its core solid, its edges thinning out)
-    if (best > 0.45 || (best > 0.2 && h0 < 1.6 * best) || (best > 0.1 && h0 < best)) { put(best > 0.45 ? bg : (best > 0.2 ? G_MID : G_DOT), 0.3 + 0.65 * best, rgb(255.0, 232.0, 160.0)); return; }
+    if (best > 0.04) { tileC = mix(nightGrad(Y, horizon), rgb(255.0, 226.0, 150.0), min(0.38, 0.5 * best)); tileA = 1.0; }
+    if (best > 0.45 || (richSky < 0.5 && ((best > 0.2 && h0 < 1.6 * best) || (best > 0.1 && h0 < best)))) { put(best > 0.45 ? bg : (best > 0.2 ? G_MID : G_DOT), 0.3 + 0.65 * best, rgb(255.0, 232.0, 160.0)); return; }
     // (the flare: rays out of the lantern, across and up, and a glow round it)
     if (flare > 0.02) {
-      float oy = row - (gr - 1.0), n = flare * 0.13 / cw;
+      float oy = row - lampRow, n = flare * 0.13 / cw;
       int g = 0;
       if (oy == 0.0 && abs(oc) <= n) g = G_LINE;
       else if (oc == 0.0 && oy < 0.0 && -oy <= n * 0.3) g = G_BAR;
@@ -3658,7 +3669,7 @@ float beamAt(vec2 p, vec2 o, float a, out float edge) {
 float beamLean(float fi, float beats) { return (fi - 2.0) * 0.26 + 0.3 * sin(beats * 0.7854 + fi * 0.9); }
 // a person seen from behind, head at h (radius r): the head, the shoulders sloping out under it, the
 // body down off the foot of the window, and with up an arm raised on the side s (1 right, -1 left, 0
-// both); the distance from p to the shape (negative inside), in units of the height (as the basement's)
+// both); the distance from p to the shape (negative inside), in units of the height
 float person(vec2 p, vec2 h, float r, float up, float s) {
   float d = length((p - h) * vec2(1.0, 0.92)) - r;
   vec2 q = p - vec2(h.x, h.y - r * 2.7);
@@ -3751,7 +3762,7 @@ void main() {
   float row = grid.y - 1.0 - cell.y, H = view.y;
   cw = cellPx.x / H; ch = cellPx.y / H;
   float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
-  day = night < 0.5;
+  day = false; richSky = 1.0;     // (night only, whatever the theme)
   float h0 = h2(cell + 17.0);
   float beats = sea.z, kick = sea.w;
   float sx = moon.x, sf = moon.y, sw = moon.z, roof = sf + 0.125;
@@ -3765,17 +3776,17 @@ void main() {
   // colours where it stands against the light; by day in what they have on, under their hair. Heads
   // bobbing on the beat (some a little behind it), some jumping on a kick; here and there an arm up,
   // a glow stick or a phone in its hand, now and then someone up on someone's shoulders waving a
-  // flag; every arm up when the fireworks go
+  // every arm up when the fireworks go
   // (as high as a rider's flag: someone up on someone's shoulders in the far row, an arm up)
-  if (Y < lake.y + 0.16) {
+  if (Y < lake.y + 0.2) {
     bool hit = false, above = false;                  // (the cell in someone; the cell over it in anyone)
     int hitR = 0;
     float seedB = 0.0, radB = 0.0, upB = 1.0;
     bool highB = false;
     vec2 headC = vec2(0.0);
     for (int r = 2; r >= 0; r--) {
-      float fr = float(r), rad = r == 2 ? 0.03 : (r == 1 ? 0.021 : 0.015), sp = rad * (r == 2 ? 4.3 : 4.0), off = fr * 0.031;
-      float hy0 = r == 2 ? max(0.035, lake.y - 0.075) : (r == 1 ? lake.y - 0.035 : lake.y - 0.006);
+      float fr = float(r), rad = r == 2 ? 0.044 : (r == 1 ? 0.031 : 0.022), sp = rad * (r == 2 ? 4.3 : 4.0), off = fr * 0.031;
+      float hy0 = r == 2 ? max(0.05, lake.y - 0.06) : (r == 1 ? lake.y - 0.02 : lake.y + 0.006);
       float i0 = floor((X - off) / sp), best = 1.0, bestUp = 1.0, seedR = 0.0;
       bool highR = false;
       vec2 headR = vec2(0.0);
@@ -3783,20 +3794,13 @@ void main() {
         float i = i0 + float(n), seed = i * 7.13 + fr * 101.0;
         float bob = fract(beats + h1(seed) * 0.35) < 0.3 ? rad * 0.35 : 0.0;
         float jump = kick > 0.45 && h1(seed + 2.0) < 0.25 ? rad * 0.7 : 0.0;
-        bool high = r == 0 && h1(seed + 10.0) < 0.12;               // (up on someone's shoulders)
+        bool high = false;                 // (no one up on shoulders: at this size they stood up out of the lake)
         vec2 hd = vec2((i + 0.5) * sp + off + (h1(seed + 9.0) - 0.5) * sp * 0.5, hy0 + (h1(seed + 1.0) - 0.5) * 0.01 + bob + jump + (high ? rad * 3.2 : 0.0));
         float up = pop || high || h1(seed + 3.0) < 0.1 + 0.15 * fly ? 1.0 : 0.0, side = pop ? 0.0 : (h1(seed + 8.0) < 0.5 ? -1.0 : 1.0);
         float dUp = crowdShape(vec2(X, Y + ch), hd, rad, up, side, high);
         above = above || dUp < 0.0;
         if (hit) continue;                                          // (someone nearer's in front)
         float d = crowdShape(vec2(X, Y), hd, rad, up, side, high);
-        // (a flag on a pole, held up by someone on someone's shoulders, its far end flapping)
-        if (high && up > 0.5) {
-          float px = hd.x + side * rad * 2.4, top = hd.y + rad * 6.0;
-          if (abs(X - px) < cw * 0.5 && Y > hd.y + rad * 2.4 && Y < top) { put(G_VLINE, 0.9, P(mix(dark, cA, 0.6), rgb(90.0, 80.0, 90.0))); return; }
-          float fx = (X - px) * side, flap = 0.004 * sin(time * 5.0 + seed + fx * 60.0);
-          if (fx > 0.0 && fx < rad * 3.0 && Y > top - rad * 1.6 + flap && Y < top + flap) { tileC = h1(seed + 11.0) < 0.5 ? cA : cB; tileA = 1.0; put(G_BLANK, 0.0, tileC); return; }
-        }
         if (d < best) {
           best = d; seedR = seed; headR = hd; bestUp = dUp; highR = high;
           // (the hand of a raised arm: a glow stick in the show's colour, or a phone, lit)
@@ -3821,7 +3825,7 @@ void main() {
         // haze; lit along its outline where it stands against the light
         float far = hitR == 0 ? 1.0 : (hitR == 1 ? 0.5 : 0.0);
         vec3 tone = mix(rgb(6.0, 6.0, 14.0), rgb(26.0, 22.0, 46.0), far) * (0.85 + 0.3 * h1(seedB + 5.0));
-        tileC = above ? tone : mix(tone, lightC, 0.5); tileA = 1.0;
+        tileC = above ? tone : mix(tone, lightC, 0.28); tileA = 1.0;
         put(G_BLANK, 0.0, tileC);
         return;
       }
@@ -3853,12 +3857,12 @@ void main() {
     vec3 water = mix(P(rgb(26.0, 32.0, 72.0), rgb(180.0, 208.0, 234.0)), P(rgb(12.0, 16.0, 44.0), rgb(106.0, 156.0, 208.0)), depth);
     tileC = water; tileA = 1.0;
     // (the stage's light lying across it, widening and brightening toward the crowd)
-    float pathW = sw * (0.55 + 0.9 * depth);
-    if (abs(Xw - sx) < pathW && streak > 0.3 + 0.4 * abs(Xw - sx) / pathW) {
-      g = streak > 0.72 ? G_DBL : G_DASH;
-      c = h1(floor(Xw / cw) * 1.7 + row) < 0.5 ? cA : cB;
-      ink = (0.35 + 0.4 * glow + 0.3 * kick) * (0.7 + 0.3 * depth) * (day ? 0.45 : 1.0);
-      tileC = mix(water, c, (day ? 0.12 : 0.22) + 0.25 * kick * (day ? 0.3 : 1.0));
+    float pathW = sw * (0.4 + 0.45 * depth), across = abs(Xw - sx) / pathW;
+    if (across < 1.0) {
+      // (each row of ripples catching the one colour, strokes along it thinning toward the edges)
+      c = h1(row * 1.7) < 0.5 ? cA : cB;
+      tileC = mix(water, c, ((day ? 0.08 : 0.14) + 0.18 * kick * (day ? 0.3 : 1.0)) * (1.0 - across * across));
+      if (streak > 0.45 + 0.4 * across) { g = streak > 0.8 && across < 0.4 ? G_LINE : G_DASH; ink = (0.3 + 0.35 * glow + 0.3 * kick) * (0.6 + 0.4 * depth) * (1.0 - 0.5 * across) * (day ? 0.45 : 1.0); }
     }
     // (the fireworks, then the beams' middle lines, mirrored)
     if (g == 0) {
@@ -4383,349 +4387,6 @@ void main() {
 }
 `;
 
-// The basement show: a gig in a brick basement, the toaster at the mic with its guitar. Seen from the
-// crowd: the back wall's bricks, the band's banner hung on them, rippling; string lights sagging
-// across under the ceiling's pipe; a truss of lights whose beams sweep down through the haze,
-// brighter on the kick; the drummer up on a riser behind the toaster, the kick drum's head flashing
-// on the kick, the cymbals shimmering when the hats are busy; an amp stack either side, its cones
-// pumping; the crowd in front, heads bobbing on the beat, hands up here and there. Every 8 bars the
-// smoke jets fire up the stage's sides; on a drop the lights strobe, confetti falls, the crowd jumps
-// with every hand up and someone crowd-surfs across. By day a matinee: the house lights up, the haze
-// gone, fewer in. (moon: the stage's middle, its floor (the front edge), its half width; leap.y: 2
-// when the pop is a drop; the show's two colours change every 8 bars)
-const BASEMENT = `
-#define G_LBRK ${SHEET.indexOf('[')}
-#define G_RBRK ${SHEET.indexOf(']')}
-vec3 gelA(float beats) { float k = mod(floor(beats / 32.0), 4.0); return k < 0.5 ? rgb(255.0, 70.0, 110.0) : k < 1.5 ? rgb(255.0, 160.0, 50.0) : k < 2.5 ? rgb(80.0, 130.0, 255.0) : rgb(200.0, 80.0, 255.0); }
-vec3 gelB(float beats) { float k = mod(floor(beats / 32.0), 4.0); return k < 0.5 ? rgb(255.0, 196.0, 110.0) : k < 1.5 ? rgb(255.0, 80.0, 160.0) : k < 2.5 ? rgb(110.0, 236.0, 255.0) : rgb(255.0, 120.0, 80.0); }
-// a light's beam from o, aimed down and leaning a (radians from straight down, + to the right): how
-// bright at p (0 outside it), and how far from its middle line (0 there, 1 at its edge)
-float beamDown(vec2 p, vec2 o, float a, out float edge) {
-  vec2 d = vec2(sin(a), -cos(a)), v = p - o;
-  float along = dot(v, d), across = abs(v.x * d.y - v.y * d.x);
-  float w = 0.004 + 0.1 * along;
-  edge = across / w;
-  if (along <= 0.0 || edge >= 1.0) return 0.0;
-  return (1.0 - edge * edge) * exp(-along * 1.4);
-}
-// whether the cell on row r is the one that holds height y (a line a cell high: comparing heights,
-// a line falling just on the edge between two rows was drawn on neither)
-bool atRow(float r, float y) { return r == floor((1.0 - y) / ch); }
-// the cans' lean: fanned in toward the stage's middle, sweeping across and back every 4 bars
-float canLean(float fi, float beats) { return -(fi - 2.5) * 0.06 + 0.24 * sin(beats * 0.3927 + fi * 1.1); }
-// what someone in the crowd has on, seen by the house lights at a matinee: navy, maroon, olive,
-// mustard, denim, grey
-vec3 wear(float s) { float k = floor(h1(s + 11.0) * 6.0); return k < 0.5 ? rgb(40.0, 52.0, 92.0) : k < 1.5 ? rgb(112.0, 40.0, 50.0) : k < 2.5 ? rgb(72.0, 82.0, 46.0) : k < 3.5 ? rgb(156.0, 112.0, 40.0) : k < 4.5 ? rgb(62.0, 84.0, 124.0) : rgb(92.0, 90.0, 98.0); }
-// the banner's lettering, TOASTER in a pixel font three wide and five high: each letter's pixels row by
-// row from the top, left to right, as bits (the top left the highest)
-const int BANNER[7] = int[7](29842, 31599, 11245, 31183, 29842, 31143, 27565);
-bool bannerPixel(int gx, int gy) {
-  int l = gx / 4, c = gx - l * 4;
-  return c < 3 && ((BANNER[l] >> (14 - gy * 3 - c)) & 1) == 1;
-}
-// a person seen from behind, head at h (radius r): the head, the shoulders sloping out under it, the
-// body down to the floor, and with up an arm raised on the side s (1 right, -1 left, 0 both); the
-// distance from p to the shape (negative inside), in units of the height
-float person(vec2 p, vec2 h, float r, float up, float s) {
-  float d = length((p - h) * vec2(1.0, 0.92)) - r;
-  // (the shoulders' top just under the chin: a neck between, so the head reads as one)
-  vec2 q = p - vec2(h.x, h.y - r * 2.7);
-  vec2 e = abs(q) - vec2(r * 1.3, r * 0.9);
-  d = min(d, length(max(e, 0.0)) + min(max(e.x, e.y), 0.0) - r * 0.9);
-  d = min(d, max(abs(p.x - h.x) - r * 2.2, p.y - (h.y - r * 2.7)));
-  if (up > 0.5) {
-    for (int k = 0; k < 2; k++) {
-      float side = k == 0 ? 1.0 : -1.0;
-      if (s != 0.0 && side != s) continue;
-      vec2 a = vec2(h.x + side * r * 1.7, h.y - r * 1.6), b = vec2(h.x + side * r * 2.3, h.y + r * 2.6);
-      vec2 pa = p - a, ba = b - a;
-      float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-      d = min(d, length(pa - ba * t) - r * 0.36);
-    }
-  }
-  return d;
-}
-void main() {
-  vec2 cell = floor(gl_FragCoord.xy);
-  float row = grid.y - 1.0 - cell.y, H = view.y;
-  cw = cellPx.x / H; ch = cellPx.y / H;
-  float X = (cell.x + 0.5) * cw, Y = 1.0 - (row + 0.5) * ch;
-  day = night < 0.5;
-  float h0 = h2(cell + 23.0);
-  float beats = sea.z, kick = sea.w;
-  float sx = moon.x, sf = moon.y, sw = moon.z;
-  float dx = X - sx, ax = abs(dx);
-  float top = sf + 0.6, truss = top - 0.075;
-  vec3 cA = gelA(beats), cB = gelB(beats);
-  float age = leap.x;
-  bool drop = leap.w > 0.5 && leap.y > 1.5;
-  float strobe = !day && drop && age < 1.2 ? step(0.5, fract(age * 7.5)) * (1.0 - age / 1.2) : 0.0;
-  vec3 dark = P(rgb(9.0, 5.0, 12.0), rgb(70.0, 54.0, 58.0));
-
-  // --- the confetti on a drop: falling from the ceiling, fluttering, twinkling as it turns
-  if (drop && age < 7.0) {
-    float colI = floor(X / cw);
-    for (int k = 0; k < 3; k++) {
-      float fk = float(k), s = h1(colI * 1.7 + fk * 13.1 + leap.z * 31.0);
-      if (s > 0.6) continue;
-      float y = top - 0.02 - age * (0.08 + 0.05 * h1(colI + fk * 7.3)) - 0.3 * h1(colI * 3.1 + fk);
-      float xo = 0.012 * sin(age * (3.0 + 2.0 * s) + fk * 2.0);
-      if (atRow(row, y) && abs(X - (colI + 0.5) * cw - xo) < cw * 0.6 && y > 0.0) {
-        float ph = fract(age * (1.5 + s * 2.0) + s * 7.0);
-        int g = ph < 0.25 ? G_DASH : ph < 0.5 ? G_BACK : ph < 0.75 ? G_VLINE : G_SLASH;
-        // (by day the paper's pale: white and gold scraps would vanish on it, so sky blue and red)
-        vec3 c = s < 0.1 ? P(rgb(255.0, 240.0, 210.0), rgb(50.0, 130.0, 200.0)) : s < 0.22 ? cA : s < 0.32 ? cB : P(rgb(255.0, 220.0, 90.0), rgb(214.0, 50.0, 80.0));
-        put(g, 0.9 * (1.0 - smoothstep(5.5, 7.0, age)), c);
-        return;
-      }
-    }
-  }
-
-  // --- the crowd, in front: three rows of people seen from behind against the stage's light, the
-  // nearest the biggest; each a dark shape with its top edge lit in the show's colours, heads bobbing
-  // on the beat (some a little behind it), some jumping on a kick; a hand up here and there, a phone
-  // lit in it; on a drop they all jump with both hands up, and someone surfs across the top
-  float crowdTop = sf - 0.03;
-  if (Y < crowdTop + 0.07) {
-    // (the surfer: lying on the crowd's hands, carried across from one side to the other)
-    if (drop && age > 0.6 && age < 5.6) {
-      float u = (age - 0.6) / 5.0, xs = sx - sw * 0.9 + u * sw * 1.8, ys = crowdTop - 0.005 + 0.006 * sin(age * 9.0);
-      float k = floor((X - xs) / cw + 0.5);
-      if (atRow(row, ys) && abs(k) <= 3.0) { put(k == 3.0 ? G_BIGO : k == -3.0 ? G_LESS : G_DBL, 0.95, mix(dark, k == 3.0 ? cA : cB, 0.55)); return; }
-      if (atRow(row, ys + ch) && (k == 1.0 || k == 2.0)) { put(k == 1.0 ? G_SLASH : G_BACK, 0.9, mix(dark, cA, 0.5)); return; }
-    }
-    // (the nearest row first: it's in front; its heads big along the window's foot, the furthest just
-    // under the stage's edge, against the light on its front)
-    for (int r = 2; r >= 0; r--) {
-      float fr = float(r), rad = r == 2 ? 0.036 : (r == 1 ? 0.024 : 0.016), sp = rad * (r == 2 ? 4.4 : 4.0), off = fr * 0.037;
-      float hy0 = r == 2 ? 0.06 : (r == 1 ? sf - 0.165 : sf - 0.09);
-      float i0 = floor((X - off) / sp), best = 1.0, bestUp = 1.0, bestSide = 1.0, seedB = 0.0;
-      vec2 headC = vec2(0.0);
-      for (int n = -1; n < 2; n++) {
-        float i = i0 + float(n), seed = i * 7.13 + fr * 101.0;
-        if (day && h1(seed + 5.0) > 0.75) continue;             // (a matinee: fewer in)
-        float bob = fract(beats + h1(seed) * 0.35) < 0.3 ? rad * 0.35 : 0.0;
-        float jump = kick > 0.45 && h1(seed + 2.0) < 0.25 ? rad * 0.7 : 0.0;
-        if (drop && age < 4.0 && fract(beats + h1(seed) * 0.5) < 0.5) jump = rad * 1.3;
-        vec2 hd = vec2((i + 0.5) * sp + off + (h1(seed + 9.0) - 0.5) * sp * 0.5, hy0 + (h1(seed + 1.0) - 0.5) * 0.012 + bob + jump);
-        bool every = drop && age < 4.5;
-        float up = every || h1(seed + 3.0) < 0.08 + 0.12 * fly ? 1.0 : 0.0, side = every ? 0.0 : (h1(seed + 8.0) < 0.5 ? -1.0 : 1.0);
-        float d = person(vec2(X, Y), hd, rad, up, side);
-        if (d < best) {
-          best = d;
-          seedB = seed;
-          headC = hd;
-          bestUp = person(vec2(X, Y + ch), hd, rad, up, side);
-          bestSide = max(person(vec2(X - cw, Y), hd, rad, up, side), person(vec2(X + cw, Y), hd, rad, up, side));
-          // (the hand of a raised arm: a phone, lit)
-          if (up > 0.5 && !day && h1(seed + 4.0) < 0.35) {
-            for (int k = 0; k < 2; k++) {
-              float sd = k == 0 ? 1.0 : -1.0;
-              if (side != 0.0 && sd != side) continue;
-              vec2 hand = vec2(hd.x + sd * rad * 2.3, hd.y + rad * 2.6 + 0.4 * ch);
-              if (abs(X - hand.x) < cw * 0.6 && abs(Y - hand.y) < ch * 0.6) { put(G_BULLET, 1.0, rgb(232.0, 240.0, 255.0)); return; }
-            }
-          }
-        }
-      }
-      if (best < 0.0) {
-        // (a solid shape, filled: black against the light by night, its top edge (and, in the row
-        // nearest the stage, its sides) just touched by it; by day, in the house lights, what they have
-        // on, dark, its top lit by the ceiling's lights)
-        // (by day the head its hair, seen from behind: black, brown, auburn, fair or grey)
-        float hk = floor(h1(seedB + 13.0) * 5.0);
-        vec3 hair = hk < 0.5 ? rgb(30.0, 24.0, 26.0) : hk < 1.5 ? rgb(78.0, 52.0, 36.0) : hk < 2.5 ? rgb(120.0, 58.0, 36.0) : hk < 3.5 ? rgb(176.0, 140.0, 82.0) : rgb(128.0, 124.0, 124.0);
-        vec3 body = P(rgb(5.0, 3.0, 7.0), length((vec2(X, Y) - headC) * vec2(1.0, 0.92)) < rad * 1.15 ? hair : mix(rgb(52.0, 42.0, 48.0), wear(seedB), 0.4));
-        tileC = body; tileA = 1.0;
-        vec3 rim = day ? mix(body, rgb(176.0, 150.0, 134.0), 0.55) : mix(dark, mix(cA, cB, h1(seedB + 6.0)), r == 0 ? 0.8 : (r == 1 ? 0.5 : 0.32));
-        if (bestUp > 0.0) { put(G_MEDIUM, 0.95, rim); return; }
-        if (bestSide > 0.0 && r == 0 && !day) { put(G_LIGHT, 0.7, mix(body, rim, 0.5)); return; }
-        put(G_DARK, 0.5, body);
-        return;
-      }
-    }
-  }
-
-  // --- the smoke jets every 8 bars: rising fast up the stage's sides, billowing out and thinning
-  if (leap.w > 0.5 && age < 4.0) {
-    for (int s = 0; s < 2; s++) {
-      float jx = sx + (float(s) * 2.0 - 1.0) * (sw - 0.03), hgt = 0.5 * (1.0 - exp(-age * 5.0)), yy = Y - sf;
-      if (yy > 0.0 && yy < hgt) {
-        float wdt = 0.01 + 0.2 * (yy / 0.5) * (yy / 0.5) * (0.35 + age * 0.5) + 0.025 * age, e = abs(X - jx) / wdt;
-        if (e < 1.0) {
-          // (billows: a coarse churning noise, thick in the jet's core, wisps at its edges)
-          float n = fbm(vec2(X * 6.0 + float(s) * 9.0, Y * 5.0 - age * 1.6)), dens = (1.0 - e * e) * (0.2 + 1.1 * n) * exp(-age * 0.9) * (1.0 - 0.5 * yy / hgt);
-          // (by night lit in the show's colours; by day a grey smoke, darker than the pale wall)
-          vec3 sc = P(mix(rgb(232.0, 230.0, 240.0), float(s) < 0.5 ? cA : cB, 0.35 + 0.25 * kick), mix(rgb(128.0, 120.0, 128.0), float(s) < 0.5 ? cA : cB, 0.15));
-          if (dens > 0.12) { put(dens > 0.62 ? G_DARK : (dens > 0.4 ? G_MEDIUM : (dens > 0.22 ? G_LIGHT : G_MID)), min(1.0, 0.35 + dens), sc); return; }
-        }
-      }
-    }
-  }
-
-  // --- the stage's front: its skirt, washed in the light spilling off the stage (the crowd dark
-  // against it), flaring on the kick; uplights along its top; its edge lit
-  float edgeRow = floor((1.0 - sf) / ch);
-  if (row >= edgeRow && ax < sw) {
-    if (row == edgeRow) { put(G_HHEAVY, 0.95, P(rgb(130.0, 126.0, 150.0), rgb(70.0, 60.0, 64.0))); return; }
-    if (mod(cell.x, 7.0) < 1.0 && Y > sf - 2.0 * ch) { put(G_CARET, day ? 0.4 : 0.7 + 0.3 * kick, day ? dark : (mod(cell.x, 14.0) < 7.0 ? cA : cB)); return; }
-  }
-  // (below it, the room's air lit by the stage, brightest at its edge, the crowd dark against it)
-  if (row > edgeRow) {
-    // (by day the house lights are up: the room pale behind the crowd, the floor's boards faint)
-    if (day) { put(h0 < 0.3 ? G_LIGHT : G_MID, 0.3, rgb(160.0, 142.0, 128.0)); return; }
-    float wash = (0.62 + 0.25 * glow + 0.35 * kick) * exp(-(sf - Y) / 0.11) * exp(-pow(dx / (sw * 1.2), 2.0));
-    float n = fbm(vec2(X * 5.0 - time * 0.04, Y * 8.0 - time * 0.06));
-    wash *= 0.8 + 0.4 * n;
-    vec3 air = mix(mix(cA, cB, 0.35), rgb(255.0, 214.0, 190.0), 0.2 + strobe * 0.6);
-    put(wash > 0.45 ? G_DARK : (wash > 0.26 ? G_MEDIUM : (wash > 0.1 ? G_LIGHT : G_DARK)), min(1.0, 0.5 + wash), P(mix(rgb(10.0, 6.0, 14.0), air, min(1.0, wash * 1.2)), mix(rgb(60.0, 48.0, 50.0), rgb(150.0, 128.0, 116.0), min(1.0, wash * 4.0))));
-    return;
-  }
-
-  // --- the ceiling over the room, its pipe and the pipe's hangers
-  if (Y > top) {
-    if (atRow(row, top + 0.03)) { put(G_DBL, 0.85, P(rgb(70.0, 70.0, 84.0), rgb(110.0, 104.0, 100.0))); return; }
-    if (mod(cell.x + 3.0, 19.0) < 1.0 && Y < top + 0.03) { put(G_VLINE, 0.7, P(rgb(60.0, 60.0, 74.0), rgb(100.0, 94.0, 90.0))); return; }
-    put(day ? G_MEDIUM : (h0 < 0.4 ? G_DARK : G_MEDIUM), day ? 0.4 : 0.8, P(rgb(12.0, 10.0, 16.0), rgb(110.0, 98.0, 92.0)));
-    return;
-  }
-
-  // --- the string lights: a strand sagging across under the ceiling, a warm bulb every few cells,
-  // twinkling, the strand swaying a little with the loudness
-  {
-    float aspect = view.x / H, x0 = -0.05, x1 = aspect + 0.05, xm = 0.5 * (x0 + x1), hw = 0.5 * (x1 - x0), u = (X - xm) / hw;
-    float sag = 0.07, sway = 0.004 * sin(time * 0.7) * (0.4 + glow);
-    float y = top - 0.02 - sag * (1.0 - u * u) + sway, slope = 2.0 * sag * u / hw;
-    // (round each bulb at night a little warm glow on whatever's behind it)
-    float nb = mod(cell.x + 1.0, 6.0);
-    if (!day && nb < 3.0 && abs(Y - y) < 1.6 * ch) { tileC = rgb(255.0, 184.0, 104.0); tileA = 0.2 * (1.0 - abs(Y - y) / (1.6 * ch)) * (1.0 - 0.5 * abs(nb - 1.0)); }
-    if (atRow(row, y) || abs(Y - y) < abs(slope) * cw * 0.5) {
-      if (mod(cell.x, 6.0) < 1.0) {
-        float tw = 0.55 + 0.45 * vn(time * 1.7 + cell.x * 0.37);
-        put(G_BULLET, (day ? 0.65 : 0.65 + 0.3 * tw) + 0.15 * kick, rgb(255.0, 200.0, 120.0));
-        return;
-      }
-      put(abs(slope) * cw / ch > 0.35 ? (slope > 0.0 ? G_HATCH : G_HATCHB) : G_LINE, 0.5, P(rgb(80.0, 62.0, 56.0), rgb(80.0, 66.0, 60.0)));
-      return;
-    }
-  }
-
-  // --- the truss of lights over the stage: two chords and a lattice; the cans hanging from it, each
-  // lens lit in its colour, flaring on the kick
-  float tr = (Y - truss) / ch, spc = min(sw * 0.34, 0.16);
-  if (tr > -1.5 && tr < 2.5 && ax < sw + 0.03) {
-    vec3 steel = P(rgb(110.0, 110.0, 130.0), rgb(90.0, 86.0, 92.0));
-    if (tr > -0.5) {
-      if (tr < 0.5 || tr > 1.5) { put(G_DBL, 0.95, steel); return; }
-      put(mod(cell.x, 2.0) < 1.0 ? G_HATCH : G_HATCHB, 0.8, steel);
-      return;
-    }
-    for (int i = 0; i < 6; i++) {
-      float cx = sx + (float(i) - 2.5) * spc;
-      // (the lens lit by day too: the stage's lights stay on for a matinee)
-      if (abs(X - cx) < cw * 1.1) { put(abs(X - cx) < cw * 0.5 ? G_VEE : G_DARK, abs(X - cx) < cw * 0.5 ? (day ? 0.75 : 0.8 + 0.2 * kick) : 0.8, abs(X - cx) < cw * 0.5 ? (day ? mix(i % 2 == 0 ? cA : cB, steel, 0.35) : (i % 2 == 0 ? cA : cB)) : P(rgb(30.0, 30.0, 38.0), rgb(70.0, 66.0, 70.0))); return; }
-    }
-  }
-
-  // --- the band, on the stage's floor: the amp stacks at its sides, the drum riser in the middle
-  float aw = 0.06, axp = sw - aw - 0.015, ah = 0.27;
-  if (abs(ax - axp) < aw && Y < sf + ah) {
-    float lx = ax - axp, ly = Y - sf;
-    vec3 tolex = P(rgb(24.0, 22.0, 28.0), rgb(40.0, 34.0, 36.0));
-    // (a solid box, its grille and cones on it)
-    tileC = P(rgb(13.0, 11.0, 17.0), rgb(46.0, 40.0, 44.0)); tileA = 1.0;
-    if (abs(abs(lx) - aw) < cw * 0.6) { put(G_VLINE, 0.9, P(rgb(80.0, 80.0, 92.0), rgb(70.0, 64.0, 66.0))); return; }
-    if (ly > ah - 0.06) {
-      // (the head on top: its front, knobs in a row, a light on)
-      if (atRow(row, sf + ah - 0.06) || atRow(row, sf + ah - 0.25 * ch)) { put(G_HHEAVY, 0.9, P(rgb(90.0, 88.0, 100.0), rgb(70.0, 64.0, 66.0))); return; }
-      if (abs(lx) < aw - cw && mod(cell.x, 2.0) < 1.0) { put(G_MID, 0.9, abs(lx) < cw ? rgb(255.0, 60.0, 60.0) : rgb(220.0, 190.0, 110.0)); return; }
-      put(G_DARK, 0.9, tolex);
-      return;
-    }
-    float cab = (ah - 0.06) * 0.5;
-    if (atRow(row, sf + cab)) { put(G_DBL, 0.85, P(rgb(70.0, 70.0, 84.0), rgb(60.0, 56.0, 58.0))); return; }
-    // (the cones, two to a cabinet, pumping on the kick)
-    float cy = ly < cab ? cab * 0.5 : cab * 1.5;
-    if (length(vec2((abs(lx) - aw * 0.48) / (cw * 1.6), (ly - cy) / (ch * 1.1))) < 1.0) { put(kick > 0.5 && !day ? G_AT : G_BIGO, 0.75 + 0.25 * kick, P(rgb(150.0, 150.0, 166.0), rgb(60.0, 56.0, 58.0))); return; }
-    put(G_HASH, 0.45, P(rgb(46.0, 44.0, 56.0), rgb(86.0, 78.0, 82.0)));
-    return;
-  }
-  float kk = max(1.0, min(2.0 * max(1.0, floor(H / 270.0 + 0.5)), floor((sw - 0.135) * H / 22.0)));    // (the kit's scale: see kitScale)
-  float rw = max(min(0.17, sw * 0.34), (22.0 * kk + 4.0) / H), rz = sf + 0.07;
-  if (ax < rw && Y < rz) {
-    tileC = P(rgb(11.0, 9.0, 15.0), rgb(62.0, 54.0, 56.0)); tileA = 1.0;
-    if (atRow(row, rz - 0.25 * ch)) { put(G_HHEAVY, 0.9, P(rgb(120.0, 118.0, 136.0), rgb(110.0, 100.0, 100.0))); return; }
-    put(G_MEDIUM, 0.4, P(rgb(28.0, 26.0, 36.0), rgb(80.0, 70.0, 72.0)));
-    return;
-  }
-  // (the kit on the riser, and the drummer at it: in pixels, over the glyphs: see drawKit)
-
-  // (the banner's cloth, hung under the truss: where it is, for the beams passing in front of it)
-  float bb0 = sf + 0.37, bb1 = sf + 0.5, bw = min(0.2, sw * 0.42);
-  bool onBanner = ax < bw && Y < bb1 && Y > bb0 + 0.007 * sin(X * 34.0 + time * 1.3);
-
-  // --- the beams: from each can down through the haze, sweeping; each a bright line down its middle,
-  // the haze drifting through the rest of it (over the banner only their light: its letters stay whole)
-  if (!day) {
-    float best = 0.0, bestE = 1.0;
-    vec3 bc = vec3(0.0);
-    for (int i = 0; i < 6; i++) {
-      float fi = float(i), e;
-      vec2 o = vec2(sx + (fi - 2.5) * spc, truss - 1.5 * ch);
-      float b = beamDown(vec2(X, Y), o, canLean(fi, beats), e);
-      if (b > best) { best = b; bestE = e; bc = i % 2 == 0 ? cA : cB; }
-    }
-    if (best > 0.0) {
-      float lv = best * (0.7 + 0.45 * glow + 0.5 * kick);
-      // (the whole cone lit, softly, brightest down its middle: a tile of the beam's colour under the
-      // haze and the bricks behind, so the light reads as a shaft and not a line)
-      tileC = bc; tileA = clamp(lv * (1.0 - bestE * bestE) * 0.3, 0.0, 0.36);
-      if (onBanner) tileA = max(tileA, bestE < 0.14 ? 0.3 * min(1.0, lv) : 0.0);
-      else if (bestE < 0.14) { put(G_VLINE, min(1.0, 0.5 + lv), mix(bc, rgb(255.0, 255.0, 255.0), 0.3 + strobe * 0.5)); return; }
-      float n = fbm(vec2(X * 4.5 - time * 0.05, Y * 7.0 - time * 0.09));
-      float hz = lv * smoothstep(0.3, 0.8, n);
-      if (!onBanner && hz > 0.1 && h0 < 0.4 + hz) { put(hz > 0.4 ? G_LIGHT : (hz > 0.24 ? G_COLON : G_MID), min(1.0, 0.25 + hz), mix(bc, rgb(255.0, 255.0, 255.0), strobe * 0.6)); return; }
-    }
-  }
-
-  // --- the banner on the wall over the drums: black cloth, the band's name across it in big letters,
-  // its foot rippling, the light rolling across its folds (a beam passing in front of it shows on it)
-  if (onBanner) {
-    float fold = 0.5 + 0.5 * sin(dx * 22.0 - time * 1.1);
-    vec3 beamC = tileC; float beamA = tileA;
-    // (the letters: each pixel of the font a whole number of cells, as big as the cloth allows, the
-    // word in the middle of it, lit by the stage and brighter on the kick)
-    float pw = max(1.0, floor(floor(2.0 * bw / cw) * 0.86 / 27.0)), ph = max(1.0, floor(floor((bb1 - bb0) / ch) * 0.62 / 5.0));
-    float c0 = floor(sx / cw) - floor(27.0 * pw * 0.5), r0 = floor((1.0 - 0.5 * (bb0 + bb1)) / ch) - floor(5.0 * ph * 0.5);
-    float gx = floor((cell.x - c0) / pw), gy = floor((row - r0) / ph);
-    if (gx >= 0.0 && gx < 27.0 && gy >= 0.0 && gy < 5.0 && bannerPixel(int(gx), int(gy))) {
-      vec3 ltr = P(mix(rgb(250.0, 238.0, 220.0), cA, 0.2 + 0.15 * kick) * (0.82 + 0.18 * fold + 0.2 * kick), rgb(238.0, 226.0, 204.0) * (0.92 + 0.08 * fold));
-      tileC = mix(ltr, beamC, beamA * 0.5); tileA = 1.0;
-      put(G_BLANK, 0.0, ltr);
-      return;
-    }
-    vec3 cloth = P(rgb(14.0, 10.0, 20.0), rgb(38.0, 32.0, 38.0)) * (0.8 + 0.4 * fold);
-    tileC = mix(cloth, beamC, beamA * 0.6); tileA = 1.0;
-    put(fold > 0.7 ? G_MEDIUM : G_DARK, 0.25 + 0.2 * fold, P(rgb(40.0, 30.0, 52.0), rgb(70.0, 62.0, 68.0)));
-    return;
-  }
-  if (abs(ax - bw) < cw * 0.6 && Y >= bb1 && Y < truss - 1.5 * ch) { put(G_VLINE, 0.5, P(rgb(80.0, 74.0, 80.0), rgb(90.0, 80.0, 76.0))); return; }
-
-  // --- the brick wall: courses a cell high, bricks four cells long, every other course set over by
-  // two; each brick its own shade, the stage's light lying on the wall behind it
-  float course = floor((Y - sf) / ch), bk = mod(cell.x + mod(course, 2.0) * 2.0, 4.0), brick = floor((cell.x + mod(course, 2.0) * 2.0) / 4.0);
-  // (by night the light lies in a pool round the band, falling off to the room's corners and up to
-  // the ceiling, so the stage is what's lit; by day the house lights show every brick)
-  float bs = h2(vec2(brick, course) + 5.0), spot = exp(-pow(dx / (sw * 1.05), 2.0)) * exp(-pow((Y - sf - 0.18) / 0.42, 2.0));
-  float lit = spot * (0.55 + 0.3 * glow + 0.25 * kick);
-  vec3 bc = mix(P(rgb(64.0, 26.0, 30.0), rgb(152.0, 84.0, 66.0)), P(rgb(90.0, 38.0, 40.0), rgb(180.0, 102.0, 78.0)), bs);
-  bc = mix(bc, mix(cA, rgb(255.0, 255.0, 255.0), 0.3), day ? 0.0 : lit * 0.4);
-  bc = mix(bc, rgb(255.0, 250.0, 245.0), strobe * 0.85);
-  float ink = day ? 0.6 + 0.25 * bs : (0.22 + 0.25 * bs) * (0.45 + 0.75 * spot) + lit * 0.3;
-  put(bk < 0.5 ? G_LBRK : (bk > 2.5 ? G_RBRK : G_UNDER), ink + strobe * 0.6, bc);
-}
-`;
-
 // The space: on the moon, the Earth in its sky. Its ground in front, grey and rolling, its far edge
 // against the sky; craters in it, seen low (squashed with the distance), each lit on its far wall and dark
 // in its near, a rim round it; dust and stones, more toward you. Over it the stars, a few bright and most
@@ -4901,13 +4562,12 @@ uniform vec4 eyeP;   // the pupil (where the clip's held for a dive), in the win
 uniform vec4 eyeZ;   // the dive: how much bigger it's drawn about the pupil (1 none), how long since it began (s), the kick (0-1), the drop's flare (0-1)
 uniform vec4 eyeS;   // the space: the galaxy's photo's half width in the window now (window heights), its middle (from the pupil's, in that); unused
 uniform vec4 eyeL;   // the levels the clip's read at: a cell's (its mip), the light's slope (a blur's); the eye's middle in the window
-uniform vec4 eyeD;   // the dive: how far in (0-1), the pupil's rim (window heights from its middle; 0 not diving); unused
+uniform vec4 eyeD;   // the dive: how far in (0-1), the pupil's rim (window heights from its middle; 0 not diving), how fast it's going in (the zoom's log a second, smoothed), the zoom's share of its end
 uniform sampler2D eyeSky;   // the galaxy: Hubble's photo of M51, the Whirlpool, graded, square, its core in the middle; mipmapped
 uniform sampler2D eyeSat;   // Saturn: Hubble's photo of it (2019), cropped to its rings, 1024 x 484; mipmapped
 uniform vec4 eyeT;   // Saturn in the window: its middle (window heights, y up), its half width (window heights; 0 not out); unused
 // the brightness ramp: the scene's glyphs by their ink in the app's font, blank to @, sixteen steps
-const float EYE_W = 0.62;
-const vec4 EYE_PANES = vec4(0.75, 4.0, -1.5, 1.0);   // (the reflection: from x to x, from y to y, y up)   // (the eye's width in the clip, as EYE_CLIP's)
+const float EYE_W = 0.62;   // (the eye's width in the clip, as EYE_CLIP's)
 const int RAMP[16] = int[16](0, G_DOT, G_COLON, G_SEMI, G_EQ, G_PLUS, G_LL, G_SMALLX, G_SMALLO, G_LS, G_LE, G_HASH, G_EIGHT, G_PCT, G_DOLLAR, G_AT);
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 // the clip's colour at uv, at a mip level
@@ -4919,10 +4579,13 @@ vec3 eyeAt(vec2 uv, float lod) { return textureLod(eyeVid, uv, lod).rgb; }
 vec3 skyAt(vec2 q, float px, out float sat) {
   float L = eyeS.x;
   vec2 g = q / L - eyeS.yz;
-  float ang = 0.3 + time * 0.012, ca = cos(ang), sa = sin(ang);
+  // seen at a slant (its disc tipped 50 degrees away, about an axis turned 25 degrees), turning
+  g = vec2(0.906 * g.x + 0.423 * g.y, -0.423 * g.x + 0.906 * g.y);
+  g.y /= 0.64;
+  float ang = 0.3 + time * 0.02, ca = cos(ang), sa = sin(ang);
   g = vec2(ca * g.x - sa * g.y, sa * g.x + ca * g.y);
   float r = length(g);
-  vec3 c = textureLod(eyeSky, vec2(0.5 + 0.5 * g.x, 0.5 - 0.5 * g.y), log2(max(1.0, px * 512.0 / L))).rgb;
+  vec3 c = textureLod(eyeSky, vec2(0.5 + 0.5 * g.x, 0.5 - 0.5 * g.y), log2(max(1.0, px * 512.0 / (0.64 * L)))).rgb;
   c *= smoothstep(1.0, 0.6, r) * (1.0 + 0.7 * eyeZ.z * exp(-r * 8.0));
   sat = 0.0;
   if (eyeT.z > 0.0) {
@@ -4930,11 +4593,46 @@ vec3 skyAt(vec2 q, float px, out float sat) {
     if (su.x > 0.0 && su.x < 1.0 && su.y > 0.0 && su.y < 1.0) {
       vec3 sc = textureLod(eyeSat, su, log2(max(1.0, px * 512.0 / eyeT.z))).rgb;
       float disc = 1.0 - smoothstep(0.94, 1.0, length((su * vec2(1024.0, 484.0) - vec2(512.0, 242.0)) / vec2(187.0, 172.0)));
-      sat = max(smoothstep(0.03, 0.14, luma(sc)), disc);
+      // (faded in as it grows, from about 3 rows tall to 6: smaller, its rings can't be drawn in cells and it
+      // read as a little grey box, not a planet)
+      sat = max(smoothstep(0.03, 0.14, luma(sc)), disc) * smoothstep(3.0 * ch, 6.5 * ch, eyeT.z);
       c = mix(c, sc, sat);
     }
   }
   return c;
+}
+// The near stars, between you and the galaxy: their places grow as the zoom to the 1.3 (faster than the
+// window), so as the dive goes in they come out from the middle and fly out past you, each drawn along the
+// way it's going (a stroke from where it was a moment ago) while it's quick; a sparse two layers, each
+// shown once its stars are a few cells apart. Whether q (window heights from the pupil's middle) is on
+// one; if so it's drawn.
+bool nearStar(vec2 q, float open, float kick) {
+  float Ln = 0.6 * pow(max(eyeD.w, 1e-3), 1.3), sp = max(eyeD.z, 0.0);
+  vec2 sk = vec2(cw / ch, 1.0), nq = q / Ln;
+  for (int i = 0; i < 2; i++) {
+    float fi = float(i), gs = 0.3 * pow(0.6, fi);
+    float vis = smoothstep(2.0, 4.0, gs * Ln / ch);
+    if (vis <= 0.0) continue;
+    vec2 gv = gs * sk, kk = floor(nq / gv);
+    float hh = h2(kk + fi * 13.0 + 91.0);
+    if (hh > 0.1) continue;
+    vec2 at = (kk + 0.5 + 0.8 * (vec2(h2(kk + 5.3 + fi), h2(kk + 8.1 + fi)) - 0.5)) * gv;
+    // its way: from where it was a moment ago to where it is (the cell's distance to that, in cells)
+    vec2 tail = at * exp(-0.12 * sp), e = at - tail, d = nq - tail;
+    float k = clamp(dot(d, e) / max(dot(e, e), 1e-9), 0.0, 1.0);
+    vec2 off = (d - e * k) * Ln / vec2(cw, ch);
+    if (abs(off.x) > 0.5 || abs(off.y) > 0.5) continue;
+    // (the head bright, a stroke along its way while it's quick; its trail a fading line of dots)
+    bool head = length((nq - at) * Ln / vec2(cw, ch)) < 0.75;
+    int g = k > 0.5 ? G_MID : G_DOT;
+    if (head) {
+      float a = mod(degrees(atan(at.y, at.x)), 180.0);
+      g = length(e) * Ln > 1.5 * ch ? (a < 22.5 || a >= 157.5 ? G_DASH : a < 67.5 ? G_SLASH : a < 112.5 ? G_BAR : G_BACK) : hh < 0.04 ? G_STAR : G_PLUS;
+    }
+    put(g, clamp((head ? 1.0 : 0.25 + 0.5 * k) * vis * open * (0.85 + 0.3 * kick), 0.0, 1.0), mix(vec3(0.75, 0.82, 1.0), vec3(1.0), k));
+    return true;
+  }
+  return false;
 }
 // space, as the pupil holds it: photos (see skyAt) drawn as the eye is, a glyph by how bright it is there
 // (its own light, so the dark stays dark, lifted a little against what's round it), its colour richer, and
@@ -4953,7 +4651,7 @@ void space(vec2 S, vec2 P, float edge) {
   vec2 q = S - P;
   float sat, sat2, sat3, sat4;   // (how much of each sample is Saturn)
   vec3 c = skyAt(q, ch, sat);
-  float lumF = luma(c), lum = mix(luma(skyAt(q, 2.5 * ch, sat2)), lumF, sat), base = luma(skyAt(q, 12.0 * ch, sat3)) + 0.004;
+  float lumF = luma(c), lum = mix(luma(skyAt(q, 1.8 * ch, sat2)), lumF, sat), base = luma(skyAt(q, 12.0 * ch, sat3)) + 0.004;
   float v = mix(pow(clamp(1.4 * lum + 0.6 * (lum - base), 0.0, 1.0), 1.3), pow(clamp(0.8 * lumF + 0.4 * (lumF - base), 0.0, 1.0), 1.8), sat);
   float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
   float chroma = (mx - mn) / (mx + 0.04) * sqrt(clamp(mx / 0.8, 0.0, 1.0));
@@ -4962,12 +4660,13 @@ void space(vec2 S, vec2 P, float edge) {
   float lR = luma(skyAt(q + vec2(cw, 0.0), ch, sat4)), lL = luma(skyAt(q - vec2(cw, 0.0), ch, sat4));
   float lU = luma(skyAt(q + vec2(0.0, ch), ch, sat4)), lD = luma(skyAt(q - vec2(0.0, ch), ch, sat4));
   vec2 gr = vec2(lR - lL, lU - lD) / (base + 0.06) * 0.5;
-  float mag = length(gr) * smoothstep(0.04, 0.12, lumF), thr = mix(0.7, 0.3, sat);
+  float mag = length(gr) * smoothstep(0.04, 0.12, lumF), thr = mix(0.55, 0.3, sat);
   float a = mod(degrees(atan(gr.y, gr.x)) + 90.0, 180.0);   // (the edge's own way, y up)
   // (the tile's strength in its alpha, by how bright it is there, so in the theme's colours its ink
   // follows the galaxy's light rather than filling its disc)
   float ta = clamp(lumF * 2.5, 0.0, 1.0);
-  tileC = min(c * 0.7 / max(ta, 0.05), vec3(1.0)); tileA = ta * open;
+  tileC = min(c * 0.6 / max(ta, 0.05), vec3(1.0)); tileA = ta * open;
+  if (nearStar(q, open, kick)) return;
   if (v > 0.06 || mag > thr) {
     int gi = mag > thr ? (a < 22.5 || a >= 157.5 ? G_DASH : a < 67.5 ? G_SLASH : a < 112.5 ? G_BAR : G_BACK) : RAMP[clamp(int(v * 15.0 + 0.5), 0, 15)];
     // (the galaxy's glyphs richer than its light, so its arms read blue and its knots pink)
@@ -5007,7 +4706,6 @@ void main() {
   day = false;   // (night whatever the theme, as space)
   float Z = eyeZ.x;
   vec2 P = eyeP.xy;
-  float Rp = eyeP.z;
   // the point of the window this cell shows (drawn Z times bigger about the pupil as it dives in)
   vec2 p = P + (S - P) / Z;
   // (the dive: the pupil a window onto space; across its rim the space shows through a cell at a time)
@@ -5018,17 +4716,16 @@ void main() {
   vec2 uv = vec2(eyeF.x + (p.x - eyeL.z) * eyeF.z / eyeF.w, eyeF.y - (p.y - eyeL.w) * eyeF.z);
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) { put(0, 0.0, vec3(0.0)); return; }
   float lod = max(0.0, eyeL.x - log2(Z)), blur = max(1.0, eyeL.y - log2(Z));
-  // (the window's reflection on the iris, a blue pane and a white one just right of the pupil (EYE_PANES,
-  // in pupil radii from its middle), is the eye's catchlight at rest, but drawn bigger it's a block of flat
-  // light: as it dives in, those cells are drawn from the iris across the pupil from them instead, a few
-  // more each frame, and no strokes round where it was (the cells beside it read its light as an edge))
-  vec2 dq = (p - P) / Rp;
-  float near = Z > 1.01 ? smoothstep(1.0, 1.4, Z) * step(EYE_PANES.x - 0.4, dq.x) * step(dq.x, EYE_PANES.y + 0.4) * step(EYE_PANES.z - 0.4, dq.y) * step(dq.y, EYE_PANES.w + 0.4) : 0.0;
-  if (near > h2(cell + 9.0)) {
-    vec2 m = 2.0 * P - p;
-    uv = vec2(eyeF.x + (m.x - eyeL.z) * eyeF.z / eyeF.w, eyeF.y - (m.y - eyeL.w) * eyeF.z);
-  }
   vec3 c = eyeAt(uv, lod);
+  // (falling in: the iris smeared toward the pupil by how fast the dive's going, so it streaks outward)
+  float fast = clamp(eyeD.z, 0.0, 1.2);
+  if (fast > 0.05) {
+    for (int i = 1; i <= 3; i++) {
+      vec2 pi = P + (p - P) * (1.0 - 0.06 * fast * float(i));
+      c += eyeAt(vec2(eyeF.x + (pi.x - eyeL.z) * eyeF.z / eyeF.w, eyeF.y - (pi.y - eyeL.w) * eyeF.z), lod);
+    }
+    c *= 0.25;
+  }
   float lum = luma(c), base = luma(eyeAt(uv, blur)) + 0.004;
   // the level: the light's slow slope taken out (each cell against what's round it), mostly; spread over
   // the ramp as the clip's own levels lie (the skin about the middle, the white and the glints the top)
@@ -5049,9 +4746,14 @@ void main() {
   float lR = luma(eyeAt(uv + vec2(du.x, 0.0), lod)), lL = luma(eyeAt(uv - vec2(du.x, 0.0), lod));
   float lU = luma(eyeAt(uv - vec2(0.0, du.y), lod)), lD = luma(eyeAt(uv + vec2(0.0, du.y), lod));
   vec2 gr = vec2(lR - lL, lU - lD) / base * 0.5;
-  float mag = length(gr) * vig * (1.0 - near);
+  float mag = length(gr) * vig;
   float a = mod(degrees(atan(gr.y, gr.x)) + 90.0, 180.0);   // (the edge's own way, y up)
   int gi = mag > 0.2 ? (a < 22.5 || a >= 157.5 ? G_DASH : a < 67.5 ? G_SLASH : a < 112.5 ? G_BAR : G_BACK) : RAMP[clamp(int(v * 15.0 + 0.5), 0, 15)];
+  // (falling fast, more and more of the iris's cells drawn as strokes along the way out from the pupil)
+  if (fast > 0.3 && v > 0.12 && h2(cell + 21.0) < 0.7 * smoothstep(0.3, 0.9, fast)) {
+    float ra = mod(degrees(atan(S.y - P.y, S.x - P.x)), 180.0);
+    gi = ra < 22.5 || ra >= 157.5 ? G_DASH : ra < 67.5 ? G_SLASH : ra < 112.5 ? G_BAR : G_BACK;
+  }
   // its colour: the clip's own, lifted (glyphs are thin), and the brown's richness; a faint tile of it
   // under the glyph; a few cells shimmering with the hats
   vec3 col = clamp(c * (1.55 * vig) + 0.8 * chroma * c / (mx + 1e-3) * vig, 0.0, 1.0);
@@ -5060,7 +4762,7 @@ void main() {
   tileC = c * 0.34; tileA = vig * smoothstep(0.0, 0.15, lum);
   put(gi, clamp(0.82 + 0.14 * eyeZ.z + 0.25 * eyeZ.w + 0.3 * sh, 0.0, 1.0), col);
 }`;
-const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS, festival: FESTIVAL, koi: KOI, basement: BASEMENT, space: SPACE, eye: EYE };
+const MAINS = { lake: LAKE, sea: SEA, fire: FIRE, snow: SNOW, city: CITY, garden: GARDEN, falls: FALLS, halloween: HALLOWEEN, sharks: SHARKS, festival: FESTIVAL, koi: KOI, space: SPACE, eye: EYE };
 
 // The glyphs, each from the sheet, over the paper. In its own colours: each in its colour, on a
 // night sky (darkest overhead) or on the day's paper; or in the theme's: its ink in the theme's
@@ -5725,7 +5427,7 @@ const SHARK_PX_DRAW = `
 const PAINT_SHARK = PAINT.replace('void main() {', () => SHARK_PX + 'void main() {').replace('  float cellD = float(u.w & 255u) / 255.0;\n', (m) => m + SHARK_PX_DRAW);
 
 // The pixel layer: small things drawn in pixels over the glyphs, where a text cell can't carry the
-// detail, the way the toaster is: the basement's drummer at the kit, the garden's koi. Each picture is
+// detail, the way the toaster is: the garden's koi, the space's Earth and Saturn. Each picture is
 // drawn once, frame by frame, into one atlas. A colour is [r, g, b, a]: a 255 plain, 254 lit by the kick
 // at night, 253 in the show's colour at night, 252 shimmering with the hats at night; under 250
 // see-through (a fin).
@@ -5760,64 +5462,6 @@ function pixPicture(w, h) {
     // (another picture laid over this one, its empty pixels skipped)
     over(o) { for (let k = 0; k < o.d.length; k += 4) if (o.d[k + 3]) d.set(o.d.subarray(k, k + 4), k); },
   };
-}
-// The basement's drummer at the kit, seen from the crowd, 44 x 38 (the riser under it): the kick drum in
-// front, its head lit by the kick at night and the band's T on it in the show's colour; two toms on it;
-// the snare and the hi-hat to the left, the floor tom and the crash to the right; the drummer behind,
-// dark hair over a face, a black tee, head and shoulders rimmed in the show's colour at night. Pose 0
-// the left stick down on the snare (the head nodding), 1 the right on the floor tom, 2 both up on the
-// drop, the right on the crash.
-const KIT_W = 44, KIT_H = 38;
-function drawKit(pose) {
-  const g = pixPicture(KIT_W, KIT_H), C = hexA;
-  const shell = C('#c63444'), shellD = C('#8a1f2e'), shellL = C('#ea6a7a'), hoop = C('#7a7a88');
-  const head = C('#ece4d2'), headD = C('#cdc3ae'), kick = C('#efe6d4', 254), kickD = C('#d8ccb6', 254), logo = C('#7c1a2a', 253);
-  const chrome = C('#c4c4d0'), chromeD = C('#70707e'), steel = C('#585866'), gold = C('#e6b64e', 252), goldD = C('#a67b2a', 252);
-  const skin = C('#e2aa86'), skinD = C('#b98066'), hair = C('#2c201c'), hairL = C('#4a362c'), tee = C('#26242e'), teeL = C('#3a3846');
-  const dark = C('#141218'), stick = C('#e8d2a0'), stickL = C('#fff4d4');
-  // (the drummer on its own first, its outline then rimmed: lit in the show's colour at night)
-  const d = pixPicture(KIT_W, KIT_H), nod = pose === 0 ? 1 : 0;
-  d.rect(16, 12, 12, 1, tee); d.rect(15, 13, 14, 9, tee); d.rect(15, 13, 2, 9, teeL);
-  d.rect(20, 10 + nod, 4, 3, skinD); d.rect(20, 10 + nod, 3, 2, skin);
-  d.oval(21.5, 6.5 + nod, 3.7, 4.1, (u, v) => (v < -0.2 || (Math.abs(u) > 0.72 && v < 0.4) ? (u < -0.3 && v < -0.5 ? hairL : hair) : u > 0.45 ? skinD : skin));
-  d.set(20, 7 + nod, dark); d.set(23, 7 + nod, dark); d.rect(21, 9 + nod, 2, 1, skinD);
-  for (let y = 0; y < KIT_H; y++) for (let x = 0; x < KIT_W; x++) {
-    if (d.alpha(x, y) && (!d.alpha(x, y - 1) || !d.alpha(x - 1, y) || !d.alpha(x + 1, y))) d.d[(y * KIT_W + x) * 4 + 3] = 253;
-  }
-  g.over(d);
-  // (the hi-hat, far left, and the crash up on the right, on their stands)
-  g.line(4, 17, 4, 36, steel); g.line(4, 36, 1, 37, steel); g.line(4, 36, 7, 37, steel);
-  g.oval(4, 15, 4.2, 0.6, gold); g.rect(1, 16, 7, 1, goldD);
-  g.line(38, 11, 38, 21, steel);
-  g.oval(38, 9, 5.6, 0.7, gold); g.rect(34, 10, 9, 1, goldD);
-  // (the kick drum: its shell, lighter up its left, its lugs, the hoop, the head, the T)
-  g.oval(22, 28.5, 9.2, 9.2, (u, v) => { const r = Math.hypot(u, v); return r > 0.83 ? (v < -0.2 && u < 0 ? shellL : v > 0.3 ? shellD : shell) : r > 0.75 ? hoop : v > 0.35 ? kickD : kick; });
-  for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2 + Math.PI / 8; g.set(22 + Math.cos(a) * 8.4, 28.5 + Math.sin(a) * 8.4, chrome); }
-  g.rect(18, 24, 9, 2, logo); g.rect(21, 26, 3, 6, logo);
-  // (the toms on it, the mount between)
-  g.rect(21, 17, 3, 4, chromeD);
-  for (const tx of [15.5, 28.5]) {
-    const x0 = Math.round(tx - 4.5);
-    g.rect(x0, 16, 10, 4, shell); g.rect(x0, 19, 10, 1, shellD); g.rect(x0, 16, 10, 1, chrome);
-    g.oval(tx, 15.4, 4.9, 1.0, (u) => (u > 0.4 ? headD : head));
-  }
-  // (the snare, left: its stand, its chrome shell, its head)
-  g.line(7, 26, 7, 34, steel); g.line(7, 34, 4, 37, steel); g.line(7, 34, 10, 37, steel);
-  g.rect(3, 22, 9, 4, chrome); for (let x = 4; x < 12; x += 2) g.rect(x, 22, 1, 4, chromeD);
-  g.oval(7, 21.6, 4.8, 0.9, (u) => (u > 0.4 ? headD : head));
-  // (the floor tom, right, on its legs)
-  g.line(34, 30, 33, 37, steel); g.line(42, 30, 43, 37, steel);
-  g.rect(33, 23, 10, 8, shell); g.rect(33, 23, 3, 8, shellL); g.rect(33, 30, 10, 1, shellD); g.rect(33, 23, 10, 1, chrome);
-  g.oval(38, 22.4, 5.1, 1.0, (u) => (u > 0.4 ? headD : head));
-  // (the arms and the sticks, over the kit: from each shoulder a sleeve, then the arm, the hand, the stick)
-  const arm = (sx, sy, ex, ey, hx, hy, tx, ty) => {
-    g.line(sx, sy, (sx + ex) / 2, (sy + ey) / 2, tee, 2); g.line((sx + ex) / 2, (sy + ey) / 2, ex, ey, skin, 2);
-    g.line(ex, ey, hx, hy, skin, 2); g.line(ex + 1, ey + 1, hx + 1, hy + 1, skinD);
-    g.line(hx, hy, tx, ty, stick); g.set(tx, ty, stickL); g.rect(hx, hy, 2, 2, skin);
-  };
-  if (pose === 0) arm(15, 13, 11, 17, 9, 19, 6, 21); else arm(15, 13, 11, 14, 10, 9, 7, 3);
-  if (pose === 1) arm(27, 13, 32, 17, 34, 19, 37, 21); else if (pose === 2) arm(27, 13, 32, 13, 33, 10, 37, 8); else arm(27, 13, 32, 14, 32, 9, 35, 3);
-  return g;
 }
 // The garden's koi, seen from the bank, 22 x 10, facing right: a body round at the head and tapering to
 // the root of its tail, lighter along its back, darker at its belly, a sheen of scales; its tail fanned
@@ -5892,6 +5536,74 @@ function drawCrab(up) {
   } else {
     for (const sd of [-1, 1]) { const x = 6 + sd * 5.5; g.line(6 + sd * 3.8, 5, x, 5, shell); g.rect(sd < 0 ? x - 1 : x, 4, 2, 2, shell); g.set(sd < 0 ? x - 1 : x + 1, 4, hi); }
   }
+  return g;
+}
+// The sea's lighthouse, 31 x 78, standing on the headland: a white tower tapering up, three red bands
+// round it, lit down its left side and shaded down its right, a window up each white stretch and a door
+// at its foot on a stone plinth; the gallery's railing round the top; the lantern, its glass lit at
+// night (251, its own light: frame 1) or pale by day (0), the lamp's bright core in the middle, the
+// frame's bars across it; a red dome over it, its vent and the lightning rod on top. (LIGHT_LAMP: the
+// lamp's row, from the top)
+const LIGHT_W = 31, LIGHT_H = 78, LIGHT_LAMP = 17;
+function drawLighthouse(lit) {
+  const g = pixPicture(LIGHT_W, LIGHT_H), C = hexA;
+  const white = C('#eceef4'), whiteL = C('#ffffff'), whiteD = C('#b4b8c8'), whiteDD = C('#8c90a4');
+  const red = C('#c8383c'), redL = C('#e8585a'), redD = C('#8c2428'), redDD = C('#641a1e');
+  const iron = C('#2c2c36'), ironL = C('#4a4a58'), stone = C('#8a8896'), stoneD = C('#64626e'), stoneL = C('#a8a6b2');
+  const glass = lit ? C('#ffd878', 251) : C('#a8c4dc'), glassL = lit ? C('#fff4cc', 251) : C('#d4e6f4'), core = lit ? C('#ffffff', 251) : C('#e8f2fa');
+  const cx = 15;
+  // the lightning rod and the vent ball
+  g.line(cx, 0, cx, 3, ironL); g.oval(cx, 5, 1.6, 1.4, (u) => (u < -0.2 ? redL : redD));
+  // the dome: red, lit on its left
+  for (let y = 7; y <= 12; y++) {
+    const hw = Math.round(6.5 * Math.sqrt(Math.max(0, 1 - ((12.6 - y) / 6.2) ** 2)));
+    for (let x = cx - hw; x <= cx + hw; x++) g.set(x, y, x < cx - hw * 0.45 ? redL : x > cx + hw * 0.5 ? redD : red);
+  }
+  g.rect(cx - 8, 13, 17, 1, redDD);
+  // the lantern: glass between the frame's bars, the lamp's core
+  for (let y = 14; y <= 21; y++) for (let x = cx - 6; x <= cx + 6; x++) {
+    const bar = x === cx - 6 || x === cx + 6 || x === cx - 3 || x === cx + 3;
+    g.set(x, y, bar ? iron : Math.abs(x - cx) <= 1 && y >= 15 && y <= 20 ? core : y <= 15 || Math.abs(x - cx) <= 2 ? glassL : glass);
+  }
+  g.rect(cx - 7, 22, 15, 1, iron);
+  // the gallery: its rail, the balusters, its deck and the brackets under it
+  g.rect(cx - 10, 23, 21, 1, ironL);
+  for (let x = cx - 10; x <= cx + 10; x += 2) g.set(x, 24, iron);
+  g.rect(cx - 11, 25, 23, 1, iron); g.rect(cx - 9, 26, 19, 1, ironL);
+  for (let k = 0; k < 3; k++) { g.set(cx - 8 + k, 27 + k, iron); g.set(cx + 8 - k, 27 + k, iron); }
+  // the tower: tapering from 11 across under the gallery to 19 at its foot
+  const top = 27, foot = 72, bands = [[33, 39], [47, 53], [61, 67]];
+  for (let y = top; y < foot; y++) {
+    const hw = Math.round(5 + (4 * (y - top)) / (foot - top));
+    const band = bands.some(([a, b]) => y >= a && y < b);
+    for (let x = cx - hw; x <= cx + hw; x++) {
+      const e = x - (cx - hw), f = cx + hw - x;
+      g.set(x, y, band ? (e === 0 ? redL : f <= 1 ? redDD : f <= 3 ? redD : red) : e === 0 ? whiteL : f <= 1 ? whiteDD : f <= 3 ? whiteD : white);
+    }
+  }
+  // a window up each white stretch, the door at the foot
+  for (const [wx, wy] of [[cx - 1, 42], [cx, 56]]) { g.rect(wx, wy, 2, 3, iron); g.set(wx, wy, ironL); }
+  g.rect(cx - 1, 67, 3, 5, C('#4a3426')); g.set(cx - 1, 67, C('#6a4a36')); g.set(cx + 1, 69, C('#c8a060'));
+  // the plinth: stone, its courses
+  for (let y = foot; y < LIGHT_H; y++) for (let x = cx - 12; x <= cx + 12; x++) {
+    const seam = y === foot + 2 || ((x + (y > foot + 2 ? 2 : 0)) % 5 === 0);
+    g.set(x, y, y === foot ? stoneL : seam ? stoneD : x > cx + 8 ? stoneD : stone);
+  }
+  return g;
+}
+// The keeper's cottage beside it, 25 x 17: white walls, a red roof, its chimney, a door, and a window
+// lit warm at night (251: frame 1), dark by day (0).
+const COTTAGE_W = 25, COTTAGE_H = 17;
+function drawCottage(lit) {
+  const g = pixPicture(COTTAGE_W, COTTAGE_H), C = hexA;
+  const white = C('#e4e4ec'), whiteD = C('#aeb0c0'), red = C('#b8363a'), redL = C('#d85656'), redD = C('#7c2226');
+  g.rect(17, 0, 3, 5, C('#7a6a66')); g.rect(17, 0, 3, 1, C('#9a8a86'));
+  for (let y = 2; y <= 8; y++) { const hw = 2 + Math.round((y - 2) * 1.75); for (let x = 12 - hw; x <= 12 + hw; x++) g.set(x, y, x < 12 - hw + 2 ? redL : x > 12 + hw - 3 ? redD : red); }
+  g.rect(0, 9, 25, 1, redD);
+  g.rect(1, 10, 23, 7, white); g.rect(19, 10, 5, 7, whiteD);
+  const win = lit ? C('#ffcf6e', 251) : C('#3a4054'), winL = lit ? C('#fff0b8', 251) : C('#5a6278');
+  g.rect(4, 11, 5, 4, win); g.rect(4, 11, 2, 2, winL); g.rect(6, 11, 1, 4, C('#5a4636')); g.rect(4, 13, 5, 1, C('#5a4636'));
+  g.rect(14, 11, 3, 6, C('#5a3a2a')); g.set(16, 14, C('#c8a060'));
   return g;
 }
 // The campfire's owl, 9 x 12, on its branch: brown, its belly lighter and barred, ear tufts, a pale face
@@ -5969,8 +5681,8 @@ function bldgJS(x) {
 }
 // the scenes whose night sky has the moon in it (Halloween has its own; the city's sky is the rain's)
 const MOON_SCENES = new Set(['lake', 'sea', 'fire', 'snow', 'garden', 'falls', 'festival']);
-// the scenes with a day sky for the flock to cross (as the shader's sky had it): not the city's street,
-// the water seen from above or the basement
+// the scenes with a day sky for the flock to cross (as the shader's sky had it): not the city's street
+// or the water seen from above
 const SKY_SCENES = new Set(['lake', 'sea', 'fire', 'snow', 'garden', 'falls', 'halloween', 'festival']);
 // the atlas: every picture's frames packed in rows, each frame's place in it (texels: x, y, w, h)
 let PIX = null;
@@ -6075,16 +5787,6 @@ function drawBird(up) {
   rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch === 'x') g.set(x, y, x === 3 ? d : c); }));
   return g;
 }
-// The sea's sailboat on the horizon by day, 11 x 10: a white mainsail with a red stripe and a jib before
-// it, the mast between, a dark hull
-const SAIL_W = 11, SAIL_H = 10;
-function drawSail() {
-  const g = pixPicture(SAIL_W, SAIL_H), C = hexA;
-  const rows = ['.....m.....', '....mW.....', '...jmWW....', '..jjmWW....', '..jjmRRR...', '.jjjmWWW...', '.jjjmWWWW..', '....m......', 'hhhhhhhhhhh', '.hhhhhhhhh.'];
-  const col = { m: C('#5a4a40'), W: C('#f6f3ea'), j: C('#e6e1d6'), R: C('#d84a3a'), h: C('#3c3440') };
-  rows.forEach((r, y) => [...r].forEach((ch, x) => { if (col[ch]) g.set(x, y, col[ch]); }));
-  return g;
-}
 // The space scene's art, from the user's stream (see space-art.js): a picture of one of them, a its
 // pixels' alpha (251: its own light, not the night's tint)
 const ART_KEYS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -6152,15 +5854,15 @@ function drawToast(k) {
 function pixAtlas() {
   if (PIX) return PIX;
   const pics = [];
-  for (let k = 0; k < 3; k++) pics.push(['kit' + k, drawKit(k)]);
   for (let k = 0; k < 4; k++) for (let w = -1; w <= 1; w++) pics.push([`koi${k}_${w + 1}`, drawGardenKoi(k, w)]);
   pics.push(['moon', drawMoon()]);
+  pics.push(['light0', drawLighthouse(false)], ['light1', drawLighthouse(true)], ['cottage0', drawCottage(false)], ['cottage1', drawCottage(true)]);
   pics.push(['crab0', drawCrab(true)], ['crab1', drawCrab(false)], ['owl0', drawOwl(true)], ['owl1', drawOwl(false)], ['snowman', drawSnowman()], ['cat0', drawCat(false)], ['cat1', drawCat(true)]);
   for (let k = 0; k < 4; k++) for (let w = 0; w < 2; w++) pics.push([`walker${k}_${w}`, drawWalker(k, w)]);
   for (let k = 0; k < 3; k++) pics.push(['trout' + k, drawTrout(k)]);
   for (let set = 0; set < 3; set++) for (let k = 0; k < 6; k++) pics.push([`flame${set}_${k}`, drawFlame(set, k)]);
   pics.push(['fireback', drawFireBack()], ['firefront', drawFireFront()]);
-  pics.push(['bird0', drawBird(true)], ['bird1', drawBird(false)], ['sail', drawSail()]);
+  pics.push(['bird0', drawBird(true)], ['bird1', drawBird(false)]);
   pics.push(['earth', drawArt('earth', 251)], ['saturn', drawArt('saturn', 251)], ['astro0', drawArt('astro0')], ['astro1', drawArt('astro1')], ['lander', drawLander()]);
   for (let k = 0; k < 4; k++) pics.push(['toast' + k, drawToast(k)]);
   const AW = 256, at = {};
@@ -6174,14 +5876,12 @@ function pixAtlas() {
   for (const [n, g] of pics) { const [ax, ay] = at[n]; for (let j = 0; j < g.h; j++) d.set(g.d.subarray(j * g.w * 4, (j + 1) * g.w * 4), ((ay + j) * AW + ax) * 4); }
   return (PIX = { w: AW, h: AH, d, at });
 }
-// the show's two colours (as the basement's gelA and gelB have them), for each 8 bars
+// the show's two colours, for each 8 bars (the pixel layer's 253s at night)
 const SHOW_A = [[255, 70, 110], [255, 160, 50], [80, 130, 255], [200, 80, 255]].map((c) => c.map((v) => v / 255));
 const SHOW_B = [[255, 196, 110], [255, 80, 160], [110, 236, 255], [255, 120, 80]].map((c) => c.map((v) => v / 255));
-// the kit's scale: the toaster's at the show, or as big as fits between the amps (see the basement's)
-const kitScale = (H, sw) => Math.max(1, Math.min(2 * Math.max(1, Math.round(H / 270)), Math.floor(((sw - 0.135) * H) / 22)));
 // The pixel layer's pictures up this frame: [frame, x, y (CSS pixels, its top left), scale, flipped,
-// how near (see LIB's front)]. The moon in the night sky, behind everything else; the kit on the
-// basement's riser; the garden's koi swimming their rounds in the pond (nearer ones drawn last),
+// how near (see LIB's front)]. The moon in the night sky, behind everything else; the
+// garden's koi swimming their rounds in the pond (nearer ones drawn last),
 // turning as they go, their tails swishing, behind the lily pads.
 function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, chPx, kick = 0, birds = null, eye = null }) {
   const A = pixAtlas().at, S = Math.max(1, Math.round(H / 270)), out = [];
@@ -6190,15 +5890,25 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
   // (a picture by its foot's middle, CSS pixels)
   const at = (f, x, y, k, flip = false, near = 0.75, keep = 0) => out.push([f, Math.round(x - (f[2] * k) / 2), Math.round(y - f[3] * k), k, flip, near, keep]);
   if (scene === 'sea' && V.lake) {
+    // the lighthouse on the headland's crown at 0.84 of the width, the keeper's cottage beside it (the
+    // shader's cliffTop, which keeps the crown there smooth); their windows lit at night
+    const sm = (e0, e1, x) => { const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return k * k * (3 - 2 * k); };
+    const line = (x) => {
+      const a = 1 - x / aspect, crown = V.lake[0] + mix(0.1, 0.12, wide);
+      return V.lake[1] + (crown - V.lake[1]) * mix(0.72, 1, sm(-0.05, 0.16, a)) * Math.pow(1 - sm(0.17, 0.35, a), 0.6);
+    };
+    const lx = 0.84 * aspect, kx = lx - (15 + 4 + 12) * S / H, edge = kx - (15 * S) / H, shelf = line(kx) > line(lx) - 0.09;
+    // (with the level shelf the shader cuts for the cottage beside the lighthouse)
+    const top = (x) => (shelf && x < lx ? Math.max(line(x), mix(line(x), line(lx), sm(edge - 0.1, edge, x))) : line(x));
+    // (only where the crown's wide enough for it: a tall window's falls away under it)
+    if (shelf) at(A[night ? 'cottage1' : 'cottage0'], kx * H, (1 - top(kx)) * H + 2 * S, S, false, 1);
+    at(A[night ? 'light1' : 'light0'], lx * H, (1 - top(lx)) * H + 2 * S, S, false, 1);
+  }
+  if (scene === 'sea' && V.lake) {
     // the crab: a step a beat along the beach, turning every 16 beats, its claws up on each beat
     const leg = ((Math.floor(beats) % 32) + 32) % 32, step = leg < 16 ? leg : 32 - leg;
     const c0 = Math.floor(((0.12 + 0.08 * wide) * aspect) / cw) + step, r0 = Math.floor((1 - (V.lake[1] - 0.05)) / ch);
     at(A[((beats % 1) + 1) % 1 < 0.3 ? 'crab0' : 'crab1'], (c0 + 3.5) * cwPx, (r0 + 1) * chPx, S);
-  }
-  if (scene === 'sea' && V.lake && !night) {
-    // the sailboat sailing slowly along the horizon (where the shader's sailboat was)
-    const sx = ((((t % CLOCK) * 0.0035 + 0.3) % 1) + 1) % 1 * (aspect + 0.3) - 0.15;
-    at(A.sail, (Math.floor(sx / cw) + 2) * cwPx, Math.floor((1 - V.lake[0]) / ch) * chPx + chPx * 0.6, S, false, 0.6);
   }
   if (scene === 'fire' && V.lake) {
     // the campfire: the logs and the stones behind, the flames over them (a step of flicker every tenth
@@ -6275,11 +5985,6 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
       }
     }
   }
-  if (scene === 'basement' && V.stage) {
-    const k = kitScale(H, V.stage[2]);
-    const pose = popAt === dropAt && t - popAt < 0.7 ? 2 : ((beats * 2) % 2 + 2) % 2 < 1 ? 0 : 1;
-    out.push([A['kit' + pose], Math.round(V.stage[0] * W - (KIT_W * k) / 2), Math.round((1 - V.stage[1] - 0.07) * H - KIT_H * k), k, false, 0.75]);
-  }
   if (scene === 'garden' && V.lake) {
     const aspect = W / H, near = V.lake[1], bank = V.lake[0], fish = [];
     for (let i = 0; i < 4; i++) {
@@ -6297,7 +6002,8 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
 // The eye's clip: renderer/eye/eye.mp4, 960x540, 30 frames a second, 15.8 s: Pexels video 32198166 (a
 // brown eye, close), its first 3.95 s at half speed (shot at 60 a second, so every frame its own), a little
 // smoothed, played forward and then back, so it loops without a seam: it looks out, calm, and at the turn
-// blinks. Where the eye sits in it (its middle: shares of the width and the height down); eyeW, how much of
+// blinks. The window that was reflected in it, just right of the pupil, is painted out (in glyphs it read as
+// a square): filled from the iris across the pupil, blended in. Where the eye sits in it (its middle: shares of the width and the height down); eyeW, how much of
 // the clip's width it's shown across; when it's blinking (no pupil to dive into, s); the pupil as it
 // drifts (every 0.5 s of the clip's first half, mirrored in its second: its middle, shares of the width
 // and the height) and its radius (a share of the height)
@@ -6338,8 +6044,8 @@ function spaceLander(V, W, H, S) {
 }
 // The cord, in the toaster's sprite, in the scene's own pixels: its curve (a Bezier's four points: from the
 // plug in the lander's socket, rising and bowing out to the left, round into the toaster's side, a little
-// sway in it) and the canvas to hold it all and the toaster (twice its size, as the basement's frontman:
-// its box at ox, oy), placed so the plug's pixel lands in the socket (the toaster moving a whole pixel at
+// sway in it) and the canvas to hold it all and the toaster (twice its size: its box at
+// ox, oy), placed so the plug's pixel lands in the socket (the toaster moving a whole pixel at
 // a time with it); a kick's ripple running up it (wave: how far along, -1 none)
 function spaceCord(V, W, H, S, T, t, kickAge, night) {
   const L = spaceLander(V, W, H, S);
@@ -6472,16 +6178,6 @@ function drawBoat(g, { dy, pop, dip, on = 'boat', toast = 0, gone = false }) {
   } else if (on === 'rock') {
     rect(9, 18, 22, 1, '#a4a8be'); rect(7, 19, 26, 1, '#7c8098'); rect(6, 20, 28, 1, '#686c84'); rect(6, 21, 29, 1, '#55596e'); rect(7, 22, 27, 1, '#45485a');
     rect(13, 20, 3, 1, '#4a4d60'); rect(24, 21, 4, 1, '#3c3f50'); rect(10, 19, 2, 1, '#c4c8da');
-  } else if (on === 'mic') {
-    // the basement show: the toaster on two short legs, the mic on its stand at its side, the boom
-    // reaching in; a red guitar slung across its front, the neck up to the right
-    rect(15, 18, 1, 4, '#3a3a44'); rect(20, 18, 1, 4, '#3a3a44'); rect(14, 22, 3, 1, '#16161c'); rect(19, 22, 3, 1, '#16161c');
-    rect(8, 11, 1, 11, '#55555f'); rect(6, 22, 5, 1, '#2a2a33'); line(8, 11, 10, 10, '#55555f');
-    rect(10, 8, 2, 3, '#c8c8d4'); rect(10, 9, 2, 1, '#86818a');
-    line(19, 15, 31, 8, '#9a6a3a'); rect(31, 7, 3, 2, '#3a2a20'); rect(32, 6, 1, 1, '#c8c8d4');
-    rect(14, 15, 4, 1, '#d84858'); rect(13, 16, 7, 1, '#d84858'); rect(13, 17, 8, 1, '#c03848'); rect(14, 18, 6, 1, '#c03848'); rect(15, 19, 4, 1, '#a02838');
-    rect(14, 15, 2, 1, '#f07a88'); rect(15, 16, 2, 2, '#f2f2f6'); rect(18, 16, 1, 2, '#1a1626');
-    return;
   } else if (on === 'decks') {
     // the festival's decks, the toaster behind them in headphones: the table, its front lit in a
     // strip of two colours; a turntable at each end, its tonearm over it; the mixer in the middle,
@@ -7180,7 +6876,7 @@ function pondKoi(pond, spine, kinds, boxes) {
 }
 
 export function createScenery(canvas) {
-  let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, koiPaint = null, sharkPaint = null, beforeTex = null, beforeFbo = null, beforeOk = false, beforeN = 0, wave = null, fromIdle = false, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
+  let gl = null, ready = false, scenes = {}, makeProgram = null, background = false, paint = null, koiPaint = null, sharkPaint = null, beforeTex = null, beforeFbo = null, beforeOk = false, beforeN = 0, latestTex = null, latestFbo = null, latestOk = false, wave = null, fromIdle = false, vao = null, cellTex = null, lifeTex = null, sheetTex = null, spriteTex = null, fbo = null, dims = null, broken = false;
   const boatCv = Object.assign(document.createElement('canvas'), { width: SW, height: SH }), boatG = boatCv.getContext('2d');
   let popAt = -9, dipAt = -9, dropSeen = -99;
   // the eye's state while it's up (its gaze, its dive), what its shader's told; its clip and that clip's
@@ -7303,6 +6999,7 @@ export function createScenery(canvas) {
     pixTex = gl.createTexture(); pixUp = false;
     fbo = gl.createFramebuffer();
     beforeTex = gl.createTexture(); beforeFbo = gl.createFramebuffer(); beforeOk = false; wave = null;
+    latestTex = gl.createTexture(); latestFbo = gl.createFramebuffer(); latestOk = false;
     eyeTex = null; eyeSkyTex[0] = eyeSkyTex[1] = null;
     if (eyePics) for (const pic of eyePics) pic.up = false;
     dims = null;
@@ -7400,7 +7097,14 @@ export function createScenery(canvas) {
     sx.textBaseline = 'middle';
     sx.textAlign = 'center';
     sx.fillStyle = '#fff';
-    SHEET.forEach((g, i) => sx.fillText(g, (i % perRow) * sw + sw / 2, Math.floor(i / perRow) * sh + sh * 0.55));
+    // (each glyph clipped to its slot: some are drawn taller than a cell (the shades ░▒▓), and their ink ran
+    // into the slots beside them, so at 1.5 device pixels to the CSS pixel a / came with a block under it)
+    SHEET.forEach((g, i) => {
+      const x = (i % perRow) * sw, y = Math.floor(i / perRow) * sh;
+      sx.save(); sx.beginPath(); sx.rect(x, y, sw, sh); sx.clip();
+      sx.fillText(g, x + sw / 2, y + sh * 0.55);
+      sx.restore();
+    });
     gl.bindTexture(gl.TEXTURE_2D, sheetTex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sheet);
@@ -7410,13 +7114,16 @@ export function createScenery(canvas) {
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cellTex, 0);
-    // (the picture before a change of scene, the window's size: kept anew, a change mid-wave cut short)
-    gl.bindTexture(gl.TEXTURE_2D, beforeTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, beforeFbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, beforeTex, 0);
-    beforeOk = false; wave = null;
+    // (the picture before a change of scene, the window's size: kept anew, a change mid-wave cut short;
+    // and the latest picture while a wave spreads, for a change that comes before it's done)
+    for (const [tex, f] of [[beforeTex, beforeFbo], [latestTex, latestFbo]]) {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    }
+    beforeOk = false; latestOk = false; wave = null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     dims = { W, H, dpr, cw, px, cols, rows, sw, sh, perRow, sheetW: sheet.width, sheetH: sheet.height };
   }
@@ -7482,7 +7189,12 @@ export function createScenery(canvas) {
       // a strength, so those of the scene before go when it changes)
       if (shownScene !== scene) rips.length = 0;
       // (a change of scene with the picture before it kept: the decode, from where the toaster is)
-      if (((shownScene && shownScene !== scene) || fromIdle) && beforeOk) wave = { t0: t };
+      // (one that comes while a wave's still spreading starts from the picture as it was, half
+      // changed, not the one before that wave: changed a beat at a time, each scene came out of the first)
+      if (((shownScene && shownScene !== scene) || fromIdle) && beforeOk) {
+        if (wave && latestOk) { [beforeTex, latestTex] = [latestTex, beforeTex]; [beforeFbo, latestFbo] = [latestFbo, beforeFbo]; }
+        wave = { t0: t }; latestOk = false;
+      }
       fromIdle = false;
       shownScene = scene;
       const pondPx = scene === 'koi' && !!koiPaint?.settled();
@@ -7532,7 +7244,7 @@ export function createScenery(canvas) {
       const goal = V.toaster;
       V = { ...V, ...glide.land, toaster: { ...V.toaster, x: glide.x, y: glide.y }, ...(glide.moon ? { moon: glide.moon, sun: glide.moon.slice(0, 2) } : {}), ...(glide.stage ? { stage: glide.stage } : {}) };
       // (space has no day: night there whatever the theme)
-      const night = scene === 'space' || scene === 'eye' || col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
+      const night = scene === 'space' || scene === 'eye' || scene === 'sea' || scene === 'festival' || col.bg[0] + col.bg[1] + col.bg[2] < col.fg[0] + col.fg[1] + col.fg[2] ? 1 : 0;
       // a ripple on the lake for each kick (while the kick's in the song), somewhere on it
       const kick = eng.v.bd.lastHit;
       if (kick.t > kickAt && t - kick.t < 0.3) {
@@ -7580,7 +7292,7 @@ export function createScenery(canvas) {
       if (scene === 'eye') {
         const vid = eyeClip();
         eyeSpacePics();
-        if (!eye) eye = { tried: -9, diveAt: -99, outAt: -99, want: false, at: 0, drop: dropAt };
+        if (!eye) eye = { tried: -9, diveAt: -99, outAt: -99, want: false, at: 0, drop: dropAt, zs: 0, lz: 0, lt: -1 };
         const holding = () => t >= eye.diveAt && t <= eye.outAt + EYE_DIVE;
         if (dropAt > eye.drop) { eye.drop = dropAt; if (t - dropAt < 1 && !holding()) eye.want = true; }
         if (eye.want) {
@@ -7595,7 +7307,11 @@ export function createScenery(canvas) {
         const ek = eyeShow(aspect, V.moon[2]), E = [V.moon[0] * aspect, V.moon[1]], P = eyePupil(E, ek, holding() ? eye.at : vid.currentTime);
         const far = Math.max(...[[0, 0], [aspect, 0], [0, 1], [aspect, 1]].map(([x, y]) => Math.hypot(x - P[0], y - P[1])));
         const zmax = Math.max(12, (1.08 * far) / P[2]), s = eyeDive(eye, t), z = eyeZoom(eye, t, s, zmax);
-        eyeU = { k: ek, e: E, p: P, zmax, z: [z, Math.max(0, t - eye.diveAt), Math.exp(-Math.max(0, t - dipAt) * 6), Math.exp(-Math.max(0, t - dropAt) * 3)], d: [s, s > 0 ? P[2] * z : 0] };
+        // (how fast the dive's going in: the zoom's log a second, smoothed)
+        const lz = Math.log(z);
+        if (eye.lt >= 0 && t > eye.lt) eye.zs += ((lz - eye.lz) / (t - eye.lt) - eye.zs) * Math.min(1, (t - eye.lt) * 8);
+        eye.lz = lz; eye.lt = t;
+        eyeU = { k: ek, e: E, p: P, zmax, z: [z, Math.max(0, t - eye.diveAt), Math.exp(-Math.max(0, t - dipAt) * 6), Math.exp(-Math.max(0, t - dropAt) * 3)], d: [s, s > 0 ? P[2] * z : 0, eye.zs, z / zmax] };
       } else if (eye) { if (eyeVid) { eyeVid.pause(); eyeVid.playbackRate = 1; } eye = null; eyeU = null; }
       // (the toaster on its broom: flying across the moon, drifting to and fro, rising and falling,
       // slowly; its middle, CSS pixels)
@@ -7603,7 +7319,7 @@ export function createScenery(canvas) {
       const flight = V.toaster.on === 'broom' ? { x: (V.toaster.x + 0.03 * Math.sin(t * 0.17)) * W, y: (1 - V.toaster.y - 0.012 * Math.sin(t * 0.71)) * H } : V.toaster.on === 'space' ? spaceToaster(V, W, H, t) : null;
       // (drawn again only when it changes: a pixel's move on the beat, the toast's pop, the float's
       // dip, the campfire toast browning a step; the float's and the pad's are drawn a pixel at a time)
-      const boat = { dy: (V.toaster.on === 'broom' ? 5 : 0) + (['boat', 'tube', 'broom', 'float', 'pad', 'mic'].includes(V.toaster.on) ? Math.floor(walkB) % 2 : 0), pop: pa < 0.7 ? Math.round(5 * Math.sin((Math.PI * pa) / 0.7)) : 0, dip: t - dipAt < 0.2 ? 1 : 0, on: V.toaster.on, toast: V.toaster.on === 'log' ? Math.round((walkB % 32) * 2) / 64 : 0 };
+      const boat = { dy: (V.toaster.on === 'broom' ? 5 : 0) + (['boat', 'tube', 'broom', 'float', 'pad'].includes(V.toaster.on) ? Math.floor(walkB) % 2 : 0), pop: pa < 0.7 ? Math.round(5 * Math.sin((Math.PI * pa) / 0.7)) : 0, dip: t - dipAt < 0.2 ? 1 : 0, on: V.toaster.on, toast: V.toaster.on === 'log' ? Math.round((walkB % 32) * 2) / 64 : 0 };
       // (in space: the toast gone from its slots once it's popped, till a new slice is in; its cord, and the
       // sprite's canvas made big enough to hold it all)
       const cord = V.toaster.on === 'space' ? spaceCord(V, W, H, Sz, flight, t, t - dipAt, night) : null;
@@ -7710,7 +7426,7 @@ export function createScenery(canvas) {
       gl.uniform4fv(u('birds'), birds);
       gl.uniform4fv(u('shoot'), shoot);
       gl.uniform4fv(u('car'), flight ? [(flight.x - 20 * Sz) / H, 1 - (flight.y + 9.5 * Sz) / H, 0, 1] : carU);
-      gl.uniform4f(u('leap'), t - popAt, scene === 'basement' || scene === 'space' ? (popAt === dropAt ? 2 : 1) : Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'basement' || scene === 'space' ? 1 : 0);
+      gl.uniform4f(u('leap'), t - popAt, scene === 'space' ? (popAt === dropAt ? 2 : 1) : Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'space' ? 1 : 0);
       const M = V.stage || V.moon; // (halloween's moon, or the festival's stage)
       gl.uniform4f(u('moon'), (M?.[0] ?? 0) * aspect, M?.[1] ?? 0, M?.[2] ?? 0, 0);
       if (scene === 'sharks') {
@@ -7768,7 +7484,7 @@ export function createScenery(canvas) {
         gl.uniform4f(u('eyeF'), EYE_CLIP.box[0], EYE_CLIP.box[1], eyeU.k, EYE_CLIP.aspect);
         gl.uniform4f(u('eyeP'), eyeU.p[0], eyeU.p[1], eyeU.p[2], eyeHave ? 1 : 0);
         gl.uniform4fv(u('eyeZ'), eyeU.z);
-        gl.uniform4f(u('eyeD'), eyeU.d[0], eyeU.d[1], 0, 0);
+        gl.uniform4fv(u('eyeD'), eyeU.d);
         // (the galaxy drawn bigger as the dive comes in, but slower than the eye: further off)
         const G = V.gal || [0.4, 0, 0];
         gl.uniform4f(u('eyeS'), G[0] * Math.pow(eyeU.z[0] / eyeU.zmax, 0.6), G[1], G[2], 0);
@@ -7857,8 +7573,7 @@ export function createScenery(canvas) {
       gl.uniform1f(p('pixH'), flyV);
       // (where the toaster fishes from: a boat out on the lake, a rock in the sea's shallows, its
       // float clear of the light's path; or where it sits by the campfire)
-      // (twice its size at the basement show: the frontman, close up)
-      const S = Math.max(1, Math.round(H / 270)) * (scene === 'basement' ? 2 : 1), bw = SW * S, bh = SH * S;
+      const S = Math.max(1, Math.round(H / 270)), bw = SW * S, bh = SH * S;
       const wideF = Math.min(1, Math.max(0, (aspect - 0.56) / 1.22));
       const flying = V.toaster.on === 'broom';
       const waterY = flying ? 1e6 : V.toaster.on === 'bridge'
@@ -7869,7 +7584,7 @@ export function createScenery(canvas) {
       if (cord) gl.uniform4f(p('spr'), cord.x, cord.y, cord.w * cord.k, cord.h * cord.k);
       else if (V.toaster.on === 'eye') gl.uniform4f(p('spr'), 0, 0, 0, 0);   // (none in the eye: see EYE_LOOK)
       else gl.uniform4f(p('spr'), bx, by, bw, bh);
-      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float', 'pad', 'decks', 'mic', 'space', 'eye'].includes(V.toaster.on) ? 1e6 : waterY);
+      gl.uniform1f(p('water'), ['log', 'ice', 'umbrella', 'bridge', 'broom', 'float', 'pad', 'decks', 'space', 'eye'].includes(V.toaster.on) ? 1e6 : waterY);
       gl.uniform1f(p('night'), night);
       gl.uniform3fv(p('tint'), night ? V.tint || [0.8, 0.82, 0.96] : [1, 1, 1]);
       gl.uniform3fv(p('toneC'), night ? V.toneN || [0.1, 0.12, 0.17] : V.toneD || [-0.075, -0.045, -0.015]);
@@ -7907,10 +7622,6 @@ export function createScenery(canvas) {
         // (the stage's glow, in the show's first colour of these 8 bars, flaring on the kick)
         gl.uniform4f(p('light2'), V.stage[0] * W, (1 - V.stage[1] - 0.06) * H, 0.34 * H, 0.45 + 0.25 * glowV + 0.4 * kickV);
         gl.uniform3f(p('light2C'), ...FESTIVAL_GLOW[((Math.floor(walkB / 32) % 4) + 4) % 4]);
-      } else if (scene === 'basement' && night) {
-        // (the stage's glow, in the show's first colour of these 8 bars, flaring on the kick)
-        gl.uniform4f(p('light2'), V.stage[0] * W, (1 - V.stage[1] - 0.16) * H, 0.5 * H, 0.4 + 0.25 * glowV + 0.35 * kickV);
-        gl.uniform3f(p('light2C'), ...BASEMENT_GLOW[((Math.floor(walkB / 32) % 4) + 4) % 4]);
       } else gl.uniform4f(p('light2'), 0, 0, 1, 0);
       gl.uniform1f(p('time'), t % CLOCK);
       gl.uniform2f(p('grid'), dims.cols, dims.rows);
@@ -7938,13 +7649,14 @@ export function createScenery(canvas) {
       gl.uniform4f(p('wave'), bx + bw / 2, by + bh / 2, wave ? t - wave.t0 : 0, wave ? 1 : 0);
       gl.uniform1f(p('glyphs'), SHEET.length);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      // (the picture kept for the next change of scene, every third frame, none while one's spreading)
-      if (!wave && (++beforeN % 3 === 0 || !beforeOk)) {
+      // (the picture kept for the next change of scene, every third frame; while one's spreading, every
+      // frame into the latest instead)
+      if (wave || ++beforeN % 3 === 0 || !beforeOk) {
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, beforeFbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, wave ? latestFbo : beforeFbo);
         gl.blitFramebuffer(0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        beforeOk = true;
+        if (wave) latestOk = true; else beforeOk = true;
       }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindVertexArray(null);

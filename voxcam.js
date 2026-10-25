@@ -49,8 +49,11 @@ const norm = (a) => { const l = Math.hypot(...a); return a.map((x) => x / l); },
 const lookAt = (e, t, u) => { const z = norm(sub(e, t)), x = norm(cross(u, z)), y = cross(z, x); return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, e), -dot(y, e), -dot(z, e), 1]; };
 const mul = (a, b) => { const o = new Array(16).fill(0); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k]; return o; };
 
+import { compileProgram } from './program.js';
+
 export function createVoxCam(canvas) {
   let gl = null, prog = null, vb = null, wall = null, floor = null, rows = 0, padY = 0, floorRows = 0, broken = false, U = null;
+  let job = null, ready = false;
   let pulse = 0, pulseV = 0, kickV = 0, kickAt = -9, lastStep = null, heard = null, last = 0, clock = 0;
   // the picture, a patch per cube (pic: the camera's place, small: the whole wall, the picture
   // stretched over it and then in its place), read at most 31 times a second (as the camera's own
@@ -65,12 +68,9 @@ export function createVoxCam(canvas) {
   function build() {
     gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: true });
     if (!gl) { broken = true; return; }
-    const shader = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
-    prog = gl.createProgram();
-    gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    ready = false;
+    job = compileProgram(gl, VS, FS);
+    prog = job.program;
     const loc = {};
     U = (n) => loc[n] ??= gl.getUniformLocation(prog, n);
     // the cube's faces that can be seen (not its back, against the wall)
@@ -134,6 +134,7 @@ export function createVoxCam(canvas) {
 
   return {
     get broken() { return broken; },
+    get waiting() { return !broken && (!prog || !ready); },
     clear() {
       // (the canvas shrunk, so its antialiased picture, the size of the window, is freed while it's off)
       canvas.width = canvas.height = 1;
@@ -147,6 +148,10 @@ export function createVoxCam(canvas) {
       if (!prog) {
         try { build(); } catch (err) { broken = true; console.error('voxels:', err); return; }
         if (broken) return;
+      }
+      if (!ready) {
+        try { if (!job.ready()) return; ready = true; }
+        catch (err) { broken = true; console.error('voxels:', err); return; }
       }
       const dt = clamp(t - last, 0, 0.1);
       last = t;

@@ -32,7 +32,13 @@ export function createWait(canvas, field) {
     sx.textBaseline = 'middle';
     sx.textAlign = 'center';
     sx.fillStyle = rgb(col.fg);
-    field.glyphs.forEach((c, i) => sx.fillText(c, (i % perRow) * sw + sw / 2, Math.floor(i / perRow) * sh + sh * 0.55));
+    // (each glyph clipped to its slot, as the scenery's sheet: the shades ░▒▓ are drawn taller than a cell)
+    field.glyphs.forEach((c, i) => {
+      const x = (i % perRow) * sw, y = Math.floor(i / perRow) * sh;
+      sx.save(); sx.beginPath(); sx.rect(x, y, sw, sh); sx.clip();
+      sx.fillText(c, x + sw / 2, y + sh * 0.55);
+      sx.restore();
+    });
     // (a dot in every other cell of every other row, a fifth of the ink)
     back = document.createElement('canvas');
     back.width = canvas.width;

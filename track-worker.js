@@ -37,13 +37,19 @@ const ready = (async () => {
   hands = await make();
 })();
 function wantFace() {
-  // (with blendshapes: how shut each eye is, for a wink; and the head's turn, for the skull)
-  const make = (on) => FaceLandmarker.createFromOptions(filesFor('face-' + on), { ...options('face_landmarker.task', on), numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true });
+  // (with blendshapes: how shut each eye is, for a wink; and the head's turn, for the skull) On the
+  // processor, as the segmenter: set up on the graphics card it hitched the picture for up to 0.6 s,
+  // twice, the first time the windows or big eyes came on; and with a face in view it costs the same
+  // there (hands and face 58 ms a look, against 57)
+  const make = () => FaceLandmarker.createFromOptions(filesFor('face-CPU'), { ...options('face_landmarker.task', 'CPU'), numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true });
   wantFeature('face', make);
 }
-// The selfie segmenter (who's a person in the picture), made the first time a look wants it.
+// The selfie segmenter (who's a person in the picture), made the first time a look wants it, and
+// always on the processor: made on the graphics card, its setting up froze every window's picture
+// for about 1.2 s (the GPU process is shared) the first time the cut-out, dots or voxels came on. It's
+// small: on the processor it costs this worker about 6 ms a look, never the page.
 function wantCut() {
-  const make = (on) => ImageSegmenter.createFromOptions(filesFor('cut-' + on), { ...options('selfie_segmenter.tflite', on), outputConfidenceMasks: true, outputCategoryMask: false });
+  const make = () => ImageSegmenter.createFromOptions(filesFor('cut-CPU'), { ...options('selfie_segmenter.tflite', 'CPU'), outputConfidenceMasks: true, outputCategoryMask: false });
   wantFeature('cut', make);
 }
 function featureFailed(name, err) {

@@ -5,7 +5,7 @@
 // page is always the latest). Every call the app makes without asking first is here, if only to do
 // nothing. Loaded first by the web build (tools/web.mjs), before boot.js.
 (() => {
-  const VERSION = "0.4.17"; // (the build writes the app's version here)
+  const VERSION = "0.4.18"; // (the build writes the app's version here)
   // a file handed to the browser to save; its name back
   const download = (parts, type, name) => {
     const a = document.createElement('a');
@@ -93,87 +93,16 @@
     },
     saveClip: async (buf, ext) => download([buf], video(ext), `Toaster clip ${when()}.${ext}`),
   };
-  // the star links' count (the header's and the start menu's): GitHub's, asked once a visit and kept
-  // ten minutes in the tab; left off when it can't be had
-  const showStars = async () => {
-    let n = null;
-    try { const kept = JSON.parse(sessionStorage.getItem('toaster-stars') || 'null'); if (kept && Date.now() - kept.at < 600000) n = kept.n; } catch {}
-    if (typeof n !== 'number') {
-      try {
-        const r = await fetch('https://api.github.com/repos/StopBanning/toaster');
-        if (r.ok) n = (await r.json()).stargazers_count;
-      } catch {}
-      if (typeof n === 'number') try { sessionStorage.setItem('toaster-stars', JSON.stringify({ n, at: Date.now() })); } catch {}
-    }
-    roll(typeof n === 'number' ? n : null);
+  // GitHub's star count for the star button (stars.js): asked once a visit and kept ten minutes in
+  // the tab; null when it can't be had
+  window.nc.stars = async () => {
+    try { const kept = JSON.parse(sessionStorage.getItem('toaster-stars') || 'null'); if (kept && Date.now() - kept.at < 600000) return kept.n; } catch {}
+    try {
+      const r = await fetch('https://api.github.com/repos/StopBanning/toaster');
+      const n = r.ok ? (await r.json()).stargazers_count : null;
+      if (typeof n !== 'number') return null;
+      try { sessionStorage.setItem('toaster-stars', JSON.stringify({ n, at: Date.now() })); } catch {}
+      return n;
+    } catch { return null; }
   };
-  // the count rolls up from nothing on odometer wheels, each turning only as the one below it rolls
-  // over, while the star fills with gold from the bottom; on the count the star bursts in a spray of
-  // glyphs. Without motion: the count and the gold star as they end. (No count: the star fills alone.)
-  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const wheel = (v, k) => {
-    const p = 10 ** k;
-    return k === 0 ? v % 10 : (Math.floor(v / p) + Math.min(1, Math.max(0, (v % p) - (p - 1)))) % 10;
-  };
-  const roll = (n) => {
-    const stars = [...document.querySelectorAll('.star-i')], counts = [...document.querySelectorAll('.star-n')];
-    const fill = (f) => { for (const s of stars) s.style.setProperty('--fill', f); };
-    if (still || n === null) {
-      fill(1);
-      if (n !== null) for (const el of counts) el.textContent = n;
-      return;
-    }
-    const digits = String(n).length, cols = [];
-    for (const el of counts) {
-      el.textContent = '';
-      const said = document.createElement('span');
-      said.className = 'odo-n'; said.textContent = n;
-      el.append(said);
-      for (let k = digits - 1; k >= 0; k--) {
-        const col = document.createElement('span'), strip = document.createElement('span');
-        col.className = 'odo-d'; col.setAttribute('aria-hidden', 'true');
-        if (k) col.style.opacity = 0;
-        strip.className = 'odo-s'; strip.textContent = '0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0';
-        col.append(strip); el.append(col);
-        // (a wheel is a line of the link's own text high, so its digits sit on the text's baseline)
-        const pitch = strip.getBoundingClientRect().height / 11;
-        if (pitch) col.style.height = pitch + 'px';
-        cols.push({ k, col, strip, pitch });
-      }
-    }
-    const T = 1500, t0 = performance.now();
-    const step = (now) => {
-      const u = Math.min(1, (now - t0) / T), e = 1 - (1 - u) ** 3, v = n * e;
-      for (const { k, col, strip, pitch } of cols) {
-        strip.style.transform = pitch ? `translateY(${(-wheel(v, k) * pitch).toFixed(2)}px)` : `translateY(${(-wheel(v, k) * 1.32).toFixed(3)}em)`;
-        if (k) col.style.opacity = Math.min(1, Math.max(0, v - (10 ** k - 1)));      // (no leading zeros)
-      }
-      fill(u);                                                                      // (filling steadily, full on the count)
-      if (u < 1) requestAnimationFrame(step);
-      else burst(stars);
-    };
-    requestAnimationFrame(step);
-  };
-  const SPARKS = ['✦', '*', '·', '+', '★', '•'];
-  const burst = (stars) => {
-    for (const star of stars) {
-      const r = star.getBoundingClientRect();
-      if (!r.width) continue;                       // (one not showing: the start menu closed)
-      const x = r.left + r.width / 2, y = r.top + r.height / 2;
-      for (let i = 0; i < 12; i++) {
-        const s = document.createElement('span');
-        s.className = 'star-spark'; s.textContent = SPARKS[i % SPARKS.length];
-        s.style.left = x + 'px'; s.style.top = y + 'px';
-        document.body.append(s);
-        const a = (i / 12 + Math.random() * 0.05) * 2 * Math.PI, d = 14 + Math.random() * 16;
-        s.animate([
-          { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
-          { transform: `translate(calc(-50% + ${(Math.cos(a) * d).toFixed(1)}px), calc(-50% + ${(Math.sin(a) * d).toFixed(1)}px)) scale(.4)`, opacity: 0 },
-        ], { duration: 650 + Math.random() * 300, easing: 'cubic-bezier(.2, .7, .3, 1)' }).onfinish = () => s.remove();
-      }
-      star.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.4)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
-    }
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showStars);
-  else showStars();
 })();

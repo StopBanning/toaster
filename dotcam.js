@@ -74,8 +74,11 @@ precision highp float;
 uniform sampler2D src; in vec2 uv; out vec4 o;
 void main() { vec3 c = texture(src, uv).rgb; o = vec4(c, max(c.r, max(c.g, c.b))); }`;
 
+import { compileProgram } from './program.js';
+
 export function createDotCam(canvas) {
   let gl = null, P = null, quad = null, camTex = null, maskTex = null, T = null, broken = false;
+  let jobs = [], ready = false;
   let pulse = 0, pulseV = 0, kickV = 0, kickAt = -9, lastStep = null, heard = null, last = 0;
   let hue = 0, hueTo = 0, slides = 0, chord = null, slidBar = null, drawn = false, uploadedAt = 0;
 
@@ -85,8 +88,8 @@ export function createDotCam(canvas) {
   function build() {
     gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false });
     if (!gl) { broken = true; return; }
-    const shader = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
-    const program = (fs) => { const p = gl.createProgram(); gl.attachShader(p, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
+    jobs = []; ready = false;
+    const program = (fs) => { const job = compileProgram(gl, VS, fs); jobs.push(job); return job.program; };
     P = { dots: program(DOTS), blur: program(BLUR), comp: program(COMP), out: program(OUT) };
     quad = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, quad);
@@ -141,6 +144,7 @@ export function createDotCam(canvas) {
 
   return {
     get broken() { return broken; },
+    get waiting() { return !broken && (!P || !ready); },
     clear() {
       if (gl && P && !gl.isContextLost()) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
       // (its full-window targets freed while it's off: five of them at the window's size)
@@ -155,6 +159,10 @@ export function createDotCam(canvas) {
       if (!P) {
         try { build(); } catch (err) { broken = true; console.error('dots:', err); return; }
         if (broken) return;
+      }
+      if (!ready) {
+        try { if (!jobs.every((job) => job.ready())) return; ready = true; }
+        catch (err) { broken = true; console.error('dots:', err); return; }
       }
       const dt = clamp(t - last, 0, 0.1);
       last = t;
