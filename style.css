@@ -35,6 +35,89 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font); user-s
 #warp { opacity: .55; }
 #glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 #glass[hidden] { display: none; }
+/* ---------- CRT (Y): an old screen over everything ---------- */
+/* Its layers (#tube in the page; .crt is the drop effect's little monitor, another thing) over the whole
+   picture, code and header too, under the notices: the scanlines, three device pixels apart (--crt-px is
+   one, set from the window's scale, so they land on whole pixels and don't shimmer); the phosphor's red,
+   green and blue stripes, a device pixel each; a faint bright band rolling down the screen every few
+   seconds and a flicker (both moved by transform or opacity, so they cost no painting); the glass, with a
+   glare high on the left; and the tube: dark toward its edges, its corners rounded off. The code fringed
+   red one way and blue the other, as a shadow mask does, and glowing a little. The picture swells on the
+   kick (the tube's darkness eases off) and slips on the drop with a burst of static; a new background (V)
+   is a new channel, in static, its number on screen. It comes on as an old set does, a white line opening
+   into the picture, and goes off into a dot. With fewer flashes, none of the flashing: no flicker, roll,
+   swell, slip, static or white line. */
+#tube { position: fixed; inset: 0; z-index: 45; pointer-events: none; overflow: hidden; }
+#tube[hidden] { display: none; }
+#tube i { position: absolute; inset: 0; }
+#tube .t-scan {
+  background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--crt-px, 1px) * 2),
+    rgba(0, 0, 0, .24) calc(var(--crt-px, 1px) * 2), rgba(0, 0, 0, .24) calc(var(--crt-px, 1px) * 3));
+}
+#tube .t-mask {
+  background: repeating-linear-gradient(to right,
+    rgba(255, 40, 80, .07) 0, rgba(255, 40, 80, .07) var(--crt-px, 1px),
+    rgba(40, 255, 120, .045) var(--crt-px, 1px), rgba(40, 255, 120, .045) calc(var(--crt-px, 1px) * 2),
+    rgba(60, 110, 255, .08) calc(var(--crt-px, 1px) * 2), rgba(60, 110, 255, .08) calc(var(--crt-px, 1px) * 3));
+}
+#tube .t-roll {
+  inset: auto 0; top: -28%; height: 28%;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, .045) 45%, rgba(255, 255, 255, .07) 50%, rgba(255, 255, 255, .045) 55%, transparent);
+  animation: tube-roll 7.3s linear infinite;
+}
+@keyframes tube-roll { to { transform: translateY(457%); } }
+#tube .t-flick { background: rgba(255, 255, 255, .03); animation: tube-flick .23s steps(1) infinite; }
+@keyframes tube-flick { 0% { opacity: .3; } 17% { opacity: 1; } 33% { opacity: .55; } 50% { opacity: .9; } 67% { opacity: .15; } 83% { opacity: .7; } }
+#tube .t-static {
+  opacity: 0; background-image: var(--crt-static, none); background-size: 34vmax auto; image-rendering: pixelated;
+}
+#tube.static .t-static { animation: tube-static .34s ease-out 1, tube-snow .06s steps(1) 6; }
+@keyframes tube-static { 0% { opacity: .62; } 45% { opacity: .4; } 100% { opacity: 0; } }
+@keyframes tube-snow { 0% { background-position: 0 0; } 33% { background-position: 37% 61%; } 66% { background-position: 71% 19%; } }
+#tube .t-glare {
+  border-radius: 2.4vmin;
+  background: radial-gradient(ellipse 52% 36% at 24% 12%, rgba(255, 255, 255, .07), transparent 70%),
+    linear-gradient(118deg, transparent 50%, rgba(255, 255, 255, .022) 58%, transparent 66%);
+}
+#tube .t-glass {
+  border-radius: 2.4vmin;
+  background: radial-gradient(ellipse 80% 82% at 50% 50%, transparent 58%, rgba(0, 0, 0, .16) 80%, rgba(0, 0, 0, .46) 100%);
+  box-shadow: 0 0 0 6vmin #000, inset 0 0 5vmin rgba(0, 0, 0, .3);
+  transition: opacity .32s ease-out;
+}
+#tube.kick .t-glass { opacity: .62; transition: none; }
+/* the set's own lettering, top right: the channel, the picture setting, VCR green */
+#tube .t-osd {
+  position: absolute; top: 6vmin; right: 7vmin; white-space: pre; opacity: 0; transition: opacity .4s;
+  font: 700 clamp(14px, 3.6vmin, 36px)/1.25 var(--font); letter-spacing: .08em; text-align: right; color: #63ff84;
+  text-shadow: 0 0 .32em rgba(90, 255, 130, .75), .06em 0 0 rgba(255, 40, 80, .55), -.06em 0 0 rgba(40, 160, 255, .55);
+}
+#tube .t-osd.on { opacity: 1; transition: none; }
+/* on and off: a window onto the picture, the rest black round it (its shadow), opening from a white line
+   and closing into a dot */
+#tube .t-power { display: none; inset: auto; left: 50%; top: 50%; width: 100vw; height: 100vh; transform: translate(-50%, -50%); box-shadow: 0 0 0 100vmax #000; }
+#tube.power-on .t-power { display: block; animation: tube-power-on .62s ease-out forwards; }
+#tube.power-off .t-power { display: block; animation: tube-power-off .5s ease-in forwards; }
+@keyframes tube-power-on {
+  0% { width: 0; height: .5vh; background: #fff; }
+  28% { width: 100vw; height: .5vh; background: #fff; }
+  58% { width: 100vw; height: 100vh; background: rgba(255, 255, 255, .5); }
+  100% { width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0); }
+}
+@keyframes tube-power-off {
+  0% { width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0); }
+  45% { width: 100vw; height: .5vh; background: rgba(255, 255, 255, .85); }
+  75% { width: 1vh; height: .5vh; background: #fff; }
+  100% { width: 0; height: 0; background: #fff; }
+}
+body.calm #tube .t-roll, body.calm #tube .t-flick { animation: none; opacity: 0; }
+body.calm #tube.static .t-static { animation: none; }
+body.calm #tube .t-power { display: none; }
+body.tube-on #code { text-shadow: .055em 0 0 rgba(255, 30, 70, .5), -.055em 0 0 rgba(30, 170, 255, .5), 0 0 .32em color-mix(in srgb, var(--fg) 45%, transparent); }
+/* (the slip: the picture, not the tube, drawn a little bigger while it jumps so its edges never show the page
+   behind it) */
+body.tube-on.jolt > :not(#tube):not(dialog) { animation: tube-jolt .36s steps(1) 1; }
+@keyframes tube-jolt { 0% { transform: translateY(-1.6%) scale(1.045); } 18% { transform: translateY(1%) scale(1.04) skewX(-.5deg); } 36% { transform: translateY(-.4%) scale(1.02); } 54%, 100% { transform: none; } }
 /* the finger frame, portals and big eyes: over the ID card too (in the vertical layout the card sits where the
    camera is, and they went behind it), under the drop effect's pop-ups (#desk-front, later in the page) */
 #segcam, #lens, #portal { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }

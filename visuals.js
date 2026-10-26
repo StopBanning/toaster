@@ -2,6 +2,7 @@
 // wireframe tunnel like the Hardcore Software visualizers, Strudel-style floating punchcard
 // blocks, and the webcam tinted to the theme.
 import { VOICES } from './engine.js';
+import { beatRuns } from './codegen.js';
 import { createDominoes } from './dominoes.js';
 import { compileProgram } from './program.js';
 
@@ -462,12 +463,14 @@ export function createPunchcard(canvas) {
         const v = eng.v[id];
         if (v.shown?.[s] && !v.tooBusy && recent(v.last)) blocks.push({ lane: id, g, len: 0.9, lit: past && level[id] > 0.5 });
       }
-      // The bass: a block per note when its rhythm is known (each lasting to the next), else one
-      // for the bar.
-      const slot = eng.slots[((Math.floor(g / 16) % 4) + 4) % 4];
-      if ((rhythm ? rhythm[s] : s === 0) && slot?.bass && recent(eng.bassSeen)) {
-        const pc = PCS.indexOf(slot.bass.replace(/\d+$/, ''));
-        let len = 16 - s;
+      // The bass: a block per note when its rhythm is known (each lasting to the next, at the note
+      // of its beat where the bass moves in the bar), else one for each of the bar's notes by the
+      // beat (engine.js bassTrack), or one for the bar.
+      const k4 = ((Math.floor(g / 16) % 4) + 4) % 4, slot = eng.slots[k4], runs = beatRuns(eng.bassBeats?.[k4]);
+      const run = runs?.find((r) => r.beats.includes(s >> 2));
+      if ((rhythm ? rhythm[s] : runs ? run.beats[0] * 4 === s : s === 0) && (run || slot?.bass) && recent(eng.bassSeen)) {
+        const pc = run ? run.m % 12 : PCS.indexOf(slot.bass.replace(/\d+$/, ''));
+        let len = rhythm || !run ? 16 - s : run.beats.length * 4;
         if (rhythm) for (let k = s + 1; k < 16; k++) if (rhythm[k]) { len = k - s; break; }
         if (pc >= 0) blocks.push({ lane: 'bass', g, len: len - 0.3, pc, lit: past && level.bass > 0.5 });
       }

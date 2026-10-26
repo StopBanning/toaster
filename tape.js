@@ -14,7 +14,7 @@
 // sections, each written once as a named stack as most of its bars played it (leaving the chords
 // or lead out when they don't recur), played in order with arrange().
 import { NOTES } from './engine.js';
-import { stepParts, wobble } from './codegen.js';
+import { stepParts, wobble, beatRuns, runWeight } from './codegen.js';
 
 const nameOf = (midi) => NOTES[((midi % 12) + 12) % 12].toLowerCase() + (Math.floor(midi / 12) - 1);
 
@@ -49,9 +49,10 @@ export function createTape() {
       cur.bars.push({ b: beat0 + cur.moved, parts });
       cur.who = api.who?.() || cur.who;
     },
-    // wob: the bass's filter sweeps a beat in that bar (2, 3, 4), or 0 (engine.js: wobbleCheck)
-    harmony(beat0, chord, bass, wob = 0) {
-      if (cur) cur.harmony.push({ b: beat0 + cur.moved, chord: chord && { root: chord.root, third: chord.third, name: chord.name }, bass, wob });
+    // wob: the bass's filter sweeps a beat in that bar (2, 3, 4), or 0 (engine.js: wobbleCheck);
+    // beats: its bass notes by the beat (4, null where none: engine.js bassTrack), or null
+    harmony(beat0, chord, bass, wob = 0, beats = null) {
+      if (cur) cur.harmony.push({ b: beat0 + cur.moved, chord: chord && { root: chord.root, third: chord.third, name: chord.name }, bass, wob, beats });
     },
     // The longest stretch as bars from its first: { bpm, bars: [{ parts, chord, bass }], who }; the
     // song before if this one hasn't 4 bars yet; or null. down: where the bar starts now (for the
@@ -77,10 +78,12 @@ export function createTape() {
         at(i).parts = parts;
       }
       for (const r of best.harmony) {
-        const x = at(Math.floor((r.b - off - d + 2) / 4)); // the bar its middle falls in
+        const b0 = r.b - off - d, i = Math.floor((b0 + 2) / 4), x = at(i); // the bar its middle falls in
         if (r.chord) x.chord = r.chord;
         if (r.bass) x.bass = r.bass;
         if (r.wob) x.wob = r.wob;
+        // (its beats turned by as many beats as the bar line moved since, as the steps are)
+        if (r.beats) { const k = Math.round(b0 - 4 * i); x.beats = r.beats.map((_, j) => r.beats[(((j - k) % 4) + 4) % 4]); }
       }
       const keys = [...map.keys()], first = Math.min(...keys), last = Math.max(...keys);
       const bars = [];
@@ -128,11 +131,14 @@ export function songMidi(song, title) {
       const r = 48 + b.chord.root;
       for (const n of [r, r + b.chord.third, r + 7]) note(chords, 1, t0, bar, n, 70);
     }
-    // the bar's bass note on the steps the bass line plays (each held to the next, up to a beat),
-    // or held through the bar
-    if (b.bass) {
+    // the bar's bass notes (by the beat, where the bass moves in it) on the steps the bass line
+    // plays (each held to the next, up to a beat), or each held through its beats
+    const runs = beatRuns(b.beats);
+    if (b.bass || runs) {
+      const noteAt = (s) => (runs ? runs.find((r) => r.beats.includes(s >> 2)).m : b.bass);
       const on = p.bass ? [...p.bass.keys()].filter((s) => p.bass[s]) : [];
-      if (on.length) on.forEach((s, k) => note(bass, 0, t0 + s * step, Math.min(PPQ, ((on[k + 1] ?? 16) - s) * step), b.bass, 95));
+      if (on.length) on.forEach((s, k) => note(bass, 0, t0 + s * step, Math.min(PPQ, ((on[k + 1] ?? 16) - s) * step), noteAt(s), 95));
+      else if (runs) runs.forEach((r) => note(bass, 0, t0 + r.beats[0] * PPQ, r.beats.length * PPQ, r.m, 95));
       else note(bass, 0, t0, bar, b.bass, 95);
     }
   });
@@ -164,7 +170,7 @@ const steps = (b, p) => {
   return (m[p] = Array.from({ length: 16 }, (_, s) => !!v?.[s]));
 };
 const has = (b, p) => {
-  if (p === 'bass') return b.bass != null;
+  if (p === 'bass') return b.bass != null || !!b.beats;
   if (p === 'chords') return b.chord != null;
   if (p === 'lead') return !!b.parts?.vox?.on?.some(Boolean);
   return steps(b, p).some(Boolean);
@@ -201,13 +207,23 @@ function sectionLoop(blocks) {
   const written = (p) => blocks.filter((blk) => present(blk, p)).length * 2 >= blocks.length;
   const drums = {};
   for (const p of DRUMS) if (written(p)) drums[p] = grid(byPos, p);
-  let bass = null, bassRhythm = null, wob = 0;
+  let bass = null, bassBeats = null, bassRhythm = null, wob = 0;
   if (written('bass')) {
     const overall = mostCommon(allb.filter((b) => b.bass != null).map((b) => b.bass));
     bass = byPos.map((pos) => {
       const c = mostCommon(pos.filter((b) => b.bass != null).map((b) => b.bass));
       return c && c[1] * 2 >= pos.length ? c[0] : (overall ? overall[0] : null);
     });
+    // and where the bass moves in the bar, its notes by the beat: each beat's as most of the
+    // position's bars had it (a bar with no beats counting its one note on all four)
+    bassBeats = byPos.map((pos, j) => {
+      const beats = [0, 1, 2, 3].map((k) => {
+        const c = mostCommon(pos.map((b) => beatRuns(b.beats)?.find((r) => r.beats.includes(k)).m ?? b.bass).filter((m) => m != null));
+        return c && c[1] * 2 >= pos.length ? c[0] : bass[j];
+      });
+      return beats.every((m) => m === beats[0]) ? null : beats;
+    });
+    if (!bassBeats.some(Boolean)) bassBeats = null;
     bassRhythm = grid(byPos, 'bassrhythm');
     wob = mostCommon(allb.map((b) => b.wob || 0))[0];
   }
@@ -241,6 +257,7 @@ function sectionLoop(blocks) {
     drums,
     bassRhythm,
     bass,
+    bassBeats,
     wob,
     chords: null,
     lead: null,
@@ -270,7 +287,7 @@ function mismatch(a, b) {
 function samePart(a, b) {
   if (a.bars !== b.bars) return false;
   if (DRUMS.filter((p) => p in a.drums).join(',') !== DRUMS.filter((p) => p in b.drums).join(',')) return false;
-  for (const k of ['bass', 'wob', 'chords', 'lead']) {
+  for (const k of ['bass', 'bassBeats', 'wob', 'chords', 'lead']) {
     if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false;
   }
   return mismatch(a, b) <= TOL;
@@ -349,8 +366,13 @@ function blockCode(four) {
     const texts = four.map((b) => barText((b.parts[id] || []).map((on) => (on ? TOKEN[id] : null)).concat(new Array(16).fill(null)).slice(0, 16)));
     lines.push(`s("${fourBars(texts)}").bank("RolandTR909")${id === 'hhc' ? '.gain(.5)' : id === 'hho' ? '.gain(.4)' : ''}`);
   }
-  if (four.some((b) => b.bass)) {
-    const notes = slots(four.map((b) => (b.bass ? nameOf(b.bass) : '~')));
+  if (four.some((b) => b.bass || b.beats)) {
+    // (a bar whose bass moves, by the beat: [d2 a1], [bb1@3 a1], as the live code writes it)
+    const notes = slots(four.map((b) => {
+      const runs = beatRuns(b.beats);
+      if (runs?.length > 1) return '[' + runs.map((r) => nameOf(r.m) + runWeight(runs, r)).join(' ') + ']';
+      return runs ? nameOf(runs[0].m) : b.bass ? nameOf(b.bass) : '~';
+    }));
     // the bass line's rhythm, as the live code writes it (.struct), bar by bar: different ones go in
     // turn (<...>), as the notes do, so changing rhythms aren't lost (they were, unless all four
     // bars had the same one). A bar without one (or only the downbeat) has its note held all bar.
@@ -386,6 +408,7 @@ function partBars(P) {
       parts,
       chord: P.chords?.[j] ? { name: P.chords[j] } : null,
       bass: P.bass ? P.bass[j] : null,
+      beats: P.bassBeats ? P.bassBeats[j] : null,
       wob: P.wob,
     };
   });

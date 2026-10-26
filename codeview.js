@@ -327,10 +327,11 @@ export function createCodeView(ids) {
       const open = lines.hho.spans.some((sp) => sp.part.steps?.includes(hh.step));
       for (const sp of lines.hho.spans) toggle(sp, open && hitOn(sp.part, hh));
       for (const sp of lines.hhc.spans) toggle(sp, !open && hitOn(sp.part, hh));
-      // Bass notes and chords light for their bar; the bass line's rhythm (its .struct) on each note.
-      const slot = eng.tempo.locked && eng.bar !== null && !eng.silent ? ((eng.bar % 4) + 4) % 4 : -1;
+      // Bass notes and chords light for their bar (a bass note within a bar, for its beats); the bass
+      // line's rhythm (its .struct) on each note.
+      const slot = eng.tempo.locked && eng.bar !== null && !eng.silent ? ((eng.bar % 4) + 4) % 4 : -1, beat = eng.step === null ? -1 : eng.step >> 2;
       for (const id of ['bassline', 'chords']) {
-        for (const sp of lines[id].spans) toggle(sp, sp.part.slots ? sp.part.slots.includes(slot) : hitOn(sp.part, eng.v.bass.lastHit));
+        for (const sp of lines[id].spans) toggle(sp, sp.part.slots ? sp.part.slots.includes(slot) && (!sp.part.beats || sp.part.beats.includes(beat)) : hitOn(sp.part, eng.v.bass.lastHit));
       }
     },
 
