@@ -164,6 +164,15 @@ function lowSlice(buf, sr, c, dec, from, to) {
   return out;
 }
 
+// How a sound in the low end struck, `ago` seconds back in buf: its first 15 ms's level against the
+// 40 ms before it (jump), and the pitch over its first 35 ms (f0, 0 if none)
+function lowStrike(buf, sr, c, dec, ago) {
+  const rms = (x) => { let e = 0; for (const v of x) e += v * v; return Math.sqrt(e / Math.max(1, x.length)); };
+  const fs = sr / dec, first = lowSlice(buf, sr, c, dec, ago, Math.max(0, ago - 0.035));
+  const before = rms(lowSlice(buf, sr, c, dec, ago + 0.045, ago + 0.005));
+  return { jump: rms(first.slice(0, Math.round(0.015 * fs))) / Math.max(1e-9, before), f0: lowPitch(first, fs).f };
+}
+
 // Pitch (28-300 Hz; 0 if there's no clear one) and loudness of x, sampled at fs. (Down to 28: a
 // riddim sub sits as low as C#1, 34.6 Hz, and below 35 there was no pitch to find, so a held sub
 // note counted as a kick.)
@@ -233,6 +242,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     slowTime: new Float32Array(slow.fftSize),
     lp: lowPass(sr),
     dec: Math.max(1, Math.round(sr / 6000)), // the low end, thinned to ~6 kHz for its pitch
+    // A sound taken for a kick that's a bass note changing (see lowDecide): it jumped less than
+    // this (its first 15 ms against the 40 ms before), was softer than this onset strength, and
+    // starts under this pitch. Fit on the onset logs of 22 songs (bass notes off the beat start at
+    // 45-60 Hz and barely jump; kicks jump 2-12x, or read at the pitch's floor, ~30 Hz; Calling
+    // For You's kicks read 78-89 Hz). Three live runs of each: the kick line showed 67% of the
+    // time against 59% (Starships 6 -> 78%, Show Me Love 36 -> 73%). null turns it off.
+    kickFix: { demoteJump: 1.9, demoteS: 1.1, demoteF: 75 },
     lg: new Float32Array(fast.frequencyBinCount),
     prevLg: new Float32Array(fast.frequencyBinCount),
     prevDb: new Float32Array(fast.frequencyBinCount),
@@ -536,8 +552,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       const p = this.lowPending, span = Math.min(0.09, t - p.t);
       this.lowPending = null;
       this.lowRead = null; // (what it read, for tools/checks.js)
+      // How it struck: the low end's jump at its start (its first 15 ms against the 40 ms before it)
+      // and the pitch it starts at (its first 35 ms). A kick is a burst; a bass note changing under
+      // a held line barely jumps, and starts on its note.
+      slow.getFloatTimeDomainData(this.slowTime);
+      const strike = this.lowStrike = lowStrike(this.slowTime, sr, this.lp, this.dec, t - p.t + 0.014);
+      const fix = this.kickFix;
       if (span >= 0.04) {
-        slow.getFloatTimeDomainData(this.slowTime);
         const ago = t - p.t + 0.014; // where the hit is in the analyser's samples (it's heard ~14 ms late)
         const out = lowSlice(this.slowTime, sr, this.lp, this.dec, ago, ago - span);
         const half = out.length >> 1, fs = sr / this.dec;
@@ -565,9 +586,18 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
           return;
         }
       }
-      // (in half-time, the snare's beat has no kick: that's its body)
+      // (in half-time, the snare's beat has no kick: that's its body; and a soft sound that barely
+      // jumped and starts low, off the kick's own steps, is a bass note changing, not a kick: a note,
+      // and the kick it was taken for still counts for the timing, as a held note does. On a step the
+      // kick's line already has, it's the kick, however soft: a house kick under a held bass barely
+      // jumps either, Calling For You's on its third beat)
+      const at = this.placeAt(p.t), onLine = !!at && Math.abs(at.off) <= 0.38 && this.v.bd.on[at.step];
       if (this.halfRole(p.t) === 'snare') this.onsets.push({ t: p.t, id: 'bd', s: p.s });
-      else this.onset('bd', p.t, p.s);
+      else if (fix && !onLine && strike.jump < fix.demoteJump && p.s < fix.demoteS && strike.f0 > 0 && strike.f0 < fix.demoteF) {
+        this.bassHit(p.t, p.s, strike.f0, false);
+        this.onsets.push({ t: p.t, id: 'bd', s: p.s });
+        return;
+      } else this.onset('bd', p.t, p.s);
       // what the low end was doing just before this kick (130-30 ms before), for bassUnderKick
       const ago = t - p.t + 0.014;
       slow.getFloatTimeDomainData(this.slowTime);

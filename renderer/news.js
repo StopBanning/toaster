@@ -4,6 +4,13 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.19',
+    items: [
+      { key: 'kick', text: "the kick line comes in sooner and on more songs: a soft, low hit off the kick's steps is read as the bass, not as a kick that muddles the pattern" },
+      { act: 'mini', text: "the mini player's status shows whole (● LIVE), not cut short" },
+    ],
+  },
+  {
     version: '0.4.18',
     items: [
       { act: 'strength', text: "the sea redone round its lighthouse: the keeper's cottage, beams sweeping with the beat, the Milky Way over the water; it and the festival are night scenes now, under a richer sky" },
