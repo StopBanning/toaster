@@ -60,6 +60,66 @@ function slotParts(values) {
   return parts;
 }
 
+// A bar's bass notes by the beat (4 MIDI notes, null where there's none: see engine.js bassTrack) as
+// runs of one note, [{ m, beats }], each held till the next. A beat without a note keeps the one
+// before it (the bar's first beats, its first note). null if the bar has none.
+export function beatRuns(beats) {
+  if (!beats?.some((m) => m !== null)) return null;
+  const runs = [];
+  let cur = beats.find((m) => m !== null);
+  beats.forEach((m, k) => {
+    if (m !== null) cur = m;
+    const last = runs[runs.length - 1];
+    if (last?.m === cur) last.beats.push(k);
+    else runs.push({ m: cur, beats: [k] });
+  });
+  return runs;
+}
+// A run's length in the bar's mini-notation: [a b] when the runs are even, [a@3 b] when not.
+export const runWeight = (runs, r) => (runs.every((x) => x.beats.length === runs[0].beats.length) || r.beats.length === 1 ? '' : '@' + r.beats.length);
+
+// The bass line's notes for the 4 bars: each bar's note, or where the bass moves within the bar its
+// notes by the beat (beatRuns: <c2 [c2@3 g1]>, the second bar c2 for three beats, then g1). Repeated
+// bars are written with !, as slotParts. Each note knows its bars (slots) and, within a moving bar,
+// its beats, for highlighting.
+function bassParts(eng) {
+  const name = (m) => NOTES[m % 12].toLowerCase() + (Math.floor(m / 12) - 1);
+  const bars = eng.slots.map((s, slot) => {
+    const runs = beatRuns(eng.bassBeats?.[slot]);
+    if (!runs) return s?.bass ? [{ name: s.bass, beats: null }] : null;
+    return runs.length === 1 ? [{ name: name(runs[0].m), beats: null }] : runs.map((r) => ({ name: name(r.m), beats: r.beats, w: runWeight(runs, r) }));
+  });
+  if (!bars.some(Boolean)) return null;
+  const text = (b) => (!b ? '~' : b.length === 1 ? b[0].name : '[' + b.map((r) => r.name + r.w).join(' ') + ']');
+  const texts = bars.map(text);
+  const barParts = (b, slots) => {
+    if (!b) return [{ text: '~' }];
+    if (b.length === 1) return [{ text: b[0].name, slots }];
+    const out = [{ text: '[' }];
+    b.forEach((r, i) => {
+      if (i) out.push({ text: ' ' });
+      out.push({ text: r.name, slots, beats: r.beats });
+      if (r.w) out.push({ text: r.w });
+    });
+    out.push({ text: ']' });
+    return out;
+  };
+  if (texts.every((x) => x === texts[0])) return barParts(bars[0], [0, 1, 2, 3]);
+  // two bars taking turns: <a b>
+  if (texts[0] === texts[2] && texts[1] === texts[3]) return [{ text: '<' }, ...barParts(bars[0], [0, 2]), { text: ' ' }, ...barParts(bars[1], [1, 3]), { text: '>' }];
+  const parts = [{ text: '<' }];
+  for (let i = 0; i < 4;) {
+    let j = i + 1;
+    while (j < 4 && texts[j] === texts[i]) j++;
+    if (parts.length > 1) parts.push({ text: ' ' });
+    parts.push(...barParts(bars[i], Array.from({ length: j - i }, (_, k) => i + k)));
+    if (j - i > 1) parts.push({ text: '!' + (j - i) });
+    i = j;
+  }
+  parts.push({ text: '>' });
+  return parts;
+}
+
 // "The Weeknd" -> TheWeeknd, for the x = x.Artist("Song") header.
 function ident(name) {
   const words = String(name || '').normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
@@ -160,7 +220,7 @@ export function buildLines(eng, meta, t) {
 
   // Like the drums, bass and chords get muted (_) when that part stops playing.
   const line = (head, parts, tail) => [{ text: head }, ...parts, { text: tail }];
-  const bass = slotParts(eng.slots.map((s) => s?.bass || null));
+  const bass = bassParts(eng);
   const chords = slotParts(eng.slots.map((s) => s?.chord?.name || null));
   // The bass line's rhythm, once it has settled: the bar's note on the steps a bass note starts
   // (.struct, the Strudel way: note("<f2 c2>").struct("[~ ~ x ~]*4")). Just the downbeat says

@@ -199,6 +199,40 @@ function lowPitch(x, fs) {
   return { f: 0, rms, r: 0 };
 }
 
+// The bass's note now, for the bass line note by note (bassTrack): YIN (de Cheveigné and Kawahara)
+// on the low end x, thinned to fs, its first w samples against the rest: the pitch (28-300 Hz; 0 if
+// there's no clear one) and the loudness. lowPitch reads a hit once, at its start; this runs every
+// frame on whatever the low end is doing, and YIN's running normalization keeps a held note from
+// reading an octave off as it fades. d: a scratch array (256 long).
+function bassYin(x, w, fs, d) {
+  const tmin = Math.floor(fs / 300), tmax = Math.min(Math.floor(fs / 28), x.length - w - 1);
+  let e = 0;
+  for (let j = 0; j < w; j++) e += x[j] * x[j];
+  const rms = Math.sqrt(e / w);
+  if (e <= 1e-12 || tmax <= tmin + 2) return { f: 0, rms };
+  let run = 0;
+  d[0] = 1;
+  for (let tau = 1; tau <= tmax; tau++) {
+    let s = 0;
+    for (let j = 0; j < w; j++) { const v = x[j] - x[j + tau]; s += v * v; }
+    run += s;
+    d[tau] = run > 0 ? (s * tau) / run : 1;
+    // the first dip under 0.15, at its bottom
+    const k = tau - 1;
+    if (k > tmin && d[k] < 0.15 && d[k] <= d[tau]) {
+      const p = d[k - 1], q = d[tau], den = p - 2 * d[k] + q;
+      return { f: fs / (k + (den > 0 ? (0.5 * (p - q)) / den : 0)), rms };
+    }
+  }
+  return { f: 0, rms };
+}
+
+// The bass tracker's state (bassTrack): its loudness yardstick (the loudest reading of late, fading),
+// the recording's tuning (a running circular mean of how far its notes sit off the semitones), the
+// note being held and when its readings were, and each bar's beats: how many readings each had, and
+// how many of them each held note.
+const newBassTrack = () => ({ ref: 0, c: 0, s: 0, run: { m: -1, n: 0, at: [] }, bars: new Map(), d: new Float32Array(256) });
+
 function makeVoice(id) {
   // [turn a step on above this share of the busiest step, turn it off below this, bars to hold]
   const [onAt, offAt, holdBars] = { bd: [0.5, 0.3, 1], sd: [0.5, 0.3, 1], hhc: [0.35, 0.2, 2], hho: [0.4, 0.25, 2], vox: [0.4, 0.25, 1], bass: [0.45, 0.25, 2] }[id];
@@ -248,7 +282,22 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     // 45-60 Hz and barely jump; kicks jump 2-12x, or read at the pitch's floor, ~30 Hz; Calling
     // For You's kicks read 78-89 Hz). Three live runs of each: the kick line showed 67% of the
     // time against 59% (Starships 6 -> 78%, Show Me Love 36 -> 73%). null turns it off.
-    kickFix: { demoteJump: 1.9, demoteS: 1.1, demoteF: 75 },
+    // placeHeld: a kick under a note that keeps ringing (the low end stays loud, so it takes the
+    // held path below) still belongs on the kick line when it lands on a beat, once two beats of
+    // the bar are already kicks. A four-on-the-floor kick under a held bass barely punches, and
+    // the beat it missed stays missing; a song with one kick on the bar (dubstep) isn't filled in.
+    // Off with the rest of kickFix.
+    kickFix: { demoteJump: 1.9, demoteS: 1.1, demoteF: 75, placeHeld: true },
+    // The first lock against the 4:3 misreading: a syncopated riff's dotted 8ths read as the beat of
+    // a tempo a third faster (Gypsy Woman's intro at 160 for its 120, Sunset Lover at 121 for its 91,
+    // Starships at 165 for its 125, Starboy at 124 for its 93), and the lock held it for 15 s to the
+    // whole song. At the first lock the bars are asked where they repeat (repeats): at 3:4 of the
+    // tempo by `margin` more, that's the tempo (only that way: the misreading always runs fast, and
+    // the bars of a slow song's intro, Sunset Lover's, can repeat at 4:3 by chance); about as well at
+    // 3:4 or 4:3 (within `tie`), it waits, up to `wait` seconds, for the song to say.
+    // Once locked, a sure reading at 4:3 or 3:4 whose grid the hits fit `fit43` times as well (in 6
+    // of the drums' last 12 readings) changes it, as 3:2 does at 1.5. null turns it all off.
+    tempoFix: { margin: 0.1, tie: 0.02, wait: 6, fit43: 1.25 },
     lg: new Float32Array(fast.frequencyBinCount),
     prevLg: new Float32Array(fast.frequencyBinCount),
     prevDb: new Float32Array(fast.frequencyBinCount),
@@ -339,6 +388,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.lastKick = -10;
       this.lowPending = this.bassCheck = null;
       this.lastBassHit = null;
+      this.bt = newBassTrack();
+      this.bassBeats = [null, null, null, null]; // each slot's bass note by the beat (harmonyBar)
       this.lowE = 0;
       this.lastDrop = -99;
       this.nextTempo = 0;
@@ -497,6 +548,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       const sHh = detectOnset(D.hh, fHh, t, true);
       if (sHh) this.hhOnset(t, sHh);
       this.hhTrack(t);
+      this.bassTrack(t);
       // Drum hits need every tick (~66 a second). The long note analysis (a 16384-point FFT)
       // only needs about 22 a second and the melody one about 33, which saves most of the work.
       this.tick = (this.tick + 1) % 6;
@@ -581,7 +633,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
           // with it), and one on the snare's beat isn't a kick, punch or not (the punch is the
           // snare's body, with the bass coming back in under it).
           const role = this.halfRole(p.t);
-          if (role === 'kick' || (p.punch && role !== 'snare')) this.onset('bd', p.t, p.s);
+          // On a beat, a held low end is the kick under the note (see kickFix.placeHeld), not only
+          // when it also punches. Off the beat it stays a note: the kick line isn't filled with the
+          // bass's own rhythm.
+          const at = this.placeAt(p.t);
+          const quartersOn = [0, 4, 8, 12].filter((s) => this.v.bd.on[s]).length;
+          const onBeat = !!(fix && fix.placeHeld && at && Math.abs(at.off) <= 0.38 && at.step % 4 === 0 && (this.v.bd.on[at.step] || quartersOn >= 2));
+          if (role === 'kick' || (role !== 'snare' && (p.punch || onBeat))) this.onset('bd', p.t, p.s);
           else this.onsets.push({ t: p.t, id: 'bd', s: p.s });
           return;
         }
@@ -622,6 +680,57 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         if (after.rms < 0.6 * before.rms) return; // a kick's tail, quieter than the bass it followed
       }
       this.bassHit(p.t, p.s * 0.8, after.f, false);
+    },
+
+    // The bass line note by note, for the code's bassline (harmonyBar sums it up a bar at a time):
+    // every frame, the low end's pitch over the last 88 ms (bassYin, its first 50 ms against the
+    // rest). A note counts once it has held 4 readings running (60 ms: a kick's thump, a pluck's
+    // attack and a slide between notes don't), each reading in the beat it fell in. Notes are named
+    // in the recording's own tuning: one whose instruments sit 40 cents sharp read half its notes a
+    // semitone up (Ramalama). Against the bass lines tracked from the files (18 test songs, a minute
+    // each from 0:40: YIN every 10 ms, held notes, the tuning found), on the 16ths with a bass note:
+    // the bar's one note as the note analysis heard it was right 52% of the time; this tracker's
+    // notes by the beat (harmonyBar), 83% (16 of the 18 songs better); the best any one note a bar
+    // could do is 72%.
+    bassTrack(t) {
+      const B = this.bt, T = this.tempo;
+      slow.getFloatTimeDomainData(this.slowTime);
+      const fs = sr / this.dec, w = Math.round(0.05 * fs);
+      const x = lowSlice(this.slowTime, sr, this.lp, this.dec, 0.088, 0);
+      const { f, rms } = bassYin(x, w, fs, B.d);
+      B.ref = Math.max(rms, B.ref * 0.998);
+      let m = -1;
+      if (f > 0 && rms >= 0.12 * B.ref) {
+        const mf = 69 + 12 * Math.log2(f / 440), off = mf - Math.round(mf);
+        B.c = B.c * 0.995 + Math.cos(2 * Math.PI * off);
+        B.s = B.s * 0.995 + Math.sin(2 * Math.PI * off);
+        m = Math.round(mf - Math.atan2(B.s, B.c) / (2 * Math.PI));
+      }
+      if (!T.locked) { B.run.m = -2; return; }
+      // (the reading is of its first 50 ms, which are centred ~63 ms back; on the hits' clock, which
+      // hears everything ~14 ms late, that's here)
+      const at = t - (x.length - w / 2) / fs + 0.014, bt = this.beatOf(at);
+      const bar = B.bars.get(bt.bar) || { n: new Uint16Array(4), notes: [new Map(), new Map(), new Map(), new Map()] };
+      B.bars.set(bt.bar, bar);
+      bar.n[bt.beat]++;
+      const run = B.run;
+      if (m !== run.m) { run.m = m; run.n = 0; run.at.length = 0; }
+      run.n++;
+      if (m < 0) return;
+      if (run.n < 4) { run.at.push(at); return; }
+      if (run.n === 4) for (const a of run.at) this.bassCount(a, m);
+      this.bassCount(at, m);
+    },
+    bassCount(at, m) {
+      const bt = this.beatOf(at), bar = this.bt.bars.get(bt.bar);
+      if (!bar) return;
+      const notes = bar.notes[bt.beat];
+      notes.set(m, (notes.get(m) || 0) + 1);
+    },
+    // Where time t falls on the grid by the beat: its bar and beat (0-3). (While locked.)
+    beatOf(t) {
+      const T = this.tempo, b = Math.floor(T.n0 + (t - T.t0) / T.P - T.down), bar = Math.floor(b / 4);
+      return { bar, beat: b - 4 * bar };
     },
 
     // A bass note starting at t: its step goes in the bass line's rhythm, and (unless it came with
@@ -1064,6 +1173,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         v.sig = v.on.join();
         v.hitBar.fill(-999);
       }
+      // (the bass line by the beat starts over: its beats aren't the same beats now)
+      this.bt.bars.clear();
+      this.bassBeats.fill(null);
       this.tempo.renumber -= shift;
       this.resetClocks();
     },
@@ -1263,17 +1375,40 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       let midi = -1, mw = 0;
       for (let m = 0; m < 128; m++) if (m % 12 === bassPc) mw = Math.max(mw, this.bassMidi[m]);
       for (let m = 0; m < 128 && midi < 0; m++) if (m % 12 === bassPc && mw > 0 && this.bassMidi[m] >= 0.25 * mw) midi = m;
+      // The bass tracker's notes for the bar (bassTrack): each beat's commonest note, held through a
+      // tenth of the beat's readings or more, and the bar's (the commonest over the whole bar, a tenth
+      // of it). (A third, first tried, lost a staccato bass's notes between its stabs: Show Me Love's
+      // organ, Gotye's pluck; 73% right where a tenth gets 83%, and anything from 2% to 10% the same.)
+      // Where it has one, that's the bar's bass note (it's right more often than the one the note
+      // analysis hears: see bassTrack); the chord and the key still go by the analysis's.
+      const tb = this.bt.bars.get(prevBar);
+      for (const k of this.bt.bars.keys()) if (k <= prevBar) this.bt.bars.delete(k);
+      let beats = null, tracked = -1;
+      if (tb) {
+        const all = new Map();
+        beats = tb.notes.map((notes, k) => {
+          let best = -1, bn = 0;
+          for (const [m, n] of notes) { all.set(m, (all.get(m) || 0) + n); if (n > bn) { bn = n; best = m; } }
+          return best >= 0 && bn >= 0.1 * tb.n[k] ? best : null;
+        });
+        let bn = 0;
+        for (const [m, n] of all) if (n > bn) { bn = n; tracked = m; }
+        if (bn < 0.1 * (tb.n[0] + tb.n[1] + tb.n[2] + tb.n[3])) tracked = -1;
+      }
+      const bassM = tracked > 0 ? tracked : midi;
       // Keep a slot's last known value when that part sits a bar out, so the line comes back intact.
       const slot = ((prevBar % 4) + 4) % 4, old = this.slots[slot];
-      if (chord || midi > 0) {
+      if (chord || bassM > 0) {
         this.slots[slot] = {
           chord: chord || old?.chord || null,
-          bass: midi > 0 ? NOTES[bassPc].toLowerCase() + (Math.floor(midi / 12) - 1) : old?.bass || null,
+          bass: bassM > 0 ? NOTES[bassM % 12].toLowerCase() + (Math.floor(bassM / 12) - 1) : old?.bass || null,
         };
       }
+      if (beats?.some((m) => m !== null)) this.bassBeats[slot] = beats;
+      else if (midi > 0) this.bassBeats[slot] = null; // (the slot's note alone, then)
       const t = nowSec();
-      this.tape?.harmony(prevBar * 4 + this.tempo.down, chord, midi > 0 ? midi : null, this.bassSound.wobble);
-      if (midi > 0) this.bassSeen = t;
+      this.tape?.harmony(prevBar * 4 + this.tempo.down, chord, bassM > 0 ? bassM : null, this.bassSound.wobble, beats?.some((m) => m !== null) ? beats : null);
+      if (bassM > 0) this.bassSeen = t;
       if (chord) {
         this.chordSeen = t;
         this.lastChord = chord;
@@ -1551,13 +1686,16 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // (Oct 16), while the drums read 157 every few seconds, the hits fitting its grid about
       // twice as well. So a sure reading at 3:2 or 2:3 of the locked tempo (within 6%) whose grid
       // the hits fit 1.5 times as well or more, in 6 of the drums' last 12 readings, changes it.
-      // Only 3:2: other ratios come from odd bars and fills (Take Five, in 5/4, read at 3/5 and
-      // 3/4 of its tempo for seconds on end; Dancin at 4/5). Replayed on the onset logs of 20
-      // songs and 36 test runs at three timings, locked as heard, at the right tempo or at a 3:2
+      // 3:2, and (tempoFix) 4:3 at a gentler 1.25: other ratios come from odd bars and fills (Take
+      // Five, in 5/4, read at 3/5 and 3/4 of its tempo for seconds on end; Dancin at 4/5), but at 4:3
+      // house's syncopated intros lock wrong (Gypsy Woman's 160 for its 120) and its kicks fit the
+      // right grid 1.2-1.6 times as well for 30 s before 1.5 came round. Replayed on the onset logs of
+      // 20 songs and 36 test runs at three timings, locked as heard, at the right tempo or at a 3:2
       // one: no right tempo moved, and wrong ones came right (I Must Apologise after 11-14 s).
       if (T.locked && !T.tapped && fit > 0) {
         const at32 = [1.5, 2 / 3].some((r) => Math.abs(bpm / T.bpm - r) / r < 0.06);
-        const better = at32 && !atEdge && conf >= 0.6 && fit >= 0.1 && fit >= 1.5 * heldFit;
+        const at43 = !!this.tempoFix && [4 / 3, 3 / 4].some((r) => Math.abs(bpm / T.bpm - r) / r < 0.06);
+        const better = !atEdge && conf >= 0.6 && ((at32 && fit >= 0.1 && fit >= 1.5 * heldFit) || (at43 && fit >= 0.15 && fit >= this.tempoFix.fit43 * heldFit));
         T.better.push(better ? bpm : 0);
         if (T.better.length > 12) T.better.shift();
         const same = better ? T.better.filter((b) => b && near(b, bpm)) : [];
@@ -1660,7 +1798,24 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     // kick), and starts learning the patterns again. A beat given means the tempo came from the
     // whole sound (fluxUpdate), not the drums.
     lockTo(t, bpm, what, beatAt) {
-      const T = this.tempo;
+      const T = this.tempo, fix = this.tempoFix;
+      // The first lock (not a tapped one): where do the bars repeat, here or at 3:4 or 4:3 of it (see
+      // tempoFix)? Clearly better there: that's the tempo (its beats from the hits, not this reading's).
+      // About as well: wait for the song to say, a while.
+      if (fix && !T.locked && !/tapped/.test(what)) {
+        const here = this.repeats(t, bpm), alts = [3 / 4, 4 / 3].map((r) => bpm * r).filter((x) => x >= 75 && x <= 180);
+        let best = bpm, top = here;
+        const slow = bpm * 0.75, rs = slow >= 75 ? this.repeats(t, slow) : 0;
+        if (rs >= here + fix.margin) { top = rs; best = slow; }
+        if (best !== bpm) {
+          what = `tempo lock ${best.toFixed(1)} (its bars repeat: ${top.toFixed(2)}, against ${here.toFixed(2)} at ${bpm.toFixed(1)})`;
+          bpm = best;
+          beatAt = undefined;
+        } else {
+          T.firstTry ??= t;
+          if (t - T.firstTry < fix.wait && alts.some((x) => this.repeats(t, x) >= here - fix.tie)) return;
+        }
+      }
       this.tape?.lock(bpm, T.down);
       this.note(what);
       const before = T.locked ? this.stepAt(t) : null;
@@ -1684,6 +1839,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         v.sig = null; v.sigN = 0;
         v.long.fill(0); v.counts.length = 0; // (the hats' fallback memory too: a new grid)
       }
+      this.bt.bars.clear();
       this.kickB.fill(0);
       this.snareB.fill(0);
       this.changeB.fill(0);

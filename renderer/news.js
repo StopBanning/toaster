@@ -4,6 +4,16 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.20',
+    items: [
+      { act: 'visual', text: 'fire, a new background: the old Doom fire in square pixels, lit by the song: the kick lifts it, the hats spit sparks, and it flares on every drop' },
+      { act: 'crt', text: 'CRT: an old TV over everything; it comes on from a white line and goes off into a dot, slips into static on the drop, and each background is a channel' },
+      { key: 'bass', text: 'the bass line by the beat: where the bass moves in a bar, the code writes each note as it plays (Show Me Love: <[d2 f2 a1@2] [bb1@3 a1]>, where it was one note a bar), and the blocks and the song export (X) follow it' },
+      { key: 'kick', text: "four on the floor holds together: a kick under a held bass note, landing on a beat, joins the kick line, so house and disco songs keep all four kicks" },
+      { key: 'tempo', text: 'the right tempo from the start: a syncopated intro no longer locks a third too fast (Gypsy Woman read at 160 for its 120; Sunset Lover, Starships, and Starboy all song)' },
+    ],
+  },
+  {
     version: '0.4.19',
     items: [
       { key: 'kick', text: "the kick line comes in sooner and on more songs: a soft, low hit off the kick's steps is read as the bass, not as a kick that muddles the pattern" },

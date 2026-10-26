@@ -17,6 +17,7 @@ import { createSegcam } from './segcam.js';
 import { createGestures } from './gestures.js';
 import { createHandLog } from './handlog.js';
 import { createSpiral, createWheel } from './rings.js';
+import { createFire } from './fire.js';
 import { createWarp } from './warp.js';
 import { createWorlds } from './worlds.js';
 import { createChrome } from './chrome.js';
@@ -33,8 +34,8 @@ import { NEWS, newsSince } from './news.js';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'off'];
-const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts']; // the backgrounds drawn on the #vis canvas
+const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off'];
+const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'];
 const DROPS = ['xp takeover', 'blue screen', 'not responding', 'off'];
@@ -79,6 +80,7 @@ let asciiCamField = null;
 const asciiCam = { get waiting() { return !asciiCamField || asciiCamField.waiting; }, clear: () => asciiCamField?.clear(), draw: (...a) => (asciiCamField ??= createField($('asciicam'))).draw(...a) };
 const tunnel = createTunnel($('vis'));
 const spiral = createSpiral($('vis')), wheel = createWheel($('vis')); // on the tunnel's canvas
+const fire = createFire($('vis')); // and the fire
 const warp = createWarp($('warp'));
 const worlds = createWorlds($('worlds'), $('worldwords'));
 const chrome = createChrome($('chrome'));
@@ -128,6 +130,7 @@ const state = {
   visual: 0, strength: 1, blocks: true, blockLook: 'blocks', orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
+  crt: false, // Y: an old screen over everything (see #tube in the CSS)
   eyes: false, // the camera's third setting: big eyes over your face
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
   camFx: 0, // the camera's effect (K), in CAM_FX
@@ -149,7 +152,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'codeHidden', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
+const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -191,6 +194,7 @@ function loadSettings() {
   for (const [id, k] of Object.entries(keys)) if (typeof k === 'string' && k && !used.has(k)) { state.keys[id] = k; used.add(k); }
   state.glass = state.glass === true;
   state.codeHidden = state.codeHidden === true;
+  state.crt = state.crt === true;
 }
 
 // How far ahead (seconds) to draw the blocks so they land when you hear the beat. The beat clock
@@ -443,10 +447,12 @@ window.nc?.onNowPlaying((info) => {
 eng.on.kick = (s) => {
   field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick();
   lens.kick(s, state.calm);
+  fire.kick(s, state.calm);
   portal.kick(s, state.calm);
   // the ones that punch the whole picture's light (the tunnel's flash, the warp, the camera's and
   // the card's glitches) sit out with fewer flashes on
   if (!state.calm) { tunnel.kick(s); warp.kick(s); cam.kick(s); card.kick(s); }
+  if (state.crt && !state.calm && s > 0.4) crtKick();
   if (VISUALS[state.visual] === 'worlds') {
     // (whether it's the bar's first beat, a 16th either way; null before the beat is found)
     const t = nowSec(), at = eng.placeAt(t);
@@ -462,7 +468,9 @@ eng.on.drop = () => {
   if (clipsThisSong < 2 && t - lastClipAt > 12 && clips.drop()) { clipsThisSong++; lastClipAt = t; flashStatus('✂ clipping the drop…'); }
   if (VISUALS[state.visual] === 'worlds') worlds.drop(t, eng.bar);
   if (VISUALS[state.visual] === 'chrome') chrome.splash(state.calm);
+  if (VISUALS[state.visual] === 'fire') fire.drop(t);
   portal.drop(t, eng.tempo.P || 0.5); // (the glass: you, back in view for a beat)
+  if (state.crt && !state.calm) { replay(document.body, 'jolt'); crtStatic(); }
   const mode = DROPS[state.drop];
   // a bar's length in seconds; half a second a beat if the tempo isn't known yet
   if (mode === 'xp takeover') takeover.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4);
@@ -494,7 +502,7 @@ function setVisual(i) {
   state.visual = i;
   const mode = VISUALS[i];
   if (!FIELD_VIS.includes(mode)) field.clear();
-  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spectrogram', spectro], ['scenery', scenery]]) if (mode !== name) v.clear();
+  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spectrogram', spectro], ['scenery', scenery], ['fire', fire]]) if (mode !== name) v.clear();
   $('b-visual').textContent = mode + ' ▾';
   document.body.classList.toggle('worlds-on', mode === 'worlds');
   document.body.classList.toggle('chrome-on', mode === 'chrome');
@@ -584,6 +592,68 @@ function setCodeHidden(on) {
   state.codeHidden = on;
   document.body.classList.toggle('nocode', on);
   saveSettings();
+}
+
+// Y: the CRT, an old TV over everything (#tube and body.tube-on in the CSS; .crt is the drop effect's
+// monitor); its scanlines and phosphor stripes are spaced in whole device pixels, so the window's scale
+// sets them. It comes on from a white line, as an old set does (at launch too, when it was left on), and
+// goes off into a dot.
+let crtOffT = 0;
+function setCrt(on) {
+  state.crt = on;
+  const tube = $('tube');
+  clearTimeout(crtOffT);
+  tube.style.setProperty('--crt-px', `${1 / (devicePixelRatio || 1)}px`);
+  if (on) {
+    if (!tube.style.getPropertyValue('--crt-static')) tube.style.setProperty('--crt-static', crtSnow());
+    document.body.classList.add('tube-on');
+    tube.hidden = false;
+    tube.classList.remove('power-off');
+    replay(tube, 'power-on');
+    crtOffT = setTimeout(() => tube.classList.remove('power-on'), 700);
+    crtOsd(crtChannel());
+  } else if (!tube.hidden) {
+    // (the picture shrinks into the dot, then the page is back as it was)
+    tube.classList.remove('power-on');
+    replay(tube, 'power-off');
+    crtOffT = setTimeout(() => { tube.hidden = true; tube.classList.remove('power-off'); document.body.classList.remove('tube-on'); }, state.calm ? 0 : 520);
+  }
+  saveSettings();
+}
+// (a class's animation from its start, even while it's still running)
+function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+// The static the set shows on a drop and between channels: a small field of grey snow, drawn once,
+// stretched big and blocky over the screen.
+function crtSnow() {
+  const c = document.createElement('canvas');
+  c.width = 160; c.height = 90;
+  const x = c.getContext('2d'), im = x.createImageData(160, 90);
+  for (let i = 0; i < im.data.length; i += 4) {
+    const v = Math.random() < 0.5 ? Math.random() * 90 : 120 + Math.random() * 135;
+    im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255;
+  }
+  x.putImageData(im, 0, 0);
+  return `url(${c.toDataURL()})`;
+}
+function crtStatic() { if (state.crt && !state.calm) replay($('tube'), 'static'); }
+// The set's lettering, top right, for a couple of seconds: the channel (the background, V) or the
+// picture (the theme, T)
+const crtChannel = () => `CH ${String(state.visual + 1).padStart(2, '0')}\n${VISUALS[state.visual].toUpperCase()}`;
+let crtOsdT = 0;
+function crtOsd(text) {
+  if (!state.crt) return;
+  const osd = $('tube').querySelector('.t-osd');
+  osd.textContent = text;
+  osd.classList.add('on');
+  clearTimeout(crtOsdT);
+  crtOsdT = setTimeout(() => osd.classList.remove('on'), 2200);
+}
+// (the kick: the tube's darkness eased off for a moment, and back over a third of a second (the CSS))
+let crtKickT = 0;
+function crtKick() {
+  $('tube').classList.add('kick');
+  clearTimeout(crtKickT);
+  crtKickT = setTimeout(() => $('tube').classList.remove('kick'), 60);
 }
 
 // Fewer flashes: the help's checkbox (see eng.on.kick, cuts, the takeover and body.calm in the CSS).
@@ -692,6 +762,8 @@ function setCamFx(i, say) {
 function nextTheme() {
   state.theme = (state.theme + 1) % THEMES.length;
   applyTheme();
+  crtOsd(`PICTURE
+${THEMES[state.theme].toUpperCase()}`);
   saveSettings();
 }
 
@@ -1273,6 +1345,7 @@ function draw(now) {
   else if (mode === 'spiral') spiral.draw(t, eng, col, stageRect());
   else if (mode === 'pitchwheel') wheel.draw(t, eng, col, stageRect());
   else if (mode === 'warp') warp.draw(t, eng, col);
+  else if (mode === 'fire') fire.draw(t, eng, col);
   else if (mode === 'worlds') {
     const played = ['bd', 'sd', 'hhc', 'hho'].filter((id) => eng.present(id, t)).map((id) => ({ bd: 'kick', sd: 'clap', hhc: 'hats', hho: 'open hats' })[id]).join(' ');
     worlds.draw(t, eng, { song: currentSong(), lines: Object.values(lineTexts()).filter(Boolean), played, chord: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', codeBox, col });
@@ -1352,7 +1425,7 @@ function showVisMenu(open) {
   visMenu.style.minWidth = `${$('b-visual').offsetWidth}px`;
 }
 $('b-visual').onclick = () => showVisMenu(visMenu.hidden);
-visMenu.onclick = (e) => { const b = e.target.closest('button'); if (b) { setVisual(+b.dataset.i); showVisMenu(false); } };
+visMenu.onclick = (e) => { const b = e.target.closest('button'); if (b) { setVisual(+b.dataset.i); showVisMenu(false); crtStatic(); crtOsd(crtChannel()); } };
 addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closest('#vis-menu, #b-visual')) showVisMenu(false); }, true);
 // the koi pond: a click on the water (not on a button, a menu or a panel) drops food there, and the
 // koi nearest come to it
@@ -1382,7 +1455,7 @@ $('rename-form').addEventListener('submit', () => {
 // (only the ones that differ from these). Esc, ? and F11 stay as they are.
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
-  { id: 'visual', key: 'v', run: () => setVisual((state.visual + 1) % VISUALS.length) },
+  { id: 'visual', key: 'v', run: () => { setVisual((state.visual + 1) % VISUALS.length); crtStatic(); crtOsd(crtChannel()); } },
   { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
@@ -1408,13 +1481,14 @@ const ACTIONS = [
   { id: 'layout', key: 'l', run: () => toggleLayout() },
   { id: 'mini', key: 'w', run: () => toggleMini() },
   { id: 'theme', key: 't', run: () => nextTheme() },
+  { id: 'crt', key: 'y', run: () => { setCrt(!state.crt); flashStatus(state.crt ? 'crt on' : 'crt off'); } },
   { id: 'name', key: 'e', run: () => renameSong() },
   { id: 'hide', key: 'h', run: () => document.body.classList.toggle('clean') },
   { id: 'code', key: 'z', run: () => { setCodeHidden(!state.codeHidden); flashStatus(state.codeHidden ? `code hidden: ${K('code')} shows it` : 'code shown'); } },
   { id: 'full', key: 'f', run: () => window.nc?.toggleFullscreen() },
 ];
 // the footer's list of keys, in this order: [actions..., what it says]
-const FOOTER = [['visual', 'visual'], ['strength', 'strength'], ['theme', 'theme'], ['orb', 'orb'], ['blocks', 'blocks'], ['glass', 'glass'], ['card', 'card'], ['cam', 'cam'], ['camfx', 'cam fx'], ['tap', 'tap'], ['hush', 'hush'], ['drop', 'drop now'], ['dropfx', 'drop fx'], ['rec', 'rec'], ['clips', 'drop clips'], ['export', 'export'], ['strudel', 'strudel'], ['layout', 'layout'], ['mini', 'mini'], ['code', 'hide code'], ['hide', 'hide'], ['full', 'full'], ['machine', 'machine'], ['source', 'source'], ['name', 'name'], ['later', 'earlier', 'sync']];
+const FOOTER = [['visual', 'visual'], ['strength', 'strength'], ['theme', 'theme'], ['crt', 'crt'], ['orb', 'orb'], ['blocks', 'blocks'], ['glass', 'glass'], ['card', 'card'], ['cam', 'cam'], ['camfx', 'cam fx'], ['tap', 'tap'], ['hush', 'hush'], ['drop', 'drop now'], ['dropfx', 'drop fx'], ['rec', 'rec'], ['clips', 'drop clips'], ['export', 'export'], ['strudel', 'strudel'], ['layout', 'layout'], ['mini', 'mini'], ['code', 'hide code'], ['hide', 'hide'], ['full', 'full'], ['machine', 'machine'], ['source', 'source'], ['name', 'name'], ['later', 'earlier', 'sync']];
 const RESERVED = new Set(['escape', '?', '/', 'f11', 'tab', 'enter', 'shift', 'control', 'alt', 'meta', 'capslock', 'contextmenu']);
 const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
@@ -1551,6 +1625,7 @@ setBlocks(state.blocks);
 setOrb(state.orb);
 setGlass(state.glass);
 setCodeHidden(state.codeHidden);
+setCrt(state.crt);
 setCalm(state.calm);
 setUpdates(state.updates);
 setTimeout(() => offerUpdate(), 8000);
