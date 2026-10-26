@@ -265,6 +265,8 @@ body.mini #card .c-fields > div:not(.c-title), body.mini #card .c-auth, body.min
 body.mini #card .c-fields { display: block; }
 body.mini.card-on #code { padding: 40px calc(var(--card-w, 160px) + 22px) 10px 14px; }
 body.mini header button:not(#b-mini) { display: none; }
+/* (the buttons gone, the status has the strip to itself: whole, not the narrow window's "● LI…") */
+body.mini header #status { max-width: none; overflow: visible; padding-left: 8px; padding-right: 8px; }
 /* the star button after the name: GitHub's logo, the project's star count, a star; it fades in with
    its count (stars.js). (The star: dim, filling with gold from the bottom as the count rolls up (--fill,
    0-1); the count on odometer wheels, a digit a line; the glyphs it bursts into; a press sinks it.) */
