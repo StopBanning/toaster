@@ -293,6 +293,8 @@ html.darwin .os-win { display: none; }
 .os-web { display: none; }
 html.web .os-web { display: inline; }
 html.web .os-desk { display: none; }
+/* (a page can't make its window tall or small and on top: those two are the desktop app's) */
+html.web #b-mini, html.web #b-layout, html.web tr[data-act="mini"], html.web tr[data-act="layout"] { display: none; }
 html.darwin header { left: 0; width: 100%; padding-left: 78px; padding-right: 12px; }
 html.web header { left: 0; width: 100%; padding-right: 12px; } /* (a page has no window buttons to leave room for) */
 html.darwin.full header { padding-left: 12px; }
