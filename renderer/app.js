@@ -141,6 +141,7 @@ const state = {
   sceneryScene: 'auto', // and its scene (A too): auto (a new one each song), or one by name
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
+  radio: '', // the radio's address, as last played
   seenVersion: '', // the version last opened, to tell what's new after an update
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
   hushed: false, // every part muted and the picture dimmed (a raised fist, or Q)
@@ -153,7 +154,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
+const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'radio', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -245,7 +246,7 @@ function attach(node, source, label) {
   state.label = label;
   tapRecording();
   clips.retap();
-  // a file or the demo plays from its start; system audio and inputs may be halfway through a song
+  // a file or the demo plays from its start; system audio, inputs and the radio may be halfway through a song
   freshStart(source === 'file' || source === 'demo');
   $('menu').hidden = true;
   document.body.classList.add('live');
@@ -314,17 +315,19 @@ async function useDemo() {
   attach(state.demo.out, 'demo', 'demo beat');
 }
 
-async function useFile(file) {
+// A file or the radio: an audio element, played to the speakers and heard by the analysis. load
+// gives it what to play, once it's this pick's turn.
+async function playElement(source, label, load) {
   const ticket = ++picking;
   await ac.resume();
   if (outdated(ticket)) return;
   detach();
-  const el = new Audio(URL.createObjectURL(file));
-  el.loop = true;
+  const el = new Audio();
+  load(el);
   const node = ac.createMediaElementSource(el);
   node.connect(ac.destination);
   state.el = el;
-  attach(node, 'file', file.name);
+  attach(node, source, label);
   try { await el.play(); } catch (err) {
     if (state.el !== el) return; // a newer source already took over
     detach();
@@ -335,7 +338,29 @@ async function useFile(file) {
     $('status').textContent = restingStatus();
     throw err;
   }
-  if (outdated(ticket)) el.pause();
+  if (outdated(ticket)) { el.pause(); return; }
+  // (a stream that ends, or anything that drops, says so, as system audio does when it stops)
+  el.onended = el.onerror = () => { if (state.el === el) showMenu(`${label} stopped playing. Pick a source.`, 'warning'); };
+}
+
+async function useFile(file) {
+  await playElement('file', file.name, (el) => { el.src = URL.createObjectURL(file); el.loop = true; });
+}
+
+// The radio: the stream at an address you paste in (Toaster comes with no stations). It's read
+// cross-origin, the only way the analysis hears another server's sound (see docs/how-it-works.md).
+async function useRadio(address) {
+  let url = null;
+  try { url = new URL(address.trim()); } catch { /* not an address */ }
+  if (!['http:', 'https:'].includes(url?.protocol)) throw new Error("That isn't a stream's address: paste one that starts with http:// or https://.");
+  const label = url.host + url.pathname.replace(/\/$/, '');
+  const browser = desktopApp() ? '' : ` In a browser, a stream only plays if its server lets other sites play it, and an https page can't play an http stream: the Toaster app for Windows or Mac has neither limit (${$('b-star').href}).`;
+  await playElement('radio', label, (a) => { a.crossOrigin = 'anonymous'; a.src = url.href; }).catch(() => {
+    throw new Error(`Could not play ${label}. The station may be off the air, or this isn't the stream itself (MP3 or AAC) but the station's page or a .pls or .m3u playlist (open one of those in a text editor: the stream's address is in it).${browser}`);
+  });
+  if (state.source !== 'radio') return; // (another pick took over before it played)
+  state.radio = url.href; // (kept for next time once it plays)
+  saveSettings();
 }
 
 // What went wrong when the microphone wouldn't open, said so it can be acted on. iOS asks about the
@@ -498,6 +523,8 @@ function currentSong() {
   if (state.source === 'system') return state.winSong;
   if (state.source === 'demo') return { title: 'demo_beat', artist: 'Toaster' };
   if (state.source === 'file') return { title: state.label.replace(/\.[^.]+$/, ''), artist: 'File' };
+  // (an input or the radio: no title, which also lets the engine drop a beat that's gone, as when
+  // a station goes from a song to talking: see song() in engine.js)
   return null;
 }
 
@@ -1527,6 +1554,7 @@ $('go-system').onclick = run(useSystem);
 $('go-demo').onclick = run(useDemo);
 $('go-file').onclick = () => $('file').click();
 $('go-input').onclick = run(chooseInput);
+$('radio').onsubmit = (e) => { e.preventDefault(); useRadio($('radio-url').value).catch(showError); }; // (its button, or Enter in the field)
 $('file').onchange = () => { const f = $('file').files[0]; if (f) useFile(f).catch(showError); $('file').value = ''; };
 $('b-source').onclick = () => showMenu();
 // (on a touch screen, with no Esc: the menu closes with its button, or a tap beside it)
@@ -1740,7 +1768,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (!visMenu.hidden) { showVisMenu(false); if (k === 'escape') return; }
   if (k === 'escape') { closeMenu(); return; }
-  if (e.target.closest('#alerts')) return; // let Enter/Space press the message box's button
+  if (e.target.closest('#alerts, #menu:not([hidden]) input')) return; // let Enter/Space press the message box's button, and an address be typed
   if (k === '?' || k === '/') { $('help').showModal(); return; }
   if (k === 'f11') { e.preventDefault(); window.nc?.toggleFullscreen(); return; }
   const act = byKey.get(k);
@@ -1790,6 +1818,7 @@ window.nc?.version?.().then((v) => {
 });
 
 loadSettings();
+$('radio-url').value = state.radio;
 newsRows();
 $('b-rec').dataset.title = `Record a video of the window, with the sound, into ${onMac() ? 'Movies/Toaster' : 'Videos\\Toaster'}`;
 applyKeys();

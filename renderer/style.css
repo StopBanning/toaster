@@ -398,9 +398,10 @@ html.darwin.full header { padding-left: 12px; }
 .card { width: min(620px, 100%); border: 2px solid var(--fg); background: var(--bg); padding: 26px; }
 .card h1 { margin: 0; font-size: 28px; }
 .card .sub { margin: 6px 0 20px; color: var(--dim); }
-.opts { display: grid; grid-template-columns: max-content 1fr; gap: 10px 14px; align-items: center; }
+.opts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 14px; align-items: center; }
 .opts button { font-size: 14px; padding: 8px 14px; text-align: left; }
 .opts span { color: var(--dim); font-size: 12px; }
+#radio { display: contents; } /* (its button and field sit in the grid as the other rows do) */
 .tip { font-size: 12px; line-height: 1.5; margin: 16px 0 0; color: var(--dim); }
 /* a touch screen (an iPad has no Esc or S): the bars stay readable while playing, the menu has a way out, and the buttons are big enough to hit */
 .menu-close { display: none; }
@@ -613,7 +614,7 @@ dialog .vtag { color: var(--dim); font-size: 11px; margin-left: 4px; }
 dialog tr.sec th { text-align: left; padding: 12px 0 4px; color: var(--dim); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; font-size: 11px; }
 dialog form { text-align: right; margin-top: 14px; }
 #rename-form { display: grid; gap: 10px; text-align: left; }
-#rename-form input { font: inherit; padding: 6px 8px; background: transparent; color: inherit; border: 1px solid var(--dim); }
+#rename-form input, #radio-url { font: inherit; padding: 6px 8px; background: transparent; color: inherit; border: 1px solid var(--dim); }
 #rename-form button { justify-self: end; }
 #device-list { display: grid; gap: 8px; margin: 8px 0; }
 #device-list button { text-align: left; }

@@ -55,6 +55,21 @@ from its first frame, so every clip is an ordinary video, nothing cut or stitche
 works alongside M. While it's on, the rec button shows ✂; it costs a video encoder or two running
 all the time, so it's off until you turn it on.
 
+## The radio
+
+The radio (in the source menu) plays an internet radio stream from the address you paste in: the
+stream itself, MP3 or AAC from an Icecast or Shoutcast server, not the station's page or its .pls or
+.m3u playlist (the stream's address is inside those). Toaster comes with no stations (a stream is
+its station's to offer, and many don't let apps come with theirs), so you bring the address; the
+last one that played is remembered. It plays through the app the way a file does, so the blocks are
+timed the same way. The song titles a stream carries aren't read, so, as on an input, a new song
+starts the code over when Toaster hears a new tempo or a pause. If the stream ends or drops, it
+says so and the source menu comes back.
+
+The stream is read cross-origin (CORS), the only way the analysis hears sound from another server.
+The app's page is a file on your machine, which may read sound from any server; on the web page a
+stream only plays if its server allows it, and an https page can't play an http stream.
+
 ## The camera
 
 Everything the camera sees stays on this machine. While it's on, two things look at it:
@@ -74,7 +89,7 @@ a second to set up on the graphics card; after that it starts at once. If the mo
 (`hand_landmarker/hand_landmarker/float16/1/`, `face_landmarker/face_landmarker/float16/1/` and
 `image_segmenter/selfie_segmenter/float16/latest/`).
 
-To look at the page in a browser (only the demo beat, files and inputs work there):
+To look at the page in a browser (only the demo beat, files, inputs and some radio streams work there):
 `node tools/serve.mjs`, then open http://localhost:5173.
 
 ## The blocks
