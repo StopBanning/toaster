@@ -60,7 +60,8 @@ all the time, so it's off until you turn it on.
 The radio (in the source menu) plays an internet radio stream from the address you paste in: the
 stream itself, MP3 or AAC from an Icecast or Shoutcast server, not the station's page or its .pls or
 .m3u playlist (the stream's address is inside those). Toaster comes with no stations (a stream is
-its station's to offer, and many don't let apps come with theirs), so you bring the address; the
+its station's to offer, and many don't let apps come with theirs), so you bring the address
+([radio-stations.md](radio-stations.md) lists a few stations that publish theirs for any player); the
 last one that played is remembered. It plays through the app the way a file does, so the blocks are
 timed the same way. The song titles a stream carries aren't read, so, as on an input, a new song
 starts the code over when Toaster hears a new tempo or a pause. If the stream ends or drops, it

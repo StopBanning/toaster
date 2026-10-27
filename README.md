@@ -185,7 +185,8 @@ press O (your browser opens it with the code in the link), and the radio's strea
   (Windows' media controls, or the Mac's Now Playing), so any player that shows up there works:
   Spotify, browsers and the rest.
 - The radio (S) plays an internet radio stream whose address you paste in; Toaster comes with no
-  stations. More in [docs/how-it-works.md](docs/how-it-works.md#the-radio).
+  stations, but [docs/radio-stations.md](docs/radio-stations.md) lists a few that publish theirs.
+  More in [docs/how-it-works.md](docs/how-it-works.md#the-radio).
 - For the finger frame, the portals and the hand signs, keep your hands a little inside the camera's picture.
 - On a touch screen (an iPad, say), ☰ in the header opens every key as a button, each showing what it's set to.
 - What it can and can't hear yet: the end of [docs/how-it-works.md](docs/how-it-works.md).
