@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream: http: https:" />
 <title>Toaster</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="Toaster hears whatever is playing and writes it out as live Strudel code in front of you: the beat, the bass line and the chords, typed out over visuals that move with them." />
@@ -155,6 +155,7 @@
       <button id="go-demo">✦ demo beat</button><span>built-in test track</span>
       <button id="go-file">▤ audio file</button><span>or drop a file on the window</span>
       <button id="go-input">◉ audio input</button><span>a mic or line-in</span>
+      <form id="radio" novalidate><button id="go-radio">∿ radio</button><input id="radio-url" type="url" placeholder="paste a stream's address, then Enter" aria-label="the radio stream's address" autocomplete="off" /></form>
     </div>
     <p class="tip">Nothing is recorded or uploaded.<span class="key-only"> Esc closes this.</span></p>
     <p class="tip os-web-b">? shows the keys and how it works. The desktop app hears everything your PC plays by itself, no sharing.</p>
@@ -206,7 +207,7 @@
     <tr data-act="hide,full"><td>H / F</td><td>hide the header and footer / fullscreen</td></tr>
     <tr data-act="machine"><td>I</td><td>machine readout</td></tr>
     <tr class="sec"><th colspan="2">setup</th></tr>
-    <tr data-act="source"><td>S</td><td>audio source: system audio, demo beat, file, input</td></tr>
+    <tr data-act="source"><td>S</td><td>audio source: system audio, demo beat, file, input, radio</td></tr>
     <tr data-act="name"><td>E</td><td>name the song yourself</td></tr>
     <tr data-act="later,earlier"><td>[ / ]</td><td>blocks timing: ] if they land late, [ if early</td></tr>
   </table>

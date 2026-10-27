@@ -344,6 +344,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.kickB = new Float32Array(4);
       this.snareB = new Float32Array(4);
       this.changeB = new Float32Array(4);
+      // a new section (a drop landing, a breakdown) starts on a bar's 1: the level summed over each beat, the last
+      // 12 beats' levels (dB), and the votes for each beat of 4 (sectionB) from where a level change held a bar
+      this.beatE = 0; this.beatEn = 0; this.beatDb = []; this.sectionB = new Float32Array(4);
       // the snare's ring on each beat of 4 and how well it holds (snareRing): the medians of the
       // last 8 readings of each (ringH, holdH), how many beats each has been measured on, from the
       // 2-14 kHz loudness of the last 1.2 seconds, frame by frame; ringBeat: the beat waiting to be
@@ -438,6 +441,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       for (const s of this.time) ss += s * s;
       const rms = Math.sqrt(ss / this.time.length);
       this.level = Math.max(rms, this.level * 0.9);
+      this.beatE += rms * rms; this.beatEn++;
       if (rms > 0.004) this.lastSound = t;
       const wasSilent = this.silent;
       this.silent = t - this.lastSound > 1.2;
@@ -1020,15 +1024,16 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.beatBass.fill(0);
     },
 
-    newBeat() {
-      for (let i = 0; i < 4; i++) { this.kickB[i] *= 0.97; this.snareB[i] *= 0.97; this.changeB[i] *= 0.97; }
-      const K = this.kickB, S = this.snareB, H = this.changeB, T = this.tempo;
+    newBeat(beat) {
+      for (let i = 0; i < 4; i++) { this.kickB[i] *= 0.97; this.snareB[i] *= 0.97; this.changeB[i] *= 0.97; this.sectionB[i] *= 0.995; }
+      this.sectionBeat(beat);
+      const K = this.kickB, S = this.snareB, H = this.changeB, C = this.sectionB, T = this.tempo;
       this.halfTime();
       let best = T.half === null ? 0 : (T.half + 2) % 4, bestScore = -Infinity;
       for (let d = 0; d < 4 && T.half === null; d++) {
         // (a halved tempo knows its backbeat: the bar can start on either kick, never on the snare)
         if (T.halved && (d - T.down) % 2) continue;
-        const score = K[d] + 0.5 * K[(d + 2) % 4] + S[(d + 1) % 4] + S[(d + 3) % 4] - 0.5 * (S[d] + S[(d + 2) % 4]) + 3 * H[d];
+        const score = K[d] + 0.5 * K[(d + 2) % 4] + S[(d + 1) % 4] + S[(d + 3) % 4] - 0.5 * (S[d] + S[(d + 2) % 4]) + 3 * H[d] + 2 * C[d];
         if (score > bestScore + 1e-6) { bestScore = score; best = d; }
       }
       if (best === T.down) { T.downN = 0; return; }
@@ -1040,6 +1045,26 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         T.down = best;
         T.downN = 0;
       }
+    },
+
+    // A new section starts on a bar's 1: a drop landing, a breakdown, the band coming in. Each beat's level is kept
+    // (beat is the one just begun, so the one heard is beat - 1); 4 beats on, if all four from beat c sit 4 dB or more
+    // above the 4 before c (or all below by as much), c gets a vote as large as that step (to 6 dB over). A fill's lone
+    // loud beat doesn't hold for a bar, so it can't vote; the votes fade slowly (a section comes every 8-16 bars).
+    sectionBeat(beat) {
+      const db = this.beatEn ? 10 * Math.log10(this.beatE / this.beatEn + 1e-12) : null;
+      this.beatE = 0; this.beatEn = 0;
+      const H = this.beatDb;
+      H.push(db);
+      if (H.length > 12) H.shift();
+      if (H.length < 8 || H.slice(-8).some((x) => x === null || x < -60)) return;
+      const before = H.slice(-8, -4), after = H.slice(-4), mean = before.reduce((a, b) => a + b, 0) / 4;
+      const up = Math.min(...after) - mean, down = mean - Math.max(...after);
+      const step = Math.max(up, down);
+      if (step < 4) return;
+      const c = beat - 4, i = ((c % 4) + 4) % 4;
+      this.sectionB[i] += Math.min(step - 3, 6);
+      this.note?.(`a new section on beat ${c} (${up >= down ? '+' : '-'}${step.toFixed(1)} dB for a bar)`);
     },
 
     // The snare at beat b: of the 2-14 kHz bursts starting within 0.4 of a beat of b (a rise of
@@ -1842,7 +1867,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       this.bt.bars.clear();
       this.kickB.fill(0);
       this.snareB.fill(0);
-      this.changeB.fill(0);
+      this.changeB.fill(0); this.sectionB.fill(0); this.beatDb.length = 0;
       this.ringN.fill(0);
       this.ringBeat = null;
       T.half = null;
@@ -2113,7 +2138,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         T.slotN = 0;
         this.kickB.fill(0);
         this.snareB.fill(0);
-        this.changeB.fill(0);
+        this.changeB.fill(0); this.sectionB.fill(0); this.beatDb.length = 0;
         this.note(`beat moved ${shift > 0 ? 'later' : 'earlier'} by ${Math.abs(shift)}/16`);
         this.relabel(shift);
       }
