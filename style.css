@@ -418,6 +418,14 @@ html.web .card .get { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 
   html.web .opts button { width: 100%; }
   html.web .opts span { margin-bottom: 8px; }
 }
+/* a touch screen (an iPad has no Esc or S): the bars stay readable while playing, the menu has a way out, and the buttons are big enough to hit */
+.menu-close { display: none; }
+@media (hover: none) {
+  body.live header, body.live footer { opacity: .6; }
+  .key-only { display: none; }
+  body.live .menu-close { display: block; margin-top: 14px; padding: 10px 18px; }
+  header > button { min-height: 32px; }
+}
 
 /* ---------- drop takeover: a Windows XP desktop ---------- */
 #desk-back, #desk-front { position: fixed; inset: 0; pointer-events: none; display: none; }

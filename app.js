@@ -272,6 +272,10 @@ function freshStart(top = false) {
 // and claps, auto gain flattens the dynamics.
 const onMac = () => document.documentElement.classList.contains('darwin');
 const RAW_AUDIO = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+// An iPhone or iPad, in any browser (they all run on WebKit). An iPad's browser reports itself as a Mac
+// by default, but a Mac has no touch screen.
+const onIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (/Mac/.test(navigator.platform || '') && navigator.maxTouchPoints > 1);
+const iosBrowser = () => (/CriOS/.test(navigator.userAgent) ? 'Chrome' : /FxiOS/.test(navigator.userAgent) ? 'Firefox' : /EdgiOS/.test(navigator.userAgent) ? 'Edge' : 'Safari');
 
 // Each pick of a source takes a ticket: one still opening when another is picked (system audio
 // can take a moment) gives up when it's ready, letting go of what it opened, instead of taking
@@ -337,13 +341,30 @@ async function useFile(file) {
   if (outdated(ticket)) el.pause();
 }
 
+// What went wrong when the microphone wouldn't open, said so it can be acted on. iOS asks about the
+// microphone once per browser and, after a no (or if the browser was never allowed), refuses every
+// page without a prompt, so there the way out is in its Settings.
+function micTrouble(err, refused) {
+  const name = err?.name || '';
+  if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) return "The browser only allows a microphone on a secure (https) page, and this one isn't. Open Toaster at https://toaster.locust.lol.";
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone found. Plug one in (or turn it on), then try again.';
+  if (name === 'NotReadableError' || name === 'AbortError') return 'The microphone could not be started. Another app may be using it: close that, then try again.';
+  if (!onIOS()) return refused;
+  const b = iosBrowser();
+  if (navigator.standalone) return 'iOS has not allowed the microphone for this home-screen page. Open toaster.locust.lol in Safari instead, allow the microphone there, and try again.';
+  return `iOS is not letting ${b} use the microphone, and it only asks once. Open the Settings app, find ${b} and turn Microphone on (on newer iOS: Settings, Apps, ${b}). Then close ${b} completely, open this page again and tap "audio input".`
+    + (b === 'Safari' ? ' (In Safari you can also tap aA in the address bar, then Website Settings, then Microphone, then Allow.)' : '');
+}
+const openMic = async (audio, refused) => {
+  try { return await navigator.mediaDevices.getUserMedia({ audio }); }   // (no mediaDevices at all on an insecure page: it throws, so the words come from here too)
+  catch (err) { throw new Error(micTrouble(err, refused)); }
+};
+
+// (iOS counts a request as the tap's only if nothing is waited on before it, and a list of inputs needs
+// a request first. So on iOS there is no list: one request, at once, for the microphone it hands over.)
 async function chooseInput() {
-  let probe;
-  try {
-    probe = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
-    throw new Error('Allow microphone access so the inputs can be listed.');
-  }
+  if (onIOS()) return useInput(null);
+  const probe = await openMic(true, 'Allow microphone access so the inputs can be listed.');
   let inputs;
   try { inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); }
   finally { probe.getTracks().forEach((t) => t.stop()); }
@@ -359,15 +380,81 @@ async function chooseInput() {
   $('devices').showModal();
 }
 
+// (no deviceId: the browser's default microphone. The sound is asked to start in the same breath as the
+// microphone, not before it, which on iOS may cost the tap.)
 async function useInput(deviceId, label) {
   const ticket = ++picking;
-  await ac.resume();
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, ...RAW_AUDIO } });
+  const resumed = resumeAudio();
+  const stream = await openMic({ ...(deviceId ? { deviceId: { exact: deviceId } } : {}), ...RAW_AUDIO }, 'Microphone access was refused. Allow it for this page (or in your system settings), then try again.');
+  await resumed;
   if (outdated(ticket)) { stream.getTracks().forEach((t) => t.stop()); return; }
   detach();
   state.stream = stream;
-  attach(ac.createMediaStreamSource(stream), 'input', label || 'audio input');
+  state.inputId = deviceId;
+  const track = stream.getAudioTracks()[0];
+  // (hidden, the microphone is the system's to take: coming back to the page revives it)
+  track?.addEventListener('ended', () => { if (state.stream === stream && !document.hidden) revive(); });
+  track?.addEventListener('mute', () => setTimeout(() => { if (state.stream === stream && track.muted && !document.hidden) revive(); }, 1500));
+  attach(ac.createMediaStreamSource(stream), 'input', label || track?.label || 'audio input');
+  if (ac.state !== 'running') waitForTap();
 }
+
+// iOS (Safari on an iPad or a phone) stops a page's sound when it's interrupted: the screen locks, another app plays,
+// the page goes to the background. Its audio then sits suspended (or 'interrupted'), and a microphone's track ends or
+// stays muted, until a tap brings it back; and an iPad has no keyboard to pick the source again with. So when the
+// sound stops while a source is on, it's brought back at once if it can be, and if not, the next tap anywhere does it
+// (a note says so). A microphone that went dead is opened again: ended, muted, or giving exact zeros, which no real
+// microphone does (once per silence: a line-in with nothing playing is silent, and opening it again won't change that).
+let reviving = null, tapToRevive = null, inputDead = 0, deadTried = false;
+// (resume() can sit pending for good: without a tap on some browsers, and after an interruption on iOS)
+const resumeAudio = () => (ac.state === 'running' ? Promise.resolve() : Promise.race([ac.resume(), new Promise((r) => setTimeout(r, 3000))]).catch(() => {}));
+async function reviveAudio() {
+  if (!state.source) return true;
+  await resumeAudio();
+  if (state.source === 'input') {
+    let tr = state.stream?.getAudioTracks()[0];
+    if (tr?.muted && tr.readyState !== 'ended') { await new Promise((r) => setTimeout(r, 1000)); tr = state.stream?.getAudioTracks()[0]; }   // (it often unmutes by itself on coming back)
+    if (!state.source) return true;
+    if (!tr || tr.readyState === 'ended' || tr.muted || inputDead >= 4) {
+      inputDead = 0;
+      try { await useInput(state.inputId, state.label); } catch { return false; }
+    }
+  }
+  return ac.state === 'running';
+}
+function revive() {
+  reviving ||= reviveAudio().then((ok) => { reviving = null; if (!ok) waitForTap(); else clearTapNote(); return ok; });
+  return reviving;
+}
+const TAP_EVENTS = ['pointerup', 'touchend', 'keydown'];
+function clearTapNote() {
+  if (!tapToRevive) return;
+  TAP_EVENTS.forEach((e) => removeEventListener(e, tapToRevive, true));
+  tapToRevive = null;
+  hideNotice();
+  flashStatus('back on');
+}
+function waitForTap() {
+  if (tapToRevive) return;
+  showNotice('the sound stopped: tap anywhere to turn it back on', null, true);
+  tapToRevive = async () => {   // (started inside the tap: that's what lets resume() through)
+    if (await reviveAudio()) clearTapNote();
+  };
+  TAP_EVENTS.forEach((e) => addEventListener(e, tapToRevive, true));
+}
+ac.addEventListener('statechange', () => {
+  if (ac.state === 'running') { if (tapToRevive) tapToRevive(); }   // (iOS can bring it back by itself when the interruption ends)
+  else if (state.source && !document.hidden) revive();
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.source) revive(); });
+const deadProbe = new Float32Array(fast.fftSize);
+setInterval(() => {
+  if (state.source !== 'input' || document.hidden || ac.state !== 'running') { inputDead = 0; return; }
+  fast.getFloatTimeDomainData(deadProbe);
+  if (!deadProbe.every((v) => v === 0)) { inputDead = 0; deadTried = false; return; }
+  inputDead++;
+  if (inputDead >= 4 && !deadTried) { deadTried = true; revive(); }
+}, 1000);
 
 function describeAudio() {
   const rate = `${ac.sampleRate / 1000} kHz`;
@@ -1263,7 +1350,7 @@ async function toggleClips() {
 // A note in the corner for a few seconds, with a button to show the file (in a browser it's in the
 // downloads). While recording it would be in the video (a drop clip or an export finishing then), so
 // it goes to the status line in the footer instead, which hides while recording.
-function showNotice(text, file) {
+function showNotice(text, file, keep = false) {
   if (rec.mr) { flashStatus(text); return; }
   const el = $('notice');
   el.textContent = text;
@@ -1275,7 +1362,7 @@ function showNotice(text, file) {
   }
   el.hidden = false;
   clearTimeout(rec.noticeTimer);
-  rec.noticeTimer = setTimeout(hideNotice, 8000);
+  if (!keep) rec.noticeTimer = setTimeout(hideNotice, 8000);
 }
 function hideNotice() { $('notice').hidden = true; }
 
@@ -1429,6 +1516,10 @@ $('go-file').onclick = () => $('file').click();
 $('go-input').onclick = run(chooseInput);
 $('file').onchange = () => { const f = $('file').files[0]; if (f) useFile(f).catch(showError); $('file').value = ''; };
 $('b-source').onclick = () => showMenu();
+// (on a touch screen, with no Esc: the menu closes with its button, or a tap beside it)
+const closeMenu = () => { $('menu').hidden = true; $('alerts').innerHTML = ''; };
+$('menu-close').onclick = closeMenu;
+$('menu').addEventListener('click', (e) => { if (e.target === $('menu') && state.source && matchMedia('(hover: none)').matches) closeMenu(); });
 // The visual button opens a list of the backgrounds to pick from (V steps through them); a click
 // anywhere else or any key closes it.
 const visMenu = $('vis-menu');
@@ -1578,7 +1669,7 @@ addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (!visMenu.hidden) { showVisMenu(false); if (k === 'escape') return; }
-  if (k === 'escape') { $('menu').hidden = true; $('alerts').innerHTML = ''; return; }
+  if (k === 'escape') { closeMenu(); return; }
   if (e.target.closest('#alerts')) return; // let Enter/Space press the message box's button
   if (k === '?' || k === '/') { $('help').showModal(); return; }
   if (k === 'f11') { e.preventDefault(); window.nc?.toggleFullscreen(); return; }
