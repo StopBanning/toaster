@@ -806,7 +806,8 @@ $('calm').addEventListener('change', (e) => setCalm(e.target.checked));
 // Updates: the help's checkbox, and the offer of a newer Toaster (update.js in the main process
 // looks it up on GitHub): a few seconds after it starts, once, not over a recording. Update now:
 // it downloads, checks it, closes and opens again as the new one; or, where it can't (a Mac, a
-// copy it can't write beside), the release's page.
+// copy it can't write beside, a try at that version that didn't go through in the last day, with
+// why), the release's page.
 function setUpdates(on) {
   state.updates = on;
   $('updates').checked = on;
@@ -820,7 +821,9 @@ async function offerUpdate(u) {
   if (rec.mr || !$('alerts').isConnected || $('alerts').childElementCount) { setTimeout(() => offerUpdate(u), 30000); return; }
   xpAlert($('alerts'), {
     title: 'toaster update', icon: 'info',
-    text: `Toaster ${u.version} is out (this one is ${u.current}). ${u.canInstall ? 'Update now? It downloads, then closes and opens again as the new one.' : 'Open its page to get it?'}`,
+    text: u.failed
+      ? `Toaster ${u.version} is out (this one is ${u.current}), but installing it here didn't go through last time (${u.failed}). Open its page to get it?`
+      : `Toaster ${u.version} is out (this one is ${u.current}). ${u.canInstall ? 'Update now? It downloads, then closes and opens again as the new one.' : 'Open its page to get it?'}`,
     buttons: [u.canInstall ? 'Update now' : 'Open page', 'Later'],
   });
   $('alerts').querySelector('button').addEventListener('click', async () => {

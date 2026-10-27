@@ -5,6 +5,15 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.22',
+    items: [
+      { act: 'source', text: "internet radio, a fifth source: paste a stream's address into the source menu and Toaster plays it and writes it out as code. It comes with no stations (docs/radio-stations.md lists a few that publish their addresses) and remembers the last one. By Jeffrey Li" },
+      { key: 'bars', text: "the code's bars start on the song's 1 more often: a new section (the music stepping up or down and holding it for a bar) now counts as a bar's first beat" },
+      { key: 'updates', text: "updates go through even when another program has Toaster's files open, and one that didn't go through says why instead of asking again" },
+      { key: 'titles', text: 'song titles come back by themselves if the helper that reads them stops' },
+    ],
+  },
+  {
     version: '0.4.21',
     items: [
       { act: 'blocks', text: "a handheld game, the blocks' third look: the song played on a two-screen metal handheld, its notes falling down four lanes (kick, clap, hats, bass), every hit judged, the combo climbing, FEVER on a drop; its buttons press with the drums and its cartridge has the song on it" },

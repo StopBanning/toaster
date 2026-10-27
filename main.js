@@ -49,7 +49,7 @@ try {
 } catch { /* start fresh */ }
 
 let win = null;
-let nowPlayingProc = null;
+let nowPlayingProc = null, nowPlayingTimer = null, nowPlayingDelay = 2000, quitting = false;
 let lastNowPlaying = null;
 let normalBounds = null;
 let miniFrom = null, miniBounds = {}; // the window before the mini player, and where the mini one was (each shape's own)
@@ -146,7 +146,8 @@ function setUpCapture() {
   const allowed = new Set(['media', 'display-capture', 'fullscreen']);
   // (asked for by our own window only)
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(wc === win?.webContents && allowed.has(permission)));
-  session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
+  // A null webContents cannot be attributed to our window, so deny it.
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => !!wc && wc === win?.webContents && allowed.has(permission));
 }
 
 // Windows: helpers/*.ps1. Mac: helpers/mac/bin, compiled Swift (see helpers/mac/build.sh).
@@ -187,11 +188,15 @@ function ensureMacHelpers() {
 }
 
 function startNowPlaying() {
-  nowPlayingProc = spawnHelper('nowplaying');
-  if (!nowPlayingProc) return;
+  nowPlayingTimer = null;
+  if (quitting || nowPlayingProc) return;
+  const proc = spawnHelper('nowplaying');
+  if (!proc) return;
+  nowPlayingProc = proc;
+  const started = Date.now();
   let buffer = '';
-  nowPlayingProc.stdout.setEncoding('utf8');
-  nowPlayingProc.stdout.on('data', (chunk) => {
+  proc.stdout.setEncoding('utf8');
+  proc.stdout.on('data', (chunk) => {
     buffer += chunk;
     let nl;
     while ((nl = buffer.indexOf('\n')) >= 0) {
@@ -204,7 +209,16 @@ function startNowPlaying() {
       } catch { /* ignore partial or odd lines */ }
     }
   });
-  nowPlayingProc.on('error', () => { nowPlayingProc = null; });
+  const done = () => {
+    if (nowPlayingProc !== proc) return; // error and exit can both arrive
+    nowPlayingProc = null;
+    if (quitting) return;
+    if (Date.now() - started >= 60000) nowPlayingDelay = 2000;
+    nowPlayingTimer = setTimeout(startNowPlaying, nowPlayingDelay);
+    nowPlayingDelay = Math.min(nowPlayingDelay * 2, 60000);
+  };
+  proc.on('error', done);
+  proc.on('exit', done);
 }
 
 // Face finding for the camera pop-ups that close in on your face and eyes. The helper runs
@@ -219,6 +233,7 @@ function startFaces() {
   faceBuffer = '';
   proc.stdout.setEncoding('utf8');
   proc.stdout.on('data', (chunk) => {
+    if (faceProc !== proc) return; // late output belongs to the old helper, not the new queue
     faceBuffer += chunk;
     let nl;
     while ((nl = faceBuffer.indexOf('\n')) >= 0) {
@@ -241,8 +256,10 @@ function startFaces() {
   proc.on('error', done);
 }
 function stopFaces() {
-  faceProc?.kill();
+  const proc = faceProc;
   faceProc = null;
+  faceWaiting.splice(0).forEach((reply) => reply({ faces: [] }));
+  proc?.kill();
 }
 
 // CPU use comes from the change in CPU time between two readings.
@@ -432,13 +449,17 @@ function setUpIpc() {
     fs.mkdirSync(dir, { recursive: true });
     const dotExt = '.' + (ext === 'webm' ? 'webm' : 'mp4');
     const file = freeBase(path.join(dir, `toaster drop ${stamp()}`), [dotExt]) + dotExt;
-    fs.closeSync(fs.openSync(file, 'wx'));
-    try { await fs.promises.writeFile(file, Buffer.from(buf)); } catch (err) { fs.rmSync(file, { force: true }); throw err; }
+    try { await fs.promises.writeFile(file, Buffer.from(buf), { flag: 'wx' }); }
+    catch (err) {
+      // EEXIST means someone else owns the file: never remove it.
+      if (err.code !== 'EEXIST') await fs.promises.rm(file, { force: true }).catch(() => {});
+      throw err;
+    }
     return file;
   });
   // The hand log (Ctrl+Shift+H, renderer/handlog.js): lines of JSON (numbers only), in the
   // settings folder's "hand logs", a file a log, added to every few seconds.
-  let handLog = null;
+  let handLog = null, handLogWrites = Promise.resolve();
   ipcMain.handle('handlog:start', () => {
     const dir = path.join(app.getPath('userData'), 'hand logs');
     fs.mkdirSync(dir, { recursive: true });
@@ -448,10 +469,12 @@ function setUpIpc() {
   });
   ipcMain.handle('handlog:add', (_e, text) => {
     if (!handLog || typeof text !== 'string' || text.length > 8e6) return false;
-    fs.appendFileSync(handLog, text);
-    return true;
+    const file = handLog;
+    const write = handLogWrites.then(() => fs.promises.appendFile(file, text)).then(() => true, () => false);
+    handLogWrites = write; // a failed write must not prevent the next one
+    return write;
   });
-  ipcMain.handle('handlog:stop', () => { const file = handLog; handLog = null; return file; });
+  ipcMain.handle('handlog:stop', async () => { const file = handLog; handLog = null; await handLogWrites; return file; });
   // Song export (X): the song as a MIDI file and as Strudel code, side by side in Music\Toaster,
   // named after the song and the time.
   ipcMain.handle('song:save', (_e, name, midi, code) => {
@@ -517,10 +540,13 @@ app.whenReady().then(() => {
   createWindow();
   // (the now-playing helper a moment after: PowerShell loading .NET took a core while the window and
   // its graphics were starting; the page gets the latest reading whenever it comes)
-  setTimeout(startNowPlaying, 2000);
+  nowPlayingTimer = setTimeout(startNowPlaying, 2000);
 });
 
+app.on('before-quit', () => { quitting = true; clearTimeout(nowPlayingTimer); });
 app.on('window-all-closed', () => {
+  quitting = true;
+  clearTimeout(nowPlayingTimer);
   nowPlayingProc?.kill();
   stopFaces();
   endRecording().finally(() => app.quit());
