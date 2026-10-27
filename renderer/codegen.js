@@ -254,8 +254,9 @@ export function resetCodegen() {
 // The code on screen as a Strudel program to play and change at strudel.cc: parts that have
 // stopped stay muted (_), the title becomes a comment, and the vox line (it plays a vocal
 // sample Strudel doesn't have) is kept as a comment with the same notes on a synth under it.
-// texts: each line's text, by line id.
-export function strudelProgram(texts, song) {
+// texts: each line's text, by line id. phase: the current four-bar slot when O was pressed;
+// shifting the whole pattern keeps nested notes, rhythms and the punchcard together.
+export function strudelProgram(texts, song, phase = 0) {
   const about = song?.title ? `"${cleanTitle(song.title)}"${song.artist ? ' by ' + song.artist : ''}` : 'whatever was playing';
   const out = [`// ${about}, written out by toaster`, '// ctrl+enter plays it, ctrl+. stops'];
   for (const id of LINE_IDS) {
@@ -273,7 +274,7 @@ export function strudelProgram(texts, song) {
     }
     out.push(line);
   }
-  out.push('', "// everything that's playing as a punchcard under the code", 'all(x => x._punchcard())');
+  out.push('', "// everything that's playing as a punchcard under the code", `all(x => x.${phase ? `early(${phase}).` : ''}_punchcard())`);
   return out.join('\n') + '\n';
 }
 

@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('nc', {
   sysLoad: () => ipcRenderer.invoke('sys:load'),
   toggleFullscreen: () => ipcRenderer.invoke('win:fullscreen'),
   setVertical: (on) => ipcRenderer.invoke('win:vertical', on),
-  setMini: (on) => ipcRenderer.invoke('win:mini', on),
+  setMini: (on, shape) => ipcRenderer.invoke('win:mini', on, shape),
   setTitleBar: (color, symbolColor) => ipcRenderer.invoke('win:titlebar', color, symbolColor),
   onNowPlaying: (fn) => ipcRenderer.on('nowplaying', (_e, info) => fn(info)),
   onWindowShown: (fn) => ipcRenderer.on('win:shown', (_e, shown) => fn(shown)),

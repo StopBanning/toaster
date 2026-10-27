@@ -237,6 +237,10 @@ body.card-big #card .c-title { grid-area: title; }
 body.card-big #card .c-jp { grid-area: jp; }
 body.card-big #card .c-info { grid-area: info; margin-top: 8px; white-space: nowrap; }
 body.card-big:not(.vertical) #code { padding-right: calc(var(--card-w, 300px) + 44px); }
+/* the handheld game in a wide window stands right of the code (game.js layout(): its left edge is never left of 60% of
+   the width, whatever the window): the code keeps to the 60% on its left, long lines going on over more rows instead
+   of running over the handheld's screens (a window taller than wide is laid out as the tall one: see below) */
+@media (min-aspect-ratio: 1/1) { body.game-on:not(.vertical) #code { padding-right: 40vw; } }
 
 body.glitch #code { animation: glitch .34s steps(2) 1; }
 @keyframes glitch {
@@ -322,10 +326,19 @@ footer .keys { color: var(--dim); white-space: nowrap; overflow: hidden; text-ov
    each edge (the code wraps a little more rather than getting smaller); the backgrounds and the
    camera still run to the edges. */
 body.vertical { --size: clamp(11px, 3.1vw, 17px); --safe: 10vw; }
-body.vertical #code { padding: 52px var(--safe) 44px; }
+/* (the tall layout is for phone videos: the code starts below where a phone app lays its header over one) */
+body.vertical #code { padding: 92px var(--safe) 44px; }
 body.vertical.cam-on #code, body.vertical.wheel-up #code { padding-top: calc(42vh + 12px); }
 /* the wheel up there shows the chord already, and the chord roll would be pushed off the bottom */
-body.vertical.wheel-up #roll { display: none; }
+body.vertical.wheel-up #roll, body.vertical.game-on #roll { display: none; }
+/* the handheld game in the tall layout: its top screen shows the drums, so the step grid goes too; the code a
+   little bigger than usual, as what shows of it round the handheld (its first lines, its lines' starts) reads on a phone */
+body.vertical.game-on #grid { display: none; }
+body.vertical.game-on { --size: clamp(12px, 3.4vw, 19px); }
+body.vertical.game-on #punch { z-index: 3; } /* (the handheld in front of the code: its lower lines behind it, in its shadow) */
+/* a window taller than wide that isn't the 9:16 layout (the website on a phone, a narrow window): the game is drawn
+   tall there too (game.js: a canvas taller than wide), so it stands in front of the code there as well */
+@media not all and (min-aspect-ratio: 1/1) { body.game-on #grid, body.game-on #roll { display: none; } body.game-on #punch { z-index: 3; } }
 body.vertical .wide-only, body.vertical footer .keys, body.vertical .appname { display: none; }
 body.vertical #sys { top: auto; bottom: 40px; right: var(--safe); }
 /* the ID card is the top of the frame (with the camera in its photo), the code below it */
@@ -360,6 +373,8 @@ header > #b-star:active { transform: scale(.97); }
 #b-star .gh { width: 13px; height: 13px; flex-shrink: 0; }
 #b-star .star-n:empty { display: none; }
 body.mini header > #b-star { display: none; }
+/* the handheld game in the mini player: the handheld on its own, filling the window (game.js), the code put away */
+body.mini.game-on #code { display: none; }
 :root { --gold: #e8b730; }
 :root[data-theme="whitescreen"] { --gold: #b98500; }
 .star-i { position: relative; display: inline-block; color: var(--dim); --fill: 0; }
@@ -387,6 +402,52 @@ html.darwin.full header { padding-left: 12px; }
 .opts button { font-size: 14px; padding: 8px 14px; text-align: left; }
 .opts span { color: var(--dim); font-size: 12px; }
 .tip { font-size: 12px; line-height: 1.5; margin: 16px 0 0; color: var(--dim); }
+/* a touch screen (an iPad has no Esc or S): the bars stay readable while playing, the menu has a way out, and the buttons are big enough to hit */
+.menu-close { display: none; }
+@media (hover: none) {
+  body.live header, body.live footer { opacity: .6; }
+  .key-only { display: none; }
+  body.live .menu-close { display: block; margin-top: 14px; padding: 10px 18px; }
+  header > button { min-height: 32px; }
+}
+
+/* ---------- the controls panel (controls.js): built only on a screen with no hover ---------- */
+/* the header button (its touch target reaches past the 37 px bar, to 45), and the way back to it while the bars are hidden */
+#b-controls { position: relative; min-width: 44px; }
+@media (max-width: 480px) { #b-controls .ctl-word { display: none; } }
+#b-controls::after { content: ""; position: absolute; inset: -4px -3px; }
+#ctl-fab { display: none; position: fixed; top: calc(env(safe-area-inset-top) + 6px); right: calc(env(safe-area-inset-right) + 6px); z-index: 6; min-width: 44px; min-height: 44px; font-size: 18px; background: var(--bg); opacity: .55; }
+body.clean #ctl-fab { display: block; }
+.ctl-panel { position: fixed; z-index: 8; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); border: 2px solid var(--fg); box-shadow: 4px 4px 0 var(--faint); }
+.ctl-panel[hidden] { display: none; }
+/* along the bottom (portrait, phones): a bit under half the screen, so most of the picture stays */
+.ctl-panel[data-dock="bottom"] { left: 0; right: 0; bottom: 0; max-height: 46vh; max-height: 46dvh; border-width: 2px 0 0; padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+/* down the right side (landscape): the code keeps the left */
+.ctl-panel[data-dock="side"] { top: 0; right: 0; bottom: 0; width: min(380px, 46vw); border-width: 0 0 0 2px; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0; }
+/* down the left side, with the handheld game on (it stands at the right): the handheld stays in view */
+.ctl-panel[data-dock="left"] { top: 0; left: 0; bottom: 0; width: min(380px, 46vw); border-width: 0 2px 0 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.ctl-head { display: flex; align-items: center; gap: 10px; flex: none; padding: 6px 12px; border-bottom: 1px solid var(--faint); font-size: 13px; }
+.ctl-head b { letter-spacing: .08em; text-transform: uppercase; }
+.ctl-sub { color: var(--dim); font-size: 11px; }
+.ctl-close { margin-left: auto; min-height: 44px; padding: 0 16px; font-size: 13px; }
+.ctl-body { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 12px 12px; }
+.ctl-body h3 { margin: 12px 0 6px; font-size: 11px; font-weight: 400; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.ctl-body h3[hidden] { display: none; }
+.ctl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.ctl { position: relative; display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 1px 8px; min-height: 52px; padding: 6px 10px; text-align: left; white-space: normal; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.ctl[hidden] { display: none; }
+.ctl:active { background: var(--faint); }
+.ctl-name { font-size: 13px; font-weight: 700; }
+.ctl-key { font: inherit; font-size: 10px; color: var(--dim); align-self: start; }
+.ctl-now { grid-column: 1 / -1; font-size: 12px; }
+.ctl-hint { font-size: 11px; color: var(--dim); }
+.ctl.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.ctl.on .ctl-key, .ctl.on .ctl-hint { color: var(--bg); opacity: .7; }
+.ctl-pad { grid-column: 1 / -1; min-height: 88px; border-width: 2px; border-color: var(--fg); }
+.ctl-pad .ctl-name { font-size: 18px; }
+.ctl-pad .ctl-now { font-size: 13px; }
+/* a note that pops up goes to the top while the panel is open, not under it */
+body.controls-open #notice { bottom: auto; top: 48px; }
 
 /* ---------- drop takeover: a Windows XP desktop ---------- */
 #desk-back, #desk-front { position: fixed; inset: 0; pointer-events: none; display: none; }

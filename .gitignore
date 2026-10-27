@@ -5,3 +5,10 @@ dist/
 .claude/
 helpers/mac/bin/
 build/icon.icns
+
+# the handheld model's fonts and renders (tools/handheld)
+tools/handheld/fonts/
+tools/handheld/renders/
+tools/handheld/concepts/tex/
+tools/handheld/concepts/renders/
+tools/handheld/concepts/__pycache__/

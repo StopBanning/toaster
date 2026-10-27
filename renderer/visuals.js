@@ -429,12 +429,23 @@ const ROW = { chords: 0, vox: 1, hho: 2, hhc: 3, sd: 4, bd: 5, bass: 6 };
 const ROWS = { ...ROW, n: 7 }; // (for the dominoes: the rows and how many)
 const WAITING = 0.42, LIT = 0.95, GHOST = 0.14; // how bright: a block, one crossing, one of a part that stopped
 
+// The handheld game (game.js, its screens' designs and their drawing: about 90 KB) is fetched the first time it's
+// shown, not with the page, so a first visit to the website is no bigger for it. Its screens' design (A) is kept here
+// till then: the designs the app goes round, in turn (the first is the one it starts with).
+// (the fretboard, 'highway', is off the round till it's polished: window.__gameSkin = 'highway' still draws it)
+export const GAME_SCREENS = ['os', 'neon', 'lcd'];
+let gameScreens = GAME_SCREENS[0], gameMod = null, gameLoad = null;
+export function setGameScreens(name) { if (GAME_SCREENS.includes(name)) { gameScreens = name; gameMod?.setGameScreens(name); } }
+// (a failed fetch, the website offline, is tried again after a few seconds, not every frame)
+const loadGame = () => (gameLoad ??= import('./game.js').then((m) => { gameMod = m; m.setGameScreens(gameScreens); return m; }, () => { setTimeout(() => { gameLoad = null; }, 5000); return null; }));
+
 export function createPunchcard(canvas) {
   const ctx = canvas.getContext('2d');
   const level = Object.fromEntries(Object.keys(ROW).map((k) => [k, 1])); // 1 playing .. 0 stopped
-  let last = 0, vg = null, queuedTo = 0, moved = 0, blocks = [];
+  let last = 0, vg = null, queuedTo = 0, moved = 0, blocks = [], sending = {}; // (sending: which parts the queue last sent blocks for)
   const dominoes = createDominoes();
-  const reset = () => { vg = null; blocks = []; dominoes.reset(); };
+  let game = null; // (game.js's, once it has been fetched: loadGame)
+  const reset = () => { vg = null; blocks = []; sending = {}; dominoes.reset(); game?.reset(); };
 
   // Is a part playing? Heard within its longest gap between hits plus two beats, so a missed
   // hit or two doesn't count as stopping.
@@ -453,9 +464,18 @@ export function createPunchcard(canvas) {
     return t - v.last < ((gap + 8) * eng.tempo.P) / 4;
   };
 
-  // Queues every step up to `to` from the patterns as they are now.
-  const queue = (eng, t, to) => {
+  // Queues every step up to `to` from the patterns as they are now. For the game (look), a part that starts sending
+  // blocks again (its pattern just learned, or back after 8 bars gone) also fills the steps already queued ahead of the
+  // playhead, so its lane fills at once instead of a bar later (marked late: they fade in, not falling in from the top).
+  const queue = (eng, t, to, look) => {
     const recent = (seen) => t - seen < 32 * eng.tempo.P; // heard in the last 8 bars
+    for (const id of VOICES) {
+      const v = eng.v[id], now = !!v.shown?.some(Boolean) && !v.tooBusy && recent(v.last);
+      if (look === 'game' && now && sending[id] === false) {
+        for (let g = Math.floor(vg) + 1; g <= queuedTo; g++) if (v.shown[((g % 16) + 16) % 16]) blocks.push({ lane: id, g, len: 0.9, lit: false, late: t });
+      }
+      sending[id] = now;
+    }
     const rhythm = eng.v.bass.shown?.some(Boolean) && recent(eng.v.bass.last) ? eng.v.bass.shown : null;
     for (let g = Math.floor(queuedTo) + 1; g <= to; g++) {
       const s = ((g % 16) + 16) % 16, past = g < vg;
@@ -488,14 +508,21 @@ export function createPunchcard(canvas) {
     get vg() { return vg; },
     get blocks() { return blocks; },
     // Turned off: drop the canvas's memory too.
-    clear() { canvas.width = canvas.height = 0; reset(); dominoes.release(); },
+    clear() { canvas.width = canvas.height = 0; reset(); dominoes.release(); game?.release(); },
+    // a drop, for the game: its fever
+    drop(t, P) { game?.drop(t, P); },
+    // the game's power-on again (it boots by itself when it comes on)
+    boot() { game?.boot(); },
+    newSong(playing) { game?.newSong(playing); },
     // offset (seconds) draws that far ahead, to make up for the time it takes to hear,
     // detect and draw a hit; the [ and ] keys tune it. chips: each block (and the playhead) on a
     // chip of the theme's panel colour, as the code's lines are over the worlds, whose pictures
     // can be white enough (the receipt look, a bright planet) to hide white blocks. look: 'blocks',
-    // or 'dominoes' (dominoes.js), drawn at the screen's full resolution for their fine lines.
-    draw(t, eng, col, offset = 0, chips = false, look = 'blocks') {
-      const [W, H] = fit(canvas, look === 'dominoes' ? Math.min(2, devicePixelRatio || 1) : 1);
+    // 'dominoes' (dominoes.js) or 'game' (game.js, which shows the song's title, and on a tall screen
+    // stands in front of the code's lower lines), those two drawn at the screen's full resolution for
+    // their fine lines.
+    draw(t, eng, col, offset = 0, chips = false, look = 'blocks', title = '', pocket = false, colorway = 'blue') {
+      const [W, H] = fit(canvas, look === 'dominoes' || look === 'game' ? Math.min(2, devicePixelRatio || 1) : 1);
       const gap = t - last, dt = Math.min(0.1, gap || 0.016);
       last = t;
       const target = eng.stepAt(t + offset);
@@ -517,6 +544,7 @@ export function createPunchcard(canvas) {
         moved = T.renumber;
         blocks = [];
         dominoes.reset();
+        game?.reset();
         queuedTo = Math.floor(vg) - AHEAD - 2;
       } else {
         // The engine renumbered its steps (new bar lines, a new tempo, the beat found on another
@@ -546,13 +574,18 @@ export function createPunchcard(canvas) {
       for (const id of VOICES) level[id] += ((playing(eng, id, t) ? 1 : 0) - level[id]) * ease;
       level.bass += ((eng.playing(eng.bassSeen, t) ? 1 : 0) - level.bass) * ease;
       level.chords += ((eng.playing(eng.chordSeen, t) ? 1 : 0) - level.chords) * ease;
-      queue(eng, t, Math.floor(vg + AHEAD + 1)); // made just past the right edge
+      queue(eng, t, Math.floor(vg + AHEAD + 1), look); // made just past the right edge
       // Blocks leave once they've scrolled off the left edge.
       // (marked gone as they leave: the dominoes mustn't lean a new one on a block that no longer moves with the clock)
       if (blocks.length && blocks[0].g + blocks[0].len < vg - AHEAD - 1) blocks = blocks.filter((b) => b.g + b.len >= vg - AHEAD - 1 || ((b.gone = true), false));
 
       if (look === 'dominoes') {
         dominoes.draw(ctx, { blocks, vg, W, H, col, level, t, dt, ahead: AHEAD, rows: ROWS, sps: 4 / (T.P || 0.5) });
+        return;
+      }
+      if (look === 'game') {
+        if (!game) { loadGame().then((m) => { if (m) game ??= m.createGame(); }); ctx.clearRect(0, 0, W, H); return; }
+        game.draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset, pocket, colorway });
         return;
       }
       ctx.clearRect(0, 0, W, H);

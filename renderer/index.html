@@ -36,7 +36,7 @@
   <button id="b-visual" class="grp" data-act="visual" data-title="Background visual: pick one" title="Background visual: pick one (V)" aria-haspopup="menu">spectrum ▾</button>
   <div id="vis-menu" class="drop" role="menu" hidden></div>
   <button id="b-orb" data-act="orb" data-title="Dot orb, over any background" title="Dot orb, over any background (R)">orb</button>
-  <button id="b-blocks" data-act="blocks" data-title="Blocks over any visual: punchcard, dominoes, off" title="Blocks over any visual: punchcard, dominoes, off (P)">blocks</button>
+  <button id="b-blocks" data-act="blocks" data-title="Blocks over any visual: punchcard, dominoes, handheld game, off" title="Blocks over any visual: punchcard, dominoes, handheld game, off (P)">blocks</button>
   <button id="b-glass" data-act="glass" data-title="Glass blob over the code" title="Glass blob over the code (G)">glass</button>
   <button id="b-card" data-act="card" data-title="Now-playing ID card: off, on, big" title="Now-playing ID card: off, on, big (N)">card</button>
   <button id="b-cam" class="grp" data-act="cam" data-title="Webcam: off, on, big eyes, ASCII" title="Webcam: off, on, big eyes, ASCII (C)">cam</button>
@@ -100,7 +100,8 @@
       <button id="go-file">▤ audio file</button><span>or drop a file on the window</span>
       <button id="go-input">◉ audio input</button><span>a mic or line-in</span>
     </div>
-    <p class="tip">Nothing is recorded or uploaded. Esc closes this.</p>
+    <p class="tip">Nothing is recorded or uploaded.<span class="key-only"> Esc closes this.</span></p>
+    <button id="menu-close" class="menu-close">✕ close</button>
   </div>
 </div>
 <input type="file" id="file" accept="audio/*" hidden />
@@ -120,11 +121,11 @@
   <table>
     <tr class="sec"><th colspan="2">look</th></tr>
     <tr data-act="visual"><td>V</td><td>background: spectrum, tunnel, spiral, pitch wheel, warp, cuts, worlds, chrome, spectrogram, scenery, rain, scope, fire, off</td></tr>
-    <tr data-act="strength"><td>A</td><td>background strength; with worlds, their look: night (no light skies), film, ASCII, code, ink, risograph, cyanotype, receipt, thermal, night vision, CRT, VHS, quadtree, cells, auto; with chrome, the collage on or off; with the spectrogram, its colours: rainbow or the theme's; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween (auto picks it in October), the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye, then auto in the theme's colours</td></tr>
+    <tr data-act="strength"><td>A</td><td>background strength; with worlds, their look: night (no light skies), film, ASCII, code, ink, risograph, cyanotype, receipt, thermal, night vision, CRT, VHS, quadtree, cells, auto; with chrome, the collage on or off; with the spectrogram, its colours: rainbow or the theme's; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween (auto picks it in October), the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye, then auto in the theme's colours; with the handheld game on (P), its screens: Toaster's own (in the theme's colours), neon, LCD</td></tr>
     <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen</td></tr>
     <tr data-act="crt"><td>Y</td><td>CRT: an old TV over everything, on any theme: it comes on from a white line and goes off into a dot; scanlines, phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop, and each background (V) is a channel, its number on screen</td></tr>
     <tr data-act="orb"><td>R</td><td>orb: dots that take a new form every 8 bars, moved by the kick, clap and hats</td></tr>
-    <tr data-act="blocks"><td>P</td><td>blocks: punchcard, then dominoes, then off</td></tr>
+    <tr data-act="blocks"><td>P</td><td>blocks: punchcard, then dominoes, then the handheld game (the song played on a little two-screen handheld), then off</td></tr>
     <tr data-act="glass"><td>G</td><td>liquid glass over the code, swelling on the kick</td></tr>
     <tr data-act="card"><td>N</td><td>ID card: the song, tempo, key and a 1-bit picture; again for big, again to hide</td></tr>
     <tr class="sec"><th colspan="2">camera</th></tr>

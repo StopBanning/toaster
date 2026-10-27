@@ -2,7 +2,7 @@
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
 import { createCodeView } from './codeview.js';
-import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP } from './visuals.js';
+import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens } from './visuals.js';
 import { createOrb } from './orb.js';
 import { createDotCam } from './dotcam.js';
 import { createVoxCam } from './voxcam.js';
@@ -30,6 +30,7 @@ import { buildSongFiles } from './tape-export.js';
 import { createClips } from './clips.js';
 import { makeDemo } from './demo.js';
 import { NEWS, newsSince } from './news.js';
+import { createControls } from './controls.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -127,7 +128,7 @@ function meshFace() {
 const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winKey: '', manual: null,
-  visual: 0, strength: 1, blocks: true, blockLook: 'blocks', orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
+  visual: 0, strength: 1, blocks: true, blockLook: 'blocks', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
   crt: false, // Y: an old screen over everything (see #tube in the CSS)
@@ -152,7 +153,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
+const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -178,7 +179,9 @@ function loadSettings() {
   if (!Number.isFinite(state.syncTrim)) state.syncTrim = 0;
   if (!(state.strength in STRENGTHS)) state.strength = 1;
   if (!(state.camFx in CAM_FX)) state.camFx = 0;
-  if (!['blocks', 'dominoes'].includes(state.blockLook)) state.blockLook = 'blocks';
+  if (!BLOCK_LOOKS.includes(state.blockLook)) state.blockLook = 'blocks';
+  if (!GAME_SCREENS.includes(state.gameScreens)) state.gameScreens = GAME_SCREENS[0];
+  setGameScreens(state.gameScreens);
   if (!worlds.looks.includes(state.worldLook)) state.worldLook = 'auto';
   worlds.setLook(state.worldLook);
   state.card = state.card === true;
@@ -254,6 +257,7 @@ function attach(node, source, label) {
 // song starts now, from its beginning (see listenOpening in engine.js).
 function freshStart(top = false) {
   if (state.hushed) setHush(false); // a new song comes in unhushed
+  punch.newSong(gameShowing() && !eng.silent);
   eng.reset({ top });
   resetCodegen();
   view.clear();
@@ -271,6 +275,10 @@ function freshStart(top = false) {
 // and claps, auto gain flattens the dynamics.
 const onMac = () => document.documentElement.classList.contains('darwin');
 const RAW_AUDIO = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+// An iPhone or iPad, in any browser (they all run on WebKit). An iPad's browser reports itself as a Mac
+// by default, but a Mac has no touch screen.
+const onIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (/Mac/.test(navigator.platform || '') && navigator.maxTouchPoints > 1);
+const iosBrowser = () => (/CriOS/.test(navigator.userAgent) ? 'Chrome' : /FxiOS/.test(navigator.userAgent) ? 'Firefox' : /EdgiOS/.test(navigator.userAgent) ? 'Edge' : 'Safari');
 
 // Each pick of a source takes a ticket: one still opening when another is picked (system audio
 // can take a moment) gives up when it's ready, letting go of what it opened, instead of taking
@@ -330,13 +338,30 @@ async function useFile(file) {
   if (outdated(ticket)) el.pause();
 }
 
+// What went wrong when the microphone wouldn't open, said so it can be acted on. iOS asks about the
+// microphone once per browser and, after a no (or if the browser was never allowed), refuses every
+// page without a prompt, so there the way out is in its Settings.
+function micTrouble(err, refused) {
+  const name = err?.name || '';
+  if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) return "The browser only allows a microphone on a secure (https) page, and this one isn't. Open Toaster at https://toaster.locust.lol.";
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone found. Plug one in (or turn it on), then try again.';
+  if (name === 'NotReadableError' || name === 'AbortError') return 'The microphone could not be started. Another app may be using it: close that, then try again.';
+  if (!onIOS()) return refused;
+  const b = iosBrowser();
+  if (navigator.standalone) return 'iOS has not allowed the microphone for this home-screen page. Open toaster.locust.lol in Safari instead, allow the microphone there, and try again.';
+  return `iOS is not letting ${b} use the microphone, and it only asks once. Open the Settings app, find ${b} and turn Microphone on (on newer iOS: Settings, Apps, ${b}). Then close ${b} completely, open this page again and tap "audio input".`
+    + (b === 'Safari' ? ' (In Safari you can also tap aA in the address bar, then Website Settings, then Microphone, then Allow.)' : '');
+}
+const openMic = async (audio, refused) => {
+  try { return await navigator.mediaDevices.getUserMedia({ audio }); }   // (no mediaDevices at all on an insecure page: it throws, so the words come from here too)
+  catch (err) { throw new Error(micTrouble(err, refused)); }
+};
+
+// (iOS counts a request as the tap's only if nothing is waited on before it, and a list of inputs needs
+// a request first. So on iOS there is no list: one request, at once, for the microphone it hands over.)
 async function chooseInput() {
-  let probe;
-  try {
-    probe = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
-    throw new Error('Allow microphone access so the inputs can be listed.');
-  }
+  if (onIOS()) return useInput(null);
+  const probe = await openMic(true, 'Allow microphone access so the inputs can be listed.');
   let inputs;
   try { inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); }
   finally { probe.getTracks().forEach((t) => t.stop()); }
@@ -352,15 +377,81 @@ async function chooseInput() {
   $('devices').showModal();
 }
 
+// (no deviceId: the browser's default microphone. The sound is asked to start in the same breath as the
+// microphone, not before it, which on iOS may cost the tap.)
 async function useInput(deviceId, label) {
   const ticket = ++picking;
-  await ac.resume();
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, ...RAW_AUDIO } });
+  const resumed = resumeAudio();
+  const stream = await openMic({ ...(deviceId ? { deviceId: { exact: deviceId } } : {}), ...RAW_AUDIO }, 'Microphone access was refused. Allow it for this page (or in your system settings), then try again.');
+  await resumed;
   if (outdated(ticket)) { stream.getTracks().forEach((t) => t.stop()); return; }
   detach();
   state.stream = stream;
-  attach(ac.createMediaStreamSource(stream), 'input', label || 'audio input');
+  state.inputId = deviceId;
+  const track = stream.getAudioTracks()[0];
+  // (hidden, the microphone is the system's to take: coming back to the page revives it)
+  track?.addEventListener('ended', () => { if (state.stream === stream && !document.hidden) revive(); });
+  track?.addEventListener('mute', () => setTimeout(() => { if (state.stream === stream && track.muted && !document.hidden) revive(); }, 1500));
+  attach(ac.createMediaStreamSource(stream), 'input', label || track?.label || 'audio input');
+  if (ac.state !== 'running') waitForTap();
 }
+
+// iOS (Safari on an iPad or a phone) stops a page's sound when it's interrupted: the screen locks, another app plays,
+// the page goes to the background. Its audio then sits suspended (or 'interrupted'), and a microphone's track ends or
+// stays muted, until a tap brings it back; and an iPad has no keyboard to pick the source again with. So when the
+// sound stops while a source is on, it's brought back at once if it can be, and if not, the next tap anywhere does it
+// (a note says so). A microphone that went dead is opened again: ended, muted, or giving exact zeros, which no real
+// microphone does (once per silence: a line-in with nothing playing is silent, and opening it again won't change that).
+let reviving = null, tapToRevive = null, inputDead = 0, deadTried = false;
+// (resume() can sit pending for good: without a tap on some browsers, and after an interruption on iOS)
+const resumeAudio = () => (ac.state === 'running' ? Promise.resolve() : Promise.race([ac.resume(), new Promise((r) => setTimeout(r, 3000))]).catch(() => {}));
+async function reviveAudio() {
+  if (!state.source) return true;
+  await resumeAudio();
+  if (state.source === 'input') {
+    let tr = state.stream?.getAudioTracks()[0];
+    if (tr?.muted && tr.readyState !== 'ended') { await new Promise((r) => setTimeout(r, 1000)); tr = state.stream?.getAudioTracks()[0]; }   // (it often unmutes by itself on coming back)
+    if (!state.source) return true;
+    if (!tr || tr.readyState === 'ended' || tr.muted || inputDead >= 4) {
+      inputDead = 0;
+      try { await useInput(state.inputId, state.label); } catch { return false; }
+    }
+  }
+  return ac.state === 'running';
+}
+function revive() {
+  reviving ||= reviveAudio().then((ok) => { reviving = null; if (!ok) waitForTap(); else clearTapNote(); return ok; });
+  return reviving;
+}
+const TAP_EVENTS = ['pointerup', 'touchend', 'keydown'];
+function clearTapNote() {
+  if (!tapToRevive) return;
+  TAP_EVENTS.forEach((e) => removeEventListener(e, tapToRevive, true));
+  tapToRevive = null;
+  hideNotice();
+  flashStatus('back on');
+}
+function waitForTap() {
+  if (tapToRevive) return;
+  showNotice('the sound stopped: tap anywhere to turn it back on', null, true);
+  tapToRevive = async () => {   // (started inside the tap: that's what lets resume() through)
+    if (await reviveAudio()) clearTapNote();
+  };
+  TAP_EVENTS.forEach((e) => addEventListener(e, tapToRevive, true));
+}
+ac.addEventListener('statechange', () => {
+  if (ac.state === 'running') { if (tapToRevive) tapToRevive(); }   // (iOS can bring it back by itself when the interruption ends)
+  else if (state.source && !document.hidden) revive();
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.source) revive(); });
+const deadProbe = new Float32Array(fast.fftSize);
+setInterval(() => {
+  if (state.source !== 'input' || document.hidden || ac.state !== 'running') { inputDead = 0; return; }
+  fast.getFloatTimeDomainData(deadProbe);
+  if (!deadProbe.every((v) => v === 0)) { inputDead = 0; deadTried = false; return; }
+  inputDead++;
+  if (inputDead >= 4 && !deadTried) { deadTried = true; revive(); }
+}, 1000);
 
 function describeAudio() {
   const rate = `${ac.sampleRate / 1000} kHz`;
@@ -470,6 +561,7 @@ eng.on.drop = () => {
   if (VISUALS[state.visual] === 'chrome') chrome.splash(state.calm);
   if (VISUALS[state.visual] === 'fire') fire.drop(t);
   portal.drop(t, eng.tempo.P || 0.5); // (the glass: you, back in view for a beat)
+  if (state.blocks && state.blockLook === 'game') punch.drop(t, eng.tempo.P);
   if (state.crt && !state.calm) { replay(document.body, 'jolt'); crtStatic(); }
   const mode = DROPS[state.drop];
   // a bar's length in seconds; half a second a beat if the tempo isn't known yet
@@ -567,15 +659,34 @@ function setBlocks(on) {
   state.blocks = on;
   if (!on) punch.clear();
   $('b-blocks').classList.toggle('on', on);
+  gameOn();
   saveSettings();
 }
 // P: the punchcard blocks, then the dominoes (the same parts, each hit a domino the playhead
-// knocks over as it plays), then neither, in turn.
+// knocks over as it plays), then the handheld game (game.js: the song played on a little two-screen
+// handheld), then none, in turn.
+const BLOCK_LOOKS = ['blocks', 'dominoes', 'game'];
 function nextBlocks() {
+  const i = BLOCK_LOOKS.indexOf(state.blockLook);
   if (!state.blocks) { state.blockLook = 'blocks'; setBlocks(true); }
-  else if (state.blockLook === 'blocks') { state.blockLook = 'dominoes'; saveSettings(); }
+  else if (i < BLOCK_LOOKS.length - 1) { state.blockLook = BLOCK_LOOKS[i + 1]; saveSettings(); }
   else setBlocks(false);
-  flashStatus('blocks: ' + (!state.blocks ? 'off' : state.blockLook === 'dominoes' ? 'dominoes' : 'punchcard'));
+  gameOn();
+  flashStatus('blocks: ' + (!state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook]));
+}
+// The handheld game on (body.game-on: in the tall layout it stands in front of the code's lower lines, in the
+// pitch roll's place; its pads show the notes). There, and in the mini player, where it's on its own, the ID card
+// would sit on its top screen, and its cartridge has the song on it: the card steps aside while it's on. And A is the
+// game's screens, in the footer too.
+const gameShowing = () => state.blocks && state.blockLook === 'game';
+function gameOn() { document.body.classList.toggle('game-on', gameShowing()); applyCard(); footerKeys(); }
+// A, while the game is on: its screens' next design (Toaster's own look in the theme's colours, the neon,
+// a reflective LCD), remembered.
+function nextGameScreens() {
+  state.gameScreens = GAME_SCREENS[(GAME_SCREENS.indexOf(state.gameScreens) + 1) % GAME_SCREENS.length];
+  setGameScreens(state.gameScreens);
+  saveSettings();
+  flashStatus('screens: ' + state.gameScreens);
 }
 
 // The dot orb: a layer of its own, like the blocks, so it goes over any background (or none).
@@ -703,7 +814,7 @@ window.nc?.onUpdateProgress?.((p) => flashStatus(`downloading the update ${Math.
 // opened, each with its key (the first time Toaster opens, the welcome note instead); "Show in
 // help" opens the help at its top, where the last few versions' are kept. Not over a recording or
 // another message: it waits.
-const newsLine = (it) => [it.act ? K(it.act) : it.key, it.text];
+const newsLine = (it) => [it.act ? K(it.act) + (it.in ? ' · ' + it.in : '') : it.key, it.text];
 function showNews(news, version) {
   if (rec.mr || $('alerts').childElementCount) { setTimeout(() => showNews(news, version), 30000); return; }
   const items = news.flatMap((n) => n.items).map(newsLine);
@@ -721,7 +832,7 @@ function showNews(news, version) {
 function newsRows() {
   const rows = [`<tr class="sec" id="news-head"><th colspan="2">recently added</th></tr>`];
   for (const n of NEWS.slice(0, 3)) for (const it of n.items) {
-    rows.push(`<tr class="news"><td>${it.act ? `<span data-k="${it.act}"></span>` : esc(it.key)}</td><td>${esc(it.text)} <span class="vtag">${n.version}</span></td></tr>`);
+    rows.push(`<tr class="news"><td>${it.act ? `<span data-k="${it.act}"></span>${it.in ? ` · ${esc(it.in)}` : ''}` : esc(it.key)}</td><td>${esc(it.text)} <span class="vtag">${n.version}</span></td></tr>`);
   }
   $('help').querySelector('table tbody').insertAdjacentHTML('afterbegin', rows.join(''));
 }
@@ -833,7 +944,8 @@ async function exportSong() {
 // O: the code as it is now, opened in the Strudel REPL in your browser, to play and change.
 function openInStrudel() {
   const texts = lineTexts();
-  const url = strudelLink(strudelProgram(texts, currentSong()));
+  const phase = ((eng.bar % 4) + 4) % 4;
+  const url = strudelLink(strudelProgram(texts, currentSong(), phase));
   if (window.nc?.openStrudel) window.nc.openStrudel(url);
   else window.open(url, '_blank', 'noopener');
   flashStatus('opened in strudel.cc');
@@ -903,12 +1015,14 @@ async function changeWindowMode(mode) {
     const method = which === 'mini' ? 'setMini' : 'setVertical';
     // The desktop replies with the new state (false is a successful exit). A web adapter may
     // refuse entry with false; a missing adapter or a rejected call is not a successful resize.
-    if (await window.nc?.[method]?.(on) !== on) throw new Error('This window layout is only available in the desktop app.');
+    // (the mini player tall with the handheld game on: the handheld on its own, a little player)
+    const shape = which === 'mini' && gameShowing() ? 'tall' : 'wide';
+    if (await window.nc?.[method]?.(on, shape) !== on) throw new Error('This window layout is only available in the desktop app.');
     state[which] = on;
     changed = true;
     document.body.classList.toggle(which, on);
     $(which === 'mini' ? 'b-mini' : 'b-layout').textContent = which === 'mini' ? (on ? 'back' : 'mini') : (on ? 'wide' : '9:16');
-    if (which === 'vertical') applyCard();
+    applyCard();
   };
   try {
     const on = !state[mode], other = mode === 'mini' ? 'vertical' : 'mini';
@@ -927,7 +1041,7 @@ async function changeWindowMode(mode) {
 // The ID card has its own on/off for each layout: off in the wide one until you turn it on, on in
 // the vertical one (where it takes the camera's place at the top) until you turn it off.
 function applyCard() {
-  const on = state.vertical ? state.cardV : state.card, big = on && state.cardBig;
+  const on = (state.vertical ? state.cardV : state.card) && !((state.vertical || state.mini) && gameShowing()), big = on && state.cardBig;
   card.show(on);
   document.body.classList.toggle('card-on', on);
   document.body.classList.toggle('card-big', big);
@@ -939,6 +1053,7 @@ function applyCard() {
 // N (or the card button): off, on, big, off. (Each layout keeps its own on or off; big is for both.)
 // In the mini player the card has one size, so N is just on and off there.
 function toggleCard() {
+  if ((state.vertical || state.mini) && gameShowing()) { flashStatus('card: the cartridge has the song while the game is on'); return; }
   const on = state.vertical ? state.cardV : state.card, set = (v) => { if (state.vertical) state.cardV = v; else state.card = v; };
   if (state.mini) set(!on);
   else if (!on) { set(true); state.cardBig = false; }
@@ -970,7 +1085,7 @@ addEventListener('resize', sizeCard);
 // In the vertical layout the camera sits in the top part of the frame, and the ID card, while it's
 // on, in its place.
 const camRect = () => (state.vertical ? { x: 0, y: 0, w: innerWidth, h: Math.round(innerHeight * 0.42) } : null);
-const camCovered = () => state.vertical && state.cardV;
+const camCovered = () => state.vertical && card.shown;
 
 // The pitch wheel and the spiral are diagrams: behind the code they're lost. In the vertical layout
 // (without the card, which has the top) they get the top of the frame, as the camera does, and the
@@ -1248,7 +1363,7 @@ async function toggleClips() {
 // A note in the corner for a few seconds, with a button to show the file. While recording it would
 // be in the video (a drop clip or an export finishing then), so it goes to the status line in the
 // footer instead, which hides while recording.
-function showNotice(text, file) {
+function showNotice(text, file, keep = false) {
   if (rec.mr) { flashStatus(text); return; }
   const el = $('notice');
   el.textContent = text;
@@ -1260,7 +1375,7 @@ function showNotice(text, file) {
   }
   el.hidden = false;
   clearTimeout(rec.noticeTimer);
-  rec.noticeTimer = setTimeout(hideNotice, 8000);
+  if (!keep) rec.noticeTimer = setTimeout(hideNotice, 8000);
 }
 function hideNotice() { $('notice').hidden = true; }
 
@@ -1364,7 +1479,7 @@ function draw(now) {
     setTimeout(() => worlds.warm(), 30000);
   }
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
-  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
+  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook, currentSong()?.title, state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
   // (the code rain's characters: the code's lines, not the panels' boxes, which rained as +)
   if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
@@ -1414,6 +1529,10 @@ $('go-file').onclick = () => $('file').click();
 $('go-input').onclick = run(chooseInput);
 $('file').onchange = () => { const f = $('file').files[0]; if (f) useFile(f).catch(showError); $('file').value = ''; };
 $('b-source').onclick = () => showMenu();
+// (on a touch screen, with no Esc: the menu closes with its button, or a tap beside it)
+const closeMenu = () => { $('menu').hidden = true; $('alerts').innerHTML = ''; };
+$('menu-close').onclick = closeMenu;
+$('menu').addEventListener('click', (e) => { if (e.target === $('menu') && state.source && matchMedia('(hover: none)').matches) closeMenu(); });
 // The visual button opens a list of the backgrounds to pick from (V steps through them); a click
 // anywhere else or any key closes it.
 const visMenu = $('vis-menu');
@@ -1456,7 +1575,7 @@ $('rename-form').addEventListener('submit', () => {
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'visual', key: 'v', run: () => { setVisual((state.visual + 1) % VISUALS.length); crtStatic(); crtOsd(crtChannel()); } },
-  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
+  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
@@ -1494,6 +1613,63 @@ const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
 const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
+function footerKeys() {
+  document.querySelector('footer .keys').textContent = FOOTER.map((f) => `${f.slice(0, -1).map(K).join(' ')} ${f[0] === 'strength' && gameShowing() ? 'screens' : f[f.length - 1]}`).join(' · ');
+}
+
+// The controls panel (controls.js): on a screen with no hover (an iPad, a phone), every action above as a
+// button, with what it's set to. Nothing is added where there's a mouse. What a device can't do is left out.
+const onoff = (v) => ({ text: v ? 'on' : 'off', on: !!v });
+const desktopApp = () => !!window.nc && window.nc.platform !== 'web';
+const standalone = () => !!navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+const canRecord = () => !!window.nc?.recSource && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices && (desktopApp() || !!navigator.mediaDevices.getDisplayMedia);
+const controls = createControls({
+  document, window, query: matchMedia('(hover: none)'), actions: ACTIONS, K, fail: (err) => showError(err),
+  dock: new URLSearchParams(location.search).get('dock') || 'auto',
+  now: {
+    source: () => state.label || '',
+    visual: () => VISUALS[state.visual],
+    strength: () => {
+      const v = VISUALS[state.visual];
+      if (state.blocks && state.blockLook === 'game') return `game screens: ${state.gameScreens}`;
+      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
+        : v === 'scenery' ? state.sceneryScene + (state.sceneryTheme ? ", theme's colours" : '') : STRENGTHS[state.strength][0];
+    },
+    blocks: () => ({ text: !state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook], on: state.blocks }),
+    later: () => `blocks sync ${state.syncTrim > 0 ? '+' : ''}${state.syncTrim} ms`,
+    earlier: () => `blocks sync ${state.syncTrim > 0 ? '+' : ''}${state.syncTrim} ms`,
+    cam: () => ({ text: !cam.on ? 'off' : state.eyes ? 'big eyes' : state.ascii ? 'ASCII' : 'on', on: cam.on }),
+    card: () => { const on = state.vertical ? state.cardV : state.card; return { text: !on ? 'off' : state.cardBig ? 'big' : 'on', on }; },
+    orb: () => onoff(state.orb),
+    glass: () => onoff(state.glass),
+    rec: () => ({ text: rec.mr ? 'recording' : 'off', on: !!rec.mr }),
+    clips: () => onoff(clips.on),
+    camfx: () => CAM_FX[state.camFx],
+    tap: () => (eng.tempo?.bpm ? `tempo ${Math.round(eng.tempo.bpm)}` : ''),
+    hush: () => onoff(state.hushed),
+    dropfx: () => DROPS[state.drop],
+    machine: () => onoff(state.info),
+    layout: () => onoff(state.vertical),
+    mini: () => onoff(state.mini),
+    theme: () => THEMES[state.theme],
+    crt: () => onoff(state.crt),
+    name: () => state.manual?.title || '',
+    hide: () => onoff(document.body.classList.contains('clean')),
+    code: () => onoff(state.codeHidden),
+    full: () => onoff(document.fullscreenElement || document.webkitFullscreenElement),
+  },
+  can: {
+    cam: () => !!navigator.mediaDevices?.getUserMedia,
+    rec: canRecord,
+    clips: () => canRecord() && !!window.nc?.saveClip,
+    export: () => !!window.nc?.saveSong,
+    strudel: () => !!window.nc?.openStrudel,
+    layout: desktopApp,
+    mini: desktopApp,
+    // (a phone's browser has no fullscreen; an app on the home screen already is)
+    full: () => !!window.nc?.toggleFullscreen && !standalone() && (desktopApp() || !!(document.fullscreenEnabled || document.webkitFullscreenEnabled)),
+  },
+});
 
 function nudgeSync(ms) {
   state.syncTrim = Math.max(-200, Math.min(200, state.syncTrim + ms));
@@ -1517,7 +1693,7 @@ function renameSong() {
 // key a button to change it) and the help's mentions of them.
 function applyKeys() {
   byKey = new Map(ACTIONS.map((a) => [keyOf(a.id), a]));
-  document.querySelector('footer .keys').textContent = FOOTER.map((f) => `${f.slice(0, -1).map(K).join(' ')} ${f[f.length - 1]}`).join(' · ');
+  footerKeys();
   for (const b of document.querySelectorAll('header button[data-act]')) b.title = `${b.dataset.title} (${K(b.dataset.act)})`;
   for (const el of document.querySelectorAll('#help [data-k]')) el.textContent = K(el.dataset.k);
   for (const row of document.querySelectorAll('#help tr[data-act]')) {
@@ -1563,7 +1739,7 @@ addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (!visMenu.hidden) { showVisMenu(false); if (k === 'escape') return; }
-  if (k === 'escape') { $('menu').hidden = true; $('alerts').innerHTML = ''; return; }
+  if (k === 'escape') { closeMenu(); return; }
   if (e.target.closest('#alerts')) return; // let Enter/Space press the message box's button
   if (k === '?' || k === '/') { $('help').showModal(); return; }
   if (k === 'f11') { e.preventDefault(); window.nc?.toggleFullscreen(); return; }
@@ -1603,7 +1779,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, setOrb, setGlass, toggleLayout, toggleCard, showMenu };
+window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {

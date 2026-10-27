@@ -52,7 +52,7 @@ let win = null;
 let nowPlayingProc = null;
 let lastNowPlaying = null;
 let normalBounds = null;
-let miniFrom = null, miniBounds = null; // the window before the mini player, and where the mini one was
+let miniFrom = null, miniBounds = {}; // the window before the mini player, and where the mini one was (each shape's own)
 
 // The page keeps listening while the window is covered or minimized (see backgroundThrottling
 // below), but Chromium also drops a hidden window's page to idle priority, and then anything
@@ -325,20 +325,22 @@ function setUpIpc() {
   });
   // The mini player: a small window over everything else (the code and the background, still
   // listening), in the corner of the screen it's on, or wherever you last moved it; off, the
-  // window goes back to where it was (maximized or full screen again, if it was).
-  let miniWas = null;
-  ipcMain.handle('win:mini', async (_e, on) => {
+  // window goes back to where it was (maximized or full screen again, if it was). Its shape: wide,
+  // or tall for the handheld game (the handheld on its own, as a little player).
+  let miniWas = null, miniShape = 'wide';
+  ipcMain.handle('win:mini', async (_e, on, shape) => {
     if (!win) return false;
     const was = await unbig();
     if (on && !miniFrom) {
       miniFrom = win.getBounds();
       miniWas = was;
-      const area = screen.getDisplayMatching(miniFrom).workArea, w = 460, h = 300;
-      win.setMinimumSize(320, 200);
+      miniShape = shape === 'tall' ? 'tall' : 'wide';
+      const area = screen.getDisplayMatching(miniFrom).workArea, [w, h] = miniShape === 'tall' ? [300, 500] : [460, 300];
+      win.setMinimumSize(miniShape === 'tall' ? 200 : 320, 200);
       win.setAlwaysOnTop(true, 'floating');
-      win.setBounds(miniBounds || { x: area.x + area.width - w - 16, y: area.y + area.height - h - 16, width: w, height: h });
+      win.setBounds(miniBounds[miniShape] || { x: area.x + area.width - w - 16, y: area.y + area.height - h - 16, width: w, height: h });
     } else if (!on && miniFrom) {
-      miniBounds = win.getBounds();
+      miniBounds[miniShape] = win.getBounds();
       win.setAlwaysOnTop(false);
       win.setMinimumSize(420, 560);
       win.setBounds(miniFrom);
