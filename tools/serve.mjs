@@ -1,5 +1,5 @@
 // Serves the app's page as a plain web page (http://localhost:5173), for looking at the UI in a
-// browser. Outside the desktop app only the demo beat, files and audio inputs work as sources.
+// browser. Outside the desktop app only the demo beat, files, audio inputs and the radio work as sources.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';

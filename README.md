@@ -63,7 +63,7 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 
 | Key | Does |
 | --- | --- |
-| S | audio source: system audio, demo beat, file, input |
+| S | audio source: system audio, demo beat, file, input, radio |
 | V | background: spectrum, tunnel, spiral, pitch wheel, warp, cuts, worlds, chrome, spectrogram, scenery, rain, scope, fire, off (each described under [Backgrounds](#backgrounds)) |
 | A | how strongly the ASCII background (spectrum, rain, scope) shows: soft (how it used to be), normal, bold. The code lines sit on their own bands, so they stay readable. With the worlds on, A picks their look instead: auto (film, and on each drop another look for 8 bars), night (as auto, but every world keeps a dark sky with its stars, so no cut lights the whole screen; with fewer flashes on, the worlds always have night skies), film, ASCII (the planet as text, each character in its own colour), code (the planet drawn in the song's own code the way ASCII art draws a picture: as many characters as the world is bright there, each in its colour, the world faint underneath), ink (the theme's two colours, dithered as the ID card's picture is), and the Locust Worlds page's print finishes: risograph, cyanotype, receipt, thermal camera, night vision, CRT, VHS, quadtree; and cells, the planet cut into cells of the worlds around it, turning over cell by cell into the next on each cut (after Days of Glitch's moving cells). A print look covers the planet, or the sky when the code sits over the planet. With chrome, A turns its collage off and on; with the spectrogram, it switches its colours between the rainbow and the theme's own; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, Halloween, the sharks, the festival, the koi pond, space, the eye, and last auto again in the theme's two colours. With the handheld game on (P), A goes round the game's screens instead: Toaster's own (in the theme's colours), neon, an old LCD. Remembered |
 | R | orb, over whichever background is picked (or none): after libraries.dev's Thinking Orbs, a cloud of 2,200 soft dots in 3D that holds a form for 8 bars and then flows, dot by dot, into the next, landing on the phrase's one: a sphere, a glitch ball (after animoscillator's glitch orb: the dots fade into a ball of neon noise smeared into streaks, each kick dropping fresh noise in and each bar's first kick breaking it up again), a crystal (a cube of dots on its corner), orbit paths with their dots running round them and bright particles among them, a staff the bass notes appear on as they're played, a spiral galaxy, a network its signals run through on the hats, a field of waves riding the spectrum, a sphere in slices that turn one a beat and then solve themselves (Thinking Orbs' moves), a globe's lines, a ring, an icosahedron, rings swelling with their bands of the spectrum, a burst of rays, ripples on a disc, and an outline that changes shape on the bar. The kick breathes it out, the clap spins it, the hats send a band of light round it, the bass swells the dots. Timed off the beat like the blocks |
@@ -94,7 +94,8 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 | H / F | hide header and footer / fullscreen |
 
 The background and its strength, blocks, orb, card, glass, theme, camera effect and drop-effect
-choices are remembered between launches, and so are the keys; the camera always starts off.
+choices are remembered between launches, and so are the keys and the radio's address; the camera
+always starts off.
 
 ## Backgrounds
 
@@ -171,9 +172,10 @@ More on all three in [docs/how-it-works.md](docs/how-it-works.md).
 Everything Toaster hears and sees stays on your machine. The sound is worked out in the app, and the
 camera (off until you press C) is looked at by the system's own face detector (Windows' face
 detector, or the Mac's Vision framework) and by Google's MediaPipe, both running on your machine.
-Nothing is uploaded. It reaches the internet for two things only: GitHub, when it starts, to see
-whether there's a newer Toaster (turn that off in the help, under Updates), and strudel.cc when you
-press O (your browser opens it with the code in the link).
+Nothing is uploaded. It reaches the internet for three things only: GitHub, when it starts, to see
+whether there's a newer Toaster (turn that off in the help, under Updates), strudel.cc when you
+press O (your browser opens it with the code in the link), and the radio's stream while it plays
+(from the server at the address you typed).
 
 ## Good to know
 
@@ -182,6 +184,8 @@ press O (your browser opens it with the code in the link).
 - The song's title (and its cover, for the ID card) come from the system's media controls
   (Windows' media controls, or the Mac's Now Playing), so any player that shows up there works:
   Spotify, browsers and the rest.
+- The radio (S) plays an internet radio stream whose address you paste in; Toaster comes with no
+  stations. More in [docs/how-it-works.md](docs/how-it-works.md#the-radio).
 - For the finger frame, the portals and the hand signs, keep your hands a little inside the camera's picture.
 - On a touch screen (an iPad, say), ☰ in the header opens every key as a button, each showing what it's set to.
 - What it can and can't hear yet: the end of [docs/how-it-works.md](docs/how-it-works.md).
