@@ -427,6 +427,44 @@ html.web .card .get { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 
   header > button { min-height: 32px; }
 }
 
+/* ---------- the controls panel (controls.js): built only on a screen with no hover ---------- */
+/* the header button (its touch target reaches past the 37 px bar, to 45), and the way back to it while the bars are hidden */
+#b-controls { position: relative; min-width: 44px; }
+@media (max-width: 480px) { #b-controls .ctl-word { display: none; } }
+#b-controls::after { content: ""; position: absolute; inset: -4px -3px; }
+#ctl-fab { display: none; position: fixed; top: calc(env(safe-area-inset-top) + 6px); right: calc(env(safe-area-inset-right) + 6px); z-index: 6; min-width: 44px; min-height: 44px; font-size: 18px; background: var(--bg); opacity: .55; }
+body.clean #ctl-fab { display: block; }
+.ctl-panel { position: fixed; z-index: 8; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); border: 2px solid var(--fg); box-shadow: 4px 4px 0 var(--faint); }
+.ctl-panel[hidden] { display: none; }
+/* along the bottom (portrait, phones): a bit under half the screen, so most of the picture stays */
+.ctl-panel[data-dock="bottom"] { left: 0; right: 0; bottom: 0; max-height: 46vh; max-height: 46dvh; border-width: 2px 0 0; padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+/* down the right side (landscape): the code keeps the left */
+.ctl-panel[data-dock="side"] { top: 0; right: 0; bottom: 0; width: min(380px, 46vw); border-width: 0 0 0 2px; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0; }
+/* down the left side, with the handheld game on (it stands at the right): the handheld stays in view */
+.ctl-panel[data-dock="left"] { top: 0; left: 0; bottom: 0; width: min(380px, 46vw); border-width: 0 2px 0 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.ctl-head { display: flex; align-items: center; gap: 10px; flex: none; padding: 6px 12px; border-bottom: 1px solid var(--faint); font-size: 13px; }
+.ctl-head b { letter-spacing: .08em; text-transform: uppercase; }
+.ctl-sub { color: var(--dim); font-size: 11px; }
+.ctl-close { margin-left: auto; min-height: 44px; padding: 0 16px; font-size: 13px; }
+.ctl-body { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 12px 12px; }
+.ctl-body h3 { margin: 12px 0 6px; font-size: 11px; font-weight: 400; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.ctl-body h3[hidden] { display: none; }
+.ctl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.ctl { position: relative; display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 1px 8px; min-height: 52px; padding: 6px 10px; text-align: left; white-space: normal; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.ctl[hidden] { display: none; }
+.ctl:active { background: var(--faint); }
+.ctl-name { font-size: 13px; font-weight: 700; }
+.ctl-key { font: inherit; font-size: 10px; color: var(--dim); align-self: start; }
+.ctl-now { grid-column: 1 / -1; font-size: 12px; }
+.ctl-hint { font-size: 11px; color: var(--dim); }
+.ctl.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.ctl.on .ctl-key, .ctl.on .ctl-hint { color: var(--bg); opacity: .7; }
+.ctl-pad { grid-column: 1 / -1; min-height: 88px; border-width: 2px; border-color: var(--fg); }
+.ctl-pad .ctl-name { font-size: 18px; }
+.ctl-pad .ctl-now { font-size: 13px; }
+/* a note that pops up goes to the top while the panel is open, not under it */
+body.controls-open #notice { bottom: auto; top: 48px; }
+
 /* ---------- drop takeover: a Windows XP desktop ---------- */
 #desk-back, #desk-front { position: fixed; inset: 0; pointer-events: none; display: none; }
 #desk-back { z-index: 1; }

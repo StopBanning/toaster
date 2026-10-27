@@ -30,6 +30,7 @@ import { buildSongFiles } from './tape-export.js';
 import { createClips } from './clips.js';
 import { makeDemo } from './demo.js';
 import { NEWS, newsSince } from './news.js';
+import { createControls } from './controls.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1601,6 +1602,59 @@ const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() :
 const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
 
+// The controls panel (controls.js): on a screen with no hover (an iPad, a phone), every action above as a
+// button, with what it's set to. Nothing is added where there's a mouse. What a device can't do is left out.
+const onoff = (v) => ({ text: v ? 'on' : 'off', on: !!v });
+const desktopApp = () => !!window.nc && window.nc.platform !== 'web';
+const standalone = () => !!navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+const canRecord = () => !!window.nc?.recSource && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices && (desktopApp() || !!navigator.mediaDevices.getDisplayMedia);
+const controls = createControls({
+  document, window, query: matchMedia('(hover: none)'), actions: ACTIONS, K, fail: (err) => showError(err),
+  dock: new URLSearchParams(location.search).get('dock') || 'auto',
+  now: {
+    source: () => state.label || '',
+    visual: () => VISUALS[state.visual],
+    strength: () => {
+      const v = VISUALS[state.visual];
+      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
+        : v === 'scenery' ? state.sceneryScene + (state.sceneryTheme ? ", theme's colours" : '') : STRENGTHS[state.strength][0];
+    },
+    blocks: () => ({ text: !state.blocks ? 'off' : state.blockLook === 'dominoes' ? 'dominoes' : 'punchcard', on: state.blocks }),
+    later: () => `blocks sync ${state.syncTrim > 0 ? '+' : ''}${state.syncTrim} ms`,
+    earlier: () => `blocks sync ${state.syncTrim > 0 ? '+' : ''}${state.syncTrim} ms`,
+    cam: () => ({ text: !cam.on ? 'off' : state.eyes ? 'big eyes' : state.ascii ? 'ASCII' : 'on', on: cam.on }),
+    card: () => { const on = state.vertical ? state.cardV : state.card; return { text: !on ? 'off' : state.cardBig ? 'big' : 'on', on }; },
+    orb: () => onoff(state.orb),
+    glass: () => onoff(state.glass),
+    rec: () => ({ text: rec.mr ? 'recording' : 'off', on: !!rec.mr }),
+    clips: () => onoff(clips.on),
+    camfx: () => CAM_FX[state.camFx],
+    tap: () => (eng.tempo?.bpm ? `tempo ${Math.round(eng.tempo.bpm)}` : ''),
+    hush: () => onoff(state.hushed),
+    dropfx: () => DROPS[state.drop],
+    machine: () => onoff(state.info),
+    layout: () => onoff(state.vertical),
+    mini: () => onoff(state.mini),
+    theme: () => THEMES[state.theme],
+    crt: () => onoff(state.crt),
+    name: () => state.manual?.title || '',
+    hide: () => onoff(document.body.classList.contains('clean')),
+    code: () => onoff(state.codeHidden),
+    full: () => onoff(document.fullscreenElement || document.webkitFullscreenElement),
+  },
+  can: {
+    cam: () => !!navigator.mediaDevices?.getUserMedia,
+    rec: canRecord,
+    clips: () => canRecord() && !!window.nc?.saveClip,
+    export: () => !!window.nc?.saveSong,
+    strudel: () => !!window.nc?.openStrudel,
+    layout: desktopApp,
+    mini: desktopApp,
+    // (a phone's browser has no fullscreen; an app on the home screen already is)
+    full: () => !!window.nc?.toggleFullscreen && !standalone() && (desktopApp() || !!(document.fullscreenEnabled || document.webkitFullscreenEnabled)),
+  },
+});
+
 function nudgeSync(ms) {
   state.syncTrim = Math.max(-200, Math.min(200, state.syncTrim + ms));
   saveSettings();
@@ -1709,7 +1763,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, setOrb, setGlass, toggleLayout, toggleCard, showMenu };
+window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {
