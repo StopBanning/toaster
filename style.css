@@ -237,6 +237,10 @@ body.card-big #card .c-title { grid-area: title; }
 body.card-big #card .c-jp { grid-area: jp; }
 body.card-big #card .c-info { grid-area: info; margin-top: 8px; white-space: nowrap; }
 body.card-big:not(.vertical) #code { padding-right: calc(var(--card-w, 300px) + 44px); }
+/* the handheld game in a wide window stands right of the code (game.js layout(): its left edge is never left of 60% of
+   the width, whatever the window): the code keeps to the 60% on its left, long lines going on over more rows instead
+   of running over the handheld's screens (a window taller than wide is laid out as the tall one: see below) */
+@media (min-aspect-ratio: 1/1) { body.game-on:not(.vertical) #code { padding-right: 40vw; } }
 
 body.glitch #code { animation: glitch .34s steps(2) 1; }
 @keyframes glitch {
@@ -322,10 +326,19 @@ footer .keys { color: var(--dim); white-space: nowrap; overflow: hidden; text-ov
    each edge (the code wraps a little more rather than getting smaller); the backgrounds and the
    camera still run to the edges. */
 body.vertical { --size: clamp(11px, 3.1vw, 17px); --safe: 10vw; }
-body.vertical #code { padding: 52px var(--safe) 44px; }
+/* (the tall layout is for phone videos: the code starts below where a phone app lays its header over one) */
+body.vertical #code { padding: 92px var(--safe) 44px; }
 body.vertical.cam-on #code, body.vertical.wheel-up #code { padding-top: calc(42vh + 12px); }
 /* the wheel up there shows the chord already, and the chord roll would be pushed off the bottom */
-body.vertical.wheel-up #roll { display: none; }
+body.vertical.wheel-up #roll, body.vertical.game-on #roll { display: none; }
+/* the handheld game in the tall layout: its top screen shows the drums, so the step grid goes too; the code a
+   little bigger than usual, as what shows of it round the handheld (its first lines, its lines' starts) reads on a phone */
+body.vertical.game-on #grid { display: none; }
+body.vertical.game-on { --size: clamp(12px, 3.4vw, 19px); }
+body.vertical.game-on #punch { z-index: 3; } /* (the handheld in front of the code: its lower lines behind it, in its shadow) */
+/* a window taller than wide that isn't the 9:16 layout (the website on a phone, a narrow window): the game is drawn
+   tall there too (game.js: a canvas taller than wide), so it stands in front of the code there as well */
+@media not all and (min-aspect-ratio: 1/1) { body.game-on #grid, body.game-on #roll { display: none; } body.game-on #punch { z-index: 3; } }
 body.vertical .wide-only, body.vertical footer .keys, body.vertical .appname { display: none; }
 body.vertical #sys { top: auto; bottom: 40px; right: var(--safe); }
 /* the ID card is the top of the frame (with the camera in its photo), the code below it */
@@ -360,6 +373,8 @@ header > #b-star:active { transform: scale(.97); }
 #b-star .gh { width: 13px; height: 13px; flex-shrink: 0; }
 #b-star .star-n:empty { display: none; }
 body.mini header > #b-star { display: none; }
+/* the handheld game in the mini player: the handheld on its own, filling the window (game.js), the code put away */
+body.mini.game-on #code { display: none; }
 :root { --gold: #e8b730; }
 :root[data-theme="whitescreen"] { --gold: #b98500; }
 .star-i { position: relative; display: inline-block; color: var(--dim); --fill: 0; }

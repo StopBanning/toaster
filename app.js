@@ -2,7 +2,7 @@
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
 import { createCodeView } from './codeview.js';
-import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP } from './visuals.js';
+import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens } from './visuals.js';
 import { createOrb } from './orb.js';
 import { createDotCam } from './dotcam.js';
 import { createVoxCam } from './voxcam.js';
@@ -128,7 +128,7 @@ function meshFace() {
 const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winKey: '', manual: null,
-  visual: 0, strength: 1, blocks: true, blockLook: 'blocks', orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
+  visual: 0, strength: 1, blocks: true, blockLook: 'blocks', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
   crt: false, // Y: an old screen over everything (see #tube in the CSS)
@@ -153,7 +153,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
+const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -179,7 +179,9 @@ function loadSettings() {
   if (!Number.isFinite(state.syncTrim)) state.syncTrim = 0;
   if (!(state.strength in STRENGTHS)) state.strength = 1;
   if (!(state.camFx in CAM_FX)) state.camFx = 0;
-  if (!['blocks', 'dominoes'].includes(state.blockLook)) state.blockLook = 'blocks';
+  if (!BLOCK_LOOKS.includes(state.blockLook)) state.blockLook = 'blocks';
+  if (!GAME_SCREENS.includes(state.gameScreens)) state.gameScreens = GAME_SCREENS[0];
+  setGameScreens(state.gameScreens);
   if (!worlds.looks.includes(state.worldLook)) state.worldLook = 'auto';
   worlds.setLook(state.worldLook);
   state.card = state.card === true;
@@ -256,6 +258,7 @@ function attach(node, source, label) {
 // song starts now, from its beginning (see listenOpening in engine.js).
 function freshStart(top = false) {
   if (state.hushed) setHush(false); // a new song comes in unhushed
+  punch.newSong(gameShowing() && !eng.silent);
   eng.reset({ top });
   resetCodegen();
   view.clear();
@@ -565,6 +568,7 @@ eng.on.drop = () => {
   if (VISUALS[state.visual] === 'chrome') chrome.splash(state.calm);
   if (VISUALS[state.visual] === 'fire') fire.drop(t);
   portal.drop(t, eng.tempo.P || 0.5); // (the glass: you, back in view for a beat)
+  if (state.blocks && state.blockLook === 'game') punch.drop(t, eng.tempo.P);
   if (state.crt && !state.calm) { replay(document.body, 'jolt'); crtStatic(); }
   const mode = DROPS[state.drop];
   // a bar's length in seconds; half a second a beat if the tempo isn't known yet
@@ -662,15 +666,34 @@ function setBlocks(on) {
   state.blocks = on;
   if (!on) punch.clear();
   $('b-blocks').classList.toggle('on', on);
+  gameOn();
   saveSettings();
 }
 // P: the punchcard blocks, then the dominoes (the same parts, each hit a domino the playhead
-// knocks over as it plays), then neither, in turn.
+// knocks over as it plays), then the handheld game (game.js: the song played on a little two-screen
+// handheld), then none, in turn.
+const BLOCK_LOOKS = ['blocks', 'dominoes', 'game'];
 function nextBlocks() {
+  const i = BLOCK_LOOKS.indexOf(state.blockLook);
   if (!state.blocks) { state.blockLook = 'blocks'; setBlocks(true); }
-  else if (state.blockLook === 'blocks') { state.blockLook = 'dominoes'; saveSettings(); }
+  else if (i < BLOCK_LOOKS.length - 1) { state.blockLook = BLOCK_LOOKS[i + 1]; saveSettings(); }
   else setBlocks(false);
-  flashStatus('blocks: ' + (!state.blocks ? 'off' : state.blockLook === 'dominoes' ? 'dominoes' : 'punchcard'));
+  gameOn();
+  flashStatus('blocks: ' + (!state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook]));
+}
+// The handheld game on (body.game-on: in the tall layout it stands in front of the code's lower lines, in the
+// pitch roll's place; its pads show the notes). There, and in the mini player, where it's on its own, the ID card
+// would sit on its top screen, and its cartridge has the song on it: the card steps aside while it's on. And A is the
+// game's screens, in the footer too.
+const gameShowing = () => state.blocks && state.blockLook === 'game';
+function gameOn() { document.body.classList.toggle('game-on', gameShowing()); applyCard(); footerKeys(); }
+// A, while the game is on: its screens' next design (Toaster's own look in the theme's colours, the neon,
+// a reflective LCD), remembered.
+function nextGameScreens() {
+  state.gameScreens = GAME_SCREENS[(GAME_SCREENS.indexOf(state.gameScreens) + 1) % GAME_SCREENS.length];
+  setGameScreens(state.gameScreens);
+  saveSettings();
+  flashStatus('screens: ' + state.gameScreens);
 }
 
 // The dot orb: a layer of its own, like the blocks, so it goes over any background (or none).
@@ -798,7 +821,7 @@ window.nc?.onUpdateProgress?.((p) => flashStatus(`downloading the update ${Math.
 // opened, each with its key (the first time Toaster opens, the welcome note instead); "Show in
 // help" opens the help at its top, where the last few versions' are kept. Not over a recording or
 // another message: it waits.
-const newsLine = (it) => [it.act ? K(it.act) : it.key, it.text];
+const newsLine = (it) => [it.act ? K(it.act) + (it.in ? ' · ' + it.in : '') : it.key, it.text];
 function showNews(news, version) {
   if (rec.mr || $('alerts').childElementCount) { setTimeout(() => showNews(news, version), 30000); return; }
   const items = news.flatMap((n) => n.items).map(newsLine);
@@ -816,7 +839,7 @@ function showNews(news, version) {
 function newsRows() {
   const rows = [`<tr class="sec" id="news-head"><th colspan="2">recently added</th></tr>`];
   for (const n of NEWS.slice(0, 3)) for (const it of n.items) {
-    rows.push(`<tr class="news"><td>${it.act ? `<span data-k="${it.act}"></span>` : esc(it.key)}</td><td>${esc(it.text)} <span class="vtag">${n.version}</span></td></tr>`);
+    rows.push(`<tr class="news"><td>${it.act ? `<span data-k="${it.act}"></span>${it.in ? ` · ${esc(it.in)}` : ''}` : esc(it.key)}</td><td>${esc(it.text)} <span class="vtag">${n.version}</span></td></tr>`);
   }
   $('help').querySelector('table tbody').insertAdjacentHTML('afterbegin', rows.join(''));
 }
@@ -928,7 +951,8 @@ async function exportSong() {
 // O: the code as it is now, opened in the Strudel REPL in your browser, to play and change.
 function openInStrudel() {
   const texts = lineTexts();
-  const url = strudelLink(strudelProgram(texts, currentSong()));
+  const phase = ((eng.bar % 4) + 4) % 4;
+  const url = strudelLink(strudelProgram(texts, currentSong(), phase));
   if (window.nc?.openStrudel) window.nc.openStrudel(url);
   else window.open(url, '_blank', 'noopener');
   flashStatus('opened in strudel.cc');
@@ -998,12 +1022,14 @@ async function changeWindowMode(mode) {
     const method = which === 'mini' ? 'setMini' : 'setVertical';
     // The desktop replies with the new state (false is a successful exit). A web adapter may
     // refuse entry with false; a missing adapter or a rejected call is not a successful resize.
-    if (await window.nc?.[method]?.(on) !== on) throw new Error('This window layout is only available in the desktop app.');
+    // (the mini player tall with the handheld game on: the handheld on its own, a little player)
+    const shape = which === 'mini' && gameShowing() ? 'tall' : 'wide';
+    if (await window.nc?.[method]?.(on, shape) !== on) throw new Error('This window layout is only available in the desktop app.');
     state[which] = on;
     changed = true;
     document.body.classList.toggle(which, on);
     $(which === 'mini' ? 'b-mini' : 'b-layout').textContent = which === 'mini' ? (on ? 'back' : 'mini') : (on ? 'wide' : '9:16');
-    if (which === 'vertical') applyCard();
+    applyCard();
   };
   try {
     const on = !state[mode], other = mode === 'mini' ? 'vertical' : 'mini';
@@ -1022,7 +1048,7 @@ async function changeWindowMode(mode) {
 // The ID card has its own on/off for each layout: off in the wide one until you turn it on, on in
 // the vertical one (where it takes the camera's place at the top) until you turn it off.
 function applyCard() {
-  const on = state.vertical ? state.cardV : state.card, big = on && state.cardBig;
+  const on = (state.vertical ? state.cardV : state.card) && !((state.vertical || state.mini) && gameShowing()), big = on && state.cardBig;
   card.show(on);
   document.body.classList.toggle('card-on', on);
   document.body.classList.toggle('card-big', big);
@@ -1034,6 +1060,7 @@ function applyCard() {
 // N (or the card button): off, on, big, off. (Each layout keeps its own on or off; big is for both.)
 // In the mini player the card has one size, so N is just on and off there.
 function toggleCard() {
+  if ((state.vertical || state.mini) && gameShowing()) { flashStatus('card: the cartridge has the song while the game is on'); return; }
   const on = state.vertical ? state.cardV : state.card, set = (v) => { if (state.vertical) state.cardV = v; else state.card = v; };
   if (state.mini) set(!on);
   else if (!on) { set(true); state.cardBig = false; }
@@ -1065,7 +1092,7 @@ addEventListener('resize', sizeCard);
 // In the vertical layout the camera sits in the top part of the frame, and the ID card, while it's
 // on, in its place.
 const camRect = () => (state.vertical ? { x: 0, y: 0, w: innerWidth, h: Math.round(innerHeight * 0.42) } : null);
-const camCovered = () => state.vertical && state.cardV;
+const camCovered = () => state.vertical && card.shown;
 
 // The pitch wheel and the spiral are diagrams: behind the code they're lost. In the vertical layout
 // (without the card, which has the top) they get the top of the frame, as the camera does, and the
@@ -1467,7 +1494,7 @@ function draw(now) {
     setTimeout(() => worlds.warm(), 30000);
   }
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
-  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook);
+  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook, currentSong()?.title, state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
   // (the code rain's characters: the code's lines, not the panels' boxes, which rained as +)
   if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
@@ -1563,7 +1590,7 @@ $('rename-form').addEventListener('submit', () => {
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'visual', key: 'v', run: () => { setVisual((state.visual + 1) % VISUALS.length); crtStatic(); crtOsd(crtChannel()); } },
-  { id: 'strength', key: 'a', run: () => (VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
+  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
@@ -1601,6 +1628,9 @@ const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
 const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
+function footerKeys() {
+  document.querySelector('footer .keys').textContent = FOOTER.map((f) => `${f.slice(0, -1).map(K).join(' ')} ${f[0] === 'strength' && gameShowing() ? 'screens' : f[f.length - 1]}`).join(' · ');
+}
 
 // The controls panel (controls.js): on a screen with no hover (an iPad, a phone), every action above as a
 // button, with what it's set to. Nothing is added where there's a mouse. What a device can't do is left out.
@@ -1616,10 +1646,11 @@ const controls = createControls({
     visual: () => VISUALS[state.visual],
     strength: () => {
       const v = VISUALS[state.visual];
+      if (state.blocks && state.blockLook === 'game') return `game screens: ${state.gameScreens}`;
       return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
         : v === 'scenery' ? state.sceneryScene + (state.sceneryTheme ? ", theme's colours" : '') : STRENGTHS[state.strength][0];
     },
-    blocks: () => ({ text: !state.blocks ? 'off' : state.blockLook === 'dominoes' ? 'dominoes' : 'punchcard', on: state.blocks }),
+    blocks: () => ({ text: !state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook], on: state.blocks }),
     later: () => `blocks sync ${state.syncTrim > 0 ? '+' : ''}${state.syncTrim} ms`,
     earlier: () => `blocks sync ${state.syncTrim > 0 ? '+' : ''}${state.syncTrim} ms`,
     cam: () => ({ text: !cam.on ? 'off' : state.eyes ? 'big eyes' : state.ascii ? 'ASCII' : 'on', on: cam.on }),
@@ -1677,7 +1708,7 @@ function renameSong() {
 // key a button to change it) and the help's mentions of them.
 function applyKeys() {
   byKey = new Map(ACTIONS.map((a) => [keyOf(a.id), a]));
-  document.querySelector('footer .keys').textContent = FOOTER.map((f) => `${f.slice(0, -1).map(K).join(' ')} ${f[f.length - 1]}`).join(' · ');
+  footerKeys();
   for (const b of document.querySelectorAll('header button[data-act]')) b.title = `${b.dataset.title} (${K(b.dataset.act)})`;
   for (const el of document.querySelectorAll('#help [data-k]')) el.textContent = K(el.dataset.k);
   for (const row of document.querySelectorAll('#help tr[data-act]')) {
