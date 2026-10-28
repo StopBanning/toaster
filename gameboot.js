@@ -3,8 +3,8 @@
 // the toast popping up out of the toaster; the bottom screen tests itself, reading the cartridge (the song, its tempo
 // and key, the four parts it plays) a line at a time, and START is pressed; then both screens tear into the game. Drawn at a low resolution (about 150 pixels across) in the colours of
 // the screens' design, then laid on the screens as they are (gamescreen.js). The sound is the song's own.
-import { ptext, ptextC, textW, cellsOf } from './gameskins.js';
-import { say, sayKey, ja } from './gamewords.js'; // (the Japan edition boots in Japanese)
+import { ptext, ptextC, textW, cellsOf, pixelText, fitPixel } from './gameskins.js';
+import { say, sayKey, ja, language } from './gamewords.js'; // (the Japan edition boots in Japanese)
 
 // When (seconds from the start): the light, each screen coming on, the logo landing (the ding), START pressed, the
 // screens tearing into the game, and the end.
@@ -69,8 +69,7 @@ const lift = (s) => (s < 0 ? -2 : s < 0.09 ? -2 + (s / 0.09) * 9 : s < 0.3 ? 7 -
 // The song's title as the self-test writes it: in capitals, only what the pixel font has (with the Japan edition, its
 // katakana too); a title in letters it hasn't (hiragana, kanji) says now playing instead of nothing
 export function bootTitle(t) {
-  return (t || say('now playing')).toUpperCase().replace(ja() ? /[^A-Z0-9 .,:!?'&()/+#゠-ヿ-]/g : /[^A-Z0-9 .,:!?'&()/+#-]/g, '').trim()
-    || say('now playing').toUpperCase();
+  return pixelText((t || say('now playing')).toUpperCase()).trim();
 }
 
 // One screen's boot at bt (s) on a canvas lw x lh: which, top or bottom; info: the song (title, bpm, key)
@@ -86,7 +85,7 @@ function paint(c, lw, lh, which, bt, pal, info) {
     const f = Math.min(1, Math.max(0, (bt - on) / (BOOT.land - on))), y = Math.round(-blockH + (y1 + blockH) * f);
     const ding = bt - BOOT.land, flash = ding >= 0 && ding < 0.07;
     emblem(c, Math.round((lw - EW * ek) / 2), y, ek, pal, lift(ding));
-    const ty = y + EH * ek + 5 * k, name = say('TOASTER');
+    const ty = y + EH * ek + 5 * k, name = fitPixel(say('TOASTER'), lw - 4 * k, 2 * k);
     ptextC(c, name, lw / 2 + k, ty + k, hex(pal.dim), 2 * k); // (its shadow)
     ptextC(c, name, lw / 2, ty, hex(flash ? pal.hi : pal.fg), 2 * k);
     // the ding: a star over the toast, twinkling out
@@ -101,26 +100,27 @@ function paint(c, lw, lh, which, bt, pal, info) {
     const cx = lw / 2, x = 6 * k, row = 10 * k, s = bt - on, max = Math.floor((lw - 2 * x) / (6 * k)) - 2;
     const title = bootTitle(info.title);
     const lines = [];
-    for (const w of title.split(/\s+/).filter(Boolean)) { const l = lines[lines.length - 1]; if (l !== undefined && cellsOf(l + ' ' + w).length <= max) lines[lines.length - 1] = l + ' ' + w; else lines.push(w.slice(0, max)); }
+    for (const w of title.split(/\s+/).filter(Boolean)) { const l = lines[lines.length - 1]; if (l !== undefined && cellsOf(l + ' ' + w).length <= max) lines[lines.length - 1] = l + ' ' + w; else lines.push(fitPixel(w, max * 6 - 1)); }
     let y = 5 * k;
-    if (s >= 0) ptext(c, say('TOASTER OS'), x, y, hex(pal.dim), k);
+    if (s >= 0) ptext(c, fitPixel(say('TOASTER OS'), lw - 2 * x, k), x, y, hex(pal.dim), k);
     y += row + 3 * k;
+    if (lines.length > 2) lines[1] = fitPixel(lines[1] + ' …', max * 6 - 1);
     lines.slice(0, 2).forEach((l, i) => { if (s >= 0.1 + 0.05 * i) ptext(c, (i ? '  ' : '♪ ') + l, x, y, hex(pal.fg), k); y += row; });
     const sub = [info.bpm ? `${Math.round(info.bpm)} BPM` : '', sayKey(info.key || '')].filter(Boolean).join('  ');
-    if (sub && s >= 0.24) ptext(c, sub, x, y, hex(pal.dim), k);
+    if (sub && s >= 0.24) ptext(c, fitPixel(sub, lw - 2 * x, k), x, y, hex(pal.dim), k);
     y += row + 3 * k;
     const parts = info.parts || {}, half = Math.floor((lw - 2 * x) / 2);
     const rows = [['KICK', parts.kick], ['CLAP', parts.clap], ['HATS', parts.hats], ['BASS', parts.bass]].map(([name, ok]) => [say(name), ok]);
-    const okX = Math.max(30, Math.max(...rows.map(([name]) => textW(name))) + 7) * k; // (the OKs in a column, clear of the longest name)
+    const okX = Math.min(half - 11 * k, Math.max(30, Math.max(...rows.map(([name]) => textW(name))) + 7) * k);
     rows.forEach(([name, ok], i) => {
       const at = 0.34 + 0.09 * i, px = x + (i % 2) * half;
-      if (s >= at) ptext(c, name, px, y, hex(pal.fg), k);
+      if (s >= at) ptext(c, fitPixel(name, okX - 7 * k, k), px, y, hex(pal.fg), k);
       if (s >= at + 0.07) ptext(c, ok ? 'OK' : '--', px + okX, y, hex(ok ? pal.ok : pal.dim), k);
       if (i % 2) y += row;
     });
     if (bt >= BOOT.land) {
       // PRESS START, blinking, then pressed (lit up inside a box)
-      const sy = lh - 14 * k, s = bt - BOOT.land, press = say('PRESS START');
+      const sy = lh - 14 * k, s = bt - BOOT.land, press = fitPixel(say('PRESS START'), lw - 8 * k, k);
       if (bt >= BOOT.start) {
         const w = textW(press, k) + 8 * k;
         c.fillStyle = hex(pal.fg); c.fillRect(Math.round(cx - w / 2), sy - 3 * k, w, 13 * k);
@@ -148,44 +148,45 @@ function paintIdle(c, lw, lh, which, it, pal, info, mode) {
     if (mode === 'continue' && it < 10) {
       // CONTINUE? over the count, each new number flashing as it lands
       const n = 9 - Math.floor(it), fresh = it % 1 < 0.12;
-      ptextC(c, say('CONTINUE?'), cx, Math.round(lh * 0.18), hex(pal.fg), 2 * k);
+      ptextC(c, fitPixel(say('CONTINUE?'), lw - 4 * k, 2 * k), cx, Math.round(lh * 0.18), hex(pal.fg), 2 * k);
       ptextC(c, String(n), cx + 2 * k, Math.round(lh * 0.42) + 2 * k, hex(pal.dim), 6 * k); // (its shadow)
       ptextC(c, String(n), cx, Math.round(lh * 0.42), hex(fresh ? pal.hi : pal.fg), 6 * k);
       return;
     }
     if (mode === 'continue') {
-      ptextC(c, say('GAME OVER'), cx, Math.round(lh * 0.32), hex(pal.fg), 2 * k);
-      if (it > 12 && blink) ptextC(c, say('PLAY ANY SONG'), cx, Math.round(lh * 0.62), hex(pal.dim), k);
+      ptextC(c, fitPixel(say('GAME OVER'), lw - 4 * k, 2 * k), cx, Math.round(lh * 0.32), hex(pal.fg), 2 * k);
+      if (it > 12 && blink) ptextC(c, fitPixel(say('PLAY ANY SONG'), lw - 4 * k, k), cx, Math.round(lh * 0.62), hex(pal.dim), k);
       return;
     }
     // the emblem, still, the toast down in its slot; under it the name and what it's waiting for
     const ek = 2 * k, blockH = EH * ek + 5 * k + 7 * 2 * k + 14 * k, y = Math.round((lh - blockH) / 2);
     emblem(c, Math.round((lw - EW * ek) / 2), y, ek, pal, -2);
     const ty = y + EH * ek + 5 * k;
-    ptextC(c, say('TOASTER'), cx, ty, hex(pal.fg), 2 * k);
-    if (mode === 'reading') ptextC(c, say('READING') + dots, cx, ty + 18 * k, hex(pal.dim), k);
-    else if (blink) ptextC(c, say('PLAY ANY SONG'), cx, ty + 18 * k, hex(pal.dim), k);
+    ptextC(c, fitPixel(say('TOASTER'), lw - 4 * k, 2 * k), cx, ty, hex(pal.fg), 2 * k);
+    if (mode === 'reading') ptextC(c, fitPixel(say('READING') + dots, lw - 4 * k, k), cx, ty + 18 * k, hex(pal.dim), k);
+    else if (blink) ptextC(c, fitPixel(say('PLAY ANY SONG'), lw - 4 * k, k), cx, ty + 18 * k, hex(pal.dim), k);
     return;
   }
   // the bottom: the self-test's page, as it stands with no beat
   const x = 6 * k, row = 10 * k, max = Math.floor((lw - 2 * x) / (6 * k)) - 2;
   const title = info.title ? bootTitle(info.title) : '';
   let y = 5 * k;
-  ptext(c, say('TOASTER OS'), x, y, hex(pal.dim), k);
+  ptext(c, fitPixel(say('TOASTER OS'), lw - 2 * x, k), x, y, hex(pal.dim), k);
   y += row + 3 * k;
-  if (title) { ptext(c, '♪ ' + title.slice(0, max), x, y, hex(mode === 'reading' ? pal.fg : pal.dim), k); y += row; }
+  if (title) { ptext(c, '♪ ' + fitPixel(title, max * 6 - 1), x, y, hex(mode === 'reading' ? pal.fg : pal.dim), k); y += row; }
   y += 3 * k;
-  if (mode === 'reading') ptext(c, say('FINDING THE BEAT') + dots, x, y, hex(pal.fg), k);
-  else ptext(c, say('NO SIGNAL'), x, y, hex(blink ? pal.fg : pal.dim), k);
+  if (mode === 'reading') ptext(c, fitPixel(say('FINDING THE BEAT') + dots, lw - 2 * x, k), x, y, hex(pal.fg), k);
+  else ptext(c, fitPixel(say('NO SIGNAL'), lw - 2 * x, k), x, y, hex(blink ? pal.fg : pal.dim), k);
   y += row + 3 * k;
   const half = Math.floor((lw - 2 * x) / 2), names = ['KICK', 'CLAP', 'HATS', 'BASS'].map(say);
-  const okX = Math.max(30, Math.max(...names.map((n) => textW(n))) + 7) * k;
+  const okX = Math.min(half - 11 * k, Math.max(30, Math.max(...names.map((n) => textW(n))) + 7) * k);
   names.forEach((name, i) => {
     const px = x + (i % 2) * half;
-    ptext(c, name, px, y, hex(pal.dim), k); ptext(c, mode === 'reading' ? '..' : '--', px + okX, y, hex(pal.dim), k);
+    ptext(c, fitPixel(name, okX - 7 * k, k), px, y, hex(pal.dim), k); ptext(c, mode === 'reading' ? '..' : '--', px + okX, y, hex(pal.dim), k);
     if (i % 2) y += row;
   });
 }
+export { paint as paintBoot, paintIdle }; // pure low-resolution painters, also exercised by the fit check
 
 // (on the VFD its pixels are round dots with dark between, as the game's are; s: a low pixel's size on the screen)
 function vfdDots(ctx, L, s, x, y, w, h) {
@@ -249,7 +250,7 @@ export function createBoot() {
     idle(ctx, r, which, it, design, col, info, look, mode) {
       const s = Math.max(1, Math.floor(r.w / 150)), lw = Math.floor(r.w / s), lh = Math.floor(r.h / s);
       const L = low(which, lw, lh), c = L.c.getContext('2d'), pal = palette(design, col);
-      const key = [which, mode, ja(), JSON.stringify(pal), info.title, Math.floor(it / 0.5) % 2, Math.floor(it / 0.35) % 3,
+      const key = [which, mode, language(), JSON.stringify(pal), info.title, Math.floor(it / 0.5) % 2, Math.floor(it / 0.35) % 3,
         it < 10 ? Math.floor(it) : 'x', it % 1 < 0.12, it > 12].join('|');
       if (L.idle !== key) { paintIdle(c, lw, lh, which, it, pal, info, mode); L.idle = key; }
       const w = lw * s, h = lh * s, x = Math.round(r.x + (r.w - w) / 2), y = Math.round(r.y + (r.h - h) / 2);

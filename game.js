@@ -11,11 +11,11 @@
 // own (a real handheld). Its screens can be drawn in other designs (skins, gameskins.js), from a model of
 // the game made each frame; 'neon' is the drawing here. Which: setGameScreens (the app's A while the game is on).
 import { NOTES } from './engine.js';
-import { createSkins } from './gameskins.js';
+import { createSkins, fitText } from './gameskins.js';
 import { createScreens } from './gamescreen.js';
 import { createWarp, mul3, inv3, apply3 } from './gamewarp.js';
 import { createBoot, BOOT } from './gameboot.js';
-import { say, sayKey, screenFont, setLang } from './gamewords.js';
+import { say, sayKey, screenFont, setLang, ja, skinSay, skinKey } from './gamewords.js';
 
 // The screens' design chosen (visuals.js's GAME_SCREENS: the ones the app goes round, A). 'jp' is the Japan edition:
 // Toaster's own design (os), speaking Japanese, on the Japan edition's handheld.
@@ -311,7 +311,7 @@ export function createGame() {
   function drawLabelAcross(ctx, L, r, info, s) {
     const ink = s?.labelInk || INK;
     const u = L.u, x0 = L.x + (r[0] + 1.3) * u, top = L.y + (r[1] + r[4]) * u, room = (r[2] - 2.6 - r[6]) * u, h = (r[3] - r[4]) * u;
-    const title = (info.title || 'listening…').toUpperCase();
+    const title = (info.title || skinSay('listening…')).toUpperCase();
     ctx.save();
     ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
     let size = h * 0.4;
@@ -323,7 +323,7 @@ export function createGame() {
     ctx.fillText(title, x0, base);
     ctx.font = `700 ${Math.max(5, h * 0.13)}px ${face()}`;
     ctx.fillStyle = ink[1];
-    ctx.fillText([info.bpm ? `${Math.round(info.bpm)} BPM` : '', info.key].filter(Boolean).join('  ·  '), x0, base + h * 0.26);
+    ctx.fillText([info.bpm ? `${Math.round(info.bpm)} BPM` : '', skinKey(info.key)].filter(Boolean).join('  ·  '), x0, base + h * 0.26);
     ctx.restore();
   }
 
@@ -539,7 +539,7 @@ export function createGame() {
       ctx.font = `700 ${Math.max(7, 2.1 * u)}px ${face()}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = rgba(c, 0.6);
-      ctx.fillText(say(LANES[i].name), x + laneW / 2, targetY + stepH * 1.3);
+      ctx.fillText(fitText(say(LANES[i].name), laneW * 0.92, (s) => ctx.measureText(s).width), x + laneW / 2, targetY + stepH * 1.3);
     }
     // the notes: a pill for a drum, a bar as long as it's held for the bass; past their target, gone
     // if hit, falling on, red and faint, if missed. They come in under the score, out of the dark.
@@ -685,7 +685,7 @@ export function createGame() {
       ctx.stroke();
       ctx.font = `800 ${Math.max(7, Math.min(ph * 0.3, 2.8 * u))}px ${face()}`;
       ctx.fillStyle = lit > 0.3 ? '#0a0d18' : rgba(row === 0 ? c : [200, 215, 245], row === 0 ? 0.85 : inKey ? 0.8 : 0.35);
-      ctx.fillText(say(label), x + pw / 2, y + ph / 2);
+      ctx.fillText(fitText(say(label), pw - 2 * u, (s) => ctx.measureText(s).width), x + pw / 2, y + ph / 2);
       if (isRoot) { ctx.fillStyle = lit > 0.3 ? '#0a0d18' : 'rgba(200,215,245,0.7)'; ctx.beginPath(); ctx.arc(x + pw * 0.86, y + ph * 0.2, Math.max(1.2, 0.6 * u), 0, 7); ctx.fill(); }
     }
     // the song along the foot, sliding by when it's too long to fit
@@ -715,7 +715,7 @@ export function createGame() {
   const shown = (colorway) => {
     const dev = deviceOf(window.__gameShell || (chosen === 'jp' ? 'stanceJp' : colorway === 'pink' ? 'stancePink' : 'stance'));
     setLang(dev.lang);
-    if (dev.lang === 'ja' && !jaFont && document.fonts) {
+    if (ja() && !jaFont && document.fonts) {
       jaFont = true;
       for (const w of [600, 700, 800]) document.fonts.load(`${w} 16px "M PLUS 1 Code"`).catch(() => {});
     }

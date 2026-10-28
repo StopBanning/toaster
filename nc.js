@@ -5,7 +5,7 @@
 // page is always the latest). Every call the app makes without asking first is here, if only to do
 // nothing. Loaded first by the web build (tools/web.mjs), before boot.js.
 (() => {
-  const VERSION = "0.4.23"; // (the build writes the app's version here)
+  const VERSION = "0.4.24"; // (the build writes the app's version here)
   // a file handed to the browser to save; its name back
   const download = (parts, type, name) => {
     const a = document.createElement('a');

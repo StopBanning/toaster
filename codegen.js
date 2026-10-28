@@ -3,6 +3,9 @@
 // Every line is a list of parts; a part that plays steps (or bars) knows which, for highlighting.
 import { NOTES } from './engine.js';
 
+// Pitch class only until register detection exists; all export writers use C4 as zero.
+export const MELODY_OCTAVE = 4;
+
 // 16 steps of tokens (null = rest) as mini-notation, as compact as the pattern allows.
 export function stepParts(tok) {
   if (!tok.some((x) => x !== null)) return null;
@@ -75,6 +78,26 @@ export function beatRuns(beats) {
   });
   return runs;
 }
+// Shared rhythmic bass events: each accepted onset lasts to the next onset, at most a beat.
+// Positions are in bars; pitchAt lets the tape attach its accepted pitch at that step.
+export function bassRhythmEvents(on, pitchAt = () => null) {
+  const steps = on ? [...on.keys()].filter((s) => on[s]) : [];
+  return steps.map((s, k) => ({ part: 'bass', pitch: pitchAt(s), onset: s / 16,
+    duration: Math.min(4, (steps[k + 1] ?? 16) - s) / 16, velocity: 95 }));
+}
+
+function bassExportStruct(on) {
+  const tokens = [], es = bassRhythmEvents(on);
+  let end = 0;
+  for (const e of es) {
+    if (e.onset > end) tokens.push('~@' + (e.onset - end) * 16);
+    tokens.push('x@' + e.duration * 16);
+    end = e.onset + e.duration;
+  }
+  if (end < 1) tokens.push('~@' + (1 - end) * 16);
+  return tokens.join(' ');
+}
+
 // A run's length in the bar's mini-notation: [a b] when the runs are even, [a@3 b] when not.
 export const runWeight = (runs, r) => (runs.every((x) => x.beats.length === runs[0].beats.length) || r.beats.length === 1 ? '' : '@' + r.beats.length);
 
@@ -189,7 +212,7 @@ export function buildLines(eng, meta, t) {
   // (no kick for two bars while the music plays on; one bar came and went with every missed kick)
   const bar = T.locked ? 240 / T.bpm : 0;
   const section = !T.locked || eng.silent ? '' : t - eng.lastDrop < 4 * bar ? 'drop' : t - eng.lastKick > 2 * bar ? 'breakdown' : '';
-  out.tempo = plain(T.locked ? `setcpm(${T.shown}/4)${section ? '  // ' + section : ''}` : eng.silent ? '// waiting for sound...' : '// setcpm(?)  finding the beat...');
+  out.tempo = plain(T.locked ? `setcpm(${T.shown}/4)${section ? '  // ' + section : ''}` : eng.silent ? '// waiting for sound...' : T.provisional ? `// pulse ~${Math.round(T.provisional.bpm)} bpm; finding bar one...` : '// setcpm(?)  finding the beat...');
   out.scale = plain(eng.key ? `const scale = "${NOTES[eng.key.root]}:${eng.key.mode}"` : '// const scale = "?"');
 
   const k = eng.knobs;
@@ -256,21 +279,27 @@ export function resetCodegen() {
 // sample Strudel doesn't have) is kept as a comment with the same notes on a synth under it.
 // texts: each line's text, by line id. phase: the current four-bar slot when O was pressed;
 // shifting the whole pattern keeps nested notes, rhythms and the punchcard together.
-export function strudelProgram(texts, song, phase = 0) {
+export function strudelProgram(texts, song, phase = 0, bassRhythm = null) {
   const about = song?.title ? `"${cleanTitle(song.title)}"${song.artist ? ' by ' + song.artist : ''}` : 'whatever was playing';
   const out = [`// ${about}, written out by toaster`, '// ctrl+enter plays it, ctrl+. stops'];
   for (const id of LINE_IDS) {
-    const line = (texts[id] || '').trim();
+    let line = (texts[id] || '').trim();
     if (!line) continue;
     if (id === 'bd' || id === 'bassline') out.push('');
     if (id === 'title') { out.push(line.startsWith('//') ? line : '// ' + line); continue; }
     const vox = id === 'vox' && line.match(/^(\/\/ |_)?vox: s\("vox"\)\.slice\(16, "([^"]*)"\)\.clip\(1\)$/);
     if (vox) {
       // the slice numbers are the notes (0 = C ... 11 = B); not the ones after * or !
-      const notes = vox[2].replace(/(?<![*!/@:.\d])\b(\d{1,2})\b/g, (n) => NOTES[+n % 12].toLowerCase() + '4');
+      const notes = vox[2].replace(/(?<![*!/@:.\d])\b(\d{1,2})\b/g, (n) => NOTES[+n % 12].toLowerCase() + MELODY_OCTAVE);
       out.push(`// vox: s("vox").slice(16, "${vox[2]}").clip(1)   <- with a vocal sample loaded`);
       out.push(`${vox[1] || ''}vox: note("${notes}").s("triangle").clip(1)`);
       continue;
+    }
+    if (id === 'bassline' && bassRhythm?.some(Boolean)) {
+      const struct = `.struct("${bassExportStruct(bassRhythm)}")`;
+      line = /\.struct\("[^"]*"\)/.test(line)
+        ? line.replace(/\.struct\("[^"]*"\)/, struct)
+        : line.replace(/note\("[^"]*"\)/, (notes) => notes + struct);
     }
     out.push(line);
   }

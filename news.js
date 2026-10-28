@@ -4,6 +4,11 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.24', items: [
+    { act: 'export', text: "X keeps the whole recorded song in a compact program, including fills, short sections and chords that used to vanish" },
+    { act: 'tap', text: "tap four beats and Toaster sets exactly that tempo" },
+    { act: 'blocks', text: "the handheld speaks Spanish when your device does" },
+  ] },
   {
     version: '0.4.23',
     items: [
