@@ -158,8 +158,8 @@ then the caret goes back to fix it.
   build-up and the drop) into that same folder.
 - **X** exports the song so far into `Music\Toaster` on Windows, or `Music/Toaster` on a Mac: a
   MIDI file (drums, bass, chords and lead on their own tracks) and the whole song as Strudel code,
-  every 4 bars as heard, the different ones named and played in order with `arrange()`. Paste it
-  into strudel.cc and press ctrl+enter.
+  every bar as heard and nothing simplified, each phrase written once and played in order with
+  `arrange()`. Paste it into strudel.cc and press ctrl+enter.
 
 More on all three in [docs/how-it-works.md](docs/how-it-works.md).
 
