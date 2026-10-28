@@ -1,4 +1,4 @@
-# Contributing to Toaster
+﻿# Contributing to Toaster
 
 Thanks for wanting to help. Toaster is small and moves quickly, so small, focused pull requests are the ones that
 land.
@@ -56,3 +56,35 @@ Use the bug form, and say:
 A short screen recording helps most.
 
 By contributing, you agree that your work is MIT licensed, like the rest of Toaster.
+
+## Translate the handheld
+
+Edit `renderer/gamewords.js`. Copy the Spanish (`ES`) example, translate every value, and register the table in
+`LANGUAGES` under a lowercase BCP 47 tag such as `fr`. Keep the English keys, note names, numbers and the Toaster name.
+Normal handhelds select `navigator.language`, trying the full tag and then its base language; an unavailable language
+uses English. The Japan edition always uses Japanese.
+
+To try your table in an existing development session, set `window.__gameLang = 'fr'` in DevTools and cycle to a normal
+handheld with A. Delete that property to restore the browser language. No setting or shortcut is added. The Japanese
+edition's original words and the older skins' original Japanese/English mix stay intact.
+
+Run `node --test`. Every table entry must be drawable, and the low-resolution boot, standby, LCD and VFD painters must
+fit the 200×340 mini player's smallest screens. Drum and pad labels should use four cells or fewer: Spanish uses
+`BOM.` (bombo), `PAL.` (palma), `CH.` (charles) and `ABR.` (abierto). The pixel font supports accented Latin capitals, lowercase equivalents,
+katakana and common punctuation. Latin accents occupy the top of the same 5×7 cell. For scripts outside this font,
+discuss glyph support first; pixel text filters unsupported letters and falls back to “now playing” in the selected
+language (or English if necessary). Proportional screen text uses the bundled screen fonts.
+
+For screenshots and real browser measurements, install a standalone Chrome/Chromium and run:
+
+```sh
+# Set HANDHELD_CHROME to the executable if it is not in one of the checker's default locations.
+node tools/handheld-language-check.mjs --lang=fr
+```
+
+This launches an isolated headless browser, serves the checkout locally, and writes `_checks/handheld-languages/`.
+It does not launch Toaster or use an installed copy. Review the glyph sheet and boot, game and standby screenshots
+for os, lcd and neon. Also inspect insert, reading, continue countdown and game-over states; test all six skins and
+the 200×340 mini player. Static text that cannot fit must end with an ellipsis; song strips intentionally scroll.
+Keep ordinary translations short enough to read in full. The checker compares fixed English/Japanese frames against
+`cf28592` by default (`--base=<commit>` changes the reference). Include test output and before/after hashes with a PR.

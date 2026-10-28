@@ -1,0 +1,43 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
+<canvas id="punch" width="1080" height="1920" style="width:1080px;height:1920px"></canvas>
+<script>window.__gameSkin = new URLSearchParams(location.search).get('skin') || undefined; window.__gameShell = new URLSearchParams(location.search).get('shell') || undefined; window.__gameBoot = new URLSearchParams(location.search).has('boot') ? undefined : false;</script>
+<script type="module">
+// The harness's game at fixed times (no clock, no randomness), drawn frame by frame to T, then the canvas hashed: the
+// same hash from two versions of the renderer means they draw the same. ?r=<renderer path prefix>&skin=&shell=&T=
+const q = new URLSearchParams(location.search);
+const { createPunchcard } = await import((q.get('r') || '/r') + '/visuals.js');
+const P = 0.5, sps = 4 / P, T = +(q.get('T') || 3.8);
+const pat = (s) => s.split('').map((c) => c === 'x');
+const eng = { tempo: { P, renumber: 0, bpm: 120, locked: true }, stepAt: (t) => t * sps,
+  v: { bd: { shown: pat('x...x...x...x...'), last: 0 }, sd: { shown: pat('....x.......x...'), last: 0 }, hhc: { shown: pat('..x...x...x...x.'), last: 0 },
+       hho: { shown: pat('..............x.'), last: 0 }, vox: { shown: null, last: -99 }, bass: { shown: pat('x.....x...x.....'), last: 0 } },
+  slots: [{ bass: 'a1', chord: { root: 9, third: 3 } }, { bass: 'f1', chord: { root: 5, third: 4 } }, { bass: 'c2', chord: { root: 0, third: 4 } }, { bass: 'g1', chord: { root: 7, third: 4 } }],
+  bassSeen: 0, chordSeen: 0, playing: (seen, t) => t - seen < 2, onsets: [], key: { root: 9, mode: 'minor' } };
+const punch = createPunchcard(document.getElementById('punch'));
+const col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
+let lastStep = -1;
+const frame = (t) => {
+  const step = Math.floor(t * sps);
+  for (let s = lastStep + 1; s <= step; s++) {
+    const i = ((s % 16) + 16) % 16, ts = s / sps;
+    for (const [id, o] of [['bd', 'bd'], ['sd', 'sd'], ['hhc', 'hh'], ['hho', 'hh']]) if (eng.v[id].shown[i]) { eng.v[id].last = ts; eng.onsets.push({ id: o, t: ts, s: 0.8 }); }
+    if (eng.v.bass.shown[i]) eng.v.bass.last = ts;
+    eng.bassSeen = eng.chordSeen = ts;
+  }
+  lastStep = step;
+  if (eng.onsets.length > 64) eng.onsets.splice(0, eng.onsets.length - 64);
+  punch.draw(t, eng, col, 0, false, q.get('look') || 'game', 'Coding Trance');
+};
+frame(0); await new Promise((r) => setTimeout(r, 400)); frame(0); await new Promise((r) => setTimeout(r, 1500)); // (the game's module and then the handheld's pictures load)
+for (let k = 1; k * (1 / 60) <= T; k++) frame(k / 60);
+if (q.has('bench')) { // (?bench=N: N more frames timed, the median and the slowest, ms)
+  const n = +q.get('bench'), ts = [];
+  for (let k = 0; k < n; k++) { const a = performance.now(); frame(T + (k + 1) / 60); ts.push(performance.now() - a); }
+  ts.sort((x, y) => x - y);
+  window.__done = JSON.stringify({ median: +ts[n >> 1].toFixed(2), p95: +ts[Math.floor(n * 0.95)].toFixed(2), max: +ts[n - 1].toFixed(2) });
+} else {
+const c = document.getElementById('punch'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+let h = 2166136261; for (let i = 0; i < d.length; i++) h = Math.imul(h ^ d[i], 16777619);
+window.__done = (h >>> 0).toString(16);
+}
+</script>

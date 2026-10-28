@@ -7,9 +7,8 @@
 //     dots, their shadow, its lag
 //   highway: gems coming down a fretboard going off into the distance, flames where they're hit
 //   dance: arrows rising onto a row of targets, coloured by where in the beat they fall; the pad underneath
-// os also speaks the Japan edition's Japanese (gamewords.js); the others keep their English (lcd's font of its own has
-// no katakana).
-import { say, sayKey, screenFont } from './gamewords.js';
+// Labels use gamewords.js. Older skins keep their original English labels in Japanese for pixel compatibility.
+import { say, sayKey, screenFont, skinSay, skinKey } from './gamewords.js';
 const FONT = '"JetBrains Mono", Consolas, monospace';
 const rgba = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
@@ -77,6 +76,25 @@ const G = {
   '・': '00000 00000 00000 00100 00000 00000 00000', '「': '00111 00100 00100 00100 00000 00000 00000',
   '」': '00000 00000 00000 00100 00100 00100 11100', '、': '00000 00000 00000 00000 10000 01000 00100',
   '。': '00000 00000 00000 00000 11100 10100 11100',
+  // Accents occupy the top rows; shorter bodies stay inside the original cell (Å needs a three-row ring).
+  'Á': '00010 00100 01110 10001 11111 10001 10001', 'À': '01000 00100 01110 10001 11111 10001 10001',
+  'Â': '00100 01010 01110 10001 11111 10001 10001', 'Ä': '01010 00000 01110 10001 11111 10001 10001',
+  'Ã': '01001 10110 01110 10001 11111 10001 10001', 'Å': '01110 01010 01110 10001 11111 10001 10001',
+  'É': '00010 00100 11111 10000 11110 10000 11111', 'È': '01000 00100 11111 10000 11110 10000 11111',
+  'Ê': '00100 01010 11111 10000 11110 10000 11111', 'Ë': '01010 00000 11111 10000 11110 10000 11111',
+  'Í': '00010 00100 01110 00100 00100 00100 01110', 'Ì': '01000 00100 01110 00100 00100 00100 01110',
+  'Î': '00100 01010 01110 00100 00100 00100 01110', 'Ï': '01010 00000 01110 00100 00100 00100 01110',
+  'Ó': '00010 00100 01110 10001 10001 10001 01110', 'Ò': '01000 00100 01110 10001 10001 10001 01110',
+  'Ô': '00100 01010 01110 10001 10001 10001 01110', 'Ö': '01010 00000 01110 10001 10001 10001 01110',
+  'Õ': '01001 10110 01110 10001 10001 10001 01110',
+  'Ú': '00010 00100 10001 10001 10001 10001 01110', 'Ù': '01000 00100 10001 10001 10001 10001 01110',
+  'Û': '00100 01010 10001 10001 10001 10001 01110', 'Ü': '01010 00000 10001 10001 10001 10001 01110',
+  'Ñ': '01001 10110 10001 11001 10101 10011 10001', 'Ç': '01110 10001 10000 10001 01110 00100 01000',
+  'Ø': '01110 10011 10101 10101 10101 11001 01110', 'Æ': '01111 10100 10100 11111 10100 10100 10111',
+  'Œ': '01111 10100 10100 10111 10100 10100 01111', 'ß': '01100 10010 10010 10100 10010 10001 10110',
+  '¿': '00100 00000 00100 01000 10000 10001 01110', '¡': '00100 00000 00100 00100 00100 00100 00100',
+  '«': '00000 00101 01010 10100 01010 00101 00000', '»': '00000 10100 01010 00101 01010 10100 00000',
+  '…': '00000 00000 00000 00000 00000 00000 10101',
 };
 // each letter's rows as runs of lit pixels: [[x, y, len], ...]
 const RUNS = Object.fromEntries(Object.entries(G).map(([ch, rows]) => {
@@ -87,18 +105,38 @@ const RUNS = Object.fromEntries(Object.entries(G).map(([ch, rows]) => {
 const glyph = (ch) => RUNS[ch] || RUNS[ch.toUpperCase()] || RUNS['?'];
 // the cells a text takes: a katakana with a dakuten or handakuten as two, the letter then its mark (ベ as ヘ゛)
 const KANA = /[゠-ヿ]/;
-const cellsOf = (s) => (KANA.test(s) ? s.replace(/[゠-ヿ]/g, (ch) => { const d = ch.normalize('NFD'); return d.length > 1 ? d[0] + (d[1] === '゙' ? '゛' : '゜') : ch; }) : s);
+const cellsOf = (s) => (KANA.test(s) ? s.normalize('NFC').replace(/[゠-ヿ]/g, (ch) => { const d = ch.normalize('NFD'); return d.length > 1 ? d[0] + (d[1] === '゙' ? '゛' : '゜') : ch; }) : s.normalize('NFC'));
 const textW = (s, k = 1) => (cellsOf(s).length * 6 - 1) * k;
+// A whole-word end where possible, an explicit ellipsis even for one oversized word.
+export function fitText(s, room, measure) {
+  if (measure(s) <= room) return s;
+  if (measure('…') > room) return '';
+  let head = '';
+  for (const ch of s) { if (measure(head + ch + '…') > room) break; head += ch; }
+  const boundary = head.lastIndexOf(' ');
+  if (boundary > 0 && s[head.length] !== ' ') head = head.slice(0, boundary);
+  return head.trimEnd() + '…';
+}
+export function pixelText(s) {
+  const covered = (w) => [...String(w).normalize('NFC')].filter((ch) => pixelCovers(ch)).join('');
+  const text = covered(s);
+  return text.trim() ? text : covered(say('now playing').toUpperCase()).trim() || 'NOW PLAYING';
+}
+export const fitPixel = (s, room, k = 1) => fitText(pixelText(s), room, (w) => textW(w, k));
 // Text at (x, y) (its top left), k pixels a dot; an outline round it if asked
 function ptext(c, s, x, y, color, k = 1, outline = null) {
+  s = pixelText(s);
   if (outline) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]]) ptext(c, s, x + dx, y + dy, outline, k);
   c.fillStyle = color; s = cellsOf(s);
   for (let i = 0; i < s.length; i++) for (const [gx, gy, n] of glyph(s[i])) c.fillRect(x + (i * 6 + gx) * k, y + gy * k, n * k, k);
 }
-const ptextC = (c, s, cx, y, color, k = 1, outline = null) => ptext(c, s, Math.round(cx - textW(s, k) / 2), y, color, k, outline);
+const ptextC = (c, s, cx, y, color, k = 1, outline = null) => {
+  s = pixelText(s);
+  ptext(c, s, Math.round(cx - textW(s, k) / 2), y, color, k, outline);
+};
 // (whether every cell of a text has a letter of its own, not the '?')
 const pixelCovers = (s) => [...cellsOf(s)].every((ch) => RUNS[ch] || RUNS[ch.toUpperCase()]);
-export { ptext, ptextC, textW, cellsOf, pixelCovers }; // (the power-on's letters too: gameboot.js)
+export { ptext, ptextC, textW, cellsOf, pixelCovers, G }; // also used by the glyph-sheet check
 // A two-colour checkerboard (dithering): every other pixel
 function dither(c, x, y, w, h, color, phase = 0) {
   c.fillStyle = color;
@@ -128,7 +166,7 @@ function lcdTop(c, lw, lh, m) {
   ptext(c, String(m.score).padStart(7, '0'), 3, 2, barText);
   const bpm = m.bpm ? String(Math.round(m.bpm)) : '---';
   ptext(c, '♪' + bpm, lw - 3 - textW('♪' + bpm), 2, fever ? P.outline : P.dim);
-  if (fever) ptextC(c, 'FEVER×2', lw / 2, 2, P.outline);
+  if (fever) ptextC(c, skinSay('FEVER×2'), lw / 2, 2, P.outline);
   // the lanes, their notes falling onto the targets
   const mx = 4, lane = Math.floor((lw - 2 * mx) / 4), x0 = Math.round((lw - 4 * lane) / 2);
   const py0 = 13, labelY = lh - 9, ty = labelY - 7, run = ty - py0;
@@ -187,16 +225,16 @@ function lcdTop(c, lw, lh, m) {
     }
   }
   // the lane names, lit as they hit
-  for (let i = 0; i < 4; i++) ptextC(c, ['KICK', 'CLAP', 'HATS', 'BASS'][i], x0 + i * lane + lane / 2, labelY + 1, m.hit[i] > 0.05 ? P.text : P.dim);
+  for (let i = 0; i < 4; i++) ptextC(c, fitPixel(skinSay(['KICK', 'CLAP', 'HATS', 'BASS'][i]), lane - 2), x0 + i * lane + lane / 2, labelY + 1, m.hit[i] > 0.05 ? P.text : P.dim);
   // the combo, big, over the field; the latest judgement over the targets, rising
   if (m.combo >= 2) {
     const up = m.comboPulse > 0 ? 1 : 0;
     ptextC(c, String(m.combo), lw / 2, py0 + 5 - up, P.text, 2, P.outline);
-    ptextC(c, 'COMBO', lw / 2, py0 + 21, P.dim, 1, P.outline);
+    ptextC(c, skinSay('COMBO'), lw / 2, py0 + 21, P.dim, 1, P.outline);
   }
   if (m.judge && m.judge.age < 0.6) {
     const y = Math.round(ty - 17 - m.judge.age * 16);
-    if (m.judge.age < 0.45 || Math.floor(m.judge.age * 20) & 1) ptextC(c, m.judge.text, lw / 2, y, P.judge[m.judge.text] || P.text, 1, P.outline);
+    if (m.judge.age < 0.45 || Math.floor(m.judge.age * 20) & 1) ptextC(c, skinSay(m.judge.text), lw / 2, y, P.judge[m.judge.text] || P.text, 1, P.outline);
   }
 }
 
@@ -210,7 +248,7 @@ function pad(c, x, y, w, h, face, label, labelColor, lit, P, edge) {
     c.fillStyle = edge[0]; c.fillRect(x + 1, y + 1, w - 2, 1); c.fillRect(x + 1, y + 1, 1, h - 2);
     c.fillStyle = edge[1]; c.fillRect(x + 1, y + h - 2, w - 2, 1); c.fillRect(x + w - 2, y + 1, 1, h - 2);
   }
-  ptextC(c, label, x + w / 2, y + Math.round((h - 7) / 2) + dy, labelColor);
+  ptextC(c, fitPixel(skinSay(label), w - 4), x + w / 2, y + Math.round((h - 7) / 2) + dy, labelColor);
 }
 
 // The bottom screen at its own low resolution: the song along the top, the pads, the key and tempo under them
@@ -221,7 +259,7 @@ function lcdBottom(c, lw, lh, m) {
   c.fillStyle = P.barHi; c.fillRect(0, 0, lw, 1);
   c.fillStyle = P.barLo; c.fillRect(0, 11, lw, 1);
   // the song, sliding by when it's too long
-  const song = '♪ ' + (m.title || 'LISTENING').toUpperCase(), sw = textW(song), room = lw - 8;
+  const song = '♪ ' + pixelText((m.title || skinSay('LISTENING')).toUpperCase()), sw = textW(song), room = lw - 8;
   c.save(); c.beginPath(); c.rect(4, 0, room, 11); c.clip();
   if (sw <= room) ptext(c, song, 4, 2, P.text);
   else { const off = Math.floor((t * 22) % (sw + 24)); ptext(c, song, 4 - off, 2, P.text); ptext(c, song, 4 - off + sw + 24, 2, P.text); }
@@ -241,11 +279,11 @@ function lcdBottom(c, lw, lh, m) {
     const face = lit ? L3 : p.inKey ? P.padIn : P.padOut;
     const label = lit ? L0 : p.inKey ? P.text : P.faint;
     pad(c, x, y, pw, ph, face, p.label, label, lit, P, [L0, L1]);
-    if (p.chord && !lit) { dither(c, x + 2, y + 2, pw - 4, ph - 4, P.chord, 0); ptextC(c, p.label, x + pw / 2, y + Math.round((ph - 7) / 2), L3); }
+    if (p.chord && !lit) { dither(c, x + 2, y + 2, pw - 4, ph - 4, P.chord, 0); ptextC(c, fitPixel(skinSay(p.label), pw - 4), x + pw / 2, y + Math.round((ph - 7) / 2), L3); }
     if (p.root) { c.fillStyle = lit ? L0 : P.dim; c.fillRect(x + pw - 4, y + 2 + (lit ? 1 : 0), 2, 2); }
   });
   // the key and the tempo
-  ptext(c, m.keyName, 4, fy + 1, P.dim);
+  ptext(c, skinKey(m.keyName), 4, fy + 1, P.dim);
   const bpm = (m.bpm ? Math.round(m.bpm) : '---') + ' BPM';
   ptext(c, bpm, lw - 4 - textW(bpm), fy + 1, P.dim);
 }
@@ -264,7 +302,7 @@ function osTop(c, r, m, col) {
   // the bar: score at the left, combo in the middle, tempo at the right
   c.font = fs(0.042); c.letterSpacing = `${Math.round(H * 0.006)}px`;
   c.fillStyle = rgba(fg, 0.6); c.textAlign = 'left';
-  c.fillText(say(fever ? 'FEVER ×2' : 'SCORE'), r.x + W * 0.04, r.y + hH * 0.32);
+  c.fillText(fitText(say(fever ? 'FEVER ×2' : 'SCORE'), W * 0.65, (s) => c.measureText(s).width), r.x + W * 0.04, r.y + hH * 0.32);
   c.textAlign = 'right'; c.fillText(say('BPM'), r.x + W * 0.96, r.y + hH * 0.32);
   c.letterSpacing = '0px';
   c.font = fs(0.068, 700); c.fillStyle = rgba(fg);
@@ -323,7 +361,7 @@ function osTop(c, r, m, col) {
     const cx = r.x + W / 2, cy = Math.round(ty - run * 0.24 - Math.min(age, 0.3) * H * 0.04);
     c.save(); c.translate(cx, cy); c.scale(pop, pop); c.globalAlpha = a;
     c.font = fs(0.064, 800); c.textAlign = 'center'; c.letterSpacing = `${Math.round(H * 0.006)}px`;
-    const word = say(m.judge.text), tw = c.measureText(word).width, ph = Math.round(H * 0.1), pw = Math.round(tw + H * 0.07);
+    const word = fitText(say(m.judge.text), W * 0.9, (s) => c.measureText(s).width), tw = c.measureText(word).width, ph = Math.round(H * 0.1), pw = Math.round(tw + H * 0.07);
     const edge = Math.max(2, Math.round(H * 0.008));
     c.fillStyle = rgba(bg); c.beginPath(); c.roundRect(-pw / 2 - edge, -ph / 2 - edge, pw + 2 * edge, ph + 2 * edge, (ph + 2 * edge) / 2); c.fill();
     c.beginPath(); c.roundRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
@@ -338,7 +376,7 @@ function osTop(c, r, m, col) {
     const cx = r.x + mx + i * lane + lane / 2, y = py1 + labelH / 2, lit = m.hit[i] > 0.3;
     if (lit) { c.fillStyle = rgba(fg); c.fillRect(Math.round(cx - lane * 0.4), Math.round(y - labelH * 0.34), Math.round(lane * 0.8), Math.round(labelH * 0.68)); }
     c.fillStyle = lit ? rgba(bg) : rgba(fg, 0.75);
-    c.fillText(say(['KICK', 'CLAP', 'HATS', 'BASS'][i]), cx, y);
+    c.fillText(fitText(say(['KICK', 'CLAP', 'HATS', 'BASS'][i]), lane * 0.9, (s) => c.measureText(s).width), cx, y);
   }
   c.letterSpacing = '0px';
 }
@@ -373,12 +411,12 @@ function osBottom(c, r, m, col) {
     c.strokeStyle = rgba(fg, p.drum ? 0.85 : p.inKey ? 0.6 : 0.22); c.lineWidth = p.chord && lit < 0.05 ? 2 : 1;
     c.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     c.fillStyle = lit > 0.5 ? rgba(bg) : rgba(fg, p.drum ? 1 : p.inKey ? 0.95 : 0.35);
-    c.fillText(say(p.label), x + w / 2, y + h / 2 + 1);
+    c.fillText(fitText(say(p.label), w - 4, (s) => c.measureText(s).width), x + w / 2, y + h / 2 + 1);
     if (p.root) { c.fillStyle = lit > 0.5 ? rgba(bg) : rgba(fg, 0.8); c.fillRect(x + 3, y + 3, 3, 3); }
   });
   // the key and the tempo, as the app's footer
   c.font = fs(0.046); c.fillStyle = rgba(fg, 0.7); c.textAlign = 'center'; c.letterSpacing = `${Math.round(H * 0.004)}px`;
-  c.fillText(`${sayKey(m.keyName)} · ${m.bpm ? Math.round(m.bpm) : '---'} BPM`, r.x + W / 2, gy1 + fH * 0.55);
+  c.fillText(fitText(`${sayKey(m.keyName)} · ${m.bpm ? Math.round(m.bpm) : '---'} BPM`, W * 0.92, (s) => c.measureText(s).width), r.x + W / 2, gy1 + fH * 0.55);
   c.letterSpacing = '0px';
 }
 
@@ -462,8 +500,8 @@ function danceTop(c, r, m) {
     const top = { PERFECT: [255, 255, 255], GREAT: [140, 240, 255], GOOD: [170, 255, 150], MISS: [200, 200, 210] }[m.judge.text] || [255, 255, 255];
     const bot = { PERFECT: [255, 200, 60], GREAT: [40, 140, 255], GOOD: [40, 190, 90], MISS: [110, 110, 130] }[m.judge.text] || [200, 200, 200];
     g.addColorStop(0, rgba(top, a)); g.addColorStop(1, rgba(bot, a));
-    c.lineWidth = Math.max(3, H * 0.018); c.strokeStyle = rgba(DANCE.outline, a); c.strokeText(m.judge.text, r.x + W / 2, cy);
-    c.fillStyle = g; c.fillText(m.judge.text, r.x + W / 2, cy);
+    c.lineWidth = Math.max(3, H * 0.018); c.strokeStyle = rgba(DANCE.outline, a); c.strokeText(skinSay(m.judge.text), r.x + W / 2, cy);
+    c.fillStyle = g; c.fillText(skinSay(m.judge.text), r.x + W / 2, cy);
   }
   if (m.combo >= 4) {
     c.font = `italic 800 ${Math.round(H * 0.075)}px ${FONT}`;
@@ -480,7 +518,7 @@ function danceTop(c, r, m) {
   c.font = `italic 800 ${Math.round(H * 0.055)}px ${FONT}`; c.fillStyle = rgba([235, 238, 250]); c.textBaseline = 'middle';
   c.textAlign = 'left'; c.fillText(String(m.score).padStart(7, '0'), r.x + W * 0.05, fy + fH * 0.55);
   c.textAlign = 'right'; c.fillStyle = rgba(fever ? [255, 120, 190] : [160, 166, 200]);
-  c.fillText((fever ? 'FEVER ×2 · ' : '') + (m.bpm ? Math.round(m.bpm) : '---') + ' BPM', r.x + W * 0.95, fy + fH * 0.55);
+  c.fillText((fever ? skinSay('FEVER ×2') + ' · ' : '') + (m.bpm ? Math.round(m.bpm) : '---') + ' BPM', r.x + W * 0.95, fy + fH * 0.55);
 }
 function danceBottom(c, r, m) {
   const H = r.h, W = r.w;
@@ -489,9 +527,9 @@ function danceBottom(c, r, m) {
   c.fillStyle = g; c.fillRect(r.x, r.y, W, H);
   const tH = H * 0.12;
   c.font = `italic 800 ${Math.round(H * 0.06)}px ${FONT}`; c.textBaseline = 'middle'; c.fillStyle = rgba([235, 238, 250]);
-  c.textAlign = 'left'; c.fillText('♪ ' + (m.title || 'listening…').toUpperCase().slice(0, 22), r.x + W * 0.04, r.y + tH * 0.55);
+  c.textAlign = 'left'; c.fillText('♪ ' + fitText((m.title || skinSay('listening…')).toUpperCase(), W * 0.65, (s) => c.measureText(s).width), r.x + W * 0.04, r.y + tH * 0.55);
   c.textAlign = 'right'; c.fillStyle = rgba([150, 156, 190]); c.font = `700 ${Math.round(H * 0.045)}px ${FONT}`;
-  c.fillText(m.keyName, r.x + W * 0.96, r.y + tH * 0.55);
+  c.fillText(skinKey(m.keyName), r.x + W * 0.96, r.y + tH * 0.55);
   // the pad: a cross of four arrow panels round a middle one, square metal at the corners
   const P = Math.min((W * 0.92) / 3, (H - tH - H * 0.04) / 3) * 0.96, gap = P * 0.05;
   const px0 = r.x + (W - 3 * P) / 2, py0 = r.y + tH + (H - tH - 3 * P) / 2;
@@ -510,7 +548,7 @@ function danceBottom(c, r, m) {
     if (gx === 1 && gy === 1) { // the middle: the chord and the bass's note
       c.textAlign = 'center'; c.fillStyle = rgba([235, 238, 250]);
       c.font = `800 ${Math.round(s * 0.3)}px ${FONT}`; c.fillText(m.chordName || '—', x + s / 2, y + s * 0.42);
-      c.font = `700 ${Math.round(s * 0.14)}px ${FONT}`; c.fillStyle = rgba(DANCE.hold); c.fillText(m.bassName ? 'BASS ' + m.bassName : '', x + s / 2, y + s * 0.74);
+      c.font = `700 ${Math.round(s * 0.14)}px ${FONT}`; c.fillStyle = rgba(DANCE.hold); c.fillText(m.bassName ? skinSay('BASS') + ' ' + m.bassName : '', x + s / 2, y + s * 0.74);
       continue;
     }
     const k = m.hit[lane], color = [DANCE.beat, DANCE.half, DANCE.quarter, DANCE.hold][lane];
@@ -605,7 +643,7 @@ function highwayTop(c, r, m) {
   c.strokeStyle = 'rgba(255,255,255,0.15)'; c.lineWidth = mr * 0.22; c.beginPath(); c.arc(mx, my, mr, 0, 7); c.stroke();
   c.strokeStyle = rgba(fever ? HW.fever : [255, 200, 60]); c.beginPath(); c.arc(mx, my, mr, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2); c.stroke();
   c.textAlign = 'center'; c.font = `800 ${Math.round(mr * 0.95)}px ${FONT}`; c.fillStyle = rgba([255, 255, 255]); c.fillText('×' + mult * (fever ? 2 : 1), mx, my + 1);
-  if (m.combo >= 2) { c.font = `700 ${Math.round(H * 0.04)}px ${FONT}`; c.fillStyle = rgba([180, 186, 220]); c.textAlign = 'right'; c.fillText(`${m.combo} STREAK`, mx - mr * 1.5, my); }
+  if (m.combo >= 2) { c.font = `700 ${Math.round(H * 0.04)}px ${FONT}`; c.fillStyle = rgba([180, 186, 220]); c.textAlign = 'right'; c.fillText(`${m.combo} ${skinSay('STREAK')}`, mx - mr * 1.5, my); }
 }
 function highwayBottom(c, r, m) {
   const H = r.h, W = r.w;
@@ -613,9 +651,9 @@ function highwayBottom(c, r, m) {
   g.addColorStop(0, '#11131f'); g.addColorStop(1, '#07080e'); c.fillStyle = g; c.fillRect(r.x, r.y, W, H);
   const tH = H * 0.13;
   c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = `italic 800 ${Math.round(H * 0.06)}px ${FONT}`; c.fillStyle = rgba([240, 242, 255]);
-  c.fillText((m.title || 'listening…').toUpperCase().slice(0, 24), r.x + W * 0.04, r.y + tH * 0.55);
+  c.fillText(fitText((m.title || skinSay('listening…')).toUpperCase(), W * 0.65, (s) => c.measureText(s).width), r.x + W * 0.04, r.y + tH * 0.55);
   c.textAlign = 'right'; c.font = `700 ${Math.round(H * 0.042)}px ${FONT}`; c.fillStyle = rgba([150, 156, 200]);
-  c.fillText(`${m.keyName} · ${m.bpm ? Math.round(m.bpm) : '---'}`, r.x + W * 0.96, r.y + tH * 0.55);
+  c.fillText(`${skinKey(m.keyName)} · ${m.bpm ? Math.round(m.bpm) : '---'}`, r.x + W * 0.96, r.y + tH * 0.55);
   // the pads as gems: the drums in their lanes' colours, the notes dark until the bass plays them
   const gx = W * 0.05, gy = r.y + tH + H * 0.02, gw = W - 2 * gx, gh = r.y + H - H * 0.04 - gy, cw = gw / 4, ch = gh / 4;
   const rad = Math.min(cw * 0.42, ch * 0.62);
@@ -631,7 +669,7 @@ function highwayBottom(c, r, m) {
     if (lit > 0.4) { c.fillStyle = 'rgba(255,255,255,0.6)'; c.beginPath(); c.ellipse(x - rad * 0.28, y - rad * 0.2, rad * 0.32, rad * 0.12, 0, 0, 7); c.fill(); }
     c.textAlign = 'center'; c.font = `800 ${Math.round(rad * (p.drum ? 0.4 : 0.5))}px ${FONT}`;
     c.fillStyle = rgba(lit > 0.5 ? [10, 11, 18] : p.inKey === false ? [110, 114, 140] : [235, 238, 250]);
-    c.fillText(p.label, x, y + 1);
+    c.fillText(skinSay(p.label), x, y + 1);
     if (p.root) { c.fillStyle = rgba([255, 200, 60]); c.beginPath(); c.arc(x + rad * 0.78, y - rad * 0.42, Math.max(1.5, rad * 0.09), 0, 7); c.fill(); }
   });
 }
@@ -669,14 +707,16 @@ function vfdTop(c, lw, lh, m) {
   // the bar: the score, FEVER, the tempo
   seg7(c, String(Math.min(9999999, m.score)).padStart(7, '0'), 3, 2, VFD.amber);
   seg7(c, m.bpm ? String(Math.round(m.bpm)).padStart(3, ' ') : '---', lw - 3 - (3 * 7 - 2), 2, VFD.cyan);
-  legendC(c, 'FEVER', lw / 2 + 6, 3, VFD.pink, fever ? (flash ? 1 : 0.55) : 0);
+  legendC(c, skinSay('FEVER'), lw / 2 + 6, 3, VFD.pink, fever ? (flash ? 1 : 0.55) : 0);
   // the judgements, printed in a row, the latest lit (fading as it ages)
   const J = ['PERFECT', 'GREAT', 'GOOD', 'MISS'], jy = 14;
-  const gap = Math.max(2, Math.floor((lw - 6 - J.reduce((a, w) => a + textW(w), 0)) / 3));
+  const total = J.reduce((a, w) => a + textW(skinSay(w)), 0);
+  const gap = Math.max(2, Math.floor((lw - 6 - total) / 3));
   let jx = 3;
   for (const w of J) {
     const on = m.judge && m.judge.text === w && m.judge.age < 0.6 ? 1 - m.judge.age / 0.6 : 0;
-    legend(c, w, jx, jy, w === 'MISS' ? VFD.pink : VFD.cyan, on); jx += textW(w) + gap;
+    const word = total <= lw - 12 ? skinSay(w) : fitPixel(skinSay(w), (lw - 12) / 4);
+    legend(c, word, jx, jy, w === 'MISS' ? VFD.pink : VFD.cyan, on); jx += textW(word) + gap;
   }
   // the lanes: a frame each in its colour, a target at its foot, its name under that; in a fever a lit dot runs round
   const mx = 3, lane = Math.floor((lw - 2 * mx) / 4), x0 = Math.round((lw - 4 * lane) / 2);
@@ -693,7 +733,7 @@ function vfdTop(c, lw, lh, m) {
     c.fillStyle = vc(col, VFD.ghost + (1 - VFD.ghost) * Math.min(1, k * 1.3));
     for (const [rx, ry, rw, rh] of [[bx, ty - 2, 3, 1], [bx, ty - 2, 1, 5], [bx + bw - 3, ty - 2, 3, 1], [bx + bw - 1, ty - 2, 1, 5], [bx, ty + 2, 3, 1], [bx + bw - 3, ty + 2, 3, 1]]) c.fillRect(rx, ry, rw, rh);
     if (k > 0.4) { c.fillStyle = vc(col, k); c.fillRect(bx + 2, ty - 1, bw - 4, 3); }
-    legendC(c, ['KICK', 'CLAP', 'HATS', 'BASS'][i], x + lane / 2, labelY + 1, col, Math.min(1, k * 1.5));
+    legendC(c, fitPixel(skinSay(['KICK', 'CLAP', 'HATS', 'BASS'][i]), lane - 2), x + lane / 2, labelY + 1, col, Math.min(1, k * 1.5));
   }
   // the notes: a bar of lit dots for a drum, a column as long as it's held for the bass
   c.save(); c.beginPath(); c.rect(0, py0, lw, ty + 3 - py0); c.clip();
@@ -723,7 +763,7 @@ function vfdTop(c, lw, lh, m) {
 function vfdBottom(c, lw, lh, m) {
   const t = m.t;
   c.fillStyle = vc(VFD.bg); c.fillRect(0, 0, lw, lh);
-  const song = '♪ ' + (m.title || 'LISTENING').toUpperCase(), sw = textW(song), room = lw - 8;
+  const song = '♪ ' + pixelText((m.title || skinSay('LISTENING')).toUpperCase()), sw = textW(song), room = lw - 8;
   c.save(); c.beginPath(); c.rect(4, 0, room, 11); c.clip();
   if (sw <= room) ptext(c, song, 4, 2, vc(VFD.cyan));
   else { const off = Math.floor((t * 22) % (sw + 24)); ptext(c, song, 4 - off, 2, vc(VFD.cyan)); ptext(c, song, 4 - off + sw + 24, 2, vc(VFD.cyan)); }
@@ -736,13 +776,14 @@ function vfdBottom(c, lw, lh, m) {
     const col = p.drum ? VLANE[p.lane] : p.bass ? VFD.green : VFD.cyan;
     const lit = p.drum || p.bass ? p.lit : p.chord ? 0.45 : 0;
     vbox(c, x, y, pw, ph, col, p.drum ? 0.16 : p.inKey ? 0.14 : VFD.ghost);
-    if (lit > 0.3) { c.fillStyle = vc(col, lit); c.fillRect(x + 2, y + 2, pw - 4, ph - 4); ptextC(c, p.label, x + pw / 2, y + Math.round((ph - 7) / 2), vc(VFD.bg)); }
-    else ptextC(c, p.label, x + pw / 2, y + Math.round((ph - 7) / 2), vc(col, p.drum || p.inKey ? 0.45 : 0.16));
+    if (lit > 0.3) { c.fillStyle = vc(col, lit); c.fillRect(x + 2, y + 2, pw - 4, ph - 4); ptextC(c, fitPixel(skinSay(p.label), pw - 4), x + pw / 2, y + Math.round((ph - 7) / 2), vc(VFD.bg)); }
+    else ptextC(c, fitPixel(skinSay(p.label), pw - 4), x + pw / 2, y + Math.round((ph - 7) / 2), vc(col, p.drum || p.inKey ? 0.45 : 0.16));
     if (p.root) { c.fillStyle = vc(VFD.amber, 0.9); c.fillRect(x + pw - 4, y + 2, 2, 2); }
   });
-  legend(c, m.keyName, 4, fy + 2, VFD.cyan, 0.55);
+  legend(c, skinKey(m.keyName), 4, fy + 2, VFD.cyan, 0.55);
   seg7(c, m.bpm ? String(Math.round(m.bpm)).padStart(3, ' ') : '---', lw - 4 - (3 * 7 - 2), fy + 1, VFD.cyan);
 }
+export { lcdTop, lcdBottom, vfdTop, vfdBottom }; // pure low-resolution painters for canvas fit checks
 
 // ---------------------------------------------------------------- the painters
 export function createSkins() {
@@ -780,7 +821,7 @@ export function createSkins() {
   // The VFD drawn as the LCD is, at its own low resolution, but each of its pixels a round dot with dark between (a
   // pattern a dot across, multiplied over it), and no shadow behind: it glows, it doesn't reflect.
   function dots(ctx, r, which, paint) {
-    const s = Math.max(2, Math.floor(r.w / 150)), lw = Math.floor(r.w / s), lh = Math.floor(r.h / s);
+    const s = Math.max(1, Math.floor(r.w / 150)), lw = Math.floor(r.w / s), lh = Math.floor(r.h / s);
     let L = lows[which];
     if (!L || L.lw !== lw || L.lh !== lh) { const c = document.createElement('canvas'); c.width = lw; c.height = lh; L = lows[which] = { lw, lh, c, s: 0 }; }
     paint(L.c.getContext('2d'), lw, lh);

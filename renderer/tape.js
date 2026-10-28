@@ -10,11 +10,10 @@
 // and a few seconds of silence count as a new song.
 //
 // Written out two ways: a MIDI file (drums on channel 10, bass, chords and lead on tracks of their
-// own, bar by bar as heard) to take into a DAW, and the whole song as Strudel code: cut into
-// sections, each written once as a named stack as most of its bars played it (leaving the chords
-// or lead out when they don't recur), played in order with arrange().
+// own, bar by bar as heard) to take into a DAW, and Strudel code: exact phrases written once
+// as named stacks and played in order with arrange(), retaining each variation.
 import { NOTES } from './engine.js';
-import { stepParts, wobble, beatRuns, runWeight } from './codegen.js';
+import { wobble, beatRuns, bassRhythmEvents, MELODY_OCTAVE } from './codegen.js';
 
 const nameOf = (midi) => NOTES[((midi % 12) + 12) % 12].toLowerCase() + (Math.floor(midi / 12) - 1);
 
@@ -62,33 +61,69 @@ export function createTape() {
       for (const st of stretches) if (!best || st.bars.length > best.bars.length) best = st;
       if (!best || best.bars.length < 4) return before;
       const d = best === cur ? down : best.down, off = best.moved;
-      const map = new Map(), at = (bar) => { let x = map.get(bar); if (!x) map.set(bar, (x = { parts: {}, chord: null, bass: null })); return x; };
-      // A bar recorded before the beat or bar line moved sits k 16ths off the final bar i;
-      // turn a copy of its 16 steps by k (as relabel() did live) so the whole song lines up.
-      const rot = (a, k) => {
-        if (!a) return a;
-        const out = new Array(16);
-        for (let s = 0; s < 16; s++) out[(s + k + 16) % 16] = a[s];
-        return out;
+      // Build accepted note events BEFORE moving their coordinates. A duration belongs to
+      // its note, not to whichever bar its onset lands in after a phase correction.
+      const recorded = new Map();
+      const source = (b) => {
+        if (!recorded.has(b)) recorded.set(b, { parts: {}, chord: null, bass: null });
+        return recorded.get(b);
       };
+      for (const r of best.bars) source(r.b).parts = r.parts;
+      // Harmony closes a bar after its pattern was recorded. If phase changed meanwhile,
+      // the starts may differ; pair the nearest snapshots without moving the harmony start.
+      const remaining = new Set(best.harmony);
       for (const r of best.bars) {
-        const s0 = Math.round((r.b - off - d) * 4), i = Math.round(s0 / 16), k = s0 - 16 * i;
-        const parts = {};
-        for (const [id, v] of Object.entries(r.parts)) parts[id] = v && (id === 'vox' ? { on: rot(v.on, k), tok: rot(v.tok, k) } : rot(v, k));
-        at(i).parts = parts;
+        let match = null;
+        for (const h of remaining) if (Math.abs(h.b - r.b) < 2 && (!match || Math.abs(h.b - r.b) < Math.abs(match.b - r.b))) match = h;
+        if (match) {
+          Object.assign(source(r.b), { chord: match.chord, bass: match.bass, wob: match.wob, beats: match.beats, harmonyBeat: match.b });
+          remaining.delete(match);
+        }
       }
-      for (const r of best.harmony) {
-        const b0 = r.b - off - d, i = Math.floor((b0 + 2) / 4), x = at(i); // the bar its middle falls in
-        if (r.chord) x.chord = r.chord;
-        if (r.bass) x.bass = r.bass;
-        if (r.wob) x.wob = r.wob;
-        // (its beats turned by as many beats as the bar line moved since, as the steps are)
-        if (r.beats) { const k = Math.round(b0 - 4 * i); x.beats = r.beats.map((_, j) => r.beats[(((j - k) % 4) + 4) % 4]); }
+      for (const r of remaining) Object.assign(source(r.b), { chord: r.chord, bass: r.bass, wob: r.wob, beats: r.beats, harmonyBeat: r.b });
+      const shifted = [], windows = [];
+      for (const [b, raw] of recorded) {
+        const start = Math.round((b - off - d) * 4) / 16;
+        windows.push([start, start + 1]);
+        const harmonyStart = Math.round(((raw.harmonyBeat ?? b) - off - d) * 4) / 16;
+        for (const e of barEvents(raw)) {
+          const harmonic = e.part === 'chords' || (e.part === 'bass' && !raw.parts.bass?.some(Boolean));
+          shifted.push({ ...e, onset: (harmonic ? harmonyStart : start) + e.onset, wob: raw.wob || 0 });
+        }
+        if (raw.harmonyBeat != null) windows.push([harmonyStart, harmonyStart + 1]);
       }
-      const keys = [...map.keys()], first = Math.min(...keys), last = Math.max(...keys);
-      const bars = [];
-      for (let b = first; b <= last; b++) bars.push(map.get(b) || { parts: {}, chord: null, bass: null });
-      return { bpm: best.bpm, bars, who: best.who || null };
+      // Keep pickups, adding leading padding to the preceding bar. No negative timestamp
+      // is wrapped back into its former bar and no boundary note is cut or retriggered.
+      const first = Math.floor(Math.min(...windows.map((w) => w[0])));
+      const last = Math.ceil(Math.max(...windows.map((w) => w[1]))) - 1;
+      const bars = Array.from({ length: last - first + 1 }, () => ({ parts: {}, chord: null, bass: null, events: [] }));
+      for (const e of shifted) {
+        const i = Math.floor(e.onset), target = bars[i - first];
+        const { wob, ...note } = e;
+        target.events.push({ ...note, onset: e.onset - i });
+        if (e.part === 'bass') target.wob = wob;
+        // The grids remain a convenient inspection view; writers use the timed events.
+        const step = Math.round((e.onset - i) * 16);
+        if (e.part in DRUM) {
+          target.parts[e.part] ||= Array(16).fill(false);
+          target.parts[e.part][step] = true;
+        } else if (e.part === 'lead') {
+          target.parts.vox ||= { on: Array(16).fill(false), tok: Array(16).fill(null) };
+          target.parts.vox.on[step] = true;
+          target.parts.vox.tok[step] = String(e.pitch % 12);
+        }
+      }
+      const timeline = {
+        originBeat: first * 4, startBeat: Math.min(...windows.map((w) => w[0])) * 4,
+        endBeat: Math.max(...windows.map((w) => w[1])) * 4, pickupPolicy: 'keep',
+      };
+      const coverage = {
+        selectedStretch: stretches.indexOf(best) + 1,
+        stretches: stretches.map((st, i) => ({ stretch: i + 1, bpm: st.bpm, bars: st.bars.length, seconds: st.bars.length * 240 / st.bpm })),
+        recordedBars: stretches.reduce((n, st) => n + st.bars.length, 0),
+        recordedSeconds: stretches.reduce((n, st) => n + st.bars.length * 240 / st.bpm, 0),
+      };
+      return { bpm: best.bpm, bars, who: best.who || null, coverage, timeline };
     },
   };
   return api;
@@ -117,29 +152,43 @@ function track(events) {
 }
 const named = (name) => [0, 0xff, 0x03, ...vlq(text(name).length), ...text(name)];
 
+// Shared accepted export notes. onset/duration are in bars, relative to this bar.
+// This is an export view of learned patterns, not a new detector/event ledger.
+export function barEvents(b) {
+  if (b.events) return b.events;
+  const out = [], p = b.parts;
+  const add = (part, pitch, onset, duration, velocity) => out.push({ part, pitch, onset, duration, velocity });
+  for (const id in DRUM) p[id]?.forEach((on, s) => { if (on) add(id, DRUM[id][0], s / 16, 1 / 16, DRUM[id][1]); });
+  p.vox?.on.forEach((on, s) => {
+    const pc = +p.vox.tok[s];
+    if (on && Number.isFinite(pc)) add('lead', (MELODY_OCTAVE + 1) * 12 + pc, s / 16, 1 / 16, 90);
+  });
+  if (b.chord) {
+    const r = 48 + b.chord.root;
+    for (const pitch of [r, r + b.chord.third, r + 7]) add('chords', pitch, 0, 1, 70);
+  }
+  const runs = beatRuns(b.beats);
+  if (b.bass != null || runs) {
+    const noteAt = (s) => runs ? runs.find((r) => r.beats.includes(s >> 2)).m : b.bass;
+    const rhythmic = bassRhythmEvents(p.bass, noteAt);
+    if (rhythmic.length) out.push(...rhythmic);
+    else if (runs) runs.forEach((r) => add('bass', r.m, r.beats[0] / 4, r.beats.length / 4, 95));
+    else add('bass', b.bass, 0, 1, 95);
+  }
+  return out;
+}
+
 export function songMidi(song, title) {
-  const bar = 4 * PPQ, step = PPQ / 4;
+  const bar = 4 * PPQ;
   const tempo = Math.round(60e6 / song.bpm);
   const meta = [[0, 0xff, 0x51, 3, (tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255], [0, 0xff, 0x58, 4, 4, 2, 24, 8]];
-  const note = (list, ch, t, len, n, v) => { list.push([t + len, 0x80 | ch, n, 0], [t, 0x90 | ch, n, v]); };
   const drums = [], bass = [], chords = [], lead = [];
+  const targets = { bass: [bass, 0], chords: [chords, 1], lead: [lead, 2] };
   song.bars.forEach((b, i) => {
-    const t0 = i * bar, p = b.parts;
-    for (const id in DRUM) p[id]?.forEach((on, s) => { if (on) note(drums, 9, t0 + s * step, step, DRUM[id][0], DRUM[id][1]); });
-    p.vox?.on.forEach((on, s) => { const pc = +p.vox.tok[s]; if (on && Number.isFinite(pc)) note(lead, 2, t0 + s * step, step, 72 + pc, 90); });
-    if (b.chord) {
-      const r = 48 + b.chord.root;
-      for (const n of [r, r + b.chord.third, r + 7]) note(chords, 1, t0, bar, n, 70);
-    }
-    // the bar's bass notes (by the beat, where the bass moves in it) on the steps the bass line
-    // plays (each held to the next, up to a beat), or each held through its beats
-    const runs = beatRuns(b.beats);
-    if (b.bass || runs) {
-      const noteAt = (s) => (runs ? runs.find((r) => r.beats.includes(s >> 2)).m : b.bass);
-      const on = p.bass ? [...p.bass.keys()].filter((s) => p.bass[s]) : [];
-      if (on.length) on.forEach((s, k) => note(bass, 0, t0 + s * step, Math.min(PPQ, ((on[k + 1] ?? 16) - s) * step), noteAt(s), 95));
-      else if (runs) runs.forEach((r) => note(bass, 0, t0 + r.beats[0] * PPQ, r.beats.length * PPQ, r.m, 95));
-      else note(bass, 0, t0, bar, b.bass, 95);
+    for (const e of barEvents(b)) {
+      const [list, ch] = targets[e.part] || [drums, 9];
+      const begin = Math.round((i + e.onset) * bar), end = Math.round((i + e.onset + e.duration) * bar);
+      list.push([end, 0x80 | ch, e.pitch, 0], [begin, 0x90 | ch, e.pitch, e.velocity]);
     }
   });
   const tracks = [
@@ -157,268 +206,95 @@ export function songMidi(song, title) {
 
 const DRUMS = ['bd', 'sd', 'hhc', 'hho'];
 const TOKEN = { bd: 'bd', sd: 'cp', hhc: 'hh', hho: 'oh' };
-const TOL = 0.35, MAXBARS = 16, CHORD_CONF = 0.6, LEAD_CONF = 0.5;
+// Compare musical content exactly: absent/off steps are equivalent, active notes are not.
+const barKey = (b) => JSON.stringify([
+  barEvents(b).map((e) => JSON.stringify([e.part, e.pitch, e.onset, e.duration, e.velocity])).sort(),
+  b.wob || 0,
+]);
 
-// (a bar's steps for a part, worked out once per export (songSections starts it afresh): the
-// sections ask for them over and over, and a three-hour set took two seconds to write out)
-let stepMemo = new WeakMap();
-const steps = (b, p) => {
-  let m = stepMemo.get(b);
-  if (!m) stepMemo.set(b, (m = {}));
-  if (m[p]) return m[p];
-  const v = b.parts?.[p === 'bassrhythm' ? 'bass' : p];
-  return (m[p] = Array.from({ length: 16 }, (_, s) => !!v?.[s]));
-};
-const has = (b, p) => {
-  if (p === 'bass') return b.bass != null || !!b.beats;
-  if (p === 'chords') return b.chord != null;
-  if (p === 'lead') return !!b.parts?.vox?.on?.some(Boolean);
-  return steps(b, p).some(Boolean);
-};
-const present = (block, p) => block.filter((b) => has(b, p)).length >= Math.ceil(block.length / 2);
-
-// The most common value (and how many times it came up), with ties broken by the first seen.
-function mostCommon(values) {
-  const counts = new Map();
-  for (const v of values) counts.set(v, (counts.get(v) || 0) + 1);
-  let best = null, top = 0;
-  for (const [v, c] of counts) if (c > top) { best = v; top = c; }
-  return top ? [best, top] : null;
-}
-
-// Per bar position in the 4-bar block: a step is on if it's on in at least half that position's
-// bars; a single bar repeated for all positions if that fits the section's bars about as well.
-function grid(byPos, p) {
-  const allb = byPos.flat();
-  const one = Array.from({ length: 16 }, (_, s) => allb.filter((b) => steps(b, p)[s]).length * 2 >= allb.length);
-  const four = byPos.map((pos) => (pos.length ? Array.from({ length: 16 }, (_, s) => pos.filter((b) => steps(b, p)[s]).length * 2 >= pos.length) : one.slice()));
-  const miss = (g) => byPos.reduce((sum, pos, j) => sum + pos.reduce((m, b) => {
-    const st = steps(b, p);
-    return m + g[j].reduce((d, on, s) => d + (st[s] !== on), 0);
-  }, 0), 0);
-  const g1 = byPos.map(() => one.slice());
-  return miss(g1) <= miss(four) + 0.5 * allb.length ? g1 : four;
-}
-
-function sectionLoop(blocks) {
-  const n = Math.max(...blocks.map((b) => b.length));
-  const byPos = Array.from({ length: n }, (_, j) => blocks.filter((blk) => j < blk.length).map((blk) => blk[j]));
-  const allb = blocks.flat();
-  const written = (p) => blocks.filter((blk) => present(blk, p)).length * 2 >= blocks.length;
-  const drums = {};
-  for (const p of DRUMS) if (written(p)) drums[p] = grid(byPos, p);
-  let bass = null, bassBeats = null, bassRhythm = null, wob = 0;
-  if (written('bass')) {
-    const overall = mostCommon(allb.filter((b) => b.bass != null).map((b) => b.bass));
-    bass = byPos.map((pos) => {
-      const c = mostCommon(pos.filter((b) => b.bass != null).map((b) => b.bass));
-      return c && c[1] * 2 >= pos.length ? c[0] : (overall ? overall[0] : null);
-    });
-    // and where the bass moves in the bar, its notes by the beat: each beat's as most of the
-    // position's bars had it (a bar with no beats counting its one note on all four)
-    bassBeats = byPos.map((pos, j) => {
-      const beats = [0, 1, 2, 3].map((k) => {
-        const c = mostCommon(pos.map((b) => beatRuns(b.beats)?.find((r) => r.beats.includes(k)).m ?? b.bass).filter((m) => m != null));
-        return c && c[1] * 2 >= pos.length ? c[0] : bass[j];
-      });
-      return beats.every((m) => m === beats[0]) ? null : beats;
-    });
-    if (!bassBeats.some(Boolean)) bassBeats = null;
-    bassRhythm = grid(byPos, 'bassrhythm');
-    wob = mostCommon(allb.map((b) => b.wob || 0))[0];
-  }
-  // Chords and lead: votes at each bar position across the section's blocks; whether the song's
-  // chords or lead actually repeat enough to keep is decided across the whole song afterwards.
-  let cr = 0, cm = 0;
-  const ch = byPos.map((pos) => {
-    const names = pos.filter((b) => b.chord).map((b) => b.chord.name);
-    cr += names.length;
-    const c = mostCommon(names);
-    if (c) cm += c[1];
-    return c ? c[0] : null;
-  });
-  let lr = 0, lm = 0;
-  const ld = byPos.map((pos) => {
-    const bar = {};
-    for (let s = 0; s < 16; s++) {
-      const notes = [];
-      for (const b of pos) {
-        const v = b.parts?.vox;
-        if (v?.on?.[s]) notes.push(v.tok[s]);
-      }
-      lr += notes.length;
-      const c = mostCommon(notes);
-      if (c && c[1] * 2 >= pos.length) { bar[s] = c[0]; lm += c[1]; }
-    }
-    return bar;
-  });
-  return {
-    bars: n,
-    drums,
-    bassRhythm,
-    bass,
-    bassBeats,
-    wob,
-    chords: null,
-    lead: null,
-    _chords: written('chords') ? ch : null,
-    _chordVotes: blocks.length >= 2 ? [cm, cr] : [0, 0],
-    _lead: written('lead') ? ld : null,
-    _leadVotes: blocks.length >= 2 ? [lm, lr] : [0, 0],
-  };
-}
-
-function mismatch(a, b) {
-  let diff = 0, tot = 0;
-  for (const p of [...DRUMS, 'bassrhythm']) {
-    const x = p === 'bassrhythm' ? a.bassRhythm : a.drums[p];
-    const y = p === 'bassrhythm' ? b.bassRhythm : b.drums[p];
-    for (let j = 0; j < a.bars; j++) {
-      for (let s = 0; s < 16; s++) {
-        const u = !!x?.[j]?.[s], v = !!y?.[j]?.[s];
-        if (u || v) tot++;
-        if (u !== v) diff++;
-      }
-    }
-  }
-  return diff / Math.max(1, tot);
-}
-
-function samePart(a, b) {
-  if (a.bars !== b.bars) return false;
-  if (DRUMS.filter((p) => p in a.drums).join(',') !== DRUMS.filter((p) => p in b.drums).join(',')) return false;
-  for (const k of ['bass', 'bassBeats', 'wob', 'chords', 'lead']) {
-    if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false;
-  }
-  return mismatch(a, b) <= TOL;
-}
-
-// Cuts the song into sections of up to 16 bars where the same instruments play, takes the pattern,
-// bass, chords and lead most of each section's bars played, drops chord or lead lines that never
-// repeat across the song (a growling bass misread as chords or lead), and reuses earlier parts when
-// a section returns.
+// Exact four-bar phrases, reduced only by an exact period and reused only on exact equality.
+// A fill or a new note gets its own variant; instrument presence never gates accepted data.
 export function songSections(song) {
-  stepMemo = new WeakMap();
+  const parts = [], sections = [], known = new Map();
   const bars = song.bars || [];
-  const blocks = [];
-  for (let i = 0; i < bars.length; i += 4) blocks.push(bars.slice(i, i + 4));
-  const sig = (blk) => [...['bd', 'sd', 'bass'].filter((p) => present(blk, p)), ...(present(blk, 'hhc') || present(blk, 'hho') ? ['hats'] : [])].join(',');
-  const raw = [];
-  let cur = [];
-  for (const blk of blocks) {
-    if (cur.length && (sig(blk) !== sig(cur[cur.length - 1]) || cur.length * 4 >= MAXBARS || blk.length !== cur[cur.length - 1].length)) {
-      raw.push(cur);
-      cur = [];
+  for (let start = 0; start < bars.length; start += 4) {
+    const block = bars.slice(start, start + 4), keys = block.map(barKey);
+    let period = block.length;
+    for (let n = 1; n <= block.length; n++) {
+      if (block.length % n === 0 && keys.every((k, j) => k === keys[j % n])) { period = n; break; }
     }
-    cur.push(blk);
+    const raw = block.slice(0, period), key = JSON.stringify(keys.slice(0, period));
+    let part = known.get(key);
+    if (part === undefined) {
+      part = parts.length;
+      known.set(key, part);
+      parts.push({ bars: period, raw });
+    }
+    const prev = sections.at(-1);
+    if (prev?.part === part) prev.bars += block.length;
+    else sections.push({ start, bars: block.length, part });
   }
-  if (cur.length) raw.push(cur);
-  const loops = raw.map(sectionLoop);
-  let cm = 0, cr = 0, lm = 0, lr = 0;
-  for (const L of loops) {
-    cm += L._chordVotes[0]; cr += L._chordVotes[1];
-    lm += L._leadVotes[0]; lr += L._leadVotes[1];
-  }
-  const chordConf = cr ? cm / cr : 0;
-  const leadConf = lr ? lm / lr : 0;
-  for (const L of loops) {
-    if (chordConf >= CHORD_CONF && L._chords && L._chords.some(Boolean)) L.chords = L._chords;
-    if (leadConf >= LEAD_CONF && L._lead && L._lead.some((b) => Object.keys(b).length > 0)) L.lead = L._lead;
-    delete L._chords; delete L._chordVotes; delete L._lead; delete L._leadVotes;
-  }
-  const parts = [], sections = [];
-  let start = 0;
-  for (let i = 0; i < loops.length; i++) {
-    const L = loops[i], len = raw[i].reduce((s, blk) => s + blk.length, 0);
-    let part = parts.findIndex((r) => samePart(r, L));
-    if (part < 0) { part = parts.length; parts.push(L); }
-    sections.push({ start, bars: len, part });
-    start += len;
-  }
-  return { sections, parts, chordConf, leadConf };
+  return { sections, parts };
 }
 
-// Four values as <a b c d>, repeats written with ! (<e2!2 c2 d2>); one if they're all the same.
-function slots(values) {
-  if (values.every((v) => v === values[0])) return values[0];
-  const out = [];
-  for (let i = 0; i < values.length;) {
-    let j = i + 1;
-    while (j < values.length && values[j] === values[i]) j++;
-    out.push(values[i] + (j - i > 1 ? '!' + (j - i) : ''));
-    i = j;
+// A weighted mini pattern declares the rests and note lengths explicitly in sixteenths.
+// Equal simultaneous notes (a triad) share one token. Overlaps/tails use separate lanes.
+function eventCode(es, bars, value) {
+  if (!es.length) return null;
+  const groups = new Map();
+  for (const e of es) {
+    const key = JSON.stringify([e.onset, e.duration, e.velocity]);
+    if (!groups.has(key)) groups.set(key, { ...e, values: [] });
+    groups.get(key).values.push(value(e));
   }
-  return `<${out.join(' ')}>`;
-}
-// A bar's 16 steps (tokens or null) as mini-notation, or ~ for an empty bar.
-const barText = (tok) => stepParts(tok)?.map((p) => p.text).join('') ?? '~';
-// Four bars of a part: the one pattern if they're all the same, else each in turn.
-function fourBars(texts) {
-  if (texts.every((x) => x === texts[0])) return texts[0];
-  return `<${texts.map((x) => (/\s/.test(x) ? `[${x}]` : x)).join(' ')}>`;
+  const lanes = [];
+  for (const e of [...groups.values()].sort((a, b) => a.onset - b.onset)) {
+    let lane = lanes.find((l) => l.velocity === e.velocity && l.end <= e.onset && e.onset + e.duration - l.events[0].onset <= bars);
+    if (!lane) { lane = { velocity: e.velocity, end: 0, events: [] }; lanes.push(lane); }
+    lane.events.push(e); lane.end = e.onset + e.duration;
+  }
+  return lanes.map((lane) => {
+    // Start the cycle on its first note, then delay it: boundary-crossing tails keep their
+    // whole duration, rather than being chopped into two fresh onsets by a bar boundary.
+    const offset = lane.events[0].onset, texts = [];
+    let end = offset;
+    const token = (v, length) => v + (length === 1 / 16 ? '' : '@' + length * 16);
+    for (const e of lane.events) {
+      if (e.onset > end) texts.push(token('~', e.onset - end));
+      texts.push(token(e.values.length === 1 ? e.values[0] : '[' + e.values.join(',') + ']', e.duration));
+      end = e.onset + e.duration;
+    }
+    const span = bars;
+    if (end - offset < span) texts.push(token('~', span - (end - offset)));
+    let code = `note("${texts.join(' ')}").slow(${span})`;
+    if (offset) code += `.late(${offset})`;
+    return code + `.velocity(${lane.velocity}/127)`;
+  });
 }
 
-// The code for 4 bars (or fewer, at the end), one line a part, or null if nothing plays in them.
-function blockCode(four) {
+function blockCode(block) {
+  const es = block.flatMap((b, i) => barEvents(b).map((e) => ({ ...e, onset: i + e.onset, wob: b.wob || 0 })));
   const lines = [];
-  for (const id of ['bd', 'sd', 'hhc', 'hho']) {
-    if (!four.some((b) => b.parts[id]?.some(Boolean))) continue;
-    const texts = four.map((b) => barText((b.parts[id] || []).map((on) => (on ? TOKEN[id] : null)).concat(new Array(16).fill(null)).slice(0, 16)));
-    lines.push(`s("${fourBars(texts)}").bank("RolandTR909")${id === 'hhc' ? '.gain(.5)' : id === 'hho' ? '.gain(.4)' : ''}`);
+  for (const id of DRUMS) {
+    const code = eventCode(es.filter((e) => e.part === id), block.length, () => TOKEN[id]);
+    if (code) lines.push(...code.map((c) => c.replace(/^note\(/, 's(') + `.bank("RolandTR909")${id === 'hhc' ? '.gain(.5)' : id === 'hho' ? '.gain(.4)' : ''}`));
   }
-  if (four.some((b) => b.bass || b.beats)) {
-    // (a bar whose bass moves, by the beat: [d2 a1], [bb1@3 a1], as the live code writes it)
-    const notes = slots(four.map((b) => {
-      const runs = beatRuns(b.beats);
-      if (runs?.length > 1) return '[' + runs.map((r) => nameOf(r.m) + runWeight(runs, r)).join(' ') + ']';
-      return runs ? nameOf(runs[0].m) : b.bass ? nameOf(b.bass) : '~';
-    }));
-    // the bass line's rhythm, as the live code writes it (.struct), bar by bar: different ones go in
-    // turn (<...>), as the notes do, so changing rhythms aren't lost (they were, unless all four
-    // bars had the same one). A bar without one (or only the downbeat) has its note held all bar.
-    const rhythm = four.map((b) => (b.parts.bass?.some((on, s) => on && s) ? barText(b.parts.bass.map((on) => (on ? 'x' : null))) : 'x'));
-    const struct = rhythm.some((r) => r !== 'x') ? `.struct("${fourBars(rhythm)}")` : '';
-    // (a wobble as most of the 4 bars had one, if at least two did)
-    const wobs = four.map((b) => b.wob || 0).filter(Boolean), count = (r) => wobs.filter((w) => w === r).length;
-    const wob = wobs.length >= 2 ? [3, 4].reduce((best, r) => (count(r) > count(best) ? r : best), 2) : 0;
-    lines.push(`note("${notes}")${struct}.s("sawtooth").lpf(${wob ? 400 : 800})${wobble(wob)}`);
-  }
-  if (four.some((b) => b.chord)) lines.push(`chord("${slots(four.map((b) => b.chord?.name ?? '~'))}").voicing().s("supersaw").lpf(2000).gain(.6)`);
-  if (four.some((b) => b.parts.vox?.on.some(Boolean))) {
-    const texts = four.map((b) => {
-      const v = b.parts.vox;
-      return barText(Array.from({ length: 16 }, (_, s) => { const pc = +v?.tok[s]; return v?.on[s] && Number.isFinite(pc) ? NOTES[pc].toLowerCase() + '5' : null; }));
-    });
-    lines.push(`note("${fourBars(texts)}").s("triangle").clip(1)`);
+  for (const [id, sound] of [['bass', 'sawtooth'], ['chords', 'supersaw'], ['lead', 'triangle']]) {
+    const selected = es.filter((e) => e.part === id);
+    for (const wob of id === 'bass' ? new Set(selected.map((e) => e.wob)) : [0]) {
+      const code = eventCode(selected.filter((e) => id !== 'bass' || e.wob === wob), block.length, (e) => nameOf(e.pitch));
+      const effect = id === 'bass' ? `.lpf(${wob ? 400 : 800})` + wobble(wob) : id === 'chords' ? '.lpf(2000).gain(.6)' : '.clip(1)';
+      if (code) lines.push(...code.map((c) => c + `.s("${sound}")` + effect));
+    }
   }
   return lines.length ? lines : null;
-}
-
-// Synthetic bars for a section's part, so blockCode writes it just as it wrote 4 raw bars.
-function partBars(P) {
-  return Array.from({ length: P.bars }, (_, j) => {
-    const parts = {};
-    for (const id of DRUMS) if (P.drums[id]) parts[id] = P.drums[id][j];
-    if (P.bassRhythm) parts.bass = P.bassRhythm[j];
-    if (P.lead) {
-      const m = P.lead[j];
-      parts.vox = { on: Array.from({ length: 16 }, (_, s) => s in m), tok: Array.from({ length: 16 }, (_, s) => m[s] ?? null) };
-    }
-    return {
-      parts,
-      chord: P.chords?.[j] ? { name: P.chords[j] } : null,
-      bass: P.bass ? P.bass[j] : null,
-      beats: P.bassBeats ? P.bassBeats[j] : null,
-      wob: P.wob,
-    };
-  });
 }
 
 export function songStrudel(song, about) {
   const S = songSections(song);
   const named = [], names = [];
   for (const P of S.parts) {
-    const code = blockCode(partBars(P));
+    const code = blockCode(P.raw);
     if (code) {
       const name = String.fromCharCode(65 + (named.length % 26)) + (named.length >= 26 ? Math.floor(named.length / 26) : '');
       named.push([name, code]);
@@ -433,12 +309,103 @@ export function songStrudel(song, about) {
     else order.push({ name, bars: sec.bars });
   }
   const out = [
-    `// ${about}, decompiled by toaster: the song in sections, each written once as most of its`,
-    '// bars played it and named, then played in order. ctrl+enter plays it, ctrl+. stops.',
-    `setcpm(${Math.round(song.bpm)}/4)`,
+    `// ${about}, decompiled by toaster: the song in exact phrases, each written once`,
+    '// and played in order, including variations. ctrl+enter plays it, ctrl+. stops.',
+    `setcpm(${song.bpm}/4)`,
     '',
   ];
+  if (song.coverage) {
+    const c = song.coverage, selected = c.stretches.find((st) => st.stretch === c.selectedStretch);
+    out.splice(2, 0,
+      `// Coverage: stretch ${c.selectedStretch}/${c.stretches.length}; ${selected.bars}/${c.recordedBars} recorded bars, ~${selected.seconds.toFixed(3)}/~${c.recordedSeconds.toFixed(3)} seconds.`,
+      '// Durations use each stretch final BPM; pre-lock audio is not recorded. Other tempo stretches are omitted.',
+      `// Capture coverage: ${JSON.stringify(c)}`);
+  }
+  if (song.timeline) out.splice(2, 0,
+    '// Phase correction keeps pickups and note tails; leading/trailing partial bars are padded with silence.',
+    `// Export timeline (beats on corrected grid): ${JSON.stringify(song.timeline)}`);
   for (const [name, code] of named) out.push(`const ${name} = stack(`, ...code.map((l) => `  ${l},`), ')', '');
   out.push(`$: arrange(${order.map((o) => `[${o.bars}, ${o.name}]`).join(', ')})`);
   return out.join('\n') + '\n';
+}
+
+// Optional lossless compact view. Near-identical bars share their unchanged instrument
+// phrases; each track's arrange list explicitly enumerates the exact bar variations.
+// This does not vote, quantize, or drop notes.
+export function songStrudelCompact(song, about) {
+  const exact = songStrudel(song, about);
+  if (!exact) return null;
+  // The file opens on what it is and how to play it; the exact writer's record of the timeline and
+  // the coverage moves to the end, where it's there for checking without being the first thing read.
+  const top = exact.slice(0, exact.indexOf('\nconst ')).trimEnd().split('\n');
+  const record = top.slice(2).filter((l) => l.startsWith('//'));
+  const header = [
+    `// ${about}, decompiled by toaster: every bar it heard, each phrase written once`,
+    '// No events simplified. ctrl+enter plays it, ctrl+. stops',
+    ...top.slice(2).filter((l) => !l.startsWith('//')),
+  ];
+  const definitions = [], tracks = [], renderers = new Map();
+  const compactLine = (line) => {
+    // Factor identical instrument/effect settings, retaining every explicit note token.
+    const match = /^(note|s)\("([^"]*)"\)\.slow\(1\)(?:\.late\(([^)]+)\))?(\.velocity\(.*)$/.exec(line);
+    if (!match) throw Error('Unexpected compact instrument expression');
+    const [, constructor, pattern, offset, effects] = match;
+    const key = constructor + effects;
+    if (!renderers.has(key)) renderers.set(key, { name: `voice${renderers.size + 1}`, constructor, effects });
+    const { name } = renderers.get(key);
+    // Compress unit-weight tokens only: mini's @weight!n precedence changes durations.
+    const tokens = pattern.split(' '), packed = [];
+    for (let i = 0; i < tokens.length;) {
+      let end = i + 1;
+      while (!tokens[i].includes('@') && end < tokens.length && tokens[end] === tokens[i]) end++;
+      packed.push(tokens[i] + (end - i > 1 ? '!' + (end - i) : '')); i = end;
+    }
+    return `${name}("${packed.join(' ')}"${offset ? ', ' + offset : ''})`;
+  };
+  for (const id of [...DRUMS, 'bass', 'chords', 'lead']) {
+    const known = new Map(), order = [];
+    for (const b of song.bars) {
+      const raw = { parts: {}, events: barEvents(b).filter((e) => e.part === id), wob: id === 'bass' ? b.wob : 0 };
+      const key = barKey(raw);
+      let name = known.get(key);
+      if (!name) {
+        const lines = blockCode([raw]);
+        name = lines ? `${id}${known.size + 1}` : 'silence';
+        if (lines) {
+          const expressions = lines.map(compactLine);
+          definitions.push(`const ${name} = ${expressions.length === 1 ? expressions[0] : 'stack(' + expressions.join(', ') + ')'}`);
+        }
+        known.set(key, name);
+      }
+      if (order.at(-1)?.name === name) order.at(-1).bars++;
+      else order.push({ name, bars: 1 });
+    }
+    if (order.some((o) => o.name !== 'silence')) tracks.push(`  arrange(${order.map((o) => `[${o.bars}, ${o.name}]`).join(', ')}), // ${id}`);
+  }
+  const helpers = [...renderers.values()].map((r) => `const ${r.name} = (p, t = 0) => ${r.constructor}(p).slow(1).late(t)${r.effects}`);
+  // Break long strings into concatenated chunks and arrangement arguments at commas;
+  // concatenation preserves mini-notation whitespace and the resulting events.
+  const wrap = (line) => {
+    if (line.startsWith('//') && line.length > 100) {
+      // at a space, or after a comma inside the record's JSON, never in the middle of a word
+      const chunks = [];
+      let rest = line.slice(3);
+      while (rest.length > 94) {
+        let cut = rest.lastIndexOf(' ', 94);
+        if (cut < 40) { const comma = rest.lastIndexOf(',', 93); cut = comma >= 40 ? comma + 1 : 94; }
+        chunks.push(rest.slice(0, cut).trimEnd());
+        rest = rest.slice(cut).trimStart();
+      }
+      chunks.push(rest);
+      return chunks.map((c) => '// ' + c).join('\n');
+    }
+    if (line.startsWith('const voice') && line.length > 100) line = line.replace('.velocity(', '\n  .velocity(');
+    line = line.replace(/"([^"\n]{75,})"/g, (_, value) => {
+      const chunks = value.match(/.{1,70}/g);
+      return chunks.map((c) => JSON.stringify(c)).join(' +\n    ');
+    });
+    return line.replace(/, (?=\[\d+, )/g, ',\n    ').replace(/, (?=voice\d+\()/g, ',\n    ');
+  };
+  const tail = record.length ? ['// for checking the export:', ...record, ''] : [];
+  return [...header, '', ...helpers, '', ...definitions, '', '$: stack(', ...tracks, ')', '', ...tail].map(wrap).join('\n');
 }

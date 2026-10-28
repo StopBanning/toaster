@@ -274,6 +274,7 @@ function freshStart(top = false) {
   if (state.hushed) setHush(false); // a new song comes in unhushed
   punch.newSong(gameShowing() && !eng.silent);
   eng.reset({ top });
+  eng.ledger.startCapture({ source: state.source, sourceId: state.label, startTime: nowSec() });
   resetCodegen();
   view.clear();
   takeover.stop();
@@ -991,7 +992,7 @@ async function exportSong() {
 function openInStrudel() {
   const texts = lineTexts();
   const phase = ((eng.bar % 4) + 4) % 4;
-  const url = strudelLink(strudelProgram(texts, currentSong(), phase));
+  const url = strudelLink(strudelProgram(texts, currentSong(), phase, eng.v?.bass?.shown));
   if (window.nc?.openStrudel) window.nc.openStrudel(url);
   else window.open(url, '_blank', 'noopener');
   flashStatus('opened in strudel.cc');

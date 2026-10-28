@@ -7,10 +7,10 @@ const { buildLines, resetCodegen, strudelProgram, strudelLink } = writer;
 const app = fs.readFileSync(new URL('../renderer/app.js', import.meta.url), 'utf8');
 const handler = app.slice(app.indexOf('function openInStrudel()'), app.indexOf('// What went wrong starting the camera'));
 const song = { title: 'Phase test', artist: 'Audit' };
-function open(texts, bar, native = true) {
+function open(texts, bar, native = true, bassRhythm = null) {
   let url;
   vm.runInNewContext(handler + '\nopenInStrudel();', {
-    eng: { bar }, lineTexts: () => texts, currentSong: () => song, strudelProgram, strudelLink,
+    eng: { bar, v: { bass: { shown: bassRhythm } } }, lineTexts: () => texts, currentSong: () => song, strudelProgram, strudelLink,
     window: native ? { nc: { openStrudel: (link) => { url = link; } } } : { open: (link) => { url = link; } },
     flashStatus() {},
   });
@@ -77,4 +77,14 @@ test('O shifts nested weighted/repeated bass, four-bar drums and lead together, 
     assert.deepEqual(events(shifted, 0, 4), events(original, k, 4), 'all events start at slot ' + k);
     assert.ok(!events(shifted, 0, 4).some((e) => ['cp', 'oh'].includes(e.value.s)));
   }
+});
+
+test('the actual O handler passes bass rhythm without changing live text', integration, async () => {
+  const runtime = await strudelRuntime();
+  const rhythm = Array.from({ length: 16 }, (_, s) => [0, 6, 8].includes(s));
+  const texts = { bassline: 'bassline: note("c2").struct("x ~ x x ~ ~ ~ ~").s("sawtooth")' };
+  const code = open(texts, 0, true, rhythm);
+  const bass = events(await runtime.evaluate(code), 0).filter((e) => e.value.s === 'sawtooth');
+  assert.deepEqual(bass.map((e) => [e.begin, e.end]), [[0, .25], [.375, .5], [.5, .75]]);
+  assert.equal(texts.bassline, 'bassline: note("c2").struct("x ~ x x ~ ~ ~ ~").s("sawtooth")');
 });

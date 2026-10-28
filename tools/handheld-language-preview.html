@@ -1,0 +1,63 @@
+<!doctype html><meta charset="utf-8">
+<style>
+@font-face { font-family: 'JetBrains Mono'; font-weight: 100 800; src: url(/r/fonts/jetbrains-mono-latin.woff2); }
+@font-face { font-family: 'M PLUS 1 Code'; font-weight: 100 700; src: url(/r/fonts/mplus1code-jp.woff2); }
+body { margin: 0; background: #070b18; } canvas { display: block; }
+</style>
+<canvas id="frame" width="1080" height="1920"></canvas>
+<script type="module">
+import { createGame, setGameScreens, DEVICES } from '/r/game.js';
+import { G, ptext, createSkins, fitText, textW, fitPixel } from '/r/gameskins.js';
+import { LANGUAGES, setLang, say, screenFont } from '/r/gamewords.js';
+const q = new URLSearchParams(location.search), canvas = document.querySelector('canvas'), c = canvas.getContext('2d');
+await Promise.all([document.fonts.load('700 16px "JetBrains Mono"'), document.fonts.load('700 16px "M PLUS 1 Code"')]);
+if (q.has('sheet')) {
+  canvas.height = 880;
+  c.fillStyle = '#eff2df'; c.fillRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = '#1b2932'; c.font = '700 28px "JetBrains Mono"';
+  c.fillText('HANDHELD / 5 × 7 LATIN EXTENSION', 36, 48);
+  c.font = '16px "JetBrains Mono"'; c.fillText('New glyphs above their existing base; each box is exactly 5 × 7.', 36, 78);
+  const pairs = [...'ÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇØÆŒß¿¡«»'].map((ch) => [ch, ch === 'ß' ? 'B' : ({ 'Ø': 'O', 'Æ': 'A', 'Œ': 'O', '¿': '?', '¡': '!', '«': '(', '»': ')' }[ch] || ch.normalize('NFD')[0])]);
+  pairs.forEach(([ch, base], i) => {
+    const x = 40 + (i % 11) * 94, y = 122 + Math.floor(i / 11) * 167;
+    c.font = '20px "JetBrains Mono"'; c.fillStyle = '#1b2932'; c.fillText(ch, x, y);
+    for (const [letter, top] of [[ch, y + 12], [base, y + 75]]) {
+      c.fillStyle = '#dde3cf'; c.fillRect(x - 2, top - 2, 34, 46);
+      ptext(c, letter, x, top, '#1b2932', 6);
+    }
+  });
+  c.font = '16px "JetBrains Mono"'; c.fillStyle = '#1b2932'; c.fillText('Existing capitals and katakana (unchanged)', 36, 667);
+  ptext(c, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789', 38, 690, '#1b2932', 4);
+  ptext(c, 'アイウエオ カキクケコ サシスセソ タチツテト ナニヌネノ', 38, 742, '#1b2932', 3);
+  c.fillText('Accents stay inside the cell. Å keeps a closed ring; Ç keeps its tail.', 36, 818);
+} else if (q.has('check')) {
+  const failures = []; let count = 0;
+  // Canvas font metrics at the minimum 7px screen face, matching the metal 200x340 mini player's 124px screen.
+  // The pixel-only boot/LCD/VFD painters are checked independently by node --test.
+  for (const lang of Object.keys(LANGUAGES)) {
+    setLang(lang); c.font = `700 7px ${screenFont('"JetBrains Mono", monospace')}`; c.letterSpacing = '0px';
+    for (const [key, room] of [['KICK', 27], ['CLAP', 27], ['HATS', 27], ['HAT', 25], ['OPEN', 25], ['BASS', 27],
+      ['SCORE', 42], ['COMBO', 42], ['BPM', 27], ['FEVER ×2', 70], ['PERFECT', 112], ['GREAT', 112], ['GOOD', 112], ['MISS', 112]]) {
+      const word = say(key), shown = fitText(word, room, (s) => c.measureText(s).width);
+      count++; if (c.measureText(shown).width > room) failures.push({ lang, key, shown, room });
+      if (lang === 'es' && shown !== word) failures.push({ lang, key, word, shown, reason: 'Spanish screen label needs shortening' });
+    }
+  }
+  window.__fit = { count, failures };
+} else {
+  const skin = q.get('skin') || 'os', state = q.get('state') || 'game';
+  setGameScreens(skin); window.__gameBoot = state === 'boot' ? undefined : false;
+  const game = createGame(), eng = { tempo: { P: 0.5, bpm: 120 }, key: { root: 9, mode: 'minor' }, onsets: [] };
+  const col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
+  const blocks = [0, 1, 2, 3].flatMap((i) => ['bd', 'sd', 'hhc', 'bass'].map((lane, j) => ({ lane, g: 12 + i * 2 + j * 0.3, len: lane === 'bass' ? 2 : 1, pc: 9 })));
+  const args = { W: canvas.width, H: canvas.height, col, level: { bd: 0.8, sd: 0.6, hhc: 0.7, bass: 0.8 }, eng, title: 'CANCIÓN DEL SOL', blocks, vg: 4 };
+  const draw = (t) => {
+    if (state === 'standby') game.idle(c, { ...args, t, kind: 'reading' }); else game.draw(c, { ...args, t });
+  };
+  draw(0);
+  await Promise.all(['body', 'sheet', 'glow', 'shade'].map((key) => DEVICES.stance[key]?.decode()));
+  draw(0);
+  for (let k = 1; k <= (state === 'boot' ? 90 : 228); k++) draw(k / 60);
+}
+window.__done = true;
+</script>

@@ -11,6 +11,110 @@ export const ROLL_COLS = 48;
 export const nowSec = () => performance.now() / 1000;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
+// v1 side record. No PCM, no quantization, no detector feedback. Chunks are evicted as a
+// whole under BOTH limits. maxBytes counts UTF-16 JSON payload bytes, not JS heap overhead.
+// Unknown confidence means unmeasured, never zero; observed means an acoustic decision,
+// not human ground truth. Timing/harmony interpretations are explicitly inferred.
+export function createEventLedger({ sampleRate, startTime = 0, startSample = 0,
+  source = 'unknown', sourceId = '', maxBytes = 4 * 1024 * 1024, maxRecords = 16384,
+  chunkSize = 256 } = {}) {
+  if (!(sampleRate > 0) || !Number.isFinite(sampleRate) || !Number.isSafeInteger(startSample)
+    || !Number.isFinite(startTime) || !Number.isSafeInteger(maxBytes) || maxBytes < 4096
+    || !Number.isSafeInteger(maxRecords) || maxRecords < 1
+    || !Number.isSafeInteger(chunkSize) || chunkSize < 1) throw Error('invalid ledger limits/clock');
+  let capture, chunks, bytes, count, nextId, lastTiming;
+  const api = {
+    startCapture(meta = {}) {
+      startTime = meta.startTime ?? startTime;
+      startSample = meta.startSample ?? 0;
+      if (!Number.isFinite(startTime) || !Number.isSafeInteger(startSample)) throw Error('invalid capture clock');
+      capture = { source: String(meta.source ?? source).slice(0, 64),
+        sourceId: String(meta.sourceId ?? sourceId).slice(0, 256), sampleRate, startTime, startSample,
+        clock: 'engine-seconds; sample indices rounded at sampleRate; polling, not fixed-hop ingestion',
+        coverage: { throughSample: startSample, droppedThroughSample: null, droppedRecords: 0,
+          frames: 0, duplicateAudioReads: 0, longPollGaps: 0, maxPollGapSamples: 0 } };
+      chunks = []; bytes = count = nextId = 0; lastTiming = null;
+      this.lastFrame = this.lastAudio = undefined;
+    },
+    sample(t) { return startSample + Math.round((t - startTime) * sampleRate); },
+    cover(t, audioT) {
+      const s = this.sample(t), c = capture.coverage;
+      if (this.lastFrame !== undefined) {
+        const gap = s - this.lastFrame;
+        c.maxPollGapSamples = Math.max(c.maxPollGapSamples, gap);
+        if (gap > sampleRate * .03) c.longPollGaps++;
+      }
+      if (audioT !== undefined && audioT === this.lastAudio) c.duplicateAudioReads++;
+      this.lastFrame = s; this.lastAudio = audioT;
+      c.frames++; c.throughSample = Math.max(c.throughSample, s);
+    },
+    append(kind, row) {
+      if (!['event', 'timing', 'harmony'].includes(kind)) throw Error('unsupported ledger record');
+      // Reject oversized/unserializable inputs rather than retaining arbitrary external objects.
+      const value = JSON.parse(JSON.stringify({ ...row, id: nextId++, record: kind }));
+      if (!Number.isSafeInteger(value.sampleStart) || (value.sampleEnd !== undefined
+        && (!Number.isSafeInteger(value.sampleEnd) || value.sampleEnd < value.sampleStart))) throw Error('invalid sample interval');
+      const size = JSON.stringify(value).length * 2;
+      if (size > Math.min(maxBytes, 4096)) throw Error('oversized ledger record');
+      let ch = chunks.at(-1);
+      if (!ch || ch.rows.length >= chunkSize) { ch = { rows: [], bytes: 0, through: -Infinity }; chunks.push(ch); }
+      ch.rows.push(value); ch.bytes += size; ch.through = Math.max(ch.through, value.sampleEnd ?? value.sampleStart);
+      bytes += size; count++;
+      while (bytes > maxBytes || count > maxRecords) {
+        const old = chunks.shift(); bytes -= old.bytes; count -= old.rows.length;
+        capture.coverage.droppedRecords += old.rows.length;
+        capture.coverage.droppedThroughSample = Math.max(capture.coverage.droppedThroughSample ?? -Infinity, old.through);
+      }
+      return value.id;
+    },
+    event(t, row) { return this.append('event', { ...row, sampleStart: this.sample(t) }); },
+    timing(t, row) {
+      const signature = JSON.stringify(row);
+      if (signature === lastTiming) return;
+      lastTiming = signature;
+      return this.append('timing', { ...row, sampleStart: this.sample(t) });
+    },
+    harmony(from, to, candidates, state = 'unknown') {
+      return this.append('harmony', { sampleStart: this.sample(from), sampleEnd: this.sample(to),
+        candidates, state, status: 'inferred', acousticConfidence: null, timingConfidence: null });
+    },
+    stats() { return { records: count, payloadBytes: bytes, chunks: chunks.length,
+      maxRecords, maxBytes, chunkSize, droppedRecords: capture.coverage.droppedRecords }; },
+    snapshot() {
+      return JSON.parse(JSON.stringify({ version: 1, capture, limits: { maxBytes, maxRecords, chunkSize },
+        chunks: chunks.map((ch) => ch.rows) }));
+    },
+    restore(doc) {
+      if (doc.version !== 1 || doc.capture?.sampleRate !== sampleRate || !Array.isArray(doc.chunks)) throw Error('unsupported ledger');
+      this.startCapture(doc.capture);
+      for (const key of Object.keys(capture.coverage)) {
+        const value = doc.capture.coverage?.[key];
+        if (value === null && key === 'droppedThroughSample') continue;
+        if (!Number.isFinite(value) || value < 0) throw Error('invalid ledger coverage');
+        capture.coverage[key] = value;
+      }
+      let highId = -1;
+      for (const ch of doc.chunks) for (const row of ch) {
+        const savedId = row.id;
+        if (!Number.isSafeInteger(savedId) || savedId <= highId) throw Error('invalid ledger identity');
+        nextId = savedId;
+        this.append(row.record, row); highId = Math.max(highId, savedId);
+      }
+      nextId = highId + 1;
+    },
+    // Project into arbitrary beat coordinates; events retain original IDs/sample times. No
+    // modulo/bar rotation: pickups can be negative and events can cross bar boundaries.
+    project(grid) {
+      if (!(grid.bpm > 0) || !Number.isFinite(grid.bpm) || !Number.isSafeInteger(grid.anchorSample)) throw Error('invalid grid');
+      return chunks.flatMap((ch) => ch.rows).filter((r) => r.record === 'event')
+        .map((r) => ({ ...JSON.parse(JSON.stringify(r)), beat: (grid.anchorBeat ?? 0) + (r.sampleStart - grid.anchorSample) / sampleRate * grid.bpm / 60 }))
+        .sort((a, b) => a.sampleStart - b.sampleStart || a.id - b.id);
+    },
+  };
+  api.startCapture();
+  return api;
+}
+
 // ---------------------------------------------------------------- chords and keys
 
 // Real notes ring with overtones (octaves and fifths), so the templates include them. Weights
@@ -255,16 +359,85 @@ function newOpening(armed) {
   return { armed, from: null, halfAt: 0, half: openingHalf(), prev: null, chord: null, key: null };
 }
 
+// Small causal timing bank. Scores are evidence indices, not calibrated probabilities.
+// Two pulse phases and four bar rotations per tempo preserve ambiguous alternatives.
+export function timingHypotheses(onsets, tonal, t, bpms) {
+  const mod = (x, n) => ((x % n) + n) % n;
+  const hits = onsets.filter((o) => o.t > t - 12 && o.t <= t && (o.id === 'bd' || o.id === 'sd'));
+  const weight = (o) => Math.min(o.s, 1.5) * (o.id === 'sd' ? 1.25 : 1);
+  const change = (a, b) => {
+    const x = Math.hypot(...a), y = Math.hypot(...b);
+    return x && y ? Math.max(0, 1 - a.reduce((v, z, i) => v + z * b[i], 0) / (x * y)) : 0;
+  };
+  const out = [];
+  for (const bpm of bpms) {
+    if (!(bpm >= 60 && bpm <= 200)) continue;
+    const P = 60 / bpm, phases = [];
+    for (let k = 0; k < 64; k++) {
+      const at = k * P / 64;
+      const score = hits.reduce((sum, o) => {
+        const x = (o.t - at) / P, d = x - Math.round(x);
+        return sum + weight(o) * Math.exp(-0.5 * (d / .07) ** 2);
+      }, 0);
+      phases.push({ at, score });
+    }
+    phases.sort((a, b) => b.score - a.score);
+    const chosen = phases.filter((a, i) => !i || Math.abs(mod((a.at - phases[0].at) / P + .5, 1) - .5) > .3).slice(0, 2);
+    for (const { at } of chosen) {
+      const K = [0, 0, 0, 0], S = [0, 0, 0, 0], H = [0, 0, 0, 0], C = [0, 0, 0, 0];
+      let aligned = 0, total = 0;
+      for (const o of hits) {
+        const f = (o.t - at) / P, b = Math.round(f), w = weight(o);
+        total += w;
+        if (Math.abs(f - b) > .15) continue;
+        aligned += w;
+        (o.id === 'bd' ? K : S)[mod(b, 4)] += Math.min(o.s, 1.5);
+      }
+      const frames = new Map();
+      for (const r of tonal) {
+        if (r.t < t - 16 || r.t > t) continue;
+        const b = Math.floor((r.t - at) / P), f = mod((r.t - at) / P, 1);
+        if (f < .2 || f > .8) continue; // avoid FFT windows straddling the change
+        let v = frames.get(b);
+        if (!v) frames.set(b, v = { c: Array(12).fill(0), b: Array(12).fill(0), e: 0, n: 0 });
+        for (let i = 0; i < 12; i++) { v.c[i] += r.c[i]; v.b[i] += r.b[i]; }
+        v.e += r.e; v.n++;
+      }
+      for (const [b, v] of frames) {
+        const prev = frames.get(b - 1);
+        if (!prev) continue;
+        H[mod(b, 4)] += .75 * change(v.b, prev.b) + .25 * change(v.c, prev.c);
+        // A sustained level step, only after hearing all four following beats.
+        const before = [-4, -3, -2, -1].map((k) => frames.get(b + k));
+        const after = [0, 1, 2, 3].map((k) => frames.get(b + k));
+        if (before.every(Boolean) && after.every(Boolean)) {
+          const db = (v) => 10 * Math.log10(v.e / v.n + 1e-12);
+          const mean = before.reduce((sum, v) => sum + db(v), 0) / 4;
+          const step = Math.max(Math.min(...after.map(db)) - mean, mean - Math.max(...after.map(db)));
+          if (step >= 4) C[mod(b, 4)] += Math.min(6, step - 3);
+        }
+      }
+      const pulseSupport = total ? aligned / total : 0;
+      for (let d = 0; d < 4; d++) {
+        const accent = K[d] + .5 * K[(d + 2) % 4] + S[(d + 1) % 4] + S[(d + 3) % 4] - .5 * (S[d] + S[(d + 2) % 4]);
+        out.push({ bpm, anchor: at, down: d, pulseSupport, score: accent + 3 * H[d] + 2 * C[d],
+          evidence: { kick: K[d], backbeat: S[(d + 1) % 4] + S[(d + 3) % 4], change: H[d], section: C[d] }, hits: hits.length });
+      }
+    }
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
 // ---------------------------------------------------------------- the engine
 
-export function createEngine({ fast, mid, slow, sampleRate: sr }) {
+export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createEventLedger({ sampleRate: sr, startTime: nowSec() }) }) {
   const hzFast = sr / fast.fftSize, hzMid = sr / mid.fftSize, hzSlow = sr / slow.fftSize;
   const fastBand = (lo, hi) => [Math.max(1, Math.round(lo / hzFast)), Math.min(fast.frequencyBinCount - 1, Math.round(hi / hzFast))];
   const midBand = (lo, hi) => [Math.round(lo / hzMid), Math.round(hi / hzMid)];
   const chromaLo = Math.ceil(100 / hzSlow), chromaHi = Math.floor(4000 / hzSlow);
 
   const eng = {
-    sr, hzFast, hzSlow,
+    sr, hzFast, hzSlow, ledger,
     lag: slow.fftSize / 2 / sr, // the note analysis hears each moment about half a window late
     // all: every instrument's onsets together, for a tempo when the drums don't give one
     band: { bd: fastBand(40, 130), sd: fastBand(1100, 5200), hh: fastBand(7000, 15000), all: fastBand(100, 11000), body: fastBand(800, 3000), thump: fastBand(150, 400), click: fastBand(2000, 6000), ring: fastBand(2000, 14000) },
@@ -297,6 +470,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     // 3:4 or 4:3 (within `tie`), it waits, up to `wait` seconds, for the song to say.
     // Once locked, a sure reading at 4:3 or 3:4 whose grid the hits fit `fit43` times as well (in 6
     // of the drums' last 12 readings) changes it, as 3:2 does at 1.5. null turns it all off.
+    timingBank: true,
     tempoFix: { margin: 0.1, tie: 0.02, wait: 6, fit43: 1.25 },
     lg: new Float32Array(fast.frequencyBinCount),
     prevLg: new Float32Array(fast.frequencyBinCount),
@@ -339,6 +513,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // the two readings have agreed, and on what (fluxUpdate). better: the drums' last 12 readings
       // since the lock, the tempo of each that a 3:2 tempo fits better, else 0 (tempoUpdate)
       this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, half: null, halfCand: 0, halfN: 0, halfOff: 0, halfSeen: false, halved: false, ringTop: -Infinity, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [] };
+      this.tonalTiming = []; this.timingTemps = []; this.hypotheses = [];
       this.repAt = -1;
       this.repCache = new Map();
       this.kickB = new Float32Array(4);
@@ -435,6 +610,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     },
 
     frame(t, audioT) {
+      this.ledger?.cover(t, audioT);
       fast.getFloatFrequencyData(this.fastDb);
       fast.getFloatTimeDomainData(this.time);
       let ss = 0;
@@ -455,7 +631,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         this.on.newSong();
         return;
       }
-      if (this.silent) { this.lastSilentAt = t; return; }
+      if (this.silent) { this.tempo.provisional=null; this.lastSilentAt = t; this.recordTiming(t); return; }
       if (wasSilent) {
         this.prevLg.fill(0);
         this.prevDb.set(this.fastDb);
@@ -568,6 +744,15 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         this.estimateTempo(t);
         this.fluxUpdate(t);
       }
+      this.recordTiming(t);
+    },
+
+    // Snapshot only changed timing decisions, after all phase/downbeat corrections this frame.
+    recordTiming(t) {
+      const T = this.tempo;
+      this.ledger?.timing(t, { locked: T.locked, bpm: T.bpm, anchorSample: this.ledger.sample(T.t0),
+        anchorBeat: T.n0, downbeat: T.down, meter: [4, 4], downbeatConfidence: T.barConfidence ?? null,
+        acousticConfidence: null, timingConfidence: T.pulseConfidence ?? null, provisional: T.provisional ?? null, confidenceKind: 'uncalibrated-evidence-index', status: 'inferred' });
     },
 
     // Where time t falls: bar number and step (0-15), or null if the beat isn't known yet.
@@ -582,6 +767,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
 
     // Records a hit for a voice in the 16-step grid of the bar it falls in.
     place(id, t, s, tok = null) {
+      this.ledger?.event(t, { parts: [{ part: id, confidence: null }], strength: s,
+        pitchClass: tok === null ? null : +tok, midi: null, cents: null,
+        acousticConfidence: null, timingConfidence: null, status: 'observed', kind: 'onset' });
       const v = this.v[id];
       v.prev = v.last;
       v.last = t;
@@ -710,6 +898,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         B.s = B.s * 0.995 + Math.sin(2 * Math.PI * off);
         m = Math.round(mf - Math.atan2(B.s, B.c) / (2 * Math.PI));
       }
+      // This is a reading, not an invented note boundary or a certified rest. Keep it pre-grid.
+      const readAt = t - (x.length - w / 2) / fs + 0.014;
+      this.ledger?.event(readAt, { parts: [{ part: 'bass', confidence: null }], kind: 'pitch',
+        sampleEnd: this.ledger.sample(readAt + 0.015), midi: m >= 0 ? m : null,
+        cents: m >= 0 ? 100 * (69 + 12 * Math.log2(f / 440) - m) : null,
+        state: m >= 0 ? 'voiced' : 'unknown', strength: rms, acousticConfidence: null,
+        timingConfidence: null, status: 'observed' });
       if (!T.locked) { B.run.m = -2; return; }
       // (the reading is of its first 50 ms, which are centred ~63 ms back; on the hits' clock, which
       // hears everything ~14 ms late, that's here)
@@ -862,6 +1057,10 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       if (!hit || bestK < 1) return;
       const p = db[bestK - 1], q = db[bestK + 1], v = db[bestK], den = p - 2 * v + q;
       const f = (bestK + (den < 0 ? (0.5 * (p - q)) / den : 0)) * hzMid;
+      const mf = 69 + 12 * Math.log2(f / 440);
+      this.ledger?.event(t - 0.04, { parts: [{ part: 'vox', confidence: null }], kind: 'pitch-onset',
+        midi: Math.round(mf), cents: 100 * (mf - Math.round(mf)), strength: hit,
+        state: 'voiced', acousticConfidence: null, timingConfidence: null, status: 'observed' });
       // This analysis hears ~85 ms at a time, so it notices a note ~40 ms after it starts.
       this.place('vox', t - 0.04, hit, String((((Math.round(69 + 12 * Math.log2(f / 440)) % 12) + 12) % 12)));
     },
@@ -907,6 +1106,11 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         const f = (k + (den < 0 ? (0.5 * (p - q)) / den : 0)) * hzSlow;
         const m = 69 + 12 * Math.log2(f / 440), r = Math.round(m);
         c[((r % 12) + 12) % 12] += Math.cos(Math.PI * (m - r)) ** 2 * 10 ** (v / 20);
+      }
+      if (this.timingBank) {
+        const norm = a => { const n=Math.hypot(...a); return Array.from(a,x=>n?x/n:0); };
+        this.tonalTiming.push({t:t-this.lag,c:norm(c),b:norm(b),e:this.level*this.level});
+        while(this.tonalTiming.length && this.tonalTiming[0].t<t-18) this.tonalTiming.shift();
       }
       // This analysis hears ~0.34 s at a time, so readings right at a bar line still hear the
       // bar next door; they count for less in this bar's chord and bass note.
@@ -1036,6 +1240,17 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         const score = K[d] + 0.5 * K[(d + 2) % 4] + S[(d + 1) % 4] + S[(d + 3) % 4] - 0.5 * (S[d] + S[(d + 2) % 4]) + 3 * H[d] + 2 * C[d];
         if (score > bestScore + 1e-6) { bestScore = score; best = d; }
       }
+      if(this.timingBank) {
+        const scores=Array.from({length:4},(_,d)=>K[d]+.5*K[(d+2)%4]+S[(d+1)%4]+S[(d+3)%4]-.5*(S[d]+S[(d+2)%4])+3*H[d]+2*C[d]);
+        const scale=Math.max(1,...scores.map(Math.abs));
+        const alternative=Math.max(...scores.filter((_,d)=>d!==T.down));
+        T.barConfidence=T.half===null ? clamp((scores[T.down]-alternative)/scale,0,1) : null;
+        const held=this.hypotheses.find(h=>Math.abs(h.bpm-T.bpm)/T.bpm<.06 && h.tempoSupport!==undefined);
+        T.pulseConfidence=held ? clamp(held.jointSupport,0,1) : null;
+        // Switching costs eight consecutive beat votes below. Numerical ties hold the
+        // current rotation; an extra percentage margin suppressed valid corrections.
+        if(T.half===null && scores[best]-scores[T.down]<=1e-6*scale)best=T.down;
+      }
       if (best === T.down) { T.downN = 0; return; }
       if (best === T.downCand) T.downN++;
       else { T.downCand = best; T.downN = 1; }
@@ -1144,7 +1359,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         const clear = gap >= (T.halfSeen ? 2 : 3) && holds >= 1.5 && R[x] >= T.ringTop - 4.5 && R[(x + 2) % 4] >= Math.min(R[(x + 1) % 4], R[(x + 3) % 4]);
         T.halfN = clear ? (x === T.halfCand ? T.halfN + 1 : 1) : 0;
         T.halfCand = x;
-        if (T.halfN >= 4) { T.half = x; T.halfSeen = true; if (T.bpm >= 150) this.halveFor = x; }
+        if (T.halfN >= 4) { T.half = x; T.halfSeen = true; if (T.bpm >= 150 && !T.tapped) this.halveFor = x; }
       }
     },
 
@@ -1157,6 +1372,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     // kick's and the snare's (two apart, now one), and the bar starts on a kick.
     halve(t, x) {
       const T = this.tempo;
+      if (T.tapped) return; // manual octave wins, including over an already queued correction
       let hats = 0;
       for (const o of this.onsets) if (o.id === 'hh' && o.t > t - 8) hats++;
       if (hats / ((8 * T.bpm) / 60) >= 2.5) return;
@@ -1394,6 +1610,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       const hasBass = this.bassFrames >= 0.25 * this.barFrames;
       if (hasBass) for (let i = 0; i < 12; i++) if (this.barBass[i] > bmax) { bmax = this.barBass[i]; bassPc = i; }
       const chord = bestChord(this.barChroma, bassPc);
+      const T = this.tempo, barStart = T.t0 + (prevBar * 4 + T.down - T.n0) * T.P;
+      this.ledger?.harmony(barStart, barStart + 4 * T.P, chord
+        ? [{ name: chord.name, confidence: chord.score }] : [], chord ? 'chord' : 'unknown');
       // Bass usually plays the chord's root; prefer it when the two are close.
       if (chord && bassPc >= 0 && chord.root !== bassPc && this.barBass[chord.root] >= 0.75 * bmax) bassPc = chord.root;
       // Octave: the lowest one carrying real weight for that note.
@@ -1621,6 +1840,23 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         if (score[L] > best) { best = score[L]; bestL = L; }
       }
       if (!bestL || best <= 0) return;
+      if (this.timingBank) {
+        const peaks=Array.from({length:48},(_,i)=>i+33).sort((a,b)=>score[b]-score[a]);
+        const primary=6000/peaks[0];
+        this.timingTemps=[this.tempo.locked ? this.tempo.bpm : primary];
+        for(const bpm of [primary,primary/2,primary*2,...peaks.map(L=>6000/L)]) {
+          if(bpm>=60&&bpm<=200&&this.timingTemps.every(b=>Math.abs(bpm-b)/b>.06))this.timingTemps.push(bpm);
+          if(this.timingTemps.length===4)break;
+        }
+        this.hypotheses=timingHypotheses(this.onsets,this.tonalTiming,t,this.timingTemps);
+        const tempoSupport=new Map(this.timingTemps.map(bpm=>[bpm,fit(60/bpm)]));
+        for(const h of this.hypotheses) {
+          // Pulse fit is independent of the bar rotation. Keep the rhythm alternatives
+          // explicit even when the existing tempo change guards elect to hold the grid.
+          h.tempoSupport=tempoSupport.get(h.bpm);
+          h.jointSupport=h.tempoSupport*h.pulseSupport;
+        }
+      }
       this.rhythm = { fit: fits[bestL], conf: 1 - total / 48 / best, bpm: 6000 / bestL };
       const a = score[bestL - 1] || 0, b = score[bestL], c = score[bestL + 1] || 0;
       const den = a - 2 * b + c;
@@ -1653,6 +1889,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       // up, a livestream's talk and game sounds mostly under 0.25).
       const dense = this.dense(t, bpm), clear = conf >= 0.82 && fit >= 0.25 && dense;
       if (clear) T.clearAt = t;
+      if (this.timingBank && !T.locked) {
+        // Provisional pulse is display only. Repetition and density guards still apply.
+        const stable = T.previewBpm && near(bpm,T.previewBpm);
+        T.previewN = clear ? (stable ? (T.previewN||0)+1 : 1) : 0;
+        T.previewBpm=bpm;
+        T.provisional=T.previewN>=2 && this.repeats(t,bpm)>=.5 ? {bpm, since:stable ? (T.provisional?.since ?? t) : t, confidence:Math.min(.8,conf*fit)} : null;
+      }
       // No clear beat for a while after music. In a song (a breakdown, a quiet verse) the beat
       // comes back at the same tempo, so keep it: the parts go dim until they're heard again, and
       // the drop effect fires when the kick returns. Without a song to go on (a stream going from
@@ -1685,7 +1928,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         if (T.cand && near(bpm, T.cand)) { T.cand = T.cand * 0.7 + bpm * 0.3; T.candN++; }
         else { T.cand = bpm; T.candN = 1; }
         // a real tempo change has to hold for 3 seconds before the patterns get relearned
-        if (T.candN >= (T.locked ? 6 : 4) && (T.locked || this.repeats(t, T.cand) >= 0.35) && this.repeatsThere(t, T.cand)) {
+        if (T.candN >= (T.locked ? 6 : (this.timingBank ? 3 : 4)) && (T.locked || this.repeats(t, T.cand) >= 0.35) && this.repeatsThere(t, T.cand)) {
           this.lockTo(t, T.cand, T.locked ? `tempo change ${T.bpm.toFixed(1)} -> ${T.cand.toFixed(1)}` : `tempo lock ${T.cand.toFixed(1)}`);
         }
       }
@@ -1793,8 +2036,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       return n / ((span * bpm) / 60) >= 0.5;
     },
 
-    // Tapping the beat (space): from the fourth tap the tempo is the taps' (their middle gap, kept
-    // between 75 and 180 bpm), with the beats on the taps and the first tap starting a bar. For a
+    // Tapping the beat (space): from the fourth tap the tempo is the taps' middle gap, without
+    // folding its octave, with the beats on the taps and the first tap starting a bar. For a
     // song it can't find the beat of, or finds wrong; it stays (the hits still fine-tune where the
     // beats fall) until the song changes. A pause of 2 seconds starts the count over. Returns how
     // many taps there are so far.
@@ -1806,9 +2049,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       if (taps.length > 8) taps.shift();
       if (taps.length < 4) return taps.length;
       const gaps = taps.slice(1).map((x, i) => x - taps[i]).sort((a, b) => a - b);
-      let bpm = 60 / gaps[Math.floor(gaps.length / 2)];
-      while (bpm < 75) bpm *= 2;
-      while (bpm > 180) bpm /= 2;
+      const bpm = 60 / gaps[Math.floor(gaps.length / 2)];
       const T = this.tempo;
       this.lockTo(t, bpm, `tempo tapped ${bpm.toFixed(1)}`, taps[taps.length - 1]);
       T.byFlux = false;
@@ -1850,6 +2091,17 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       T.tapped = false;
       this.setPeriod(t, bpm, true);
       if (beatAt !== undefined) T.t0 = beatAt;
+      if (this.timingBank && !/tapped/.test(what)) {
+        const bank=timingHypotheses(this.onsets,this.tonalTiming,t,[bpm]);
+        const best=bank.find(h=>h.pulseSupport>=.55 && h.hits>=4);
+        if(best) {
+          // Number from the most recent supported bar one, not the engine wall clock.
+          const one=best.anchor+best.down*T.P;
+          T.t0=one+Math.floor((t-one)/(4*T.P))*4*T.P; T.n0=0; T.down=0;
+          T.downN=0;
+        }
+        this.hypotheses=bank;
+      }
       if (before !== null) {
         T.renumber += this.stepAt(t) - before; // new numbering from here on
         // a new tempo, perhaps a new song: its key comes in at the usual pace, not a settled one's
@@ -1876,6 +2128,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
       T.halved = false;
       T.ringTop = -Infinity;
       this.prevBeatChroma = this.prevBeatBass = null;
+
+      T.provisional=null; T.pulseConfidence=T.barConfidence=null;
       this.resetClocks();
     },
 
@@ -1984,6 +2238,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
     // half) only counts as the beat still being there.
     fluxUpdate(t) {
       const T = this.tempo;
+      if (T.tapped) return; // neither flux drift nor a different octave can replace a manual tempo
       const sameBeat = (a, b) => [1, 2, 0.5].some((k) => Math.abs(a - b * k) / (b * k) < 0.06);
       if (T.locked && !T.byFlux) {
         if (T.unclearN > 0) {
@@ -2102,7 +2357,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr }) {
         m++; w0 += w; sn += w * k; st += w * y; snn += w * k * k; snt += w * k * y;
       }
       const den = w0 * snn - sn * sn;
-      if (m >= 8 && den > 0) {
+      if (!T.tapped && m >= 8 && den > 0) {
         const P = (4 * (w0 * snt - sn * st)) / den; // seconds per 16th, times 4
         if (Math.abs(P - T.P) / T.P < 0.02) this.setPeriod(t, 60 / (T.P + 0.3 * (P - T.P)), false);
       }
