@@ -43,7 +43,7 @@ function page({ hover = false, can = {}, now = {}, width = 834, height = 1194 } 
 }
 
 test('the panel knows every action in the app, and no other', () => {
-  assert.ok(actionIds.length >= 28, `read ${actionIds.length} actions out of app.js`);
+  assert.ok(actionIds.length >= 26, `read ${actionIds.length} actions out of app.js`);
   assert.deepEqual([...CONTROLS.map((c) => c[0])].sort(), [...actionIds].sort());
   assert.equal(new Set(CONTROLS.map((c) => c[0])).size, CONTROLS.length);
   for (const [, group, name] of CONTROLS) { assert.ok(GROUPS.includes(group)); assert.ok(name); }
@@ -145,13 +145,13 @@ test('what this device can\'t do is left out, and a section left empty goes with
 
 test('a button says what the app is set to, and follows it', () => {
   let theme = 'pink', blocks = { text: 'dominoes', on: true };
-  const p = page({ now: { theme: () => theme, blocks: () => blocks, orb: () => ({ text: 'off', on: false }) } });
+  const p = page({ now: { theme: () => theme, blocks: () => blocks, crt: () => ({ text: 'off', on: false }) } });
   p.c.open();
   const text = (id) => p.tile(id).children.map((k) => k.textContent).join('|');
   assert.match(text('theme'), /pink/);
   assert.match(text('blocks'), /dominoes/);
   assert.ok(p.tile('blocks').on.has('on'));
-  assert.ok(!p.tile('orb').on.has('on'));
+  assert.ok(!p.tile('crt').on.has('on'));
   assert.match(text('source'), /system, demo, file, input/, 'with no state, the help\'s words');
   theme = 'terminal'; blocks = { text: 'off', on: false };
   p.c.refresh();

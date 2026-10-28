@@ -28,5 +28,6 @@ for path, w, name in (('orbitron/Orbitron%5Bwght%5D.ttf', 900, 'orbitron-900.ttf
                       ('exo2/Exo2-Italic%5Bwght%5D.ttf', 900, 'exo2-900i.ttf'), ('nunito/Nunito%5Bwght%5D.ttf', 900, 'nunito-900.ttf'),
                       ('nunito/Nunito%5Bwght%5D.ttf', 800, 'nunito-800.ttf')):
     f = instantiateVariableFont(TTFont(fetch(path)), {'wght': w}); f.save(os.path.join(here, 'fonts', name)); print('fonts/' + name)
-for path, name in (('zendots/ZenDots-Regular.ttf', 'zendots.ttf'), ('michroma/Michroma-Regular.ttf', 'michroma.ttf')):
+for path, name in (('zendots/ZenDots-Regular.ttf', 'zendots.ttf'), ('michroma/Michroma-Regular.ttf', 'michroma.ttf'),
+                   ('delagothicone/DelaGothicOne-Regular.ttf', 'delagothic.ttf'), ('mplus1p/MPLUS1p-Bold.ttf', 'mplus1p-bold.ttf')):   # (the last two: the Japan edition's)
     TTFont(fetch(path)).save(os.path.join(here, 'fonts', name)); print('fonts/' + name)

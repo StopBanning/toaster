@@ -53,6 +53,7 @@ let nowPlayingProc = null, nowPlayingTimer = null, nowPlayingDelay = 2000, quitt
 let lastNowPlaying = null;
 let normalBounds = null;
 let miniFrom = null, miniBounds = {}; // the window before the mini player, and where the mini one was (each shape's own)
+let widget = null, widgetAt = null; // the desktop handheld (W with the handheld on), and where it was last put
 
 // The page keeps listening while the window is covered or minimized (see backgroundThrottling
 // below), but Chromium also drops a hidden window's page to idle priority, and then anything
@@ -94,7 +95,7 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => { win = null; widget?.close(); });
   // The page is the app: it never opens other windows or goes anywhere else (links to Strudel go
   // to the browser, through open:strudel).
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -145,9 +146,10 @@ function setUpCapture() {
   });
   const allowed = new Set(['media', 'display-capture', 'fullscreen']);
   // (asked for by our own window only)
-  session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(wc === win?.webContents && allowed.has(permission)));
+  const ours = (wc) => !!wc && (wc === win?.webContents || wc === widget?.webContents);
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(ours(wc) && allowed.has(permission)));
   // A null webContents cannot be attributed to our window, so deny it.
-  session.defaultSession.setPermissionCheckHandler((wc, permission) => !!wc && wc === win?.webContents && allowed.has(permission));
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => ours(wc) && allowed.has(permission));
 }
 
 // Windows: helpers/*.ps1. Mac: helpers/mac/bin, compiled Swift (see helpers/mac/build.sh).
@@ -206,6 +208,7 @@ function startNowPlaying() {
       try {
         lastNowPlaying = JSON.parse(line);
         win?.webContents.send('nowplaying', lastNowPlaying);
+        widget?.webContents.send('nowplaying', lastNowPlaying);
       } catch { /* ignore partial or odd lines */ }
     }
   });
@@ -365,6 +368,39 @@ function setUpIpc() {
       miniFrom = null;
       miniWas = null;
     }
+    return on;
+  });
+  // The desktop handheld: the handheld game on its own, no window round it, over everything else: a see-through
+  // window shaped by what's drawn in it (the device and its shadow), dragged anywhere by the device. It's the page
+  // again (?widget), listening for itself while the main window waits hidden; closing it (Esc, W or its x) brings the
+  // main window back. It opens where the main window is (or wherever it was last put), without taking the focus.
+  ipcMain.handle('win:widget', async (_e, on) => {
+    if (on && !widget && win) {
+      const b = win.getBounds(), w = 360, h = 600;
+      const at = widgetAt || { x: b.x + b.width - w - 24, y: b.y + b.height - h - 24 };
+      widget = new BrowserWindow({
+        x: at.x, y: at.y, width: w, height: h, frame: false, transparent: true, resizable: false, maximizable: false,
+        fullscreenable: false, hasShadow: false, alwaysOnTop: true, show: false, title: 'Toaster', backgroundColor: '#00000000',
+        icon: path.join(__dirname, 'build', mac ? 'icon.png' : 'icon.ico'),
+        webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, backgroundThrottling: false },
+      });
+      widget.setAlwaysOnTop(true, 'floating');
+      widget.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { widget: '1' } });
+      widget.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      widget.webContents.on('will-navigate', (e) => e.preventDefault());
+      widget.webContents.on('did-finish-load', () => {
+        if (lastNowPlaying) widget?.webContents.send('nowplaying', lastNowPlaying);
+        widget?.webContents.executeJavaScript('window.startSystemAudio && window.startSystemAudio()', true);
+      });
+      widget.once('ready-to-show', () => widget?.showInactive());
+      widget.on('moved', () => { if (widget) widgetAt = widget.getBounds(); });
+      widget.on('closed', () => {
+        widget = null;
+        if (win) { win.showInactive(); win.webContents.send('win:shown', true); win.webContents.send('win:widget', false); }
+      });
+      win.webContents.send('win:shown', false);
+      win.hide();
+    } else if (!on && widget) widget.close();
     return on;
   });
   ipcMain.handle('app:version', () => app.getVersion());

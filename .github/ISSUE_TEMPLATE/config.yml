@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Show what you made
+    url: https://github.com/StopBanning/toaster/discussions
+    about: Reels, forks, prints, apps built on Toaster.

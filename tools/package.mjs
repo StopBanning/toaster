@@ -32,6 +32,7 @@ const ignore = [
   '--ignore=^/dist',
   '--ignore=^/tools',
   '--ignore=^/\\.claude',
+  '--ignore=^/\\.github',
   '--ignore=^/prototype',
   '--ignore=^/docs',
   '--ignore=^/[^/]+\\.html$',

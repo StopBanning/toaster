@@ -16,6 +16,9 @@
 # The pink edition (the pink theme's handheld: pink buttons and cartridge, the room's light plum, TOASTER filled rose, the
 # stickers of stickers2.py: the toaster in pink, </>, a pixel heart, LIVE on pink label tape): the same with COLORWAY=pink,
 # after python -I tools/handheld/concepts/stickers2.py, into renderer/handheld/stance-pink.
+# The Japan edition (after the Famicom: cream plastic, maroon A and B, a red cartridge, トースター engraved and filled red,
+# セレクト and スタート, the label and stickers in Japanese: ライブ, a 限定 seal, 新発売 and the toaster in red): the same with
+# COLORWAY=jp, after python -I tools/handheld/concepts/stickers_jp.py and labels_jp.py, into renderer/handheld/stance-jp.
 import math, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
@@ -33,7 +36,9 @@ APP = VIEW in ('app', 'stance')   # (the app's pictures: the screens clear and t
 LOGO = os.environ.get('LOGO', 'engrave')   # engrave (into the titanium between the screens, filled with FILL) | chrome (on one lens over both)
 SPLIT = LOGO != 'chrome'                     # (a glass for each screen, the metal between them)
 COLORWAY = os.environ.get('COLORWAY', 'blue')   # (its buttons, cartridge and the light off the wall: blue, the app's own; pink, for the pink theme)
-FILL = os.environ.get('FILL', 'navy' if COLORWAY == 'blue' else 'rose')
+FILL = os.environ.get('FILL', {'blue': 'navy', 'jp': 'red'}.get(COLORWAY, 'rose'))
+JP = COLORWAY == 'jp'   # (the Japan edition: its name in katakana, Dela Gothic One; its print in M PLUS 1p)
+WORD, WORD_FONT, WORD_SIZE, WORD_SP = ('トースター', 'delagothic.ttf', 6.8, 1.0) if JP else ('TOASTER', 'orbitron-900.ttf', 6.2, 1.08)
 PAD, PX_PER_U = 24.0, 10.24
 TEX = os.path.join(cc.HERE, 'tex')
 
@@ -42,6 +47,8 @@ scene = cc.setup(W, H)
 BLUE, NAVY, LIGHT = srgb((5, 29, 181)), srgb((2, 11, 69)), srgb((96, 160, 255))
 if COLORWAY == 'pink':   # (A hot pink, B light pink, a pink cartridge; the room's light a dark plum, the code being pink on near black)
     CAP_A, CAP_B, CART, CART_MIX, WALL_C = srgb((255, 46, 140)), srgb((255, 150, 205)), srgb((226, 38, 128)), (0.6, 0.08, 0.3), srgb((70, 8, 44))
+elif JP:   # (the Famicom's maroon on both buttons, a red cartridge; the room a deep red)
+    CAP_A, CAP_B, CART, CART_MIX, WALL_C = srgb((150, 20, 40)), srgb((150, 20, 40)), srgb((182, 30, 46)), (0.55, 0.06, 0.1), srgb((64, 6, 14))
 else:
     CAP_A, CAP_B, CART, CART_MIX, WALL_C = BLUE, LIGHT, BLUE, (0.1, 0.2, 0.6), BLUE
 TOP, BOT = (10.0, 10.0, 80.0, 60.0), (10.0, 84.0, 80.0, 60.0)
@@ -51,7 +58,10 @@ DPAD, A_AT, B_AT, LED_AT = (22.0, CY), (86.0, CY - 6.5), (69.0, CY + 1.0), (12.0
 PILLS = [(42.0, CY + 15.0), (58.0, CY + 15.0)]
 
 # ---- materials -----------------------------------------------------------------------------------------------------
-alu = cc.edged(worn(mat('alu', (0.5, 0.505, 0.51), rough=0.5, metal=1.0), scale=40, amount=0.1, grain=0.08), edge=0.6, grime=0.3)
+if JP:   # (the Famicom's cream plastic, a little yellowed, polished where hands go)
+    alu = cc.edged(worn(mat('alu', srgb((228, 219, 196)), rough=0.4, coat=0.1), scale=40, amount=0.08, grain=0.05), edge=0.2, grime=0.3)
+else:
+    alu = cc.edged(worn(mat('alu', (0.5, 0.505, 0.51), rough=0.5, metal=1.0), scale=40, amount=0.1, grain=0.08), edge=0.6, grime=0.3)
 black_glass = mat('black_glass', (0.006, 0.006, 0.008), rough=0.05, coat=1.0, spec=0.6)
 anodized = mat('anodized', (0.018, 0.018, 0.022), rough=0.32, metal=0.7)
 steel = mat('steel', (0.3, 0.3, 0.32), rough=0.3, metal=1.0)
@@ -83,7 +93,7 @@ for i, (x_, y_, w_, h_) in enumerate(LENSES):
 if SPLIT:
     cut(body, prism('led_hole', circle(*LED_AT, 0.85, 40), -3, 1))
     # the wordmark cut into the metal, 0.3 deep (its edges catch the light), and filled
-    eng = text('TOASTER', 52.0, 77.0, 6.2, mat('eng', (0.1, 0.1, 0.1)), z=0.3, spacing=1.08, font='orbitron-900.ttf', extrude=0.6)
+    eng = text(WORD, 52.0, 77.0, WORD_SIZE, mat('eng', (0.1, 0.1, 0.1)), z=0.3, spacing=WORD_SP, font=WORD_FONT, extrude=0.6)
     for o in bpy.context.selected_objects: o.select_set(False)
     eng.select_set(True); bpy.context.view_layer.objects.active = eng
     bpy.ops.object.convert(target='MESH')
@@ -113,8 +123,8 @@ for i, (x_, y_, w_, h_) in enumerate(LENSES):
     prism(f'lens{i}', rrect(x_, y_, w_, h_, lr, seg=10), -0.8, -0.12, mat=black_glass)
     quad(f'cover{i}', x_, y_, w_, h_, -0.05, mat=glass).visible_shadow = False
 if SPLIT and FILL != 'none':   # (the enamel in the cut, a little under the face)
-    fill_m = mat('fill', {'navy': NAVY, 'blue': BLUE, 'black': (0.01, 0.01, 0.012), 'plum': srgb((88, 8, 56)), 'rose': srgb((226, 84, 150))}[FILL], rough=0.35, coat=0.6)
-    text('TOASTER', 52.0, 77.0, 6.2, fill_m, z=-0.24, spacing=1.08, font='orbitron-900.ttf', extrude=0.02)
+    fill_m = mat('fill', {'navy': NAVY, 'blue': BLUE, 'black': (0.01, 0.01, 0.012), 'plum': srgb((88, 8, 56)), 'rose': srgb((226, 84, 150)), 'red': srgb((214, 28, 36))}[FILL], rough=0.35, coat=0.6)
+    text(WORD, 52.0, 77.0, WORD_SIZE, fill_m, z=-0.24, spacing=WORD_SP, font=WORD_FONT, extrude=0.02)
 SCREENS = os.environ.get('SCREENS', 'os')   # (which frames of the game the screens show in a hero or front picture: os | 4.06, the neon)
 for name, r, tex in (('top', TOP, f'top-{SCREENS}.png'), ('bottom', BOT, f'bottom-{SCREENS}.png')):
     if APP: quad(f'screen_{name}', r[0] - 0.6, r[1] - 0.6, r[2] + 1.2, r[3] + 1.2, -0.11, mat=hold)
@@ -171,7 +181,8 @@ for name, at, col in (('A', A_AT, CAP_A), ('B', B_AT, CAP_B)):
     text(name, at[0] + 9.2, at[1] + 4.6, 1.9, etch, z=0.004, spacing=1.0)
 for i, (px, py) in enumerate(PILLS):
     p_ = prism(f'pill{i}', rotated(rrect(px - 4.3, py - 1.15, 8.6, 2.3, 1.15, seg=6), px, py, -0.42), -0.8, 0.9, mat=rubber); bevel(p_, 0.55, segments=4)
-    text(('SELECT', 'START')[i], px, py + 4.4, 1.45, etch, z=0.004, spacing=1.15)
+    if JP: text(('セレクト', 'スタート')[i], px, py + 4.4, 1.5, etch, z=0.004, spacing=1.0, font='mplus1p-bold.ttf')
+    else: text(('SELECT', 'START')[i], px, py + 4.4, 1.45, etch, z=0.004, spacing=1.15)
 
 # ---- screws, the cartridge, stickers ------------------------------------------------------------------------------------------------
 for (x, y) in ((4.6, 4.6), (95.4, 4.6), (5.6, 184.4), (90.6, 176.0)):
@@ -180,7 +191,9 @@ for (x, y) in ((4.6, 4.6), (95.4, 4.6), (5.6, 184.4), (90.6, 176.0)):
 card = prism('cart', rrect(85.0, 20.0, 33.0, 40.0, 1.2, seg=3), -8.7, -6.1, mat=cart_blue); bevel(card, 0.35, segments=2)
 for k in range(4):
     prism(f'ridge{k}', rrect(115.2 - k * 1.3, 22.0, 0.6, 36.0, 0.3, seg=2), -6.1, -5.85, mat=cart_blue)
-quad('label', 100.6, 21.2, 13.2, 37.6, -6.08, mat=image_mat('label', os.path.join(TEX, ('label-blank-pink.png' if COLORWAY == 'pink' else 'label-blank.png') if APP else 'label.png'), rough=0.5, alpha=True))
+LABEL = (('label-blank-pink.png' if COLORWAY == 'pink' else 'label-blank-jp.png' if JP else 'label-blank.png') if APP
+         else 'label-jp.png' if JP else 'label.png')   # (jp: labels_jp.py's, in Japanese on a red band)
+quad('label', 100.6, 21.2, 13.2, 37.6, -6.08, mat=image_mat('label', os.path.join(TEX, LABEL), rough=0.5, alpha=True))
 def sticker(name, path, cx, cy, w, h, ang):
     q = quad(name, cx - w / 2, cy - h / 2, w, h, 0.03, mat=image_mat(name, path, rough=0.35, alpha=True, coat=0.3), ang=math.radians(ang))
     q.visible_shadow = False
@@ -191,9 +204,10 @@ def sticker(name, path, cx, cy, w, h, ang):
 # live-print, printed on the metal | live-led). Foil ones (holo in the name) catch the light.
 # (the pink edition, for the pink theme: the toaster in pink, the </> low left, a pixel heart by START, LIVE on pink label tape)
 PINK = COLORWAY == 'pink'
-STICKER = os.environ.get('STICKER', 'code-tag' if PINK else 'smiley-holo')
-STICKER_BIG = os.environ.get('STICKER_BIG', 'toaster-pink' if PINK else 'toaster')
-STICKER3, LIVE = os.environ.get('STICKER3', 'pixel-heart' if PINK else ''), os.environ.get('LIVE', 'live-dymo-pink' if PINK else 'live')
+# (the Japan edition's: the toaster in red, a 限定 seal stamped low left, a 新発売 starburst by START, ライブ by the name)
+STICKER = os.environ.get('STICKER', 'code-tag' if PINK else 'hanko' if JP else 'smiley-holo')
+STICKER_BIG = os.environ.get('STICKER_BIG', 'toaster-pink' if PINK else 'toaster-jp' if JP else 'toaster')
+STICKER3, LIVE = os.environ.get('STICKER3', 'pixel-heart' if PINK else 'shinhatsubai' if JP else ''), os.environ.get('LIVE', 'live-dymo-pink' if PINK else 'live-jp' if JP else 'live')
 import struct
 def png_wh(name):
     with open(os.path.join(TEX, f'sticker-{name}.png'), 'rb') as f: d = f.read(24)
@@ -204,7 +218,7 @@ def placed(obj_name, name, cx, cy, size, ang, tall=None):   # (size: its longest
     q = sticker(obj_name, os.path.join(TEX, f'sticker-{name}.png'), cx, cy, sw, sh, ang)
     b = q.data.materials[0].node_tree.nodes['Principled BSDF']
     if 'holo' in name: b.inputs['Metallic'].default_value = 0.55; b.inputs['Roughness'].default_value = 0.2
-    if name == 'live-print': b.inputs['Roughness'].default_value = 0.55; b.inputs['Coat Weight'].default_value = 0.0   # (ink, not a sticker)
+    if name in ('live-print', 'hanko'): b.inputs['Roughness'].default_value = 0.55; b.inputs['Coat Weight'].default_value = 0.0   # (ink, not a sticker)
     return q
 if SPLIT:
     placed('st_live', LIVE, 83.0 + (0.6 if LIVE != 'live' else 0), 77.0, None, 0 if LIVE == 'live-print' else -4, tall=4.4 if LIVE == 'live-print' else 4.8)
@@ -221,7 +235,8 @@ if not SPLIT and 'holo' in STICKER:   # (foil: it catches the light)
 cc.smooth_all()
 
 if VIEW in ('hero', 'stance'):
-    hero_cam = cc.hero_shot(H, yaw=-24.0, backdrop=mat('backdrop', srgb((26, 3, 16)), rough=0.8, spec=0.2) if COLORWAY == 'pink' else None)
+    BACK = {'pink': (26, 3, 16), 'jp': (70, 8, 18)}.get(COLORWAY)   # (its theme's ground; the Japan edition's a deep red)
+    hero_cam = cc.hero_shot(H, yaw=-24.0, backdrop=mat('backdrop', srgb(BACK), rough=0.8, spec=0.2) if BACK else None)
 elif VIEW == 'front':
     cc.front_shot(H)
 if not APP:

@@ -1,0 +1,42 @@
+name: Bug report
+description: Something isn't working the way it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: And what you expected instead. A short screen recording helps most.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Toaster version
+      description: It's in the help (press ?).
+      placeholder: "0.4.23"
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Windows app
+        - Mac app
+        - In a browser (toaster.locust.lol)
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Audio source
+      options:
+        - System audio
+        - Microphone
+        - A file
+        - Internet radio
+        - The demo beat
+  - type: input
+    id: song
+    attributes:
+      label: The song, if it's about one
+      placeholder: Artist - Title, and the time it happens

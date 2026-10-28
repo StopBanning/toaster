@@ -24,6 +24,7 @@
 <canvas id="asciicam" aria-hidden="true"></canvas>
 <canvas id="orb" aria-hidden="true"></canvas>
 <canvas id="punch"></canvas>
+<button id="w-back" title="Back to Toaster (Esc)" aria-label="Back to Toaster">✕</button>
 <div id="desk-back" aria-hidden="true"><div class="big"></div><div class="icons"></div></div>
 
 <header id="bar">
@@ -33,11 +34,9 @@
   <span class="spacer"></span>
   <!-- in groups, as in the help: source | look | camera | save & share | window | help -->
   <button id="b-source" class="grp" data-act="source" data-title="Audio source" title="Audio source (S)">source</button>
-  <button id="b-visual" class="grp" data-act="visual" data-title="Background visual: pick one" title="Background visual: pick one (V)" aria-haspopup="menu">spectrum ▾</button>
+  <button id="b-visual" class="grp" data-act="visual" data-title="Background visual: pick one" title="Background visual: pick one (V)" aria-haspopup="menu">scenes ▾</button>
   <div id="vis-menu" class="drop" role="menu" hidden></div>
-  <button id="b-orb" data-act="orb" data-title="Dot orb, over any background" title="Dot orb, over any background (R)">orb</button>
   <button id="b-blocks" data-act="blocks" data-title="Blocks over any visual: punchcard, dominoes, handheld game, off" title="Blocks over any visual: punchcard, dominoes, handheld game, off (P)">blocks</button>
-  <button id="b-glass" data-act="glass" data-title="Glass blob over the code" title="Glass blob over the code (G)">glass</button>
   <button id="b-card" data-act="card" data-title="Now-playing ID card: off, on, big" title="Now-playing ID card: off, on, big (N)">card</button>
   <button id="b-cam" class="grp" data-act="cam" data-title="Webcam: off, on, big eyes, ASCII" title="Webcam: off, on, big eyes, ASCII (C)">cam</button>
   <button id="b-rec" class="grp" data-act="rec" data-title="Record a video of the window, with the sound" title="Record a video of the window, with the sound (M)">● rec</button>
@@ -121,14 +120,12 @@
   <label class="calm"><input type="checkbox" id="updates" /><span><b>Updates</b>: when it starts, Toaster asks GitHub whether there's a newer version, and offers it if there is. Nothing else is sent.</span></label>
   <table>
     <tr class="sec"><th colspan="2">look</th></tr>
-    <tr data-act="visual"><td>V</td><td>background: spectrum, tunnel, spiral, pitch wheel, warp, cuts, worlds, chrome, spectrogram, scenery, rain, scope, fire, off</td></tr>
-    <tr data-act="strength"><td>A</td><td>background strength; with worlds, their look: night (no light skies), film, ASCII, code, ink, risograph, cyanotype, receipt, thermal, night vision, CRT, VHS, quadtree, cells, auto; with chrome, the collage on or off; with the spectrogram, its colours: rainbow or the theme's; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween (auto picks it in October), the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye, then auto in the theme's colours; with the handheld game on (P), its screens: Toaster's own (in the theme's colours), neon, LCD</td></tr>
+    <tr data-act="visual"><td>V</td><td>background, best first: scenes (a new one each song), worlds, chrome, spectrogram, cuts, fire, off</td></tr>
+    <tr data-act="strength"><td>A</td><td>the next one of whatever's showing: the scene (auto, a new one each song; the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween, the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye; then auto in the theme's colours); the worlds' look (auto, night, film, ASCII, thermal, cells); the chrome's collage on or off; the spectrogram in rainbow or the theme's colours; with the handheld on, its screens (Toaster's own, neon, LCD, the Japan edition: Toaster's own in Japanese, on a Famicom-style handheld). The footer says which</td></tr>
     <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen</td></tr>
     <tr data-act="crt"><td>Y</td><td>CRT: an old TV over everything, on any theme: it comes on from a white line and goes off into a dot; scanlines, phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop, and each background (V) is a channel, its number on screen</td></tr>
-    <tr data-act="orb"><td>R</td><td>orb: dots that take a new form every 8 bars, moved by the kick, clap and hats</td></tr>
-    <tr data-act="blocks"><td>P</td><td>blocks: punchcard, then dominoes, then the handheld game (the song played on a little two-screen handheld), then off</td></tr>
-    <tr data-act="glass"><td>G</td><td>liquid glass over the code, swelling on the kick</td></tr>
-    <tr data-act="card"><td>N</td><td>ID card: the song, tempo, key and a 1-bit picture; again for big, again to hide</td></tr>
+        <tr data-act="blocks"><td>P</td><td>the code look: dominoes, then the handheld game (the song played on a little two-screen handheld), then the punchcard, then none</td></tr>
+        <tr data-act="card"><td>N</td><td>ID card: the song, tempo, key and a 1-bit picture; again for big, again to hide</td></tr>
     <tr class="sec"><th colspan="2">camera</th></tr>
     <tr data-act="cam"><td>C</td><td>webcam: tinted, big eyes, ASCII, off. Frame something with your fingers (each hand an L) for a filter window; turn a hand over or wink for the next filter, open your hands to close it. A circle of your hands (index tips together, thumb tips together) opens a portal (the first shows your skull: make it in front of your face): pull apart to grow it, spread wide and hold to fill the picture, pinch for the next look (once it fills the picture, a swipe too: hold an open hand up, then sweep it sideways, left for the next look, right for the one before), the circle again to close. Hand signs: ✌️ next theme, 👍 record, ✊ hush, 🖐 back</td></tr>
     <tr data-act="camfx"><td>K</td><td>camera effect: cut-out, slit-scan, datamosh, windows, glass, dots, voxels, none</td></tr>
@@ -144,7 +141,7 @@
     <tr data-act="strudel"><td>O</td><td>open the code in Strudel</td></tr>
     <tr class="sec"><th colspan="2">window</th></tr>
     <tr data-act="layout"><td>L</td><td>vertical layout</td></tr>
-    <tr data-act="mini"><td>W</td><td>mini player, over your other windows</td></tr>
+    <tr data-act="mini"><td>W</td><td>mini player, over your other windows; with the handheld on, the handheld on its own on your desktop (no window round it: drag it anywhere, Esc brings Toaster back)</td></tr>
     <tr data-act="code"><td>Z</td><td>hide the code: just the visuals, for Toaster as a visualizer (it's still written underneath; Z again shows it)</td></tr>
     <tr data-act="hide,full"><td>H / F</td><td>hide the header and footer / fullscreen</td></tr>
     <tr data-act="machine"><td>I</td><td>machine readout</td></tr>

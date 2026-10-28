@@ -433,7 +433,8 @@ const WAITING = 0.42, LIT = 0.95, GHOST = 0.14; // how bright: a block, one cros
 // shown, not with the page, so a first visit to the website is no bigger for it. Its screens' design (A) is kept here
 // till then: the designs the app goes round, in turn (the first is the one it starts with).
 // (the fretboard, 'highway', is off the round till it's polished: window.__gameSkin = 'highway' still draws it)
-export const GAME_SCREENS = ['os', 'neon', 'lcd'];
+// (jp: the Japan edition, Toaster's own screens in Japanese on a Famicom-style handheld of its own)
+export const GAME_SCREENS = ['os', 'neon', 'lcd', 'jp'];
 let gameScreens = GAME_SCREENS[0], gameMod = null, gameLoad = null;
 export function setGameScreens(name) { if (GAME_SCREENS.includes(name)) { gameScreens = name; gameMod?.setGameScreens(name); } }
 // (a failed fetch, the website offline, is tried again after a few seconds, not every frame)
@@ -526,6 +527,19 @@ export function createPunchcard(canvas) {
       const gap = t - last, dt = Math.min(0.1, gap || 0.016);
       last = t;
       const target = eng.stepAt(t + offset);
+      // The handheld game stands by instead of fading or playing on: a device stays where it is, its screens saying why.
+      // It does from the moment it's picked till a song's beat is found, once the music has stopped, and while a new
+      // song's beat isn't found yet. Stopped is when the engine itself would give up on the song: 4 s of quiet, or 20 s
+      // while Windows says the song is still playing, so a breakdown's quiet carries on with the game. (With no input at
+      // all the engine isn't run, so quiet is told by the time since it last heard sound.)
+      const since = t - (eng.lastSound ?? t), quiet = eng.silent || since > 1.2;
+      const stopped = quiet && since > (eng.song?.().playing ? 20 : 4);
+      if (look === 'game' && (target === null || stopped)) {
+        if (!game) { loadGame().then((m) => { if (m) game ??= m.createGame(); }); return; }
+        reset();
+        game.idle(ctx, { W, H, col, t, eng, title, pocket, colorway, kind: quiet ? 'silence' : 'reading' });
+        return;
+      }
       if (target === null) {
         // Nothing to place right now (a new song, or no beat found yet):
         // let what's on screen dissolve instead of vanishing.

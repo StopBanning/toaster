@@ -36,6 +36,11 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off'];
+// What V goes round, best first, and their names on screen. The rest of VISUALS (spectrum, tunnel, spiral, pitch wheel,
+// warp, rain, scope) are out of the round since 0.4.23: kept unlisted for a release, in case someone misses one, then gone.
+const V_ROUND = ['scenery', 'worlds', 'chrome', 'spectrogram', 'cuts', 'fire', 'off'];
+const V_NAME = { scenery: 'scenes' };
+const visName = (v) => V_NAME[v] || v;
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'];
@@ -125,10 +130,14 @@ function meshFace() {
   return { x: cx - w / 2, y: brow - span * 0.1, w, h: span * 1.15, eyes, sure: 999 };
 }
 
+// The desktop handheld (?widget, its own window, opened by W with the handheld on): only the handheld game, on
+// nothing, listening for itself. It keeps nothing: what's picked in it isn't saved over the main window's settings.
+const WIDGET = new URLSearchParams(location.search).has('widget');
+
 const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winKey: '', manual: null,
-  visual: 0, strength: 1, blocks: true, blockLook: 'blocks', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
+  visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
   crt: false, // Y: an old screen over everything (see #tube in the CSS)
@@ -172,6 +181,10 @@ function loadSettings() {
   const name = typeof saved.visualName === 'string' ? saved.visualName : VISUALS[saved.visual];
   if (name === 'orb' || name === 'scenes') { state.orb = true; state.visual = VISUALS.indexOf('off'); }
   else state.visual = Math.max(0, VISUALS.indexOf(name));
+  // (a background out of V's round now, the old strengths, the glass and the orb: back to the round's own)
+  if (!V_ROUND.includes(VISUALS[state.visual])) state.visual = VISUALS.indexOf('scenery');
+  state.strength = 1; state.glass = false; state.orb = false;
+  if (!['auto', 'night', 'film', 'ascii', 'thermal', 'cells'].includes(state.worldLook)) state.worldLook = 'auto'; // (worlds.js's looks)
   if (!(state.theme in THEMES)) state.theme = 0;
   // the drop effect too (older versions saved its number, in a list without "not responding"); off till
   // it's set: the scenes take the drop themselves, and a takeover over them was clunky
@@ -219,6 +232,7 @@ function syncOffset() {
   return (display + notice - heardAfter() + state.syncTrim) / 1000;
 }
 function saveSettings() {
+  if (WIDGET) return;
   const out = Object.fromEntries(SAVED.map((k) => [k, state[k]]));
   out.visualName = VISUALS[state.visual];
   out.dropName = DROPS[state.drop];
@@ -622,7 +636,8 @@ function setVisual(i) {
   const mode = VISUALS[i];
   if (!FIELD_VIS.includes(mode)) field.clear();
   for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spectrogram', spectro], ['scenery', scenery], ['fire', fire]]) if (mode !== name) v.clear();
-  $('b-visual').textContent = mode + ' ▾';
+  $('b-visual').textContent = visName(mode) + ' ▾';
+  queueMicrotask(footerKeys); // (A's word follows the background; after the page's first run, once the keys are set up)
   document.body.classList.toggle('worlds-on', mode === 'worlds');
   document.body.classList.toggle('chrome-on', mode === 'chrome');
   document.body.classList.toggle('spectro-on', mode === 'spectrogram');
@@ -692,14 +707,14 @@ function setBlocks(on) {
 // P: the punchcard blocks, then the dominoes (the same parts, each hit a domino the playhead
 // knocks over as it plays), then the handheld game (game.js: the song played on a little two-screen
 // handheld), then none, in turn.
-const BLOCK_LOOKS = ['blocks', 'dominoes', 'game'];
+const BLOCK_LOOKS = ['dominoes', 'game', 'blocks']; // (P's round, best first, then none)
 function nextBlocks() {
   const i = BLOCK_LOOKS.indexOf(state.blockLook);
-  if (!state.blocks) { state.blockLook = 'blocks'; setBlocks(true); }
+  if (!state.blocks) { state.blockLook = BLOCK_LOOKS[0]; setBlocks(true); }
   else if (i < BLOCK_LOOKS.length - 1) { state.blockLook = BLOCK_LOOKS[i + 1]; saveSettings(); }
   else setBlocks(false);
   gameOn();
-  flashStatus('blocks: ' + (!state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook]));
+  flashStatus('code look: ' + (!state.blocks ? 'none' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook]));
 }
 // The handheld game on (body.game-on: in the tall layout it stands in front of the code's lower lines, in the
 // pitch roll's place; its pads show the notes). There, and in the mini player, where it's on its own, the ID card
@@ -708,19 +723,20 @@ function nextBlocks() {
 const gameShowing = () => state.blocks && state.blockLook === 'game';
 function gameOn() { document.body.classList.toggle('game-on', gameShowing()); applyCard(); footerKeys(); }
 // A, while the game is on: its screens' next design (Toaster's own look in the theme's colours, the neon,
-// a reflective LCD), remembered.
+// a reflective LCD, the Japan edition: Toaster's own in Japanese on a handheld of its own), remembered.
+const SCREEN_NAMES = { os: "Toaster's own", neon: 'neon', lcd: 'LCD', jp: 'the Japan edition' };
 function nextGameScreens() {
   state.gameScreens = GAME_SCREENS[(GAME_SCREENS.indexOf(state.gameScreens) + 1) % GAME_SCREENS.length];
   setGameScreens(state.gameScreens);
   saveSettings();
-  flashStatus('screens: ' + state.gameScreens);
+  flashStatus('screens: ' + SCREEN_NAMES[state.gameScreens]);
 }
 
 // The dot orb: a layer of its own, like the blocks, so it goes over any background (or none).
 function setOrb(on) {
   state.orb = on;
   if (!on) orb.clear();
-  $('b-orb').classList.toggle('on', on);
+  $('b-orb')?.classList.toggle('on', on); // (its button is gone since 0.4.23; the orb stays, unlisted)
   saveSettings();
 }
 
@@ -871,7 +887,7 @@ function newsRows() {
 function setGlass(on) {
   state.glass = on;
   glass.show(on);
-  $('b-glass').classList.toggle('on', on);
+  $('b-glass')?.classList.toggle('on', on); // (its button is gone since 0.4.23; the glass stays, unlisted)
   saveSettings();
 }
 
@@ -1509,7 +1525,7 @@ function draw(now) {
     setTimeout(() => worlds.warm(), 30000);
   }
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
-  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook, currentSong()?.title, state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
+  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook, currentSong()?.title, WIDGET ? 'widget' : state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
   // (the code rain's characters: the code's lines, not the panels' boxes, which rained as +)
   if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
@@ -1567,15 +1583,32 @@ $('menu').addEventListener('click', (e) => { if (e.target === $('menu') && state
 // The visual button opens a list of the backgrounds to pick from (V steps through them); a click
 // anywhere else or any key closes it.
 const visMenu = $('vis-menu');
+// The picker under the background button: a picture of each scene (auto first) and of each other background in V's
+// round, the one showing marked; a click shows it (a scene: the scenes, with that one picked). Its pictures are
+// renderer/thumbs, fetched only when it opens.
 function showVisMenu(open) {
   visMenu.hidden = !open;
   if (!open) return;
-  visMenu.innerHTML = VISUALS.map((v, i) => `<button type="button" role="menuitem" data-i="${i}"${i === state.visual ? ' class="on"' : ''}>${v}</button>`).join('');
-  visMenu.style.left = `${$('b-visual').offsetLeft}px`;
-  visMenu.style.minWidth = `${$('b-visual').offsetWidth}px`;
+  const now = VISUALS[state.visual];
+  const tile = (kind, name, label, on) => `<button type="button" role="menuitem" class="tile${on ? ' on' : ''}" data-kind="${kind}" data-name="${name}"><img src="thumbs/${kind}-${name}.webp" alt="" width="160" height="100"><span>${label}</span></button>`;
+  const scenes = ['auto', ...scenery.scenes].map((s) => tile('scene', s, s === 'auto' ? 'auto: a new one each song' : (SCENE_NAMES[s] || s).replace(/^the /, ''), now === 'scenery' && !state.sceneryTheme && state.sceneryScene === s));
+  const more = V_ROUND.filter((v) => v !== 'scenery').map((v) => tile('bg', v, v === 'off' ? 'off: just the code' : visName(v), now === v));
+  visMenu.innerHTML = `<div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div><div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
+  const b = $('b-visual');
+  visMenu.style.left = `${Math.max(12, Math.min(b.offsetLeft, innerWidth - visMenu.offsetWidth - 12))}px`;
 }
 $('b-visual').onclick = () => showVisMenu(visMenu.hidden);
-visMenu.onclick = (e) => { const b = e.target.closest('button'); if (b) { setVisual(+b.dataset.i); showVisMenu(false); crtStatic(); crtOsd(crtChannel()); } };
+visMenu.onclick = (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.kind === 'scene') {
+    state.sceneryScene = b.dataset.name; state.sceneryTheme = false;
+    setVisual(VISUALS.indexOf('scenery'));
+    flashStatus('scene: ' + (SCENE_NAMES[b.dataset.name] || b.dataset.name));
+  } else { setVisual(VISUALS.indexOf(b.dataset.name)); flashStatus('background: ' + visName(b.dataset.name)); }
+  saveSettings();
+  showVisMenu(false); crtStatic(); crtOsd(crtChannel());
+};
 addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closest('#vis-menu, #b-visual')) showVisMenu(false); }, true);
 // the koi pond: a click on the water (not on a button, a menu or a panel) drops food there, and the
 // koi nearest come to it
@@ -1585,12 +1618,10 @@ addEventListener('click', (e) => {
 $('b-blocks').onclick = () => nextBlocks();
 $('b-cam').onclick = () => toggleCam();
 $('b-card').onclick = () => toggleCard();
-$('b-orb').onclick = () => setOrb(!state.orb);
-$('b-glass').onclick = () => setGlass(!state.glass);
 $('b-strudel').onclick = () => openInStrudel();
 $('b-rec').onclick = () => toggleRecording();
 $('b-layout').onclick = () => toggleLayout();
-$('b-mini').onclick = () => toggleMini();
+$('b-mini').onclick = () => (gameShowing() && window.nc?.setWidget ? window.nc.setWidget(true) : toggleMini());
 $('b-help').onclick = () => $('help').showModal();
 
 $('rename-form').addEventListener('submit', () => {
@@ -1605,16 +1636,14 @@ $('rename-form').addEventListener('submit', () => {
 // (only the ones that differ from these). Esc, ? and F11 stay as they are.
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
-  { id: 'visual', key: 'v', run: () => { setVisual((state.visual + 1) % VISUALS.length); crtStatic(); crtOsd(crtChannel()); } },
-  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : setStrength((state.strength + 1) % STRENGTHS.length, true)) },
+  { id: 'visual', key: 'v', run: () => { setVisual(VISUALS.indexOf(V_ROUND[(V_ROUND.indexOf(VISUALS[state.visual]) + 1) % V_ROUND.length])); flashStatus('background: ' + visName(VISUALS[state.visual])); crtStatic(); crtOsd(crtChannel()); } },
+  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the chrome's collage, the spectrogram's colours or the handheld's screens`)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
   { id: 'earlier', key: ']', run: () => nudgeSync(10) },
   { id: 'cam', key: 'c', run: () => toggleCam() },
   { id: 'card', key: 'n', run: () => toggleCard() },
-  { id: 'orb', key: 'r', run: () => setOrb(!state.orb) },
-  { id: 'glass', key: 'g', run: () => setGlass(!state.glass) },
   { id: 'strudel', key: 'o', run: () => openInStrudel() },
   { id: 'rec', key: 'm', run: () => toggleRecording() },
   { id: 'clips', key: 'j', run: () => toggleClips() },
@@ -1629,7 +1658,7 @@ const ACTIONS = [
   { id: 'dropfx', key: 'b', run: () => { state.drop = (state.drop + 1) % DROPS.length; saveSettings(); flashStatus('drop fx: ' + DROPS[state.drop]); } },
   { id: 'machine', key: 'i', run: () => { state.info = !state.info; sys.show(state.info); } },
   { id: 'layout', key: 'l', run: () => toggleLayout() },
-  { id: 'mini', key: 'w', run: () => toggleMini() },
+  { id: 'mini', key: 'w', run: () => (WIDGET ? window.nc?.setWidget(false) : gameShowing() && window.nc?.setWidget ? window.nc.setWidget(true) : toggleMini()) },
   { id: 'theme', key: 't', run: () => nextTheme() },
   { id: 'crt', key: 'y', run: () => { setCrt(!state.crt); flashStatus(state.crt ? 'crt on' : 'crt off'); } },
   { id: 'name', key: 'e', run: () => renameSong() },
@@ -1638,14 +1667,20 @@ const ACTIONS = [
   { id: 'full', key: 'f', run: () => window.nc?.toggleFullscreen() },
 ];
 // the footer's list of keys, in this order: [actions..., what it says]
-const FOOTER = [['visual', 'visual'], ['strength', 'strength'], ['theme', 'theme'], ['crt', 'crt'], ['orb', 'orb'], ['blocks', 'blocks'], ['glass', 'glass'], ['card', 'card'], ['cam', 'cam'], ['camfx', 'cam fx'], ['tap', 'tap'], ['hush', 'hush'], ['drop', 'drop now'], ['dropfx', 'drop fx'], ['rec', 'rec'], ['clips', 'drop clips'], ['export', 'export'], ['strudel', 'strudel'], ['layout', 'layout'], ['mini', 'mini'], ['code', 'hide code'], ['hide', 'hide'], ['full', 'full'], ['machine', 'machine'], ['source', 'source'], ['name', 'name'], ['later', 'earlier', 'sync']];
+const FOOTER = [['source', 'source'], ['visual', 'background'], ['strength', 'next'], ['blocks', 'code look'], ['theme', 'theme'], ['code', 'hide code']];
 const RESERVED = new Set(['escape', '?', '/', 'f11', 'tab', 'enter', 'shift', 'control', 'alt', 'meta', 'capslock', 'contextmenu']);
 const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
 const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
+// (A's word: what it changes on what's showing; left out where there's nothing to change)
+function nextWhat() {
+  if (gameShowing()) return 'next screen';
+  return { scenery: 'next scene', worlds: 'next look', chrome: 'collage', spectrogram: 'colours' }[VISUALS[state.visual]] || null;
+}
 function footerKeys() {
-  document.querySelector('footer .keys').textContent = FOOTER.map((f) => `${f.slice(0, -1).map(K).join(' ')} ${f[0] === 'strength' && gameShowing() ? 'screens' : f[f.length - 1]}`).join(' · ');
+  const parts = FOOTER.map((f) => (f[0] === 'strength' ? (nextWhat() ? `${K('strength')} ${nextWhat()}` : null) : `${f.slice(0, -1).map(K).join(' ')} ${f[f.length - 1]}`));
+  document.querySelector('footer .keys').textContent = [...parts.filter(Boolean), '? all keys'].join(' · ');
 }
 
 // The controls panel (controls.js): on a screen with no hover (an iPad, a phone), every action above as a
@@ -1662,7 +1697,7 @@ const controls = createControls({
     visual: () => VISUALS[state.visual],
     strength: () => {
       const v = VISUALS[state.visual];
-      if (state.blocks && state.blockLook === 'game') return `game screens: ${state.gameScreens}`;
+      if (state.blocks && state.blockLook === 'game') return `game screens: ${SCREEN_NAMES[state.gameScreens]}`;
       return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
         : v === 'scenery' ? state.sceneryScene + (state.sceneryTheme ? ", theme's colours" : '') : STRENGTHS[state.strength][0];
     },
@@ -1671,8 +1706,6 @@ const controls = createControls({
     earlier: () => `blocks sync ${state.syncTrim > 0 ? '+' : ''}${state.syncTrim} ms`,
     cam: () => ({ text: !cam.on ? 'off' : state.eyes ? 'big eyes' : state.ascii ? 'ASCII' : 'on', on: cam.on }),
     card: () => { const on = state.vertical ? state.cardV : state.card; return { text: !on ? 'off' : state.cardBig ? 'big' : 'on', on }; },
-    orb: () => onoff(state.orb),
-    glass: () => onoff(state.glass),
     rec: () => ({ text: rec.mr ? 'recording' : 'off', on: !!rec.mr }),
     clips: () => onoff(clips.on),
     camfx: () => CAM_FX[state.camFx],
@@ -1770,7 +1803,7 @@ addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (!visMenu.hidden) { showVisMenu(false); if (k === 'escape') return; }
-  if (k === 'escape') { closeMenu(); return; }
+  if (k === 'escape') { if (WIDGET) { window.nc?.setWidget(false); return; } closeMenu(); return; }
   if (e.target.closest('#alerts, #menu:not([hidden]) input')) return; // let Enter/Space press the message box's button, and an address be typed
   if (k === '?' || k === '/') { $('help').showModal(); return; }
   if (k === 'f11') { e.preventDefault(); window.nc?.toggleFullscreen(); return; }
@@ -1821,6 +1854,11 @@ window.nc?.version?.().then((v) => {
 });
 
 loadSettings();
+if (WIDGET) {
+  Object.assign(state, { blocks: true, blockLook: 'game', visual: VISUALS.indexOf('off'), codeHidden: true, card: false, cardV: false, orb: false, glass: false, crt: false, firstRun: false });
+  document.documentElement.classList.add('widget'); document.body.classList.add('widget');
+  $('w-back').onclick = () => window.nc?.setWidget(false);
+}
 $('radio-url').value = state.radio;
 newsRows();
 $('b-rec').dataset.title = `Record a video of the window, with the sound, into ${onMac() ? 'Movies/Toaster' : 'Videos\\Toaster'}`;

@@ -10,6 +10,7 @@
 // the kick comes back. The terminal world shows the code, the ledger keeps the song's bars, the
 // engraving has the title cut into it.
 import { LOOKS, onePart } from './worldlooks.js';
+const KEPT = ['film', 'ascii', 'thermal', 'cells']; // (the looks A goes round, and auto's after a drop; the rest unlisted)
 import { WORLD_NOISE } from './world-noise.js';
 import { RAMP } from './visuals.js';
 // how long a look's program has been done before it's shown (ms): the graphics driver's own
@@ -1677,7 +1678,7 @@ export function createWorlds(canvas, wordsCanvas) {
     get look() { return night ? 'night' : lookPick; },
     get night() { return night; },
     get lookNow() { return lookNow; },
-    get looks() { return ['auto', 'night', ...LOOKS.map((l) => l.key)]; },
+    get looks() { return ['auto', 'night', ...KEPT]; },
     setLook(key) {
       if (key === 'night') { lookPick = 'auto'; night = true; }
       else if (key === 'auto' || LOOKS.some((l) => l.key === key)) { lookPick = key; night = false; }
@@ -1685,7 +1686,7 @@ export function createWorlds(canvas, wordsCanvas) {
     // a drop: with auto, another look for 8 bars (not the one before)
     drop(t, bar) {
       if (lookPick !== 'auto' || bar === null) return;
-      const pool = LOOKS.filter((l) => l.frag && l.key !== lookAuto);
+      const pool = LOOKS.filter((l) => l.frag && KEPT.includes(l.key) && l.key !== lookAuto);
       lookAuto = pool[Math.floor(rnd() * pool.length)].key;
       lookTill = bar + 8;
     },

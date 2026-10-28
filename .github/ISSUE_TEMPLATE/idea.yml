@@ -1,0 +1,15 @@
+name: Idea
+description: A feature, a scene, a look, a way you'd use it.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What's the idea?
+    validations:
+      required: true
+  - type: textarea
+    id: inspo
+    attributes:
+      label: Anything that inspired it?
+      description: Links to videos, posts or other tools help.
