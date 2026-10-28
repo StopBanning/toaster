@@ -5,6 +5,16 @@
 // help keeps the last few versions' at its top.
 export const NEWS = [
   {
+    version: '0.4.23',
+    items: [
+      { act: 'strength', in: 'the game', text: "the handheld's Japan edition, the fourth of A's screens with the game on: a cream and red handheld after the Famicom with トースター on it, its screens (in black and white), its cartridge and its power-on all in Japanese" },
+      { act: 'blocks', text: "the handheld game is there as soon as you pick it, standing by: PLAY ANY SONG before a song, READING while it finds a song's beat, and when the music stops CONTINUE? and a count, then GAME OVER, till a song powers it on again" },
+      { act: 'cam', text: "the finger frame closes as you drop your hands, instead of hanging there stretched from where the tracker last saw one of them" },
+      { act: 'mini', in: 'the game', text: "with the handheld on, W puts it on your desktop on its own: no window round it, just the device and its shadow over whatever's there, on top of everything; drag it anywhere, and Esc brings Toaster back" },
+      { act: 'visual', text: "a tidier Toaster: V goes round the backgrounds worth showing, best first (the scenes, worlds, chrome, the spectrogram, cuts, fire, off), P starts with the dominoes, the footer says what A changes and shows just the keys you need (? has them all), and a first start opens on the dominoes over a scene. The orb and the glass are off the keys" },
+    ],
+  },
+  {
     version: '0.4.22',
     items: [
       { act: 'source', text: "internet radio, a fifth source: paste a stream's address into the source menu and Toaster plays it and writes it out as code. It comes with no stations (docs/radio-stations.md lists a few that publish their addresses) and remembers the last one. By Jeffrey Li" },

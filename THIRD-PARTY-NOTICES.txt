@@ -27,6 +27,11 @@ tools/skullmesh.mjs)
 JetBrains Mono (the typeface)
   Included in renderer/fonts; SIL Open Font License 1.1 (renderer/fonts/OFL.txt).
 
+M PLUS 1 Code (the typeface), Copyright 2021 The M+ FONTS Project Authors
+  Its Latin letters and katakana only, included in renderer/fonts as mplus1code-jp.woff2 (the handheld's Japan
+  edition's screens); SIL Open Font License 1.1 (renderer/fonts/OFL-mplus1code.txt).
+  From https://github.com/google/fonts/tree/main/ofl/mplus1code
+
 The eye scene's footage, in renderer/eye/eye.mp4 (its first seconds, slowed, looped, smoothed, a
   window's reflection on the iris painted out)
   "Close-up of a Human Brown Eye Flickering" by Emirhan Emiroğlu, Pexels video 32198166.

@@ -15,12 +15,10 @@
 // (in the help's order and groups)
 export const CONTROLS = [
   ['visual', 'look', 'background', 'step through them'],
-  ['strength', 'look', 'background look', 'its strength, look or scene'],
+  ['strength', 'look', 'next', 'the next scene, look or screen'],
   ['theme', 'look', 'theme', 'the colours'],
   ['crt', 'look', 'old TV (CRT)', 'scanlines and glass'],
-  ['orb', 'look', 'dot orb', 'dots that take a new form'],
-  ['blocks', 'look', 'blocks', 'punchcard, dominoes, off'],
-  ['glass', 'look', 'liquid glass', 'over the code'],
+  ['blocks', 'look', 'code look', 'dominoes, handheld, punchcard, none'],
   ['card', 'look', 'ID card', 'off, on, big'],
   ['cam', 'camera', 'camera', 'tinted, big eyes, ASCII, off'],
   ['camfx', 'camera', 'camera effect', 'the next one'],
@@ -33,7 +31,7 @@ export const CONTROLS = [
   ['export', 'save & share', 'export song', 'MIDI and Strudel code'],
   ['strudel', 'save & share', 'open in Strudel', 'the code, in your browser'],
   ['layout', 'window', 'vertical layout', 'for TikTok and Shorts'],
-  ['mini', 'window', 'mini player', 'a small window over the rest'],
+  ['mini', 'window', 'mini player', 'a small window over the rest; the handheld on its own'],
   ['code', 'window', 'hide the code', 'just the visuals'],
   ['hide', 'window', 'hide the bars', 'the header and footer'],
   ['full', 'window', 'fullscreen', ''],

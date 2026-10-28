@@ -7,7 +7,8 @@
 // Flicking it edge-on and back (a sliver for a moment), bunching one hand's fingertips together,
 // a wink, opening it again and every 4 bars each bring the next filter too. Pinch one hand (thumb
 // on index) and its two corners meet: a triangle. Open your hands and it closes at once; bring
-// them together pinched and it shrinks away; drop them and it closes a moment later.
+// them together pinched and it shrinks away; drop them and it closes as they go (the tracker losing one hand first, the
+// card goes with the other, whole, rather than being left stretched from where the lost one was).
 // What shows is what the camera sees there; the filter's own pattern (dots, grid lines, mosaic,
 // wrinkles) lies on the card, in perspective. Drawn with WebGL. After agustinawaigel_'s and
 // mishu.ksv's hand portals and autterp0p's hand-frame edit.
@@ -331,6 +332,7 @@ export function createLens(canvas) {
   // a hand has been open; since when the hands have been together, pinched shut
   let wrists = null, seenAt = -9, halfAt = -9, wholeAt = -9, changedAt = -9, openSince = null, shutSince = null;
   let corners = null; // the fingertips' order round the card, from when it opened
+  let alone = null; // while one hand is followed without the other: which one, and where its wrist was when the other went
   let way = 1; // which way round its corners go with the front showing (-1 once it's turned over)
   let backSince = null; // since when all of it has shown its back
   let big = 0, thinSince = null; // its size lately (area), and since when it's been a sliver
@@ -433,7 +435,7 @@ export function createLens(canvas) {
   const next = (t) => { if (t - changedAt > 0.3) { which++; changedAt = t; } };
 
   return {
-    clear() { wipe(); tips = wrists = openSince = shutSince = corners = backSince = thinSince = null; open = 0; seenAt = halfAt = wholeAt = -9; },
+    clear() { wipe(); tips = wrists = openSince = shutSince = corners = backSince = thinSince = alone = null; open = 0; seenAt = halfAt = wholeAt = -9; },
     // a kick: the edges flare, red and blue split wider and the outline swells, for a moment, and
     // the keyframes jump to their next colours (calm: fewer flashes: a gentler flare, and new
     // colours at most every 2 seconds)
@@ -493,12 +495,17 @@ export function createLens(canvas) {
         follow = dist(hd.P[0], wrists[0]) <= dist(hd.P[0], wrists[1]) ? [hd, null] : [null, hd];
       }
       if (follow.length) {
-        const k = tips ? Math.min(1, dt * 18) : 1;
+        const k = tips ? Math.min(1, dt * 18) : 1, had = !!tips;
         tips ||= [[0, 0], [0, 0], [0, 0], [0, 0]];
         wrists ||= [[0, 0], [0, 0]];
+        const moved = [[0, 0], [0, 0]]; // (how far each hand's corners went this frame)
         follow.forEach((hd, i) => {
           if (!hd) return;
-          [hd.P[8], hd.P[4]].forEach((p, j) => { const q = tips[i * 2 + j]; tips[i * 2 + j] = [q[0] + (p[0] - q[0]) * k, q[1] + (p[1] - q[1]) * k]; });
+          [hd.P[8], hd.P[4]].forEach((p, j) => {
+            const q = tips[i * 2 + j], d = [(p[0] - q[0]) * k, (p[1] - q[1]) * k];
+            tips[i * 2 + j] = [q[0] + d[0], q[1] + d[1]];
+            moved[i] = [moved[i][0] + d[0] / 2, moved[i][1] + d[1] / 2];
+          });
           wrists[i] = hd.P[0];
           // all its fingertips bunched together (for a moment, once a bunch): the next filter
           const b = bunched[i];
@@ -506,9 +513,20 @@ export function createLens(canvas) {
           else { b.since = null; b.counted = false; }
         });
         seenAt = t;
-        if (!(follow[0] && follow[1])) halfAt = t;
-        else if (area(around(tips)) > 0.01 * W * H) wholeAt = t;
-      }
+        if (!(follow[0] && follow[1])) {
+          halfAt = t;
+          // one hand lost for a moment: its corners go where the other takes the card, so the card moves as a whole
+          // rather than stretching from where the lost hand was last seen; and that hand carrying it off more than its
+          // own length is the hands letting go (dropped, the tracker loses one before the other): it closes now
+          const i = follow[0] ? 0 : 1, hd = follow[i];
+          if (!alone || alone.i !== i) alone = { i, from: hd.P[0] };
+          else if (dist(hd.P[0], alone.from) > dist(hd.P[0], hd.P[9])) wholeAt = halfAt = -9;
+          if (had) for (const j of [0, 1]) { const q = tips[(1 - i) * 2 + j]; tips[(1 - i) * 2 + j] = [q[0] + moved[i][0], q[1] + moved[i][1]]; }
+        } else {
+          alone = null;
+          if (area(around(tips)) > 0.01 * W * H) wholeAt = t;
+        }
+      } else alone = null;
       // the hands brought together, pinched (all four fingertips close): it shrinks away now
       const across = tips ? Math.max(...tips.flatMap((p, i) => tips.slice(i + 1).map((q) => dist(p, q)))) : 0;
       if (open > 0.5 && follow[0] && follow[1] && across < 0.07 * Math.min(W, H)) { shutSince ??= t; if (t - shutSince > 0.1) wholeAt = halfAt = -9; }

@@ -7,6 +7,9 @@
 //     dots, their shadow, its lag
 //   highway: gems coming down a fretboard going off into the distance, flames where they're hit
 //   dance: arrows rising onto a row of targets, coloured by where in the beat they fall; the pad underneath
+// os also speaks the Japan edition's Japanese (gamewords.js); the others keep their English (lcd's font of its own has
+// no katakana).
+import { say, sayKey, screenFont } from './gamewords.js';
 const FONT = '"JetBrains Mono", Consolas, monospace';
 const rgba = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
@@ -41,6 +44,39 @@ const G = {
   ')': '01000 00100 00010 00010 00010 00100 01000', '&': '01100 10010 10100 01000 10101 10010 01101',
   '×': '00000 10001 01010 00100 01010 10001 00000', '·': '00000 00000 00000 00100 00000 00000 00000',
   '♪': '00110 00101 00100 00100 01100 11100 01000', ' ': '00000 00000 00000 00000 00000 00000 00000',
+  // (katakana, for the Japan edition, as the old half-width LCD kana: a dakuten or handakuten is a cell of its own)
+  'ア': '11111 00001 00101 00110 00100 00100 01000', 'イ': '00001 00010 00100 01100 10100 00100 00100',
+  'ウ': '00100 11111 10001 10001 00001 00010 00100', 'エ': '00000 11111 00100 00100 00100 00100 11111',
+  'オ': '00010 11111 00010 00110 01010 10010 00010', 'カ': '01000 11111 01001 01001 01001 01001 10010',
+  'キ': '00100 11111 00100 11111 00100 00100 00100', 'ク': '00000 01111 01001 10001 00001 00010 01100',
+  'ケ': '01000 01111 10010 00010 00010 00010 00100', 'コ': '00000 11111 00001 00001 00001 00001 11111',
+  'サ': '01010 11111 01010 01010 00010 00100 01000', 'シ': '00000 11000 00001 11001 00001 00010 11100',
+  'ス': '00000 11111 00001 00010 00100 01010 10001', 'セ': '01000 11111 01001 01010 01000 01000 00111',
+  'ソ': '00000 10001 10001 01001 00001 00010 01100', 'タ': '00000 01111 01001 10101 00011 00010 01100',
+  'チ': '00010 11100 00100 11111 00100 00100 01000', 'ツ': '00000 10101 10101 10101 00001 00010 00100',
+  'テ': '01110 00000 11111 00100 00100 00100 01000', 'ト': '01000 01000 01000 01100 01010 01000 01000',
+  'ナ': '00100 00100 11111 00100 00100 01000 10000', 'ニ': '00000 01110 00000 00000 00000 00000 11111',
+  'ヌ': '00000 11111 00001 01010 00100 01010 10000', 'ネ': '00100 11111 00010 00100 01110 10101 00100',
+  'ノ': '00010 00010 00010 00010 00010 00100 01000', 'ハ': '00000 00100 00010 10001 10001 10001 10001',
+  'ヒ': '10000 10000 11111 10000 10000 10000 01111', 'フ': '00000 11111 00001 00001 00001 00010 01100',
+  'ヘ': '00000 01000 10100 00010 00001 00001 00000', 'ホ': '00100 11111 00100 00100 10101 10101 00100',
+  'マ': '00000 11111 00001 00001 01010 00100 00010', 'ミ': '00000 01110 00000 01110 00000 01110 00001',
+  'ム': '00000 00100 01000 10000 10001 11111 00001', 'メ': '00000 00001 00001 01010 00100 01010 10000',
+  'モ': '00000 11111 01000 11111 01000 01000 00111', 'ヤ': '01000 01000 11111 01001 01010 01000 01000',
+  'ユ': '00000 01110 00010 00010 00010 00010 11111', 'ヨ': '00000 11111 00001 11111 00001 00001 11111',
+  'ラ': '01110 00000 11111 00001 00001 00010 00100', 'リ': '10010 10010 10010 10010 00010 00100 01000',
+  'ル': '00000 00100 10100 10100 10101 10101 10110', 'レ': '00000 10000 10000 10001 10010 10100 11000',
+  'ロ': '00000 11111 10001 10001 10001 10001 11111', 'ワ': '00000 11111 10001 10001 00001 00010 00100',
+  'ヲ': '11111 00001 11111 00001 00010 00100 01000', 'ン': '00000 11000 00000 00001 00001 00010 11100',
+  'ァ': '00000 00000 11111 00001 00110 00100 01000', 'ィ': '00000 00000 00010 00100 01100 10100 00100',
+  'ゥ': '00000 00000 00100 11111 10001 00001 00110', 'ェ': '00000 00000 00000 11111 00100 00100 11111',
+  'ォ': '00000 00000 00010 11111 00110 01010 10010', 'ッ': '00000 00000 10101 10101 00001 00010 00100',
+  'ャ': '00000 00000 01000 11111 01001 01010 01000', 'ュ': '00000 00000 00000 01110 00010 00010 11111',
+  'ョ': '00000 00000 11111 00001 11111 00001 11111', 'ー': '00000 00000 00000 11111 00000 00000 00000',
+  '゛': '10100 01010 00000 00000 00000 00000 00000', '゜': '11100 10100 11100 00000 00000 00000 00000',
+  '・': '00000 00000 00000 00100 00000 00000 00000', '「': '00111 00100 00100 00100 00000 00000 00000',
+  '」': '00000 00000 00000 00100 00100 00100 11100', '、': '00000 00000 00000 00000 10000 01000 00100',
+  '。': '00000 00000 00000 00000 11100 10100 11100',
 };
 // each letter's rows as runs of lit pixels: [[x, y, len], ...]
 const RUNS = Object.fromEntries(Object.entries(G).map(([ch, rows]) => {
@@ -49,15 +85,20 @@ const RUNS = Object.fromEntries(Object.entries(G).map(([ch, rows]) => {
   return [ch, runs];
 }));
 const glyph = (ch) => RUNS[ch] || RUNS[ch.toUpperCase()] || RUNS['?'];
-const textW = (s, k = 1) => (s.length * 6 - 1) * k;
+// the cells a text takes: a katakana with a dakuten or handakuten as two, the letter then its mark (ベ as ヘ゛)
+const KANA = /[゠-ヿ]/;
+const cellsOf = (s) => (KANA.test(s) ? s.replace(/[゠-ヿ]/g, (ch) => { const d = ch.normalize('NFD'); return d.length > 1 ? d[0] + (d[1] === '゙' ? '゛' : '゜') : ch; }) : s);
+const textW = (s, k = 1) => (cellsOf(s).length * 6 - 1) * k;
 // Text at (x, y) (its top left), k pixels a dot; an outline round it if asked
 function ptext(c, s, x, y, color, k = 1, outline = null) {
   if (outline) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]]) ptext(c, s, x + dx, y + dy, outline, k);
-  c.fillStyle = color;
+  c.fillStyle = color; s = cellsOf(s);
   for (let i = 0; i < s.length; i++) for (const [gx, gy, n] of glyph(s[i])) c.fillRect(x + (i * 6 + gx) * k, y + gy * k, n * k, k);
 }
 const ptextC = (c, s, cx, y, color, k = 1, outline = null) => ptext(c, s, Math.round(cx - textW(s, k) / 2), y, color, k, outline);
-export { ptext, ptextC, textW }; // (the power-on's letters too: gameboot.js)
+// (whether every cell of a text has a letter of its own, not the '?')
+const pixelCovers = (s) => [...cellsOf(s)].every((ch) => RUNS[ch] || RUNS[ch.toUpperCase()]);
+export { ptext, ptextC, textW, cellsOf, pixelCovers }; // (the power-on's letters too: gameboot.js)
 // A two-colour checkerboard (dithering): every other pixel
 function dither(c, x, y, w, h, color, phase = 0) {
   c.fillStyle = color;
@@ -218,13 +259,13 @@ function osTop(c, r, m, col) {
   c.fillStyle = rgba(bg); c.fillRect(r.x, r.y, W, H);
   const hH = Math.round(H * 0.13), labelH = Math.round(H * 0.12);
   const py0 = r.y + hH, py1 = r.y + H - labelH;
-  const fs = (k, wt = 600) => `${wt} ${Math.max(7, Math.round(H * k))}px ${FONT}`;
+  const face = screenFont(FONT), fs = (k, wt = 600) => `${wt} ${Math.max(7, Math.round(H * k))}px ${face}`;
   c.textBaseline = 'middle';
   // the bar: score at the left, combo in the middle, tempo at the right
   c.font = fs(0.042); c.letterSpacing = `${Math.round(H * 0.006)}px`;
   c.fillStyle = rgba(fg, 0.6); c.textAlign = 'left';
-  c.fillText(fever ? 'FEVER ×2' : 'SCORE', r.x + W * 0.04, r.y + hH * 0.32);
-  c.textAlign = 'right'; c.fillText('BPM', r.x + W * 0.96, r.y + hH * 0.32);
+  c.fillText(say(fever ? 'FEVER ×2' : 'SCORE'), r.x + W * 0.04, r.y + hH * 0.32);
+  c.textAlign = 'right'; c.fillText(say('BPM'), r.x + W * 0.96, r.y + hH * 0.32);
   c.letterSpacing = '0px';
   c.font = fs(0.068, 700); c.fillStyle = rgba(fg);
   c.textAlign = 'left'; c.fillText(String(m.score).padStart(7, '0'), r.x + W * 0.04, r.y + hH * 0.72);
@@ -282,13 +323,13 @@ function osTop(c, r, m, col) {
     const cx = r.x + W / 2, cy = Math.round(ty - run * 0.24 - Math.min(age, 0.3) * H * 0.04);
     c.save(); c.translate(cx, cy); c.scale(pop, pop); c.globalAlpha = a;
     c.font = fs(0.064, 800); c.textAlign = 'center'; c.letterSpacing = `${Math.round(H * 0.006)}px`;
-    const tw = c.measureText(m.judge.text).width, ph = Math.round(H * 0.1), pw = Math.round(tw + H * 0.07);
+    const word = say(m.judge.text), tw = c.measureText(word).width, ph = Math.round(H * 0.1), pw = Math.round(tw + H * 0.07);
     const edge = Math.max(2, Math.round(H * 0.008));
     c.fillStyle = rgba(bg); c.beginPath(); c.roundRect(-pw / 2 - edge, -ph / 2 - edge, pw + 2 * edge, ph + 2 * edge, (ph + 2 * edge) / 2); c.fill();
     c.beginPath(); c.roundRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
     if (miss) { c.strokeStyle = rgba(fg, 0.7); c.lineWidth = Math.max(1, Math.round(H * 0.005)); c.stroke(); c.fillStyle = rgba(fg, 0.7); }
     else { c.fillStyle = rgba(fg); c.fill(); c.fillStyle = rgba(bg); }
-    c.fillText(m.judge.text, Math.round(H * 0.003), 1);
+    c.fillText(word, Math.round(H * 0.003), 1);
     c.restore(); c.letterSpacing = '0px';
   }
   // the lane names, inverted as they hit
@@ -297,7 +338,7 @@ function osTop(c, r, m, col) {
     const cx = r.x + mx + i * lane + lane / 2, y = py1 + labelH / 2, lit = m.hit[i] > 0.3;
     if (lit) { c.fillStyle = rgba(fg); c.fillRect(Math.round(cx - lane * 0.4), Math.round(y - labelH * 0.34), Math.round(lane * 0.8), Math.round(labelH * 0.68)); }
     c.fillStyle = lit ? rgba(bg) : rgba(fg, 0.75);
-    c.fillText(['KICK', 'CLAP', 'HATS', 'BASS'][i], cx, y);
+    c.fillText(say(['KICK', 'CLAP', 'HATS', 'BASS'][i]), cx, y);
   }
   c.letterSpacing = '0px';
 }
@@ -305,12 +346,12 @@ function osTop(c, r, m, col) {
 function osBottom(c, r, m, col) {
   const fg = col.fg, bg = col.bg, H = r.h, W = r.w, t = m.t;
   c.fillStyle = rgba(bg); c.fillRect(r.x, r.y, W, H);
-  const fs = (k, wt = 600) => `${wt} ${Math.max(7, Math.round(H * k))}px ${FONT}`;
+  const face = screenFont(FONT), fs = (k, wt = 600) => `${wt} ${Math.max(7, Math.round(H * k))}px ${face}`;
   const hH = Math.round(H * 0.13), fH = Math.round(H * 0.11);
   // the song along the top
   c.save(); c.beginPath(); c.rect(r.x + W * 0.04, r.y, W * 0.92, hH); c.clip();
   c.font = fs(0.058, 700); c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = rgba(fg);
-  const song = '♪ ' + (m.title || 'listening…').toUpperCase(), sw = c.measureText(song).width, room = W * 0.92;
+  const song = '♪ ' + (m.title || say('listening…')).toUpperCase(), sw = c.measureText(song).width, room = W * 0.92;
   if (sw <= room) c.fillText(song, r.x + W * 0.04, r.y + hH / 2);
   else { const off = (t * H * 0.12) % (sw + H * 0.2); c.fillText(song, r.x + W * 0.04 - off, r.y + hH / 2); c.fillText(song, r.x + W * 0.04 - off + sw + H * 0.2, r.y + hH / 2); }
   c.restore();
@@ -332,12 +373,12 @@ function osBottom(c, r, m, col) {
     c.strokeStyle = rgba(fg, p.drum ? 0.85 : p.inKey ? 0.6 : 0.22); c.lineWidth = p.chord && lit < 0.05 ? 2 : 1;
     c.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     c.fillStyle = lit > 0.5 ? rgba(bg) : rgba(fg, p.drum ? 1 : p.inKey ? 0.95 : 0.35);
-    c.fillText(p.label, x + w / 2, y + h / 2 + 1);
+    c.fillText(say(p.label), x + w / 2, y + h / 2 + 1);
     if (p.root) { c.fillStyle = lit > 0.5 ? rgba(bg) : rgba(fg, 0.8); c.fillRect(x + 3, y + 3, 3, 3); }
   });
   // the key and the tempo, as the app's footer
   c.font = fs(0.046); c.fillStyle = rgba(fg, 0.7); c.textAlign = 'center'; c.letterSpacing = `${Math.round(H * 0.004)}px`;
-  c.fillText(`${m.keyName} · ${m.bpm ? Math.round(m.bpm) : '---'} BPM`, r.x + W / 2, gy1 + fH * 0.55);
+  c.fillText(`${sayKey(m.keyName)} · ${m.bpm ? Math.round(m.bpm) : '---'} BPM`, r.x + W / 2, gy1 + fH * 0.55);
   c.letterSpacing = '0px';
 }
 

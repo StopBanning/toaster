@@ -12,6 +12,9 @@
   unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF; }
 @font-face { font-family: "JetBrains Mono"; font-weight: 100 800; font-display: swap; src: url(fonts/jetbrains-mono-vietnamese.woff2) format("woff2");
   unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB; }
+/* M PLUS 1 Code (SIL Open Font License, fonts/OFL-mplus1code.txt): the handheld's Japan edition's screens, cut down to
+   its letters and katakana (25 KB, fetched only when those screens draw) */
+@font-face { font-family: "M PLUS 1 Code"; font-weight: 100 700; font-display: swap; src: url(fonts/mplus1code-jp.woff2) format("woff2"); }
 
 /* --dim (comments, the footer, secondary text) is as faint as it can be and still read: at least
    4.5:1 against the background on every theme (WCAG AA) */
@@ -649,3 +652,23 @@ dialog form { text-align: right; margin-top: 14px; }
 #rename-form button { justify-self: end; }
 #device-list { display: grid; gap: 8px; margin: 8px 0; }
 #device-list button { text-align: left; }
+
+/* The desktop handheld (?widget): only the handheld game, on nothing (the window is see-through round the device and
+   its shadow), dragged by the device; its x shows when the pointer is over it */
+html.widget, body.widget { background: transparent !important; }
+body.widget > :not(#punch):not(#w-back) { display: none !important; }
+body.widget #punch { -webkit-app-region: drag; z-index: 1; }
+#w-back { display: none; }
+body.widget #w-back { display: block; position: fixed; top: 8px; right: 8px; z-index: 5; -webkit-app-region: no-drag; width: 26px; height: 26px; border: 0; border-radius: 13px; background: rgba(0, 0, 0, .55); color: #fff; font: 600 13px/26px var(--font); cursor: pointer; opacity: 0; transition: opacity .2s; }
+body.widget:hover #w-back { opacity: 1; }
+
+/* The picker under the background button (V still goes round them): a picture of each scene and background */
+#vis-menu { padding: 8px 10px 2px; width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 96px); overflow-y: auto; }
+#vis-menu .pick-head { padding: 2px 2px 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+#vis-menu .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
+#vis-menu button.tile { display: flex; flex-direction: column; gap: 4px; padding: 4px; border: 1px solid var(--faint); text-align: left; white-space: normal; }
+#vis-menu button.tile img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; background: var(--faint); }
+#vis-menu button.tile span { padding: 0 2px 2px; font-size: 12px; line-height: 1.25; }
+#vis-menu button.tile:hover, #vis-menu button.tile:focus-visible { border-color: var(--fg); }
+#vis-menu button.tile.on { border-color: var(--fg); background: var(--fg); color: var(--bg); }
+

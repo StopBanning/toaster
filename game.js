@@ -15,9 +15,11 @@ import { createSkins } from './gameskins.js';
 import { createScreens } from './gamescreen.js';
 import { createWarp, mul3, inv3, apply3 } from './gamewarp.js';
 import { createBoot, BOOT } from './gameboot.js';
+import { say, sayKey, screenFont, setLang } from './gamewords.js';
 
-// The screens' design chosen (visuals.js's GAME_SCREENS: the ones the app goes round, A).
-let chosen = 'os';
+// The screens' design chosen (visuals.js's GAME_SCREENS: the ones the app goes round, A). 'jp' is the Japan edition:
+// Toaster's own design (os), speaking Japanese, on the Japan edition's handheld.
+let chosen = 'os', jaFont = false;
 export function setGameScreens(name) { chosen = name; }
 
 const LANES = [
@@ -34,6 +36,7 @@ const CHORD = [190, 140, 255]; // the chord's notes on the pads
 const AHEAD = 16; // steps the top screen shows coming: a bar
 const SCALE = { minor: [0, 2, 3, 5, 7, 8, 10], major: [0, 2, 4, 5, 7, 9, 11] };
 const FONT = '"JetBrains Mono", Consolas, monospace';
+const face = () => screenFont(FONT); // (with the katakana when the Japan edition is the one shown: gamewords.js)
 const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 
@@ -60,6 +63,8 @@ const TWO = { top: [10, 10, 80, 60], bottom: [10, 84, 80, 60] };
 const STANCE = {"img": [1449, 2480], "dev": [4, 368, 986, 2254], "front": [7.0400232, 0.0783649, -1.242, -0.6453428, 9.6283697, 390.136, -0.0010233, 0.0002124, 1.0], "label": [6.9854686, 0.077762, 36.001, -0.6403435, 9.5537753, 392.0, -0.0010154, 0.0002107, 1.0], "mm": 8.7149, "led": [88.2, 1113.68], "parts": {"a": [0, 0, 159, 216, 567, 1858], "b": [161, 0, 152, 213, 434, 1907], "led": [315, 0, 41, 56, 68, 1086], "dl": [358, 0, 208, 301, 55, 1789], "dr": [568, 0, 208, 301, 55, 1789], "du": [778, 0, 208, 301, 55, 1789], "dd": [988, 0, 208, 301, 55, 1789]}, "lights": {"kick": [[0, 0, 66, 125, 512, 1949], [68, 0, 186, 199, 581, 1846]], "clap": [[256, 0, 220, 210, 447, 1883]]}};
 // (the pink edition's: the same model and camera, its own glow cuts and a pixel taller)
 const STANCE_PINK = {"img": [1449, 2481], "dev": [4, 368, 986, 2254], "front": [7.0400232, 0.0783649, -1.242, -0.6453428, 9.6283697, 390.136, -0.0010233, 0.0002124, 1.0], "label": [6.9854686, 0.077762, 36.001, -0.6403435, 9.5537753, 392.0, -0.0010154, 0.0002107, 1.0], "mm": 8.7149, "led": [88.2, 1113.68], "parts": {"a": [0, 0, 159, 216, 567, 1858], "b": [161, 0, 152, 213, 434, 1907], "led": [315, 0, 41, 56, 68, 1086], "dl": [358, 0, 208, 301, 55, 1789], "dr": [568, 0, 208, 301, 55, 1789], "du": [778, 0, 208, 301, 55, 1789], "dd": [988, 0, 208, 301, 55, 1789]}, "lights": {"kick": [[0, 0, 70, 127, 508, 1947], [72, 0, 130, 152, 581, 1889]], "clap": [[204, 0, 220, 195, 447, 1897]]}};
+// (the Japan edition's: the same model and camera, its own glow cuts)
+const STANCE_JP = {"img": [1449, 2481], "dev": [5, 370, 986, 2254], "front": [7.0400232, 0.0783649, -1.242, -0.6453428, 9.6283697, 390.136, -0.0010233, 0.0002124, 1.0], "label": [6.9854686, 0.077762, 36.001, -0.6403435, 9.5537753, 392.0, -0.0010154, 0.0002107, 1.0], "mm": 8.7149, "led": [88.2, 1113.68], "parts": {"a": [0, 0, 159, 216, 567, 1858], "b": [161, 0, 152, 213, 434, 1907], "led": [315, 0, 41, 56, 68, 1086], "dl": [358, 0, 208, 301, 55, 1789], "dr": [568, 0, 208, 301, 55, 1789], "du": [778, 0, 208, 301, 55, 1789], "dd": [988, 0, 208, 301, 55, 1789]}, "lights": {"kick": [[0, 0, 97, 160, 487, 1932], [99, 0, 130, 157, 581, 1889]], "clap": [[231, 0, 126, 161, 446, 1931], [359, 0, 88, 165, 579, 1882]]}};
 export const DEVICES = {
   white: { dir: '', size: [100, 190], pad: 12, screens: TWO, parts: WHITE_PARTS, press: 'ab', led: [12, 76.4] },
   clear: { dir: 'clear/', size: [100, 190], pad: 12, screens: TWO, parts: CLEAR_PARTS, lights: CLEAR_LIGHTS, press: 'ab', led: [12, 76.4] },
@@ -74,6 +79,11 @@ export const DEVICES = {
   stancePink: { dir: 'stance-pink/', stance: STANCE_PINK, size: STANCE_PINK.img, pad: 0, screens: TWO, parts: STANCE_PINK.parts, lights: STANCE_PINK.lights,
     tints: { kick: [255, 70, 160], clap: [255, 160, 210] }, press: 'ab', led: STANCE_PINK.led, label: [100.6, 21.2, 13.2, 37.6, 2.6],
     labelInk: ['rgba(88,8,56,0.92)', 'rgba(226,38,128,0.85)'] },
+  // (the Japan edition, after the Famicom: cream plastic, maroon buttons, a red cartridge, トースター engraved; its screens
+  // and its label in Japanese. window.__gameShell = 'stanceJp' shows it, for now)
+  stanceJp: { dir: 'stance-jp/', stance: STANCE_JP, size: STANCE_JP.img, pad: 0, screens: TWO, parts: STANCE_JP.parts, lights: STANCE_JP.lights,
+    tints: { kick: [255, 50, 64], clap: [255, 120, 120] }, press: 'ab', led: STANCE_JP.led, label: [100.6, 21.2, 13.2, 37.6, 2.6],
+    labelInk: ['rgba(140,18,36,0.92)', 'rgba(200,24,40,0.85)'], lang: 'ja' },
 };
 const image = (name) => { const im = new Image(); im.decoding = 'async'; im.src = new URL('./handheld/' + name, import.meta.url).href; return im; };
 // (a handheld's pictures, loaded the first time it's shown)
@@ -128,7 +138,12 @@ export function stanceLayout(W, H, dev, pocket = false) {
     st.low = Math.max(apply3(st.front, r[0], r[1] + r[3])[1], apply3(st.front, r[0] + r[2], r[1] + r[3])[1]);
   }
   let u, x, y;
-  if (pocket) {   // (the mini player: the handheld on its own, filling the window under its header)
+  if (pocket === 'widget') {   // (the desktop handheld: the device in a see-through window with room for its shadow, which
+    const hs = dy1 - dy0;      // falls to the right by a third of its width, and down by an eighth of its height)
+    u = Math.min(W * 0.74 / ws, H * 0.83 / hs);
+    x = W * 0.03 - dx0 * u;
+    y = H * 0.02 - dy0 * u;
+  } else if (pocket) {   // (the mini player: the handheld on its own, filling the window under its header)
     const top = H * 0.07, hs = dy1 - dy0;
     u = Math.min(W * 0.92 / ws, (H - top) * 0.94 / hs);
     x = (W - ws * u) / 2 - dx0 * u;
@@ -176,6 +191,9 @@ export function createGame() {
   // it was last drawn, and how far in it is (s; null when it's not booting)
   const booter = createBoot();
   let bootAt = null, lastDraw = -9, bootT = null, newSongPlaying = false;
+  // with no beat to play it stands by (idle below): since when (null while playing), whether the music stopped meanwhile
+  // (it powers on again when it's back), whether it has played since it came on, and the clock's last place
+  let idleAt = null, idleKind = null, idleSilent = false, hadBeat = false, lastVg = 0;
 
   // The game as it is now, for the skins to draw: the notes in the lanes (d: how far up from the target,
   // in bars; len, a bass note's length; held, a bass note being played; miss; g, its step; step, the clock's
@@ -271,19 +289,19 @@ export function createGame() {
     if (r[5] === 'across') return drawLabelAcross(ctx, L, r, info, s);
     const ink = s?.labelInk || INK;
     const u = L.u, x0 = L.x + (r[0] + r[4] + 0.7) * u, w = (r[2] - r[4] - 1.4) * u, y1 = L.y + (r[1] + r[3] - 1.4) * u, len = (r[3] - 2.8) * u;
-    const title = (info.title || 'listening…').toUpperCase();
+    const title = (info.title || say('listening…')).toUpperCase();
     ctx.save();
     ctx.translate(x0, y1); ctx.rotate(-Math.PI / 2);
     ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
     let size = w * 0.5;
-    ctx.font = `800 ${size}px ${FONT}`;
+    ctx.font = `800 ${size}px ${face()}`;
     const tw = ctx.measureText(title).width;
-    if (tw > len) { size *= len / tw; ctx.font = `800 ${size}px ${FONT}`; }
+    if (tw > len) { size *= len / tw; ctx.font = `800 ${size}px ${face()}`; }
     ctx.fillStyle = ink[0];
     ctx.fillText(title, 0, size * 0.95);
-    ctx.font = `700 ${Math.max(5, w * 0.17)}px ${FONT}`;
+    ctx.font = `700 ${Math.max(5, w * 0.17)}px ${face()}`;
     ctx.fillStyle = ink[1];
-    ctx.fillText([info.bpm ? `${Math.round(info.bpm)} BPM` : '', info.key].filter(Boolean).join('  ·  '), 0, size * 0.95 + w * 0.3);
+    ctx.fillText([info.bpm ? `${Math.round(info.bpm)} BPM` : '', sayKey(info.key)].filter(Boolean).join('  ·  '), 0, size * 0.95 + w * 0.3);
     ctx.restore();
   }
 
@@ -297,13 +315,13 @@ export function createGame() {
     ctx.save();
     ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
     let size = h * 0.4;
-    ctx.font = `800 ${size}px ${FONT}`;
+    ctx.font = `800 ${size}px ${face()}`;
     const tw = ctx.measureText(title).width;
-    if (tw > room) { size *= room / tw; ctx.font = `800 ${size}px ${FONT}`; }
+    if (tw > room) { size *= room / tw; ctx.font = `800 ${size}px ${face()}`; }
     const base = top + h * 0.1 + size * 0.85;
     ctx.fillStyle = ink[0];
     ctx.fillText(title, x0, base);
-    ctx.font = `700 ${Math.max(5, h * 0.13)}px ${FONT}`;
+    ctx.font = `700 ${Math.max(5, h * 0.13)}px ${face()}`;
     ctx.fillStyle = ink[1];
     ctx.fillText([info.bpm ? `${Math.round(info.bpm)} BPM` : '', info.key].filter(Boolean).join('  ·  '), x0, base + h * 0.26);
     ctx.restore();
@@ -408,7 +426,8 @@ export function createGame() {
       else if (down('hhc') || down('hho')) part(hatSide ? 'dr' : 'dl');
     }
     // the light: lit with the kick, fading, and its glow on the glass round it
-    const lit = !s.led ? 0 : bootT !== null ? (bootT < BOOT.light ? 0 : 0.9) : Math.max(0, 1 - (t - lastHit.bd) / 0.18); // (on, steady, as it boots)
+    const lit = !s.led ? 0 : idleAt !== null ? 0.08 + 0.1 * (0.5 + 0.5 * Math.sin(t * 2.2)) // (standing by: breathing, dim)
+      : bootT !== null ? (bootT < BOOT.light ? 0 : 0.9) : Math.max(0, 1 - (t - lastHit.bd) / 0.18); // (on, steady, as it boots)
     const LED = s.led;
     if (lit > 0.02) {
       part('led', lit);
@@ -517,10 +536,10 @@ export function createGame() {
       ctx.strokeStyle = rgba(c, 0.45 + 0.55 * hit);
       ctx.stroke();
       if (hit > 0) { ctx.fillStyle = rgba(c, 0.35 * hit); ctx.fill(); }
-      ctx.font = `700 ${Math.max(7, 2.1 * u)}px ${FONT}`;
+      ctx.font = `700 ${Math.max(7, 2.1 * u)}px ${face()}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = rgba(c, 0.6);
-      ctx.fillText(LANES[i].name, x + laneW / 2, targetY + stepH * 1.3);
+      ctx.fillText(say(LANES[i].name), x + laneW / 2, targetY + stepH * 1.3);
     }
     // the notes: a pill for a drum, a bar as long as it's held for the bass; past their target, gone
     // if hit, falling on, red and faint, if missed. They come in under the score, out of the dark.
@@ -581,38 +600,38 @@ export function createGame() {
       const p = pops[i];
       if (!p || !p.text || t - p.t > 0.62) continue;
       const k = Math.max(0, (t - p.t - 0.12) / 0.5), y = targetY - stepH * (1.6 + 2.2 * k);
-      ctx.font = `800 ${Math.max(7, 2.6 * u)}px ${FONT}`;
+      ctx.font = `800 ${Math.max(7, 2.6 * u)}px ${face()}`;
       ctx.lineWidth = Math.max(2, 0.9 * u);
       ctx.strokeStyle = `rgba(5,7,13,${0.85 * (1 - k * k)})`;
-      ctx.strokeText(p.text, laneX(i) + laneW / 2, y);
+      ctx.strokeText(say(p.text), laneX(i) + laneW / 2, y);
       ctx.fillStyle = rgba(p.color, 1 - k * k);
-      ctx.fillText(p.text, laneX(i) + laneW / 2, y);
+      ctx.fillText(say(p.text), laneX(i) + laneW / 2, y);
     }
     // the score, the tempo and the combo
     ctx.textBaseline = 'middle';
-    ctx.font = `700 ${Math.max(7, 2.2 * u)}px ${FONT}`;
+    ctx.font = `700 ${Math.max(7, 2.2 * u)}px ${face()}`;
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(200,220,255,0.55)';
-    ctx.fillText('SCORE', r.x + padX, r.y + hud * 0.34);
-    ctx.font = `800 ${Math.max(9, 3.6 * u)}px ${FONT}`;
+    ctx.fillText(say('SCORE'), r.x + padX, r.y + hud * 0.34);
+    ctx.font = `800 ${Math.max(9, 3.6 * u)}px ${face()}`;
     ctx.fillStyle = '#f2f6ff';
     ctx.fillText(String(score).padStart(7, '0'), r.x + padX, r.y + hud * 0.72);
     ctx.textAlign = 'right';
-    ctx.font = `700 ${Math.max(7, 2.2 * u)}px ${FONT}`;
+    ctx.font = `700 ${Math.max(7, 2.2 * u)}px ${face()}`;
     ctx.fillStyle = 'rgba(200,220,255,0.55)';
-    ctx.fillText(fever > 0 ? 'FEVER x2' : 'BPM', r.x + r.w - padX, r.y + hud * 0.34);
-    ctx.font = `800 ${Math.max(9, 3.6 * u)}px ${FONT}`;
+    ctx.fillText(say(fever > 0 ? 'FEVER x2' : 'BPM'), r.x + r.w - padX, r.y + hud * 0.34);
+    ctx.font = `800 ${Math.max(9, 3.6 * u)}px ${face()}`;
     ctx.fillStyle = fever > 0 ? (Math.floor(t * 8) % 2 ? '#ff5fb0' : '#ffd84a') : '#f2f6ff';
     ctx.fillText(bpm ? String(Math.round(bpm)) : '---', r.x + r.w - padX, r.y + hud * 0.72);
     if (combo >= 2) {
       const pulse = Math.max(0, 1 - (t - Math.max(...Object.values(lastHit))) / 0.12);
       ctx.textAlign = 'center';
-      ctx.font = `800 ${Math.max(10, (5.4 + 0.8 * pulse) * u)}px ${FONT}`;
+      ctx.font = `800 ${Math.max(10, (5.4 + 0.8 * pulse) * u)}px ${face()}`;
       ctx.fillStyle = `rgba(255,255,255,${0.75 + 0.25 * pulse})`;
       ctx.fillText(String(combo), r.x + r.w / 2, r.y + hud * 0.55);
-      ctx.font = `700 ${Math.max(6, 1.8 * u)}px ${FONT}`;
+      ctx.font = `700 ${Math.max(6, 1.8 * u)}px ${face()}`;
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.fillText('COMBO', r.x + r.w / 2, r.y + hud * 1.05);
+      ctx.fillText(say('COMBO'), r.x + r.w / 2, r.y + hud * 1.05);
     }
     ctx.restore();
   }
@@ -664,16 +683,16 @@ export function createGame() {
       ctx.lineWidth = Math.max(1, 0.35 * u);
       ctx.strokeStyle = rgba(row === 0 ? c : inKey ? [150, 170, 210] : [90, 100, 130], row === 0 ? 0.5 : inKey ? 0.4 : 0.2);
       ctx.stroke();
-      ctx.font = `800 ${Math.max(7, Math.min(ph * 0.3, 2.8 * u))}px ${FONT}`;
+      ctx.font = `800 ${Math.max(7, Math.min(ph * 0.3, 2.8 * u))}px ${face()}`;
       ctx.fillStyle = lit > 0.3 ? '#0a0d18' : rgba(row === 0 ? c : [200, 215, 245], row === 0 ? 0.85 : inKey ? 0.8 : 0.35);
-      ctx.fillText(label, x + pw / 2, y + ph / 2);
+      ctx.fillText(say(label), x + pw / 2, y + ph / 2);
       if (isRoot) { ctx.fillStyle = lit > 0.3 ? '#0a0d18' : 'rgba(200,215,245,0.7)'; ctx.beginPath(); ctx.arc(x + pw * 0.86, y + ph * 0.2, Math.max(1.2, 0.6 * u), 0, 7); ctx.fill(); }
     }
     // the song along the foot, sliding by when it's too long to fit
     const fy = r.y + r.h - foot / 2;
-    ctx.font = `700 ${Math.max(7, 2.2 * u)}px ${FONT}`;
-    const keyName = key ? `${NOTES[key.root]} ${key.mode.toUpperCase()}` : 'KEY ?';
-    const text = `♪ ${(title || 'listening…').toUpperCase()} · ${bpm ? Math.round(bpm) + ' BPM' : '--- BPM'} · ${keyName}`;
+    ctx.font = `700 ${Math.max(7, 2.2 * u)}px ${face()}`;
+    const keyName = key ? sayKey(`${NOTES[key.root]} ${key.mode.toUpperCase()}`) : say('KEY ?');
+    const text = `♪ ${(title || say('listening…')).toUpperCase()} · ${bpm ? Math.round(bpm) + ' BPM' : '--- BPM'} · ${keyName}`;
     if (textW.text !== text || textW.font !== ctx.font) textW = { text, font: ctx.font, w: ctx.measureText(text).width };
     const tw = textW.w, room = r.w - 2 * gap;
     ctx.fillStyle = 'rgba(200,220,255,0.7)';
@@ -690,10 +709,26 @@ export function createGame() {
     ctx.restore();
   }
 
+  // Which handheld is shown and its screens' design: the Japan edition has its own (and Toaster's own screens); otherwise
+  // the theme's, pink for the pink one; window.__gameShell, a switch to try the others (metal, white, clear, cart). Its
+  // words' language goes with it, and the Japan edition's face is fetched as it's first shown, so its letters are ready.
+  const shown = (colorway) => {
+    const dev = deviceOf(window.__gameShell || (chosen === 'jp' ? 'stanceJp' : colorway === 'pink' ? 'stancePink' : 'stance'));
+    setLang(dev.lang);
+    if (dev.lang === 'ja' && !jaFont && document.fonts) {
+      jaFont = true;
+      for (const w of [600, 700, 800]) document.fonts.load(`${w} 16px "M PLUS 1 Code"`).catch(() => {});
+    }
+    return { dev, design: chosen === 'jp' ? 'os' : chosen };
+  };
+  // (the Japan edition's screens in black and white whatever the theme, the body's red their one accent: blue screens
+  // fought the cream and red; the theme's ink is kept for the words round it)
+  const ownCol = (col, dev) => (dev.lang === 'ja' ? { ...col, bg: [11, 11, 13], fg: [244, 242, 236], hi: [230, 0, 18] } : col);
+
   return {
     reset,
     // Off, even for a moment: the next entry starts a fresh power-on, not the previous one's clock.
-    release() { reset(); bootAt = null; lastDraw = -9; newSongPlaying = false; },
+    release() { reset(); bootAt = null; lastDraw = -9; newSongPlaying = false; idleAt = idleKind = null; idleSilent = false; hadBeat = false; },
     // A new song while it stays on: the engine's new beat is not another power-on.
     newSong(playing) { newSongPlaying = playing; },
     // its power-on, from the next frame (it boots by itself each time it comes on after being off)
@@ -705,8 +740,8 @@ export function createGame() {
     // key); title: the song's; offset: how far ahead the blocks are drawn (s), so a note's crossing is
     // matched with its hit
     draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset = 0, pocket = false, colorway = 'blue' }) {
-      // (colorway: the theme's, pink for the pink one; window.__gameShell, a switch to try the others: metal, white, clear, cart)
-      const dev = deviceOf(window.__gameShell || (colorway === 'pink' ? 'stancePink' : 'stance'));
+      const { dev, design } = shown(colorway); // (colorway: the theme's)
+      col = ownCol(col, dev);
       for (const b of blocks) if (LANE[b.lane] !== undefined && b.gHit === undefined && b.gMiss === undefined && vg >= b.g) {
         // (a note made already past its target, starting up: played already, not judged)
         if (vg - b.g > 1) b.gHit = -1;
@@ -722,6 +757,10 @@ export function createGame() {
         }
         p.text = near < 0.06 ? 'PERFECT' : near < 0.13 ? 'GREAT' : 'GOOD';
       }
+      // back from standing by: after the music had stopped it powers on again, and for its first song; a new song's beat
+      // found just carries on
+      if (idleAt !== null) { if ((idleSilent || !hadBeat) && window.__gameBoot !== false) bootAt = 'next'; idleAt = idleKind = null; idleSilent = false; }
+      hadBeat = true; lastVg = vg;
       // on after being off, it boots (window.__gameBoot = false, a switch for tests, skips it)
       if (bootAt === 'next' || (!newSongPlaying && t - lastDraw > 0.5 && window.__gameBoot !== false)) bootAt = t;
       newSongPlaying = false;
@@ -731,7 +770,7 @@ export function createGame() {
       if (bootT !== null && bootT < BOOT.tear) { score = 0; combo = 0; pops.fill(null); bursts = []; } // (the game starts afresh as it tears in)
       ctx.clearRect(0, 0, W, H);
       const fever = t < feverUntil ? Math.min(1, (feverUntil - t) / 0.4) : 0;
-      const skin = skins[window.__gameSkin || chosen]; // (a switch, to try one the app doesn't go round: dance)
+      const skin = skins[window.__gameSkin || design]; // (a switch, to try one the app doesn't go round: dance)
       const m = skin && model(t, vg, blocks, fever, eng, title, col);
       const look = (at) => { const k = { ...(skin ? skin.screen : NEON), ...at }; if (k.glow) k.glow *= 1 + 0.6 * fever; return k; };
       const fx = window.__screenFx !== false; // (a mock-up switch, for side by sides)
@@ -750,7 +789,7 @@ export function createGame() {
           const r = L[which];
           if (!r) continue;
           const own = () => look(skin ? skin[which](c, r, m) : (which === 'top' ? drawTop : drawBottom)(c, r, s));
-          out[which] = bootT === null ? own() : booter.draw(c, r, which, bootT, window.__gameSkin || chosen, col, info, own, look({}));
+          out[which] = bootT === null ? own() : booter.draw(c, r, which, bootT, window.__gameSkin || design, col, info, own, look({}));
           if (fx) screens.over(c, r, which, dots ? out[which] : { ...out[which], dots: 0 });
         }
         return out;
@@ -760,6 +799,39 @@ export function createGame() {
       const L = layout(W, H, dev, pocket);
       const lk = screensOn(ctx, L, L.u, true);
       drawShell(ctx, L, t, dev, vg, fever, info, ink);
+      if (fx) for (const which of ['top', 'bottom']) if (L[which]) screens.spill(ctx, L[which], which, lk[which], 4 * L.u);
+    },
+    // No beat to play (kind: 'silence', nothing heard: before a song, or after one stopped; 'reading', a song's beat not
+    // found yet): the handheld stays where it is, standing by, its light breathing and its screens saying so (gameboot.js's
+    // idle: PLAY ANY SONG before it has played, CONTINUE? and its count after, READING for a song coming in).
+    idle(ctx, { W, H, col, t, eng, title, pocket = false, colorway = 'blue', kind = 'silence' }) {
+      const { dev, design } = shown(colorway);
+      col = ownCol(col, dev);
+      if (idleAt === null || kind !== idleKind) { idleAt = t; idleKind = kind; } // (CONTINUE?'s count from when the music stopped)
+      if (kind === 'silence') idleSilent = true;
+      bootAt = bootT = null; lastDraw = t;
+      const it = t - idleAt, mode = kind === 'reading' ? 'reading' : hadBeat ? 'continue' : 'insert';
+      ctx.clearRect(0, 0, W, H);
+      const skin = skins[window.__gameSkin || design], look = (at) => ({ ...(skin ? skin.screen : NEON), ...at });
+      const fx = window.__screenFx !== false;
+      const keyName = eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode.toUpperCase()}` : '';
+      const info = { title, bpm: eng.tempo?.bpm, key: keyName, parts: {} }, ink = W < H && rgba(col.ink || [0, 0, 0], 1);
+      const screensOn = (c, L, u, dots) => {
+        c.fillStyle = '#05070d';
+        for (const r of [L.top, L.bottom]) if (r) c.fillRect(r.x - u, r.y - u, r.w + 2 * u, r.h + 2 * u);
+        const out = {};
+        for (const which of ['top', 'bottom']) {
+          const r = L[which];
+          if (!r) continue;
+          out[which] = booter.idle(c, r, which, it, window.__gameSkin || design, col, info, look({}), mode);
+          if (fx) screens.over(c, r, which, dots ? out[which] : { ...out[which], dots: 0 });
+        }
+        return out;
+      };
+      if (dev.stance) return drawStance(ctx, W, H, dev, t, lastVg, 0, screensOn, fx, info, ink, pocket);
+      const L = layout(W, H, dev, pocket);
+      const lk = screensOn(ctx, L, L.u, true);
+      drawShell(ctx, L, t, dev, lastVg, 0, info, ink);
       if (fx) for (const which of ['top', 'bottom']) if (L[which]) screens.spill(ctx, L[which], which, lk[which], 4 * L.u);
     },
   };
