@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { LANGUAGES, say, sayKey, setLang, language } from '../renderer/gamewords.js';
 import { G, cellsOf, pixelCovers, pixelText, textW, fitText, fitPixel, ptextC, lcdTop, lcdBottom, vfdTop, vfdBottom } from '../renderer/gameskins.js';
-import { paintBoot, paintIdle } from '../renderer/gameboot.js';
+import { paintBoot, paintIdle, bigWord } from '../renderer/gameboot.js';
 
 test('the 0.4.23 Japanese table and every original pixel glyph retain their exact contents', () => {
   const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -108,6 +108,36 @@ test('actual boot, standby, LCD and VFD words fit the smallest 200x340 mini-play
     for (const paint of [lcdTop, lcdBottom, vfdTop, vfdBottom]) {
       const c = pixelCanvas(w, h); paint(c, w, h, m);
       assert.deepEqual(c.failures, [], `${lang} ${paint.name} ${w}`);
+    }
+  }
+  setLang('');
+});
+
+test("the boot's self-test stays clear of PRESS START on a short screen (on the desktop handheld they overlapped)", () => {
+  // the rows drawn by 1.0 s (all of them, before PRESS START at 1.02) against PRESS START's own at 1.2 s, blinking on
+  const rects = (w, h, bt, title) => {
+    const c = pixelCanvas(w, h), all = [];
+    c.fillRect = (x, y, width, height) => { if (width < w || height < h) all.push([y, y + height]); };
+    paintBoot(c, w, h, 'bottom', bt, palette, { ...info, title, key: 'Ab MINOR' });
+    return all;
+  };
+  for (const lang of Object.keys(LANGUAGES)) for (const title of ['BETTER OFF ALONE', 'SOL']) for (const w of [190, 200, 212, 220, 229, 240, 260, 300]) {
+    setLang(lang);
+    const h = Math.floor(w * 0.75), before = rects(w, h, 1.0, title), seen = new Set(before.map(String));
+    const press = rects(w, h, 1.2, title).filter((r) => !seen.has(String(r)));
+    assert.ok(press.length, `${lang} ${w}: PRESS START drawn`);
+    assert.ok(Math.max(...before.map((r) => r[1])) < Math.min(...press.map((r) => r[0])), `${lang} "${title}" at ${w}x${h}`);
+  }
+  setLang('');
+});
+
+test('the big words come whole on a small screen (the handheld on the desktop cut CONTINUE? to CONTINU…)', () => {
+  for (const lang of Object.keys(LANGUAGES)) {
+    setLang(lang);
+    for (const word of ['TOASTER', 'CONTINUE?', 'GAME OVER']) for (const lw of [80, 100, 124, 150, 300]) {
+      const big = bigWord(say(word), lw - 4, 1);
+      assert.equal(big.text, pixelText(say(word)), `${lang} ${word} at ${lw}`);
+      assert.ok(textW(big.text, big.size) <= lw - 4, `${lang} ${word} at ${lw}`);
     }
   }
   setLang('');

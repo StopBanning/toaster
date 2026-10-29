@@ -1,4 +1,4 @@
-// The handheld game's screens in other designs (skins). 'neon' is game.js's own drawing; these paint the same
+// The handheld game's screens in other designs (skins). Neon's pads stay in game.js; these paint the same
 // game from a model of it that game.js makes each frame (see model() there): the notes coming down the four
 // lanes, the targets as they're hit, the latest judgement, the score and the combo, FEVER, the sixteen pads and
 // the song.
@@ -9,6 +9,7 @@
 //   dance: arrows rising onto a row of targets, coloured by where in the beat they fall; the pad underneath
 // Labels use gamewords.js. Older skins keep their original English labels in Japanese for pixel compatibility.
 import { say, sayKey, screenFont, skinSay, skinKey } from './gamewords.js';
+import { head } from './codeview.js';
 const FONT = '"JetBrains Mono", Consolas, monospace';
 const rgba = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
@@ -96,8 +97,32 @@ const G = {
   '«': '00000 00101 01010 10100 01010 00101 00000', '»': '00000 10100 01010 00101 01010 10100 00000',
   '…': '00000 00000 00000 00000 00000 00000 10101',
 };
+// Code adds syntax and lowercase glyphs without changing the original UI glyph table.
+const CODE_G = {
+  '"': '01010 01010 00000 00000 00000 00000 00000', '*': '00000 10101 01110 11111 01110 10101 00000',
+  '[': '01110 01000 01000 01000 01000 01000 01110', ']': '01110 00010 00010 00010 00010 00010 01110',
+  '{': '00011 00100 00100 11000 00100 00100 00011', '}': '11000 00100 00100 00011 00100 00100 11000',
+  '<': '00001 00010 00100 01000 00100 00010 00001', '>': '10000 01000 00100 00010 00100 01000 10000',
+  '=': '00000 00000 11111 00000 11111 00000 00000', '_': '00000 00000 00000 00000 00000 00000 11111',
+  '~': '00000 00000 01001 10110 00000 00000 00000', '%': '11001 11010 00100 01000 10110 00110 00000',
+  '|': '00100 00100 00100 00100 00100 00100 00100', '…': '00000 00000 00000 00000 00000 10101 10101',
+  // Code keeps its case (the pad legends are uppercase). The old lowercase b above is also the key's flat sign.
+  a: '00000 00000 01110 00001 01111 10001 01111', c: '00000 00000 01111 10000 10000 10000 01111',
+  d: '00001 00001 01101 10011 10001 10001 01111', e: '00000 00000 01110 10001 11111 10000 01111',
+  f: '00110 01001 01000 11100 01000 01000 01000', g: '00000 01111 10001 10001 01111 00001 01110',
+  h: '10000 10000 10110 11001 10001 10001 10001', i: '00100 00000 01100 00100 00100 00100 01110',
+  j: '00010 00000 00110 00010 00010 10010 01100', k: '10000 10000 10010 10100 11000 10100 10010',
+  l: '01100 00100 00100 00100 00100 00100 01110', m: '00000 00000 11010 10101 10101 10101 10101',
+  n: '00000 00000 10110 11001 10001 10001 10001', o: '00000 00000 01110 10001 10001 10001 01110',
+  p: '00000 11110 10001 10001 11110 10000 10000', q: '00000 01111 10001 10001 01111 00001 00001',
+  r: '00000 00000 10110 11001 10000 10000 10000', s: '00000 00000 01111 10000 01110 00001 11110',
+  t: '01000 01000 11100 01000 01000 01001 00110', u: '00000 00000 10001 10001 10001 10011 01101',
+  v: '00000 00000 10001 10001 10001 01010 00100', w: '00000 00000 10001 10001 10101 10101 01010',
+  x: '00000 00000 10001 01010 00100 01010 10001', y: '00000 10001 10001 10001 01111 00001 01110',
+  z: '00000 00000 11111 00010 00100 01000 11111',
+};
 // each letter's rows as runs of lit pixels: [[x, y, len], ...]
-const RUNS = Object.fromEntries(Object.entries(G).map(([ch, rows]) => {
+const RUNS = Object.fromEntries(Object.entries({ ...G, ...CODE_G }).map(([ch, rows]) => {
   const runs = [];
   rows.split(' ').forEach((row, y) => { for (let x = 0; x < 5; x++) if (row[x] === '1') { let n = 1; while (row[x + n] === '1') n++; runs.push([x, y, n]); x += n - 1; } });
   return [ch, runs];
@@ -381,19 +406,46 @@ function osTop(c, r, m, col) {
   c.letterSpacing = '0px';
 }
 
+// The bottom screen: the pads, or the code while it's typed (game.js turns the page: m.page), turning with a wipe
+// down the screen, a line along its edge
 function osBottom(c, r, m, col) {
-  const fg = col.fg, bg = col.bg, H = r.h, W = r.w, t = m.t;
-  c.fillStyle = rgba(bg); c.fillRect(r.x, r.y, W, H);
-  const face = screenFont(FONT), fs = (k, wt = 600) => `${wt} ${Math.max(7, Math.round(H * k))}px ${face}`;
-  const hH = Math.round(H * 0.13), fH = Math.round(H * 0.11);
-  // the song along the top
+  return pageBottom(c, r, m, () => osPads(c, r, m, col), () => osCode(c, r, m, col), rgba(col.fg));
+}
+
+// Every design uses the same downward wipe, in its painter's coordinates (including the pixel screens).
+export function pageBottom(c, r, m, pads, code, edge) {
+  const pg = m.page, paint = (which) => (which === 'code' ? code : pads)();
+  if (!pg || pg.k >= 1 || pg.from === pg.now) return paint(pg ? pg.now : 'pads');
+  paint(pg.from);
+  const y = Math.round(r.h * pg.k * pg.k * (3 - 2 * pg.k));
+  c.save(); c.beginPath(); c.rect(r.x, r.y, r.w, y); c.clip(); paint(pg.now); c.restore();
+  c.fillStyle = edge; c.fillRect(r.x, r.y + y - 1, r.w, 2);
+}
+
+// On both pages: the song along the top (sliding by when it's too long), the key and the tempo along the foot as the
+// app's footer
+function osSong(c, r, m, col, hH, fs) {
+  const W = r.w, H = r.h, t = m.t;
   c.save(); c.beginPath(); c.rect(r.x + W * 0.04, r.y, W * 0.92, hH); c.clip();
-  c.font = fs(0.058, 700); c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = rgba(fg);
+  c.font = fs(0.058, 700); c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = rgba(col.fg);
   const song = '♪ ' + (m.title || say('listening…')).toUpperCase(), sw = c.measureText(song).width, room = W * 0.92;
   if (sw <= room) c.fillText(song, r.x + W * 0.04, r.y + hH / 2);
   else { const off = (t * H * 0.12) % (sw + H * 0.2); c.fillText(song, r.x + W * 0.04 - off, r.y + hH / 2); c.fillText(song, r.x + W * 0.04 - off + sw + H * 0.2, r.y + hH / 2); }
   c.restore();
-  c.fillStyle = rgba(fg, 0.4); c.fillRect(r.x, r.y + hH - 1, W, 1);
+  c.fillStyle = rgba(col.fg, 0.4); c.fillRect(r.x, r.y + hH - 1, W, 1);
+}
+function osFoot(c, r, m, col, fH, fs) {
+  c.font = fs(0.046); c.fillStyle = rgba(col.fg, 0.7); c.textAlign = 'center'; c.textBaseline = 'middle'; c.letterSpacing = `${Math.round(r.h * 0.004)}px`;
+  c.fillText(fitText(`${sayKey(m.keyName)} · ${m.bpm ? Math.round(m.bpm) : '---'} BPM`, r.w * 0.92, (s) => c.measureText(s).width), r.x + r.w / 2, r.y + r.h - fH + fH * 0.55);
+  c.letterSpacing = '0px';
+}
+
+function osPads(c, r, m, col) {
+  const fg = col.fg, bg = col.bg, H = r.h, W = r.w;
+  c.fillStyle = rgba(bg); c.fillRect(r.x, r.y, W, H);
+  const face = screenFont(FONT), fs = (k, wt = 600) => `${wt} ${Math.max(7, Math.round(H * k))}px ${face}`;
+  const hH = Math.round(H * 0.13), fH = Math.round(H * 0.11);
+  osSong(c, r, m, col, hH, fs);
   // the pads, as the app's buttons: a line round them; lit, filled and the label in the background's colour
   const gx = Math.round(W * 0.04), gap = Math.round(W * 0.025), gy = r.y + hH + gap, gy1 = r.y + H - fH;
   const pw = (W - 2 * gx - 3 * gap) / 4, ph = (gy1 - gy - 3 * gap) / 4;
@@ -414,10 +466,94 @@ function osBottom(c, r, m, col) {
     c.fillText(fitText(say(p.label), w - 4, (s) => c.measureText(s).width), x + w / 2, y + h / 2 + 1);
     if (p.root) { c.fillStyle = lit > 0.5 ? rgba(bg) : rgba(fg, 0.8); c.fillRect(x + 3, y + 3, 3, 3); }
   });
-  // the key and the tempo, as the app's footer
-  c.font = fs(0.046); c.fillStyle = rgba(fg, 0.7); c.textAlign = 'center'; c.letterSpacing = `${Math.round(H * 0.004)}px`;
-  c.fillText(fitText(`${sayKey(m.keyName)} · ${m.bpm ? Math.round(m.bpm) : '---'} BPM`, W * 0.92, (s) => c.measureText(s).width), r.x + W / 2, gy1 + fH * 0.55);
-  c.letterSpacing = '0px';
+  osFoot(c, r, m, col, fH, fs);
+}
+
+// The other page: the code's parts (not the song's three lines above them, on the code view already), a line to a
+// row, big enough to read on the little screen: each its head, what plays (its sound's settings left to the code
+// view), the one being typed in full, sliding along to keep its caret in sight; its tokens lit inverted as they play,
+// as the pads are, and a change flashing as it lands on the bar
+const codeSlide = new WeakMap(); // (each screen's rows, separate at different resolutions and in different games)
+function osCode(c, r, m, col) {
+  const fg = col.fg, bg = col.bg, H = r.h, W = r.w;
+  c.fillStyle = rgba(bg); c.fillRect(r.x, r.y, W, H);
+  const face = screenFont(FONT), fs = (k, wt = 600) => `${wt} ${Math.max(7, Math.round(H * k))}px ${face}`;
+  const hH = Math.round(H * 0.13), fH = Math.round(H * 0.11);
+  osSong(c, r, m, col, hH, fs);
+  const x0 = r.x + W * 0.04, room = W * 0.92, top = r.y + hH + Math.round(H * 0.015);
+  const rh = (r.y + H - fH - top) / 7.2; // (the seven parts)
+  c.font = `500 ${Math.max(7, Math.round(rh * 0.6))}px ${face}`; c.textBaseline = 'middle'; c.textAlign = 'left';
+  codeRows(c, r, m, { x0, room, top, rh, paper: rgba(bg), ink: (_L, a = 1) => rgba(fg, a) });
+  osFoot(c, r, m, col, fH, fs);
+}
+
+// Seven parts, with the same heads, typing, inversion and truncation in every design. A pixel screen supplies its
+// own measure/draw functions, so every offset (including the caret and lit tokens) still follows the source text.
+function codeRows(c, r, m, { x0, room, top, rh, paper, ink, pixel = false, ghost = null }) {
+  const pk = pixel ? Math.max(1, Math.floor(rh / 8)) : 1;
+  const measure = pixel ? (s) => s.length * 6 * pk : (s) => c.measureText(s).width;
+  const draw = pixel ? (s, x, y, color) => ptext(c, s, Math.round(x), Math.round(y - 3.5 * pk), color, pk)
+    : (s, x, y, color) => { c.fillStyle = color; c.fillText(s, x, y); };
+  const cw = measure('0'), dots = measure('…');
+  let slides = codeSlide.get(c);
+  if (!slides) codeSlide.set(c, slides = {});
+  let y = top;
+  (m.code || []).slice(3, 10).forEach((L) => {
+    const y0 = Math.round(y), h = Math.round(rh), cy = y0 + h / 2, text = L.caret >= 0 ? L.text : head(L.text);
+    const litY = pixel ? Math.round(cy - 4 * pk) : y0 + Math.round(h * 0.1), litH = pixel ? 8 * pk : Math.round(h * 0.8);
+    y += rh;
+    if (ghost) for (let x = x0; x + 5 * pk <= x0 + room; x += 6 * pk) ptext(c, '8', x, Math.round(cy - 3.5 * pk), ghost, pk);
+    if (L.landed < 0.4) { c.fillStyle = ink(L, 0.25 * (1 - L.landed / 0.4)); c.fillRect(r.x, y0, r.w, h); }
+    if (!text) return;
+    const at = (k) => measure(text.slice(0, k));
+    const want = L.caret >= 0 ? Math.max(0, at(L.caret) + 2 * cw - room) : 0;
+    const prev = slides[L.id], old = prev?.room === room && prev?.cw === cw ? prev.x : want;
+    const slide = L.caret >= 0 ? old + (want - old) * 0.3 : 0; // (home at once when it's typed: its head again)
+    slides[L.id] = { x: slide, room, cw };
+    const x = x0 - Math.round(slide), cut = L.caret < 0 && at(text.length) > room;
+    c.save(); c.beginPath(); c.rect(x0, y0, cut ? room - dots : room, h); c.clip();
+    draw(text, x, cy, ink(L, L.quiet ? 0.45 : 1));
+    for (const [a, b] of L.lit) {
+      if (b > text.length) continue; // (lit in the settings the head leaves out: a bass line's .struct)
+      const xa = x + at(a), xb = x + at(b);
+      c.fillStyle = ink(L); c.fillRect(Math.round(xa) - 1, litY, Math.round(xb - xa) + 2, litH);
+      draw(text.slice(a, b), xa, cy, paper);
+    }
+    if (L.caret >= 0) { // (a block caret, the letter under it in the background's colour)
+      const xc = x + at(L.caret);
+      c.fillStyle = ink(L); c.fillRect(Math.round(xc), litY, Math.max(2, Math.round(cw)), litH);
+      if (text[L.caret]) draw(text[L.caret], xc, cy, paper);
+    }
+    c.restore();
+    if (cut) draw('…', x0 + room - dots, cy, ink(L, L.quiet ? 0.45 : 0.8));
+  });
+}
+
+const NEON_CODE = { bd: [255, 77, 141], sd: [255, 176, 46], hhc: [62, 230, 255], hho: [62, 230, 255], bassline: [156, 255, 87], chords: [190, 140, 255], vox: [200, 215, 245] };
+function neonCode(c, r, m) {
+  const col = { fg: [200, 220, 255], bg: [7, 10, 18] }, H = r.h;
+  c.fillStyle = rgba(col.bg); c.fillRect(r.x, r.y, r.w, H);
+  const fs = (k, wt = 700) => `${wt} ${Math.max(7, Math.round(H * k))}px ${screenFont(FONT)}`;
+  const compact = m.compactCode || H < 85, hH = compact ? 0 : Math.round(H * 0.13), fH = compact ? 0 : Math.round(H * 0.11);
+  const top = r.y + hH + H * 0.015, rh = (r.y + H - fH - top) / 7.2;
+  if (!compact) osSong(c, r, m, col, hH, fs);
+  c.font = `700 ${Math.max(7, Math.round(rh * 0.6))}px ${screenFont(FONT)}`; c.textBaseline = 'middle'; c.textAlign = 'left';
+  codeRows(c, r, m, { x0: r.x + r.w * 0.04, room: r.w * 0.92, top, rh, paper: rgba(col.bg), ink: (L, a = 1) => rgba(NEON_CODE[L.id] || col.fg, a) });
+  if (!compact) osFoot(c, r, m, col, fH, fs);
+}
+
+// LCD's dark dot segments and VFD's cyan phosphor, over faint unlit cells. On the smallest screens the seven rows
+// take the whole height; the title/key/tempo stay on the other screen and the cartridge, leaving every glyph intact.
+function pixelCode(c, lw, lh, m, vfd = false) {
+  const paper = vfd ? vc(VFD.bg) : L0, ink = vfd ? (_L, a = 1) => vc(VFD.cyan, a) : (_L, a = 1) => a < 0.5 ? L2 : L3;
+  c.fillStyle = paper; c.fillRect(0, 0, lw, lh);
+  const chrome = !m.compactCode && lh >= 85, top = chrome ? 13 : 0, end = chrome ? lh - 11 : lh;
+  if (chrome) {
+    ptext(c, fitPixel('♪ ' + (m.title || skinSay('LISTENING')).toUpperCase(), lw - 8), 4, 2, ink());
+    const footer = `${skinKey(m.keyName)} ${m.bpm ? Math.round(m.bpm) : '---'}`;
+    ptext(c, fitPixel(footer, lw - 8), 4, lh - 9, ink(null, 0.6));
+  }
+  codeRows(c, { x: 0, y: 0, w: lw, h: lh }, m, { x0: 2, room: lw - 4, top, rh: (end - top) / 7, paper, ink, pixel: true, ghost: vfd ? vc(VFD.cyan, VFD.ghost) : null });
 }
 
 // ---------------------------------------------------------------- dance: arrows rising onto a row of targets
@@ -786,7 +922,7 @@ function vfdBottom(c, lw, lh, m) {
 export { lcdTop, lcdBottom, vfdTop, vfdBottom }; // pure low-resolution painters for canvas fit checks
 
 // ---------------------------------------------------------------- the painters
-export function createSkins() {
+export function createSkins(neon = {}) {
   const lows = {}; // each LCD screen: its canvas, and the frame before (for its lag)
   // The LCD drawn at its own low resolution, 150 to 300 pixels across, each pixel a whole number of the canvas's
   // (one, on a small window), then laid on the screen square and sharp: its pixels lag (each frame a mix with the
@@ -838,17 +974,25 @@ export function createSkins() {
     ctx.globalCompositeOperation = 'multiply'; ctx.translate(x, y); ctx.fillStyle = L.pat; ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
+  const lcdCode = (ctx, r, m) => low(ctx, r, 'lbottom', (c, lw, lh) => pixelCode(c, lw, lh, m));
+  const vfdCode = (ctx, r, m) => dots(ctx, r, 'vbottom', (c, lw, lh) => pixelCode(c, lw, lh, m, true));
+  const pixelBottom = (ctx, r, m, vfd) => (vfd ? dots : low)(ctx, r, vfd ? 'vbottom' : 'lbottom', (c, lw, lh) =>
+    pageBottom(c, { x: 0, y: 0, w: lw, h: lh }, m, () => (vfd ? vfdBottom : lcdBottom)(c, lw, lh, m),
+      () => pixelCode(c, lw, lh, m, vfd), vfd ? vc(VFD.cyan) : L3));
   return {
     // (screen: how each is as a real screen, gamescreen.js; the LCD is lit by the room and has its own dots and lag)
     lcd: {
       top: (ctx, r, m) => low(ctx, r, 'ltop', (c, lw, lh) => lcdTop(c, lw, lh, m)),
-      bottom: (ctx, r, m) => low(ctx, r, 'lbottom', (c, lw, lh) => lcdBottom(c, lw, lh, m)),
-      screen: { dots: 0, shade: 1.5 },
+      bottom: (ctx, r, m) => pixelBottom(ctx, r, m, false), code: lcdCode,
+      screen: { dots: 0, shade: 1.5 }, codePage: true,
     },
-    os: { top: (ctx, r, m) => osTop(ctx, r, m, m.col), bottom: (ctx, r, m) => osBottom(ctx, r, m, m.col), screen: { black: [14, 16, 26], glow: 0.25 } },
+    os: { top: (ctx, r, m) => osTop(ctx, r, m, m.col), bottom: (ctx, r, m) => osBottom(ctx, r, m, m.col), code: (ctx, r, m) => osCode(ctx, r, m, m.col), screen: { black: [14, 16, 26], glow: 0.25 }, codePage: true },
+    neon: { top: (ctx, r, m) => neon.top(ctx, r, m.neon),
+      bottom: (ctx, r, m) => pageBottom(ctx, r, m, () => neon.pads(ctx, r, m.neon), () => neonCode(ctx, r, m), 'rgba(200,220,255,0.85)'),
+      code: neonCode, screen: { black: [10, 13, 24], glow: 0.5, lag: 0.18 }, codePage: true },
     // (the VFD at its own low resolution as round dots, dark between; it glows, so its glow is the screen pass's)
-    vfd: { top: (ctx, r, m) => dots(ctx, r, 'vtop', (c, lw, lh) => vfdTop(c, lw, lh, m)), bottom: (ctx, r, m) => dots(ctx, r, 'vbottom', (c, lw, lh) => vfdBottom(c, lw, lh, m)),
-      screen: { dots: 0, glow: 0.6, lag: 0.08, shade: 1.1 } },
+    vfd: { top: (ctx, r, m) => dots(ctx, r, 'vtop', (c, lw, lh) => vfdTop(c, lw, lh, m)), bottom: (ctx, r, m) => pixelBottom(ctx, r, m, true), code: vfdCode,
+      screen: { dots: 0, glow: 0.6, lag: 0.08, shade: 1.1 }, codePage: true },
     dance: { top: (ctx, r, m) => danceTop(ctx, r, m), bottom: (ctx, r, m) => danceBottom(ctx, r, m), screen: { black: [12, 14, 24], glow: 0.45, lag: 0.15 } },
     highway: { top: (ctx, r, m) => highwayTop(ctx, r, m), bottom: (ctx, r, m) => highwayBottom(ctx, r, m), screen: { black: [12, 14, 24], glow: 0.45, lag: 0.12 } },
   };

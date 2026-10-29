@@ -4,6 +4,16 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.25', items: [
+    { act: 'blocks', text: "the handheld's bottom screen turns into the code now and then: its seven parts, typing as Toaster types, on the bar lines" },
+    { act: 'strength', in: 'the game', text: "the neon and LCD screens have the code page too, each in its own light: the neon glows, the LCD's in dark segments" },
+    { act: 'visual', text: "each night scene with a moon has a moon of its own" },
+    { key: 'key', text: "the key line holds: no more flipping between major and minor halfway through a song" },
+    { act: 'visual', text: "presets, the first row of the background picker: live coding, visualizer, handheld, the Japan edition and for TikTok, a whole setup in one click" },
+    { key: 'Ctrl+K', text: "every action, scene, background, code look and theme by name: type a few letters, then Enter" },
+    { key: '?', text: "report a bug, in the help: an XP error box that writes a GitHub issue for you to read, edit and send yourself" },
+    { key: 'first visit', text: "three hints, one at a time, for the keys to start with: the background, the code look and hiding the code" },
+  ] },
   { version: '0.4.24', items: [
     { act: 'export', text: "X keeps the whole recorded song in a compact program, including fills, short sections and chords that used to vanish" },
     { act: 'tap', text: "tap four beats and Toaster sets exactly that tempo" },

@@ -641,3 +641,33 @@ body.widget:hover #w-back { opacity: 1; }
 #vis-menu button.tile:hover, #vis-menu button.tile:focus-visible { border-color: var(--fg); }
 #vis-menu button.tile.on { border-color: var(--fg); background: var(--fg); color: var(--bg); }
 
+/* Ctrl+K: a search box, and the best matches under it with their keys */
+#command-palette { position: fixed; top: 10vh; margin: 0 auto; width: min(560px, 92vw); box-sizing: border-box; padding: 10px; color: var(--fg); background: var(--bg); border: 1px solid var(--dim); }
+#command-palette input { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--fg); border: 1px solid var(--dim); padding: 10px; font: inherit; }
+#command-results { margin-top: 8px; }
+#command-results button { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; border: 0; padding: 10px; background: transparent; color: var(--fg); font: inherit; }
+#command-results button[aria-selected=true] { background: var(--hl-bg); }
+#command-results kbd, .palette-empty { color: var(--dim); font: inherit; }
+/* the help's first row: the search, and the bug report */
+#help .help-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+#help .help-tools button { min-height: 36px; }
+
+/* The first visit's hints, over their key in the footer */
+#first-run-hint { position: fixed; z-index: 30; bottom: 52px; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid var(--dim); border-radius: 999px; background: var(--bg); color: var(--fg); font: 13px var(--font); text-align: left; opacity: 0; transition: opacity 200ms; }
+#first-run-hint.show { opacity: 1; }
+#first-run-hint kbd { display: inline-block; border: 1px solid var(--dim); padding: 1px 5px; font: inherit; color: var(--fg); }
+body.clean #first-run-hint, body.vertical #first-run-hint, body.mini #first-run-hint, body.widget #first-run-hint, body.recording #first-run-hint { display: none; }
+
+/* Report a bug: an XP error-report box (the window itself is the .xp style the alerts use) */
+#bug-report { position: fixed; width: min(540px, calc(100vw - 32px)); max-width: 540px; border: 0; padding: 0 3px 3px; box-sizing: border-box; }
+#bug-report .xp-msg p { max-width: none; font: 13px Tahoma, sans-serif; }
+#bug-report .bug-label { display: block; margin: 12px 16px 0; font: 12px Tahoma, sans-serif; color: #000; }
+#bug-report textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 5px; background: #fff; color: #000; border: 1px solid #7f9db9; padding: 6px; font: 12px Tahoma, sans-serif; resize: vertical; }
+#bug-report #bug-note { margin: 10px 16px; font: 12px Tahoma, sans-serif; }
+
+/* Presets: the picker's first row, five setups a click each (two to a row on a phone) */
+.pick-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.pick-presets .tile img { width: 100%; height: auto; aspect-ratio: 8 / 5; object-fit: cover; }
+@media (max-width: 600px) { .pick-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* (the header stays solid while the picker is open, even where it fades on a touch screen) */
+header:has(#vis-menu:not([hidden])) { opacity: 1 !important; }

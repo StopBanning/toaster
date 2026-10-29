@@ -437,6 +437,10 @@ const WAITING = 0.42, LIT = 0.95, GHOST = 0.14; // how bright: a block, one cros
 export const GAME_SCREENS = ['os', 'neon', 'lcd', 'jp'];
 let gameScreens = GAME_SCREENS[0], gameMod = null, gameLoad = null;
 export function setGameScreens(name) { if (GAME_SCREENS.includes(name)) { gameScreens = name; gameMod?.setGameScreens(name); } }
+// The code view's lines as they stand, for the handheld's bottom screen to show now and then (app.js hands over a
+// function; the game calls it as it draws)
+let gameCode = null;
+export function setGameCode(fn) { gameCode = fn; }
 // (a failed fetch, the website offline, is tried again after a few seconds, not every frame)
 const loadGame = () => (gameLoad ??= import('./game.js').then((m) => { gameMod = m; m.setGameScreens(gameScreens); return m; }, () => { setTimeout(() => { gameLoad = null; }, 5000); return null; }));
 
@@ -599,7 +603,7 @@ export function createPunchcard(canvas) {
       }
       if (look === 'game') {
         if (!game) { loadGame().then((m) => { if (m) game ??= m.createGame(); }); ctx.clearRect(0, 0, W, H); return; }
-        game.draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset, pocket, colorway });
+        game.draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset, pocket, colorway, code: gameCode });
         return;
       }
       ctx.clearRect(0, 0, W, H);

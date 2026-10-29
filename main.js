@@ -434,6 +434,13 @@ function setUpIpc() {
   ipcMain.handle('open:strudel', (_e, url) => {
     if (typeof url === 'string' && url.startsWith('https://strudel.cc/#') && url.length < 60000) return shell.openExternal(url);
   });
+  // A bug report's draft, a GitHub new-issue link, opened in your browser. Only Toaster's own
+  // new-issue page goes through here (helpers/issue-url.cjs, loaded when it's first needed: the
+  // test copies of the app don't carry helpers/).
+  ipcMain.handle('open:bug-issue', (_e, url) => {
+    if (!require('./helpers/issue-url.cjs').isAllowedIssueUrl(url)) throw new Error('Invalid bug report URL');
+    return shell.openExternal(url);
+  });
   // Recording (M): a capture id for the page itself (just what's in the window: no frame, no
   // cursor, nothing else on screen), then the video it sends, piece by piece, into a file in
   // Videos\Toaster. The taskbar icon goes red while it records.

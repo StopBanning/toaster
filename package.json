@@ -1,7 +1,7 @@
 {
   "name": "toaster",
   "productName": "Toaster",
-  "version": "0.4.24",
+  "version": "0.4.25",
   "description": "Hears whatever is playing and writes it out as live Strudel code, with visuals.",
   "author": "Colin",
   "license": "MIT",

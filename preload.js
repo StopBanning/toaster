@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('nc', {
   stopFaces: () => ipcRenderer.invoke('faces:stop'),
   // Opens a https://strudel.cc/#... link in the default browser.
   openStrudel: (url) => ipcRenderer.invoke('open:strudel', url),
+  // Opens a bug report's draft (a github.com/StopBanning/toaster/issues/new link) the same way.
+  openBugIssue: (url) => ipcRenderer.invoke('open:bug-issue', url),
   // Recording (M): a capture id for the page itself, then the video to a file, piece by piece.
   recSource: () => ipcRenderer.invoke('rec:source'),
   recStart: (ext) => ipcRenderer.invoke('rec:start', ext),

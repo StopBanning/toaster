@@ -216,6 +216,7 @@ uniform vec4 rip[4];                // ripples: x (units of the height), y, age 
 uniform vec4 birds;                 // the flock: x of its lead, y, wings up (1) or down (0), on (1)
 uniform vec4 shoot;                 // a falling star: x, y where it starts, its age (s), on (1)
 uniform vec2 sunAt;                 // where the sun (or the moon) is: x, y (units of the height)
+uniform float moonLit;              // by night, how much of the moon is lit (1 full, 0.5 half): its halo and its wash
 uniform vec4 band;                  // the Milky Way: x at the horizon, tilt, width, the core along it
 uniform vec4 car;                   // the city's car: x of its back, -, its colour (0-1), on (1); halloween's broom: the end of its bristles (x, y), -, on
 uniform vec4 leap;                  // the falls' fish leaping, halloween's ghost rising: its age (s), which side (-1, 1), which (0-1), on (1)
@@ -451,12 +452,13 @@ void sky(vec2 cell, float X, float Y, float h0, float horizon, float glowAt) {
     if (richSky > 0.5) {
       // (the gradient; the moon's light washed round it)
       tileC = nightGrad(Y, horizon);
-      tileC += rgb(70.0, 80.0, 130.0) * 0.5 * exp(-max(rmoon - 1.0, 0.0) * 0.55);
+      tileC += rgb(70.0, 80.0, 130.0) * 0.5 * (0.3 + 0.7 * moonLit) * exp(-max(rmoon - 1.0, 0.0) * 0.55);
       tileA = 1.0;
     }
     if (rmoon < 1.0) { put(0, 0.0, vec3(0.0)); return; }
     float rm = rmoon;
-    if (rm > 1.35 && rm < 2.6 && h0 < 0.5 * exp(-(rm - 1.35) * 1.6)) { put(rm < 1.6 ? G_MID : G_DOT, 0.8, rgb(150.0, 160.0, 205.0) * (1.25 - 0.3 * rm)); return; }
+    // (a crescent's halo thinner than the full moon's)
+    if (rm > 1.35 && rm < 2.6 && h0 < 0.5 * moonLit * exp(-(rm - 1.35) * 1.6)) { put(rm < 1.6 ? G_MID : G_DOT, 0.8, rgb(150.0, 160.0, 205.0) * (1.25 - 0.3 * rm)); return; }
     // a falling star: a bright head, its trail fading behind it, down and to the left
     if (shoot.w > 0.5 && shoot.z < 1.2) {
       vec2 dir = normalize(vec2(-1.0, -0.42)), head = shoot.xy + dir * shoot.z * 0.55;
@@ -5501,26 +5503,38 @@ function drawGardenKoi(kind, swish) {
   g.set(18, 4, C(kind === 2 ? '#e8e4dc' : '#141218')); g.set(20, 5, shadeA(spot(20, 5) || base, 0.7, 255));
   return g;
 }
-// The full moon, 38 across, for the night skies: its face a little dimmer toward the limb, its seas (the
+// The moon, 38 across, for the night skies: its face a little dimmer toward the limb, its seas (the
 // maria) in soft greys where the near side has them, dithered at their shores, a few craters lit on the
-// upper left, Tycho bright near the bottom; its own light (251: not tinted by the night)
+// upper left, Tycho bright near the bottom; its own light (251: not tinted by the night). lit: how much of
+// it the sun lights (1 full, 0.5 half, under it a crescent), from the right as it waxes or the left as it
+// wanes; the terminator a little dimmer where the light grazes it, the dark side not drawn (the sky's dark
+// shows there, starless: the shader keeps the disc clear)
 const MOON_D = 38;
-function drawMoon() {
+function drawMoon(lit = 1, waning = false) {
   const g = pixPicture(MOON_D, MOON_D), C = (c) => hexA(c, 251), r0 = MOON_D / 2;
   const maria = [[-0.3, -0.38, 0.3, 0.24], [0.12, -0.35, 0.16, 0.15], [0.28, -0.08, 0.2, 0.17], [0.66, -0.25, 0.11, 0.09], [-0.55, 0.0, 0.22, 0.4], [-0.15, 0.32, 0.18, 0.13], [0.5, 0.15, 0.12, 0.15]];
+  // (the terminator, an ellipse across the disc: at each height lit where u is past c times the half
+  // width there; c from -1 (all lit) through 0 (the half) to 1 (none))
+  const c = 1 - 2 * lit;
+  const shade = (hex, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
+  const into = (u, v) => { const w = Math.sqrt(Math.max(0, 1 - v * v)); return lit >= 1 ? 9 : ((waning ? -u : u) - c * w) / Math.max(w, 1e-3); };
   for (let y = 0; y < MOON_D; y++) for (let x = 0; x < MOON_D; x++) {
     const u = (x + 0.5 - r0) / r0, v = (y + 0.5 - r0) / r0, r = Math.hypot(u, v);
     if (r > 1) continue;
+    const d = into(u, v);
+    if (d < 0) continue;
     let sea = 0;
     for (const [mx, my, rx, ry] of maria) sea = Math.max(sea, 1 - Math.hypot((u - mx) / rx, (v - my) / ry));
-    g.set(x, y, C(sea > 0.6 ? '#aeaa9c' : sea > 0.28 ? '#c6c2b2' : r > 0.9 ? '#d6cfb6' : r > 0.7 ? '#e7e0c8' : '#f4eed9'));
+    const face = sea > 0.6 ? '#aeaa9c' : sea > 0.28 ? '#c6c2b2' : r > 0.9 ? '#d6cfb6' : r > 0.7 ? '#e7e0c8' : '#f4eed9';
+    g.set(x, y, C(d < 0.12 ? shade(face, 0.74) : d < 0.26 ? shade(face, 0.88) : face));
   }
   for (const [cx, cy] of [[0.32, 0.52], [-0.36, 0.5], [0.62, 0.4]]) {
     const x = Math.round(r0 + cx * r0), y = Math.round(r0 + cy * r0);
+    if (into(cx, cy) < 0.3) continue;
     g.set(x, y, C('#cdc6ae')); g.set(x - 1, y - 1, C('#fbf7e8')); g.set(x + 1, y + 1, C('#c0b9a2'));
   }
   const tx = Math.round(r0 - 0.08 * r0), ty = Math.round(r0 + 0.66 * r0);
-  g.set(tx, ty, C('#fffcf2')); g.set(tx + 1, ty, C('#f9f4e4')); g.set(tx, ty - 1, C('#f9f4e4'));
+  if (into(-0.08, 0.66) > 0.3) { g.set(tx, ty, C('#fffcf2')); g.set(tx + 1, ty, C('#f9f4e4')); g.set(tx, ty - 1, C('#f9f4e4')); }
   return g;
 }
 // The sea's crab, 13 x 9, seen from the beach: a shell rounded on top, lighter where the sun is and
@@ -5679,8 +5693,14 @@ function bldgJS(x) {
   const r = h1JS(k * 3.7 + 1);
   return [b0, b1 - b0, 0.16 + 0.4 * r * r, k];
 }
-// the scenes whose night sky has the moon in it (Halloween has its own; the city's sky is the rain's)
-const MOON_SCENES = new Set(['lake', 'sea', 'fire', 'snow', 'garden', 'falls', 'festival']);
+// the scenes whose night sky has the moon in it (Halloween has its own; the city's sky is the rain's), and
+// its phase in each, so each scene's night is its own: [waning (lit from the left), how much of it is lit;
+// short of full, its own picture, <scene>Moon]. Full over the falls (a moonbow needs a bright moon) and the
+// garden (the moon-viewing moon); waxing over the lake, waning over the snow and the aurora; the last
+// quarter at sea, the lighthouse's beam the brighter light; a crescent through the campfire's pines; a thin
+// one over the festival, its lasers the sky's
+const MOON_OF = { falls: [false, 1], garden: [false, 1], lake: [false, 0.8], snow: [true, 0.72], sea: [true, 0.5], fire: [false, 0.26], festival: [true, 0.15] };
+const MOON_SCENES = new Set(Object.keys(MOON_OF));
 // the scenes with a day sky for the flock to cross (as the shader's sky had it): not the city's street
 // or the water seen from above
 const SKY_SCENES = new Set(['lake', 'sea', 'fire', 'snow', 'garden', 'falls', 'halloween', 'festival']);
@@ -5856,6 +5876,7 @@ function pixAtlas() {
   const pics = [];
   for (let k = 0; k < 4; k++) for (let w = -1; w <= 1; w++) pics.push([`koi${k}_${w + 1}`, drawGardenKoi(k, w)]);
   pics.push(['moon', drawMoon()]);
+  for (const [scene, [waning, lit]] of Object.entries(MOON_OF)) if (lit < 1) pics.push([scene + 'Moon', drawMoon(lit, waning)]);
   pics.push(['light0', drawLighthouse(false)], ['light1', drawLighthouse(true)], ['cottage0', drawCottage(false)], ['cottage1', drawCottage(true)]);
   pics.push(['crab0', drawCrab(true)], ['crab1', drawCrab(false)], ['owl0', drawOwl(true)], ['owl1', drawOwl(false)], ['snowman', drawSnowman()], ['cat0', drawCat(false)], ['cat1', drawCat(true)]);
   for (let k = 0; k < 4; k++) for (let w = 0; w < 2; w++) pics.push([`walker${k}_${w}`, drawWalker(k, w)]);
@@ -5959,7 +5980,7 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
   }
   if (night && MOON_SCENES.has(scene) && V.sun) {
     const k = Math.max(1, Math.ceil((2 * 0.07 * H) / MOON_D));
-    out.push([A.moon, Math.round(V.sun[0] * W - (MOON_D * k) / 2), Math.round((1 - V.sun[1]) * H - (MOON_D * k) / 2), k, false, 0.25]);
+    out.push([A[MOON_OF[scene][1] < 1 ? scene + 'Moon' : 'moon'], Math.round(V.sun[0] * W - (MOON_D * k) / 2), Math.round((1 - V.sun[1]) * H - (MOON_D * k) / 2), k, false, 0.25]);
   }
   if (scene === 'space' && V.lake && V.sun) {
     // the Earth where the sun is, Saturn small and far off (their own light, not the night's tint)
@@ -7418,6 +7439,7 @@ export function createScenery(canvas) {
       gl.uniform4fv(u('nearL'), V.near);
       gl.uniform2fv(u('lake'), V.lake);
       gl.uniform2f(u('sunAt'), V.sun[0] * aspect, V.sun[1]);
+      gl.uniform1f(u('moonLit'), MOON_OF[scene]?.[1] ?? 1);
       gl.uniform4f(u('band'), V.band[0] * aspect, V.band[1], V.band[2], V.band[3]);
       gl.uniform4f(u('sea'), beamB * Math.PI / 4, swimB, walkB, Math.exp(-Math.max(0, t - dipAt) * 4));
       ripV.fill(0);
