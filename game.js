@@ -178,6 +178,26 @@ function roundRect(ctx, x, y, w, h, r) {
 // The screens as real ones (gamescreen.js), for the drawing here: dark, lit from behind, its notes glowing, a little slow.
 const NEON = { black: [10, 13, 24], glow: 0.5, lag: 0.18 };
 
+// The bottom page turns on bar lines: eight bars of pads, then four to eight of code.
+// The first frame starts the pads clock; held is the recording/test override.
+export function createPageTurner() {
+  const CODE_BARS = 4, CODE_MAX = 8, PADS_BARS = 8, TURN = 0.22;
+  let page = 'pads', pageFrom = 'pads', pageAt = -9, pageBar = null, typedBar = -99, lastBar = null, pending = null;
+  return (t, vg, lines, held = null) => {
+    const bar = Math.floor(vg / 16);
+    pageBar ??= bar;
+    if (held !== 'code' && held !== 'pads') held = null;
+    if (lines && lines.some((l) => l.caret >= 0)) typedBar = bar;
+    if (held) pending = held;
+    else if (page === 'pads') { if (typedBar === bar && bar - pageBar >= PADS_BARS) pending = 'code'; }
+    else if (bar - pageBar >= CODE_MAX || (bar - pageBar >= CODE_BARS && bar - typedBar >= 1)) pending = 'pads';
+    if (pending && pending !== page && (held || (lastBar !== null && bar !== lastBar))) { pageFrom = page; page = pending; pageAt = t; pageBar = bar; }
+    if (pending === page) pending = null;
+    lastBar = bar;
+    return { now: page, from: pageFrom, k: Math.min(1, (t - pageAt) / TURN) };
+  };
+}
+
 export function createGame() {
   let dropAt = -9, score = 0, combo = 0, best = 0, feverUntil = -1, hatSide = 0, lastBass = null, bassDir = 0;
   const lastHit = { bd: -9, sd: -9, hhc: -9, hho: -9, bass: -9 }; // when each part last hit
@@ -186,7 +206,7 @@ export function createGame() {
   let textW = { text: '', font: '', w: 0 }; // the song line's width, measured when it changes
 
   const reset = () => { score = 0; combo = 0; feverUntil = -1; bursts = []; pops.fill(null); lastBass = null; };
-  const skins = createSkins(), screens = createScreens();
+  const skins = createSkins({ top: drawTop, pads: drawBottom }), screens = createScreens();
   // its power-on (gameboot.js) each time it comes on after being off: when it started ('next': at the next frame), when
   // it was last drawn, and how far in it is (s; null when it's not booting)
   const booter = createBoot();
@@ -194,6 +214,7 @@ export function createGame() {
   // with no beat to play it stands by (idle below): since when (null while playing), whether the music stopped meanwhile
   // (it powers on again when it's back), whether it has played since it came on, and the clock's last place
   let idleAt = null, idleKind = null, idleSilent = false, hadBeat = false, lastVg = 0;
+  const turnPage = createPageTurner();
 
   // The game as it is now, for the skins to draw: the notes in the lanes (d: how far up from the target,
   // in bars; len, a bass note's length; held, a bass note being played; miss; g, its step; step, the clock's
@@ -739,7 +760,7 @@ export function createGame() {
     // level: how much each part is playing (0..1); t: now (s); eng: the engine (its hits, tempo and
     // key); title: the song's; offset: how far ahead the blocks are drawn (s), so a note's crossing is
     // matched with its hit
-    draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset = 0, pocket = false, colorway = 'blue' }) {
+    draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset = 0, pocket = false, colorway = 'blue', code = null }) {
       const { dev, design } = shown(colorway); // (colorway: the theme's)
       col = ownCol(col, dev);
       for (const b of blocks) if (LANE[b.lane] !== undefined && b.gHit === undefined && b.gMiss === undefined && vg >= b.g) {
@@ -772,6 +793,8 @@ export function createGame() {
       const fever = t < feverUntil ? Math.min(1, (feverUntil - t) / 0.4) : 0;
       const skin = skins[window.__gameSkin || design]; // (a switch, to try one the app doesn't go round: dance)
       const m = skin && model(t, vg, blocks, fever, eng, title, col);
+      if (m) m.compactCode = pocket && Math.min(W, H) <= 240;
+      if (m && skin.codePage) { m.code = code?.() || null; m.page = turnPage(t, vg, m.code, window.__bottomPage); } // (code: the code view's lines)
       const look = (at) => { const k = { ...(skin ? skin.screen : NEON), ...at }; if (k.glow) k.glow *= 1 + 0.6 * fever; return k; };
       const fx = window.__screenFx !== false; // (a mock-up switch, for side by sides)
       const keyName = eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode.toUpperCase()}` : '';
@@ -785,6 +808,7 @@ export function createGame() {
         c.fillStyle = '#05070d';
         for (const r of [L.top, L.bottom]) if (r) c.fillRect(r.x - u, r.y - u, r.w + 2 * u, r.h + 2 * u);
         const s = { blocks, vg, t, level, u, fever, bpm: eng.tempo?.bpm, key: eng.key, title }, out = {};
+        if (m) m.neon = s; // (neon's original painters use the live blocks, hits and screen's unit)
         for (const which of ['top', 'bottom']) {
           const r = L[which];
           if (!r) continue;

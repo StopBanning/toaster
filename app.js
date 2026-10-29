@@ -2,7 +2,7 @@
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
 import { createCodeView } from './codeview.js';
-import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens } from './visuals.js';
+import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens, setGameCode } from './visuals.js';
 import { createOrb } from './orb.js';
 import { createDotCam } from './dotcam.js';
 import { createVoxCam } from './voxcam.js';
@@ -31,6 +31,10 @@ import { createClips } from './clips.js';
 import { makeDemo } from './demo.js';
 import { NEWS, newsSince } from './news.js';
 import { createControls } from './controls.js';
+import { createPalette, actionCommands } from './palette.js';
+import { advanceHints, initialHints } from './firstrun.js';
+import { createBugReport, errorSummary } from './bug-report.js';
+import { PRESETS, applyPreset } from './presets.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -65,6 +69,7 @@ const eng = createEngine({ fast, mid, slow, sampleRate: ac.sampleRate });
 eng.tape = createTape(); // the song as heard, for X
 eng.tape.who = () => songNames(currentSong());
 const view = createCodeView(LINE_IDS);
+setGameCode(() => view.snapshot()); // (the handheld's bottom screen shows the code while it's typed)
 let fieldView = null, fieldPool = '';
 const field = {
   get waiting() { return !fieldView || fieldView.waiting; },
@@ -153,6 +158,7 @@ const state = {
   radio: '', // the radio's address, as last played
   seenVersion: '', // the version last opened, to tell what's new after an update
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
+  hintsDone: true, // the first visit's key hints are over (only a first run starts without it)
   hushed: false, // every part muted and the picture dimmed (a raised fist, or Q)
   card: false, cardV: true, // the ID card in the wide layout, and in the vertical one (on there unless you turn it off)
   cardBig: false, // and big (N a second time): the same card as big as fits
@@ -163,13 +169,14 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'radio', 'seenVersion'];
+const SAVED = ['hintsDone', 'keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'radio', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
     const kept = localStorage.getItem('now-coding');
     state.firstRun = kept === null;
     saved = JSON.parse(kept || '{}');
+    state.hintsDone = typeof saved.hintsDone === 'boolean' ? saved.hintsDone : !state.firstRun;
     for (const k of SAVED) if (k in saved) state[k] = saved[k];
   } catch { /* first run, or storage unavailable */ }
   // fewer flashes: as you set it, or (till you do) as Windows' "Show animations" says
@@ -510,7 +517,16 @@ function showMenu(msg = '', icon = 'error') {
   $('menu').hidden = false;
   if (msg) xpAlert($('alerts'), { title: 'toaster.exe', icon, text: msg });
 }
+// The last few errors, by type only, for a bug report's details (renderer/bug-report.js).
+const recentBugErrors = [];
+function retainBugError(err) {
+  recentBugErrors.push({ name: errorSummary(err) });
+  if (recentBugErrors.length > 5) recentBugErrors.shift();
+}
+addEventListener('error', (e) => retainBugError(e.error));
+addEventListener('unhandledrejection', (e) => retainBugError(e.reason));
 function showError(err) {
+  retainBugError(err);
   showMenu(String(err?.message || err));
 }
 
@@ -1599,6 +1615,30 @@ $('menu').addEventListener('click', (e) => { if (e.target === $('menu') && state
 // The visual button opens a list of the backgrounds to pick from (V steps through them); a click
 // anywhere else or any key closes it.
 const visMenu = $('vis-menu');
+// Presets (renderer/presets.js): a whole setup in one click, the picker's first row and in Ctrl+K. Each setting goes
+// through the setter the keys use; presets picked in a row are applied one after the other, never at once.
+const presetSetters = {
+  visual: (name) => setVisual(VISUALS.indexOf(name)),
+  sceneryScene: (scene) => { state.sceneryScene = scene; state.sceneryTheme = false; saveSettings(); },
+  blocks: setBlocks,
+  blockLook: (look) => { state.blockLook = look; setBlocks(true); },
+  gameScreens: (screen) => { state.gameScreens = screen; setGameScreens(screen); saveSettings(); },
+  theme: (name) => { state.theme = THEMES.indexOf(name); applyTheme(); saveSettings(); },
+  codeHidden: setCodeHidden,
+  vertical: async (on) => state.vertical === on || (await toggleLayout()),
+};
+let presetQueue = Promise.resolve();
+function choosePreset(id) {
+  const preset = PRESETS.find((p) => p.id === id);
+  if (!preset) return Promise.reject(new Error('Unknown preset'));
+  const run = async () => {
+    const current = { ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme] };
+    if (await applyPreset(preset, current, presetSetters)) flashStatus('preset: ' + preset.name.toLowerCase());
+  };
+  presetQueue = presetQueue.then(run, run);
+  return presetQueue;
+}
+
 // The picker under the background button: a picture of each scene (auto first) and of each other background in V's
 // round, the one showing marked; a click shows it (a scene: the scenes, with that one picked). Its pictures are
 // renderer/thumbs, fetched only when it opens.
@@ -1609,7 +1649,8 @@ function showVisMenu(open) {
   const tile = (kind, name, label, on) => `<button type="button" role="menuitem" class="tile${on ? ' on' : ''}" data-kind="${kind}" data-name="${name}"><img src="thumbs/${kind}-${name}.webp" alt="" width="160" height="100"><span>${label}</span></button>`;
   const scenes = ['auto', ...scenery.scenes].map((s) => tile('scene', s, s === 'auto' ? 'auto: a new one each song' : (SCENE_NAMES[s] || s).replace(/^the /, ''), now === 'scenery' && !state.sceneryTheme && state.sceneryScene === s));
   const more = V_ROUND.filter((v) => v !== 'scenery').map((v) => tile('bg', v, v === 'off' ? 'off: just the code' : visName(v), now === v));
-  visMenu.innerHTML = `<div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div><div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
+  const presets = PRESETS.map((p) => `<button type="button" role="menuitem" class="tile" data-kind="preset" data-name="${p.id}"><img src="${p.picture}" alt="" width="160" height="100"><span>${p.name}</span></button>`);
+  visMenu.innerHTML = `<div class="pick-head">presets</div><div class="pick-presets">${presets.join('')}</div><div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div><div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
   const b = $('b-visual');
   visMenu.style.left = `${Math.max(12, Math.min(b.offsetLeft, innerWidth - visMenu.offsetWidth - 12))}px`;
 }
@@ -1617,6 +1658,7 @@ $('b-visual').onclick = () => showVisMenu(visMenu.hidden);
 visMenu.onclick = (e) => {
   const b = e.target.closest('button');
   if (!b) return;
+  if (b.dataset.kind === 'preset') { showVisMenu(false); choosePreset(b.dataset.name).catch(showError); return; }
   if (b.dataset.kind === 'scene') {
     state.sceneryScene = b.dataset.name; state.sceneryTheme = false;
     setVisual(VISUALS.indexOf('scenery'));
@@ -1689,6 +1731,131 @@ const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
 const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
+
+// Ctrl+K (renderer/palette.js): every action by name, then each scene, background, code look,
+// handheld screen and theme, and the bug report.
+const sceneName = (scene) => SCENE_NAMES[scene] || scene;
+const screenName = (screen) => SCREEN_NAMES[screen] || screen;
+const paletteEntries = () => [
+  ...actionCommands(ACTIONS, K),
+  ...scenery.scenes.map((scene) => ({
+    id: 'scene:' + scene, name: sceneName(scene).replace(/^the /, ''), aliases: scene === 'koi' ? ['koi pond'] : [],
+    run: () => { state.sceneryScene = scene; state.sceneryTheme = false; setVisual(VISUALS.indexOf('scenery')); flashStatus('scene: ' + sceneName(scene)); },
+  })),
+  ...V_ROUND.map((name) => ({
+    id: 'background:' + name, name: 'background: ' + visName(name),
+    run: () => { setVisual(VISUALS.indexOf(name)); flashStatus('background: ' + visName(name)); },
+  })),
+  ...BLOCK_LOOKS.map((look) => ({
+    id: 'look:' + look, name: 'code look: ' + ({ game: 'handheld game', blocks: 'punchcard' }[look] || look),
+    aliases: look === 'game' ? ['handheld', 'game'] : [],
+    run: () => { state.blockLook = look; setBlocks(true); flashStatus('code look: ' + look); },
+  })),
+  ...GAME_SCREENS.map((screen) => ({
+    id: 'screen:' + screen, name: 'handheld screens: ' + screenName(screen), aliases: screen === 'jp' ? ['japan', 'jp'] : [],
+    run: () => { state.gameScreens = screen; setGameScreens(screen); state.blockLook = 'game'; setBlocks(true); flashStatus('screens: ' + screenName(screen)); },
+  })),
+  ...THEMES.map((name, i) => ({
+    id: 'theme:' + name, name: 'theme: ' + name,
+    run: () => { state.theme = i; applyTheme(); saveSettings(); flashStatus('theme: ' + name); },
+  })),
+  ...PRESETS.map((p) => ({ id: 'preset:' + p.id, name: 'preset: ' + p.name.toLowerCase(), aliases: ['setup'], run: () => choosePreset(p.id) })),
+  { id: 'report-bug', name: 'report a bug', aliases: ['bug', 'issue', 'problem'], run: () => bugReport.show() },
+];
+const palette = createPalette({
+  document, window, entries: paletteEntries, fail: showError,
+  blocked: () => WIDGET || !$('menu').hidden || !!document.querySelector('dialog[open]'),
+});
+$('search-commands').onclick = () => { $('help').close(); palette.open(); };
+
+// The first visit (renderer/firstrun.js): a hint for V, then P, then Z, over that key in the footer.
+// Never while recording, in the clean, 9:16 or mini views, or over a dialog, a menu or a notice.
+// Once all three are done that's saved, and the check stops.
+let hintState = initialHints(), hintCloseTimer;
+const hintPill = document.createElement('button');
+hintPill.id = 'first-run-hint';
+hintPill.type = 'button';
+hintPill.hidden = true;
+hintPill.setAttribute('aria-live', 'polite');
+document.body.append(hintPill);
+function updateHints(event = {}) {
+  const blocked = !!rec.mr || rec.busy || document.body.classList.contains('clean') || state.vertical || state.mini || WIDGET
+    || !!document.querySelector('dialog[open]') || !$('menu').hidden || !visMenu.hidden || !$('notice').hidden;
+  const result = advanceHints(hintState, {
+    now: nowSec(), hasCode: LINE_IDS.some((id) => !!view.lines[id].shown), enabled: !state.hintsDone, blocked,
+    touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
+    keys: { visual: K('visual'), blocks: K('blocks'), code: K('code') },
+    ...event,
+  });
+  hintState = result.state;
+  if (result.complete && !state.hintsDone) { state.hintsDone = true; saveSettings(); }
+  if (result.hint) {
+    clearTimeout(hintCloseTimer);
+    hintPill.hidden = false;
+    hintPill.classList.add('show');
+    if (hintPill.dataset.hint !== result.hint.text) {
+      const k = document.createElement('kbd');
+      k.textContent = result.hint.key;
+      hintPill.replaceChildren(k, document.createTextNode(' ' + result.hint.body));
+      hintPill.dataset.hint = result.hint.text;
+    }
+    // centred over its key in the footer's list (or the screen, if the footer doesn't show it)
+    const text = document.querySelector('footer .keys').firstChild;
+    const at = text?.textContent.indexOf(result.hint.key + ' ');
+    let x = innerWidth / 2;
+    if (text && at >= 0) {
+      const range = document.createRange();
+      range.setStart(text, at);
+      range.setEnd(text, at + result.hint.key.length);
+      const r = range.getBoundingClientRect();
+      x = (r.left + r.right) / 2;
+    }
+    hintPill.style.left = Math.max(12, Math.min(x - hintPill.offsetWidth / 2, innerWidth - hintPill.offsetWidth - 12)) + 'px';
+  } else if (hintPill.classList.contains('show')) {
+    hintPill.classList.remove('show');
+    clearTimeout(hintCloseTimer);
+    hintCloseTimer = setTimeout(() => { hintPill.hidden = true; }, 200);
+  }
+}
+hintPill.onclick = () => updateHints({ dismiss: true });
+const hintTimer = setInterval(() => {
+  updateHints();
+  if (state.hintsDone && hintPill.hidden) clearInterval(hintTimer);
+}, 200);
+
+// Report a bug (renderer/bug-report.js), from the help or Ctrl+K. The details it fills in.
+let bugVersion = NEWS[0]?.version || 'unknown'; // (the website's; the app says its own below)
+window.nc?.version?.().then((v) => { bugVersion = v; }).catch(() => {});
+function osName() {
+  const ua = navigator.userAgent;
+  if (/Windows/.test(ua)) return 'Windows';
+  if (/Android/.test(ua)) return 'Android';
+  if (/iPad|iPhone/.test(ua)) return 'iOS'; // (before Mac: an iPhone says "like Mac OS X")
+  return /Mac/.test(ua) ? 'macOS' : 'other';
+}
+function browserName() {
+  const ua = navigator.userAgent;
+  // Edge says Chrome too, and Chrome says Safari, so the order matters
+  for (const [name, re] of [['Edge', /Edg\/(\d+)/], ['Firefox', /Firefox\/(\d+)/], ['Chrome', /Chrome\/(\d+)/], ['Safari', /Version\/(\d+).*Safari/]]) {
+    const m = ua.match(re);
+    if (m) return name + ' ' + m[1];
+  }
+  return 'unknown';
+}
+const SOURCE_KINDS = { system: 'system', file: 'file', input: 'mic', tab: 'tab', demo: 'demo', radio: 'stream' };
+const bugReport = createBugReport({
+  document,
+  context: () => ({
+    version: bugVersion, platform: desktopApp() ? 'app' : 'website', os: osName(), browser: browserName(),
+    layout: state.vertical ? '9:16' : 'wide', background: VISUALS[state.visual], codeLook: state.blocks ? state.blockLook : 'none',
+    theme: THEMES[state.theme], audioSource: SOURCE_KINDS[state.source] || 'none',
+  }),
+  errors: () => recentBugErrors,
+  open: (url) => (desktopApp() ? window.nc.openBugIssue(url) : window.open(url, '_blank', 'noopener')),
+  fail: showError,
+});
+$('report-bug').onclick = () => { $('help').close(); bugReport.show(); };
+
 // (A's word: what it changes on what's showing; left out where there's nothing to change)
 function nextWhat() {
   if (gameShowing()) return 'next screen';
@@ -1830,6 +1997,7 @@ addEventListener('keydown', (e) => {
   // round again (Oct 16: M held a moment too long stopped a recording and started a new one a
   // second later, which ran on unnoticed for four minutes).
   if (e.repeat && act.id !== 'later' && act.id !== 'earlier') return;
+  updateHints({ action: act.id });
   act.run();
 });
 
@@ -1859,7 +2027,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
+window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {

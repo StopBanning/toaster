@@ -29,7 +29,7 @@ const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 // off at the window's edge), so what comes after it still shows. Returns the places (character
 // indices); none if it fits.
 const WRAP = '\n  ';
-function wraps(text, cols) {
+export function wraps(text, cols) {
   if (!cols || text.length <= cols) return [];
   const spots = [];
   let depth = 0, str = false;
@@ -53,6 +53,21 @@ function wraps(text, cols) {
     room = cols - (WRAP.length - 1);
   }
   return out;
+}
+
+// A line up to its first method call (a "." after a closing bracket, outside a string): what plays, before the
+// sound's settings (kick: s("bd*4"), not the .bank(...) after it). For the handheld's code page.
+export function head(s) {
+  let depth = 0, str = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (str) { if (c === '"') str = false; }
+    else if (c === '"') str = true;
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === '.' && depth === 0 && s[i - 1] === ')') return s.slice(0, i);
+  }
+  return s;
 }
 
 // Sliders: slider(value, min, max) parts, their values, and where a value sits in its range.
@@ -182,7 +197,7 @@ export function createCodeView(ids) {
   // On the bar line: the changes land (each flashes), and the rest of the playing code with them.
   function land() {
     for (const L of Object.values(lines)) if (!landing.has(L) && L.el.textContent && !L.el.classList.contains('cm')) flash(L, 'eval');
-    for (const L of landing) flash(L, 'flash');
+    for (const L of landing) { flash(L, 'flash'); L.landedAt = performance.now() / 1000; } // (when: for the handheld's copy)
     landing.clear();
   }
 
@@ -214,7 +229,7 @@ export function createCodeView(ids) {
         return h;
       }).join('');
       L.el.innerHTML = '<span class="txt">' + html + '</span>';
-      L.spans = [...L.el.querySelectorAll('.tok')].map((el) => ({ el, part: parts[+el.dataset.i], on: false }));
+      L.spans = [...L.el.querySelectorAll('.tok')].map((el) => ({ el, part: parts[+el.dataset.i], i: +el.dataset.i, on: false }));
     } else {
       L.el.innerHTML = text ? `<span class="txt">${piece(0, text.length)}</span>` : '';
     }
@@ -333,6 +348,22 @@ export function createCodeView(ids) {
       for (const id of ['bassline', 'chords']) {
         for (const sp of lines[id].spans) toggle(sp, sp.part.slots ? sp.part.slots.includes(slot) && (!sp.part.beats || sp.part.beats.includes(beat)) : hitOn(sp.part, eng.v.bass.lastHit));
       }
+    },
+
+    // The code as it stands, for the handheld's bottom screen (game.js): each line as typed so far and as it's going
+    // to be (target), the caret on the one being typed (else -1), whether it's quiet (a comment, a muted part), its
+    // tokens lit now (from, to: characters) and how long ago its last change landed (s).
+    snapshot() {
+      const now = performance.now() / 1000;
+      return ids.map((id) => {
+        const L = lines[id], lit = [];
+        if (L.spans.length) {
+          const at = [0];
+          for (const p of L.parts) at.push(at[at.length - 1] + p.text.length);
+          for (const sp of L.spans) if (sp.on) lit.push([at[sp.i], at[sp.i + 1]]);
+        }
+        return { id, text: L.shown, target: L.target, caret: typer.cur?.id === id ? typer.cur.caret : -1, quiet: L.el.classList.contains('cm'), lit, landed: L.landedAt ? now - L.landedAt : 9 };
+      });
     },
 
     // A fresh start for a new song: wipe the screen and type everything again.

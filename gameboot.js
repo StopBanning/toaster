@@ -72,6 +72,14 @@ export function bootTitle(t) {
   return pixelText((t || say('now playing')).toUpperCase()).trim();
 }
 
+// A big word (TOASTER, CONTINUE?, GAME OVER) as it's drawn, and its size: twice the letters' size where it fits whole
+// in room, else the letters' own (cut to fit only if even that won't). On a small screen, the handheld's on the desktop,
+// CONTINUE? came out CONTINU….
+export function bigWord(word, room, k) {
+  const size = textW(pixelText(word), 2 * k) <= room ? 2 * k : k;
+  return { text: fitPixel(word, room, size), size };
+}
+
 // One screen's boot at bt (s) on a canvas lw x lh: which, top or bottom; info: the song (title, bpm, key)
 function paint(c, lw, lh, which, bt, pal, info) {
   const on = BOOT.on[which];
@@ -85,9 +93,9 @@ function paint(c, lw, lh, which, bt, pal, info) {
     const f = Math.min(1, Math.max(0, (bt - on) / (BOOT.land - on))), y = Math.round(-blockH + (y1 + blockH) * f);
     const ding = bt - BOOT.land, flash = ding >= 0 && ding < 0.07;
     emblem(c, Math.round((lw - EW * ek) / 2), y, ek, pal, lift(ding));
-    const ty = y + EH * ek + 5 * k, name = fitPixel(say('TOASTER'), lw - 4 * k, 2 * k);
-    ptextC(c, name, lw / 2 + k, ty + k, hex(pal.dim), 2 * k); // (its shadow)
-    ptextC(c, name, lw / 2, ty, hex(flash ? pal.hi : pal.fg), 2 * k);
+    const ty = y + EH * ek + 5 * k, name = bigWord(say('TOASTER'), lw - 4 * k, k);
+    ptextC(c, name.text, lw / 2 + k, ty + k, hex(pal.dim), name.size); // (its shadow)
+    ptextC(c, name.text, lw / 2, ty, hex(flash ? pal.hi : pal.fg), name.size);
     // the ding: a star over the toast, twinkling out
     if (ding >= 0.06 && ding < 0.42) {
       const sx = Math.round(lw / 2 + 3 * ek), sy = y - 7 * ek, n = ding < 0.24 ? 3 : 2;
@@ -97,18 +105,26 @@ function paint(c, lw, lh, which, bt, pal, info) {
   } else {
     // a self-test as it comes on, a line at a time: the cartridge (the song), its tempo and key, and the four parts the
     // game plays, each OK a moment after it's listed (-- for one that isn't playing); then START
-    const cx = lw / 2, x = 6 * k, row = 10 * k, s = bt - on, max = Math.floor((lw - 2 * x) / (6 * k)) - 2;
+    const cx = lw / 2, x = 6 * k, s = bt - on, max = Math.floor((lw - 2 * x) / (6 * k)) - 2;
     const title = bootTitle(info.title);
     const lines = [];
     for (const w of title.split(/\s+/).filter(Boolean)) { const l = lines[lines.length - 1]; if (l !== undefined && cellsOf(l + ' ' + w).length <= max) lines[lines.length - 1] = l + ' ' + w; else lines.push(fitPixel(w, max * 6 - 1)); }
+    if (lines.length > 2) lines[1] = fitPixel(lines[1] + ' …', max * 6 - 1);
+    // rows 10 letters apart, 3 more after the name and after the tempo; on a short screen (the handheld's on the
+    // desktop) the gaps close up, then the rows, so the parts stay clear of PRESS START (they ran into it)
+    const steps = Math.min(lines.length, 2) + 3, room = lh - 30 * k;
+    let row = 10 * k, gap = 3 * k;
+    if (steps * row + 2 * gap > room) gap = Math.max(0, Math.floor((room - steps * row) / 2));
+    if (steps * row + 2 * gap > room) row = Math.max(8 * k, Math.floor(room / steps));
     let y = 5 * k;
     if (s >= 0) ptext(c, fitPixel(say('TOASTER OS'), lw - 2 * x, k), x, y, hex(pal.dim), k);
-    y += row + 3 * k;
-    if (lines.length > 2) lines[1] = fitPixel(lines[1] + ' …', max * 6 - 1);
+    y += row + gap;
     lines.slice(0, 2).forEach((l, i) => { if (s >= 0.1 + 0.05 * i) ptext(c, (i ? '  ' : '♪ ') + l, x, y, hex(pal.fg), k); y += row; });
-    const sub = [info.bpm ? `${Math.round(info.bpm)} BPM` : '', sayKey(info.key || '')].filter(Boolean).join('  ');
+    // the tempo and the key two spaces apart, one where two won't fit (Ab MINOR came out Ab… on the desktop handheld)
+    const both = [info.bpm ? `${Math.round(info.bpm)} BPM` : '', sayKey(info.key || '')].filter(Boolean);
+    const sub = both.join(textW(both.join('  '), k) <= lw - 2 * x ? '  ' : ' ');
     if (sub && s >= 0.24) ptext(c, fitPixel(sub, lw - 2 * x, k), x, y, hex(pal.dim), k);
-    y += row + 3 * k;
+    y += row + gap;
     const parts = info.parts || {}, half = Math.floor((lw - 2 * x) / 2);
     const rows = [['KICK', parts.kick], ['CLAP', parts.clap], ['HATS', parts.hats], ['BASS', parts.bass]].map(([name, ok]) => [say(name), ok]);
     const okX = Math.min(half - 11 * k, Math.max(30, Math.max(...rows.map(([name]) => textW(name))) + 7) * k);
@@ -148,13 +164,15 @@ function paintIdle(c, lw, lh, which, it, pal, info, mode) {
     if (mode === 'continue' && it < 10) {
       // CONTINUE? over the count, each new number flashing as it lands
       const n = 9 - Math.floor(it), fresh = it % 1 < 0.12;
-      ptextC(c, fitPixel(say('CONTINUE?'), lw - 4 * k, 2 * k), cx, Math.round(lh * 0.18), hex(pal.fg), 2 * k);
+      const word = bigWord(say('CONTINUE?'), lw - 4 * k, k);
+      ptextC(c, word.text, cx, Math.round(lh * 0.18), hex(pal.fg), word.size);
       ptextC(c, String(n), cx + 2 * k, Math.round(lh * 0.42) + 2 * k, hex(pal.dim), 6 * k); // (its shadow)
       ptextC(c, String(n), cx, Math.round(lh * 0.42), hex(fresh ? pal.hi : pal.fg), 6 * k);
       return;
     }
     if (mode === 'continue') {
-      ptextC(c, fitPixel(say('GAME OVER'), lw - 4 * k, 2 * k), cx, Math.round(lh * 0.32), hex(pal.fg), 2 * k);
+      const over = bigWord(say('GAME OVER'), lw - 4 * k, k);
+      ptextC(c, over.text, cx, Math.round(lh * 0.32), hex(pal.fg), over.size);
       if (it > 12 && blink) ptextC(c, fitPixel(say('PLAY ANY SONG'), lw - 4 * k, k), cx, Math.round(lh * 0.62), hex(pal.dim), k);
       return;
     }
@@ -162,7 +180,8 @@ function paintIdle(c, lw, lh, which, it, pal, info, mode) {
     const ek = 2 * k, blockH = EH * ek + 5 * k + 7 * 2 * k + 14 * k, y = Math.round((lh - blockH) / 2);
     emblem(c, Math.round((lw - EW * ek) / 2), y, ek, pal, -2);
     const ty = y + EH * ek + 5 * k;
-    ptextC(c, fitPixel(say('TOASTER'), lw - 4 * k, 2 * k), cx, ty, hex(pal.fg), 2 * k);
+    const name = bigWord(say('TOASTER'), lw - 4 * k, k);
+    ptextC(c, name.text, cx, ty, hex(pal.fg), name.size);
     if (mode === 'reading') ptextC(c, fitPixel(say('READING') + dots, lw - 4 * k, k), cx, ty + 18 * k, hex(pal.dim), k);
     else if (blink) ptextC(c, fitPixel(say('PLAY ANY SONG'), lw - 4 * k, k), cx, ty + 18 * k, hex(pal.dim), k);
     return;

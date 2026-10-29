@@ -59,6 +59,10 @@
 <link rel="modulepreload" href="demo.js" />
 <link rel="modulepreload" href="news.js" />
 <link rel="modulepreload" href="controls.js" />
+<link rel="modulepreload" href="palette.js" />
+<link rel="modulepreload" href="firstrun.js" />
+<link rel="modulepreload" href="bug-report.js" />
+<link rel="modulepreload" href="presets.js" />
 <link rel="preload" href="fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
 </head>
 <body>
@@ -171,6 +175,7 @@
 </dialog>
 
 <dialog id="help">
+  <p class="help-tools"><button type="button" id="search-commands">search: <span class="os-win">Ctrl+K</span><span class="os-mac">⌘K</span></button><button type="button" id="report-bug">report a bug</button></p>
   <h2>how it works <small class="ver"></small></h2>
   <p>Toaster listens to whatever your <span class="os-win">PC</span><span class="os-mac">Mac</span> plays and writes it out as Strudel code, live: the drums on a 16-step grid, the tempo, bass, chords, key and lead line. A new song starts a fresh page. It's a reconstruction for show, not an exact transcription; steady beats work best.</p>
   <p>When the kick comes back after a break, the backgrounds answer the drop, and the drop effect, if you've picked one with <kbd data-k="dropfx">B</kbd>, takes over the screen. The camera features run on this <span class="os-win">PC</span><span class="os-mac">Mac</span>; nothing is uploaded. Your picks are remembered, except the camera, which always starts off.</p>

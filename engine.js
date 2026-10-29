@@ -187,6 +187,29 @@ function bestKey(fits) {
   return best && best.score > 0.3 ? best : null;
 }
 
+// Which mode the chords heard say a key on `root` is in, or null when they don't say clearly. The
+// notes alone can't always tell D minor from D major; the chords around the home one can. hist is
+// each chord's fading count (index root * 2, + 1 for a minor chord). Minor's votes: its i (counted
+// half), iv, VI and III; major's: I, IV, vi and ii. The major V belongs to both, so it doesn't vote.
+// A mode wins with 3 votes or more, a clear lead (over 1.25 times the other's, plus 1) and at least
+// two of its four chords heard.
+export function chordModeEvidence(hist, root) {
+  const at = (offset, minor) => hist[((root + offset) % 12) * 2 + (minor ? 1 : 0)];
+  const minor = [0.5 * at(0, true), at(5, true), at(8, false), at(3, false)];
+  const major = [0.5 * at(0, false), at(5, false), at(9, true), at(2, true)];
+  const sum = (xs) => xs.reduce((a, b) => a + b, 0);
+  const strong = (a, b) => sum(a) >= 3 && sum(a) > 1.25 * sum(b) + 1 && a.filter((x) => x >= 0.75).length >= 2;
+  return strong(minor, major) ? 'minor' : strong(major, minor) ? 'major' : null;
+}
+
+// After the first eight bars, a key on another root takes over from the one shown only with a clear
+// lead (margin) in how well the notes fit: small wins back and forth are a close call, not a key change.
+export function preferCurrentKey(fits, candidate, current, bars, margin = 0.1) {
+  if (!candidate || !current || bars <= 8 || candidate.root === current.root) return candidate;
+  const previous = fits.find((f) => f.root === current.root && f.mode === current.mode);
+  return previous && candidate.score - previous.score < margin ? previous : candidate;
+}
+
 // ---------------------------------------------------------------- onset detection
 
 function pitchMap(lo, hi, hzPerBin) {
@@ -553,6 +576,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       this.slots = [null, null, null, null];
       this.lastChord = null;
       this.key = null;
+      this.keyChords = new Float64Array(24);
       this.keyCand = null;
       this.keyCandN = 0;
       this.keyBars = 0; // bars with a chord since the reset
@@ -1666,8 +1690,15 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         // major): the major keys with the same notes a fifth apart
         const majorOf = (k) => (k.mode === 'major' ? k.root : (k.root + 3) % 12);
         const nextDoor = (a, b) => a && b && [5, 7].includes((majorOf(a) - majorOf(b) + 12) % 12);
+        // each chord a vote for the key's mode, fading by 1% a chord
+        for (let i = 0; i < 24; i++) this.keyChords[i] *= 0.99;
+        this.keyChords[chord.root * 2 + (chord.q === 'm' ? 1 : 0)]++;
         const fits = keyFits(this.longChroma);
         let k = bestKey(fits);
+        // D minor or D major? Where the chords say clearly, they settle it (Oct 28: a song of Dm, Gm,
+        // Bb and A read as D major from its first chord, on and off for minutes).
+        const mode = k && chordModeEvidence(this.keyChords, k.root);
+        if (mode) k = fits.find((f) => f.root === k.root && f.mode === mode);
         // A minor or C major? The same notes, and the major key often fits a little better (on
         // the test songs in minor keys, by up to 0.2, once 0.34), so the song's first chord
         // settles it, unless the notes clearly say otherwise.
@@ -1676,6 +1707,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           const h = fits.find((f) => same(f, home));
           if (k.score - h.score < 0.3) k = h;
         }
+        // (keyRootMargin: set by tools/key-root-study.mjs to try other margins)
+        k = preferCurrentKey(fits, k, this.key, this.keyBars, this.keyRootMargin ?? 0.1);
         // Change the displayed key only after the new one wins two bars running. After the first
         // eight bars, a relative or parallel key (A minor for C major, or C minor) needs eight: the
         // same notes, or the same home note with a different third, so which one wins is often a
@@ -1684,10 +1717,12 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         // to a key next door, come a few bars later). Once a key has been shown for 16 bars it's
         // the song's, and a change takes twice as long (16, 12, and 8 bars for any other key): on
         // whole songs from a recording (Oct 15) the key still went A major, F# minor, A major, F#
-        // minor in one; with this, half the changes, and the test songs' keys found as before.
+        // minor in one; with this, half the changes, and the test songs' keys found as before. The
+        // other mode on the same home note, when the chords vouch for it, needs only two: the notes
+        // had the mode wrong.
         this.keyBars++;
         const settled = this.keyShown >= 16;
-        const need = this.keyBars <= 8 ? 2 : relative(k, this.key) || parallel(k, this.key) ? (settled ? 16 : 8) : nextDoor(k, this.key) ? (settled ? 12 : 4) : settled ? 8 : 2;
+        const need = mode && parallel(k, this.key) ? 2 : this.keyBars <= 8 ? 2 : relative(k, this.key) || parallel(k, this.key) ? (settled ? 16 : 8) : nextDoor(k, this.key) ? (settled ? 12 : 4) : settled ? 8 : 2;
         if (!this.key || same(k, this.key)) { this.key = k || this.key; this.keyCand = null; this.keyCandN = 0; }
         else if (same(k, this.keyCand)) {
           if (++this.keyCandN >= need) { this.key = k; this.keyCand = null; this.keyCandN = 0; this.keyShown = 0; }
