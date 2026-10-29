@@ -142,6 +142,7 @@ const WIDGET = new URLSearchParams(location.search).has('widget');
 const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winKey: '', manual: null,
+  radioSong: null, radioKey: '', // the radio's song, from the titles in its stream (see radioTitle)
   visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
@@ -256,6 +257,10 @@ function detach() {
   }
   state.demo?.stop();
   state.node = state.stream = state.el = state.demo = null;
+  // (and the radio's titles, read beside its stream)
+  window.nc?.radioTitles?.(null);
+  state.radioSong = radioArt = null;
+  state.radioKey = '';
 }
 
 function attach(node, source, label) {
@@ -383,6 +388,7 @@ async function useRadio(address) {
   if (state.source !== 'radio') return; // (another pick took over before it played)
   state.radio = url.href; // (kept for next time once it plays)
   saveSettings();
+  window.nc?.radioTitles?.(url.href); // (its songs' titles, in the app: see radioTitle)
 }
 
 // What went wrong when the microphone wouldn't open, said so it can be acted on. iOS asks about the
@@ -552,10 +558,11 @@ const lineTexts = () => Object.fromEntries(LINE_IDS.map((id) => [id, view.lines[
 function currentSong() {
   if (state.manual) return state.manual;
   if (state.source === 'system') return state.winSong;
+  if (state.source === 'radio') return state.radioSong;
   if (state.source === 'demo') return { title: 'demo_beat', artist: 'Toaster' };
   if (state.source === 'file') return { title: state.label.replace(/\.[^.]+$/, ''), artist: 'File' };
-  // (an input or the radio: no title, which also lets the engine drop a beat that's gone, as when
-  // a station goes from a song to talking: see song() in engine.js)
+  // (an input, or the radio without a title: none, which also lets the engine drop a beat that's
+  // gone, as when a station goes from a song to talking: see song() in engine.js)
   return null;
 }
 
@@ -593,6 +600,48 @@ window.nc?.onNowPlaying((info) => {
   if (reset) freshStart(true);
 });
 
+// The radio's song, from the titles main.js reads in its stream. A title arrives with its sound's
+// bytes, which the player plays after what it has buffered ahead of them, so it's taken on then. A new
+// title starts over, as a new song on the system does: not the first (joined halfway through), nor the
+// same one again after a gap without one (a DJ talking). Its cover is looked up in the iTunes Store
+// (main.js) once a song, and only the latest song's is shown.
+let radioArt = null;
+const radioCovers = new Map(); // 'artist title' -> a promise of its cover (an image, or null)
+window.nc?.onRadioTitle?.((song) => {
+  const el = state.el, b = el?.buffered;
+  setTimeout(() => radioTitle(el, song), b?.length ? Math.max(0, b.end(b.length - 1) - el.currentTime) * 1000 : 0);
+});
+function radioTitle(el, song) {
+  if (state.source !== 'radio' || state.el !== el) return; // (another source since, or the radio again)
+  const key = song ? `${song.artist} ${song.title}` : '';
+  state.radioSong = song;
+  radioArt = null;
+  if (song?.artist) {
+    if (!radioCovers.has(key)) {
+      radioCovers.set(key, window.nc.radioCover(song.artist, song.title).then(async (bytes) => {
+        if (!bytes) return null;
+        const im = new Image();
+        im.src = URL.createObjectURL(new Blob([bytes]));
+        await im.decode();
+        URL.revokeObjectURL(im.src);
+        return im;
+      }).catch(() => { radioCovers.delete(key); return null; })); // (one that couldn't be asked is asked again next time)
+    }
+    radioCovers.get(key).then((im) => { if (state.radioSong === song) radioArt = im; });
+  }
+  if (!key || key.toLowerCase() === state.radioKey) return;
+  const reset = !!state.radioKey && !state.manual && eng.tempo.locked;
+  state.radioKey = key.toLowerCase();
+  eng.note(`radio: ${song.title} | ${song.artist}${reset ? ' -> reset' : ''}`);
+  clipsThisSong = 0; lastClipAt = -99;
+  if (reset) freshStart(true);
+}
+
+// The playing song's picture, for the ID card and the backgrounds that show it: Windows' cover for the
+// system's song, the iTunes Store's for the radio's, none for a name you gave it. (An image, so it draws
+// on a canvas and loads as a texture.)
+function songArt() { return state.manual ? null : state.source === 'system' ? artImg : state.source === 'radio' ? radioArt : null; }
+
 eng.on.kick = (s) => {
   field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick();
   lens.kick(s, state.calm);
@@ -628,7 +677,11 @@ eng.on.drop = () => {
   else if (mode === 'not responding') storm.start(t, eng.tempo.locked ? eng.tempo.bpm : 0);
 };
 eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; nextAutoScene(); };
-// A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js).
+// A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js). The
+// radio's is known while it has a title: a station going from a song to talking sends an empty one,
+// which lets the song go (radioTitle), and then the beat goes after a minute without one, as on an
+// input. Only the system says a song is still playing: the radio's stream always plays, and a long
+// silence on it is dead air or the next song (which brings its own title), not a quiet part.
 eng.song = () => ({ known: !!currentSong(), playing: state.source === 'system' && !!state.winSong && !!state.winPlaying });
 
 // ---------------------------------------------------------------- look
@@ -1531,7 +1584,7 @@ function draw(now) {
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
   else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
-  else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
+  else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: songArt() });
   // (a background still compiling, the window black: the field of glyphs over it, see wait.js)
   wait.draw(t, !!{ worlds, chrome, spectrogram: spectro, warp, spectrum: field, rain: field, scope: field }[mode]?.waiting, col);
   // Don't make the worlds' compiler compete with the first visual. In particular a cold scenery
@@ -1543,7 +1596,7 @@ function draw(now) {
   }
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook, currentSong()?.title, WIDGET ? 'widget' : state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
-  if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
+  if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: songArt() }, col);
   // (the code rain's characters: the code's lines, not the panels' boxes, which rained as +)
   if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
   if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
@@ -2012,7 +2065,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
+window.__nc = { get artImg() { return artImg; }, songArt, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {

@@ -22,6 +22,22 @@ async function repoStars() {
   return n;
 }
 
+// The radio's titles (renderer/app.js, useRadio): Icecast and Shoutcast put them in the stream itself
+// when asked (Icy-MetaData), so the station's stream is read a second time, its sound thrown away, and
+// each new title goes to the page (send). A station that sends none (no icy-metaint) is let go at once.
+// One station at a time: radioTitles stops it. (helpers/radio.cjs is loaded when it's first needed: the
+// test copies of the app don't carry helpers/.)
+let radioTitles = null;
+async function readTitles(url, signal, send) {
+  const { net } = require('electron');
+  const { icyTitles } = require('./helpers/radio.cjs');
+  const res = await net.fetch(url, { headers: { 'Icy-MetaData': '1' }, signal });
+  const metaint = Number(res.headers.get('icy-metaint'));
+  if (!res.ok || !(metaint > 0)) return res.body?.cancel();
+  const read = icyTitles(metaint, send);
+  for await (const chunk of res.body) read(chunk);
+}
+
 const mac = process.platform === 'darwin';
 
 // Run from source (npm start, npm run dev, the checks), it keeps its settings in a folder of its
@@ -418,6 +434,32 @@ function setUpIpc() {
   // The header's star button: the project's star count, and its page in the browser.
   ipcMain.handle('repo:stars', () => repoStars().catch(() => null));
   ipcMain.handle('repo:open', () => shell.openExternal(REPO_PAGE));
+  // The radio's titles: read from the stream at url and sent to the page that asked, till it asks
+  // again (with null when the radio stops).
+  ipcMain.handle('radio:titles', (e, url) => {
+    radioTitles?.abort();
+    radioTitles = null;
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+    const page = e.sender;
+    radioTitles = new AbortController();
+    readTitles(url, radioTitles.signal, (song) => { if (!page.isDestroyed()) page.send('radio:title', song); }).catch(() => {});
+  });
+  // The radio's song's cover: looked up in the iTunes Store's search (it needs no key) by its artist
+  // and title, kept only if both match (pickCover), and handed over as the picture's bytes (the page
+  // can't fetch from other servers). null: no match; an error: it couldn't be asked.
+  ipcMain.handle('radio:cover', async (_e, artist, title) => {
+    if (typeof artist !== 'string' || typeof title !== 'string' || !artist || !title) return null;
+    const { net } = require('electron');
+    const { pickCover } = require('./helpers/radio.cjs');
+    const q = new URLSearchParams({ media: 'music', entity: 'song', limit: '5', term: `${artist} ${title}` });
+    const found = await net.fetch(`https://itunes.apple.com/search?${q}`);
+    if (!found.ok) throw new Error(`iTunes search: ${found.status}`);
+    const art = pickCover((await found.json()).results, artist, title);
+    if (!art) return null;
+    const pic = await net.fetch(art);
+    if (!pic.ok) throw new Error(`the cover: ${pic.status}`);
+    return new Uint8Array(await pic.arrayBuffer());
+  });
   ipcMain.handle('win:titlebar', (_e, color, symbolColor) => {
     try { win?.setTitleBarOverlay({ color, symbolColor }); } catch { /* not supported */ }
   });
@@ -591,6 +633,7 @@ app.on('window-all-closed', () => {
   quitting = true;
   clearTimeout(nowPlayingTimer);
   nowPlayingProc?.kill();
+  radioTitles?.abort();
   stopFaces();
   endRecording().finally(() => app.quit());
 });

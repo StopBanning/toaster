@@ -64,9 +64,22 @@ stream itself, MP3 or AAC from an Icecast or Shoutcast server, not the station's
 its station's to offer, and many don't let apps come with theirs), so you bring the address
 ([radio-stations.md](radio-stations.md) lists a few stations that publish theirs for any player); the
 last one that played is remembered. It plays through the app the way a file does, so the blocks are
-timed the same way. The song titles a stream carries aren't read, so, as on an input, a new song
-starts the code over when Toaster hears a new tempo or a pause. If the stream ends or drops, it
-says so and the source menu comes back.
+timed the same way. If the stream ends or drops, it says so and the source menu comes back.
+
+In the app the radio has titles. Icecast and Shoutcast put the song's title in the stream itself
+when a player asks (`Icy-MetaData: 1`): after every so many bytes of sound (the `icy-metaint`
+header), a block holding `StreamTitle='Artist - Title';`. The app (main.js, with
+`helpers/radio.cjs`) reads the stream a second time for them, throwing that copy's sound away; a
+title is split at its first " - " into artist and title (without one, it's all title). A title
+reaches the app with its song's first bytes, which the player plays after what it has buffered
+ahead (a couple of seconds), so the title changes then, when its song is heard. A new title starts
+the code over, as a new song from Windows does; an empty one (a station between songs, or talking)
+lets the song go, so a beat that's gone is dropped as on an input. Its cover, for the ID card and
+the cuts, is looked up in the iTunes Store's search (no key needed) by the artist and title, once a
+song, and kept only if a result's artist and title both match (one inside the other): a wrong cover
+is worse than none. A title without an artist isn't looked up. Old Shoutcast servers that answer
+`ICY 200 OK` rather than HTTP play, but their titles aren't read (Chromium hands such a response
+over as HTTP/0.9, its headers inside the body). In a browser the radio stays untitled.
 
 The stream is read cross-origin (CORS), the only way the analysis hears sound from another server.
 The app's page is a file on your machine, which may read sound from any server; on the web page a
