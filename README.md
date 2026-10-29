@@ -161,7 +161,8 @@ then the caret goes back to fix it.
   every bar as heard and nothing simplified, each phrase written once and played in order with
   `arrange()`. Paste it into strudel.cc and press ctrl+enter.
 
-More on all three in [docs/how-it-works.md](docs/how-it-works.md).
+More on all three in [docs/how-it-works.md](docs/how-it-works.md). Filming Toaster for a video?
+[docs/creators.md](docs/creators.md) has the setup, the take, and how to carry on in Strudel.
 
 ## Privacy
 
