@@ -12,3 +12,5 @@ tools/handheld/renders/
 tools/handheld/concepts/tex/
 tools/handheld/concepts/renders/
 tools/handheld/concepts/__pycache__/
+
+tools/release/config.json

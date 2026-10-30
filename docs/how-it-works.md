@@ -10,16 +10,16 @@ on Windows, or `Music/Toaster` on a Mac (named after the song and the time):
 
 - A MIDI file: drums on channel 10 (kick, clap, closed and open hat), the bass line, the chords
   and the lead line on tracks of their own, at the song's tempo. Drop it into a DAW.
-- The whole song as Strudel code: every bar as heard, nothing simplified. Each instrument's
-  phrases are written once (`bd1`, `bass2`...) and each track's `arrange(...)` plays them in
-  order, so fills, short sections and chord changes stay where they were. The file opens on the
-  song's name and how to play it, and ends with a record of what was captured (the tempo
-  stretches, the bars and seconds kept). Open strudel.cc, paste it in, ctrl+enter.
+- Strudel code: each instrument's phrases are written once (`bd1`, `bass2`...) and each track's
+  `arrange(...)` plays them in order, so fills, short sections and chord changes stay where they
+  were. The file opens on the song's name and how to play it, and ends with a record of what was
+  captured (the tempo stretches, the bars and seconds kept). Open strudel.cc, paste it in,
+  ctrl+enter.
 
 It's written from the same patterns the code on screen shows, bar by bar (steady patterns, not
 every hit the detectors fire on), with the bar's chord and bass note, so it has the same strengths
-and gaps (see the end of this page). If the tempo changed along the way, the longest stretch at
-one tempo is the one saved.
+and gaps (see the end of this page). If the tempo changed along the way, the stretch at one tempo
+with the most bars is the one saved.
 
 ## Recording
 
@@ -188,9 +188,9 @@ house song, a garage one and a 2-step one, never.
 It's a live reconstruction, not yet an exact transcription. Known gaps (measured with the checks
 above): a bass that plays the same note again under every kick (trap 808s) can't be told from the
 kick, so it falls back to one note per bar, as do soft bass lines with no drums; toms, shakers, rims and crashes have
-no lines of their own; the lead line catches roughly half of a melody's notes and can pick up
-chord instruments; a minor key can be named as its relative major (C major for A minor) when
-Toaster joins a song halfway through (heard from its start, the song's first chord settles it);
+no lines of their own; the lead line catches only about one in seven of a melody's notes (on the generated test songs)
+and can pick up chord instruments; a minor key can be named as its relative major (C major for
+A minor) or the other way round, even heard from the start (small timing differences can flip it);
 heavily compressed mixes lose some kicks; drum & bass sometimes locks at half speed when the PC is
 busy (a video loading in
 the browser, say). Songs without clear drums take longer: with a steady pulse (strummed guitar, a

@@ -17,7 +17,7 @@ transcription.
 
 - **Writes the song as code you can play.** A line for each part, typed the way a live coder
   performs it ([what you'll see in the code](#what-youll-see-in-the-code)). It's real Strudel: press
-  **O** and it opens in strudel.cc, ready to play; press **X** for the whole song as Strudel code
+  **O** and it opens in strudel.cc, ready to play; press **X** for the song so far as Strudel code
   and as a MIDI file.
 - **Your camera, worked with your hands.** **C** turns it on. Frame something with your fingers
   and a window opens on it through one of 16 filters; make a circle with your hands and a portal
@@ -74,7 +74,7 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 | O | open this code in Strudel: your browser opens strudel.cc with the code in its editor (in the link, after the #), ready to play with ctrl+enter and change, starting where the song is (on the bar of its four that was playing when you pressed O). The vox line becomes the same notes on a synth (Strudel has no "vox" sample), and a punchcard of the whole thing draws under the code |
 | M | record a video: what's in the window with the sound, into `Videos\Toaster` on Windows or `Movies/Toaster` on a Mac (see Saving things below). M again to stop |
 | J | drop clips: while on, the first two drops of each song are saved as videos of their own, the build-up and the drop, into that same folder (see Saving things below) |
-| X | export the song so far, decompiled: a MIDI file and the whole song as Strudel code, into `Music\Toaster` on Windows or `Music/Toaster` on a Mac (see Saving things below) |
+| X | export the song so far, decompiled: a MIDI file and Strudel code, into `Music\Toaster` on Windows or `Music/Toaster` on a Mac (see Saving things below) |
 | Space | tap the beat: from the fourth tap the tempo is yours, the beats on your taps and the first tap starting a bar. For a song it can't find the beat of (soft songs, rubato) or finds wrong. It stays until the song changes (the hits still fine-tune it), and a pause of 2 seconds starts the count over |
 | Q | hush: every part muted with a `_` in front of its name, the way Strudel's `hush()` stops everything, and the background dimmed (the sound itself keeps playing). Q again, an open hand or a new song brings it back |
 | K | camera effect: none, cut-out (just you over the visuals: where MediaPipe's selfie segmenter finds a person, the rest of the picture goes see-through, and the camera moves up over the backgrounds), slit-scan (each row a moment later than the one above, so anything moving bends down the picture), datamosh (what a video codec does when it loses its key frames: the picture melts along with whatever moves, and comes back fresh on every bar line), windows (the room gone, you only through little windows that pop open wherever you move, each keeping its moment, so moving leaves a trail of them, a burst on each kick, one on your face; after lo.fi.sci.fi's segcam), glass (you gone clear: the room, in colour, bent through your shape as through liquid glass, light glinting off its edges, the bend sharper on the kick; the room behind you is learned as you move, so step aside for a moment and it comes out clean; after ttyproj's "Transparent Distortion", made in TouchDesigner), dots (you as a neon dot matrix: each spot of the picture a round dot as big as it is bright, violet in the shadows to pink nearly white, with teal edges, the room faded to a faint grid; the kick swells the dots and each new chord slides the colours; after decayingsun's "dream machine"), voxels (the camera rebuilt as a room of cubes, each the colour of its patch of the picture: where the selfie segmenter finds you, your cubes stand out from the wall, a tiled floor runs out from its foot, and the view, from a little above, swings slowly side to side; the kick swells the cubes and lifts their light, yours most; after ntrxcam's voxel camera). The first three work on the ASCII camera too, and with it the windows show you as text. Remembered |
@@ -158,9 +158,9 @@ then the caret goes back to fix it.
 - **J** turns on drop clips: the first two drops of each song are saved as their own videos (the
   build-up and the drop) into that same folder.
 - **X** exports the song so far into `Music\Toaster` on Windows, or `Music/Toaster` on a Mac: a
-  MIDI file (drums, bass, chords and lead on their own tracks) and the whole song as Strudel code,
-  every bar as heard and nothing simplified, each phrase written once and played in order with
-  `arrange()`. Paste it into strudel.cc and press ctrl+enter.
+  MIDI file (drums, bass, chords and lead on their own tracks) and Strudel code, each phrase
+  written once and played in order with `arrange()`. Paste it into strudel.cc and press
+  ctrl+enter.
 
 More on all three in [docs/how-it-works.md](docs/how-it-works.md). Filming Toaster for a video?
 [docs/creators.md](docs/creators.md) has the setup, the take, and how to carry on in Strudel.

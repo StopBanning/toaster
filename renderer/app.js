@@ -1,7 +1,7 @@
 // Toaster: wires the audio sources, the listening engine, the code view and the visuals.
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
-import { createCodeView } from './codeview.js';
+import { createCodeView, nextCodeSetting } from './codeview.js';
 import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens, setGameCode } from './visuals.js';
 import { createOrb } from './orb.js';
 import { createDotCam } from './dotcam.js';
@@ -41,9 +41,11 @@ const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, 
 
 const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off'];
 // What V goes round, best first, and their names on screen. The rest of VISUALS (spectrum, tunnel, spiral, pitch wheel,
-// warp, rain, scope) are out of the round since 0.4.23: kept unlisted for a release, in case someone misses one, then gone.
-const V_ROUND = ['scenery', 'worlds', 'chrome', 'spectrogram', 'cuts', 'fire', 'off'];
-const V_NAME = { scenery: 'scenes' };
+// warp, scope) are out of the round since 0.4.23: kept unlisted for a release, in case someone misses one, then gone.
+// The rain came back in 0.4.26: someone did miss it. The rest stay out of V but can be picked by name in Ctrl+K
+// ("background: warp (classic)"), and stay picked.
+const V_ROUND = ['scenery', 'worlds', 'chrome', 'spectrogram', 'cuts', 'fire', 'rain', 'off'];
+const V_NAME = { scenery: 'scenes', pitchwheel: 'pitch wheel' };
 const visName = (v) => V_NAME[v] || v;
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
@@ -145,6 +147,7 @@ const state = {
   visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
+  beatHidden: false, // Z's middle setting: just the beat hidden, the drum lines and their grid (for music with no pulse)
   crt: false, // Y: an old screen over everything (see #tube in the CSS)
   eyes: false, // the camera's third setting: big eyes over your face
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
@@ -169,7 +172,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['hintsDone', 'keys', 'codeHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'radio', 'seenVersion'];
+const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'radio', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -187,10 +190,9 @@ function loadSettings() {
   // own: the orb on, the background off.
   const name = typeof saved.visualName === 'string' ? saved.visualName : VISUALS[saved.visual];
   if (name === 'orb' || name === 'scenes') { state.orb = true; state.visual = VISUALS.indexOf('off'); }
-  else state.visual = Math.max(0, VISUALS.indexOf(name));
-  // (a background out of V's round now, the old strengths, the glass and the orb: back to the round's own)
-  if (!V_ROUND.includes(VISUALS[state.visual])) state.visual = VISUALS.indexOf('scenery');
-  state.strength = 1; state.glass = false; state.orb = false;
+  else if (VISUALS.includes(name)) state.visual = VISUALS.indexOf(name); // (none saved, a first start: the scenes, as state starts)
+  // (the old strengths and the glass: back to the round's own; a classic background picked by name stays)
+  state.strength = 1; state.glass = false;
   if (!['auto', 'night', 'film', 'ascii', 'thermal', 'cells'].includes(state.worldLook)) state.worldLook = 'auto'; // (worlds.js's looks)
   if (!(state.theme in THEMES)) state.theme = 0;
   // the drop effect too (older versions saved its number, in a list without "not responding"); off till
@@ -218,6 +220,7 @@ function loadSettings() {
   for (const [id, k] of Object.entries(keys)) if (typeof k === 'string' && k && !used.has(k)) { state.keys[id] = k; used.add(k); }
   state.glass = state.glass === true;
   state.codeHidden = state.codeHidden === true;
+  state.beatHidden = state.beatHidden === true && !state.codeHidden;
   state.crt = state.crt === true;
 }
 
@@ -753,16 +756,24 @@ function nextGameScreens() {
 function setOrb(on) {
   state.orb = on;
   if (!on) orb.clear();
-  $('b-orb')?.classList.toggle('on', on); // (its button is gone since 0.4.23; the orb stays, unlisted)
+  $('b-orb')?.classList.toggle('on', on); // (its button is gone since 0.4.23; R has it again since 0.4.26)
   saveSettings();
 }
 
-// Z: the code hidden, just the visuals, for Toaster as a visualizer. It's still written underneath,
-// so Z again shows it as it stands.
-function setCodeHidden(on) {
+// Z: the code hidden, just the visuals, for Toaster as a visualizer; or (beat) just its beat hidden, the drum lines
+// and their grid, for music with no pulse (Z's middle setting: see nextCodeSetting). It's still written underneath,
+// so it shows again as it stands.
+function setCodeHidden(on, beat = false) {
   state.codeHidden = on;
+  state.beatHidden = !on && beat;
   document.body.classList.toggle('nocode', on);
+  document.body.classList.toggle('nobeat', state.beatHidden);
+  footerKeys();
   saveSettings();
+}
+// what Z has done, and what it does next
+function codeSaid() {
+  return state.codeHidden ? `code hidden: ${K('code')} for all but the beat` : state.beatHidden ? `beat hidden: ${K('code')} shows it all` : 'code shown';
 }
 
 // Y: the CRT, an old TV over everything (#tube and body.tube-on in the CSS; .crt is the drop effect's
@@ -1617,7 +1628,8 @@ function choosePreset(id) {
   const preset = PRESETS.find((p) => p.id === id);
   if (!preset) return Promise.reject(new Error('Unknown preset'));
   const run = async () => {
-    const current = { ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme] };
+    // (with just the beat hidden, a preset's codeHidden: false still means all of the code)
+    const current = { ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme], codeHidden: state.beatHidden ? 'beat' : state.codeHidden };
     if (await applyPreset(preset, current, presetSetters)) flashStatus('preset: ' + preset.name.toLowerCase());
   };
   presetQueue = presetQueue.then(run, run);
@@ -1682,6 +1694,8 @@ const ACTIONS = [
   { id: 'visual', key: 'v', run: () => { setVisual(VISUALS.indexOf(V_ROUND[(V_ROUND.indexOf(VISUALS[state.visual]) + 1) % V_ROUND.length])); flashStatus('background: ' + visName(VISUALS[state.visual])); crtStatic(); crtOsd(crtChannel()); } },
   { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the chrome's collage, the spectrogram's colours or the handheld's screens`)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
+  // R: the orb, its 3D shapes over any background (off the keys in 0.4.23, back in 0.4.26: it was missed)
+  { id: 'orb', key: 'r', run: () => { setOrb(!state.orb); flashStatus(state.orb ? 'the orb on' : 'the orb off'); } },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
   { id: 'earlier', key: ']', run: () => nudgeSync(10) },
@@ -1706,7 +1720,7 @@ const ACTIONS = [
   { id: 'crt', key: 'y', run: () => { setCrt(!state.crt); flashStatus(state.crt ? 'crt on' : 'crt off'); } },
   { id: 'name', key: 'e', run: () => renameSong() },
   { id: 'hide', key: 'h', run: () => document.body.classList.toggle('clean') },
-  { id: 'code', key: 'z', run: () => { setCodeHidden(!state.codeHidden); flashStatus(state.codeHidden ? `code hidden: ${K('code')} shows it` : 'code shown'); } },
+  { id: 'code', key: 'z', run: () => { const next = nextCodeSetting(state); setCodeHidden(next.codeHidden, next.beatHidden); flashStatus(codeSaid()); } },
   { id: 'full', key: 'f', run: () => window.nc?.toggleFullscreen() },
 ];
 // the footer's list of keys, in this order: [actions..., what it says]
@@ -1731,10 +1745,20 @@ const paletteEntries = () => [
     id: 'background:' + name, name: 'background: ' + visName(name),
     run: () => { setVisual(VISUALS.indexOf(name)); flashStatus('background: ' + visName(name)); },
   })),
+  // the classics, out of V's round since 0.4.23, by name only
+  ...VISUALS.filter((name) => !V_ROUND.includes(name)).map((name) => ({
+    id: 'background:' + name, name: `background: ${visName(name)} (classic)`, aliases: ['classic', 'old'],
+    run: () => { setVisual(VISUALS.indexOf(name)); flashStatus(`background: ${visName(name)} (classic)`); },
+  })),
   ...BLOCK_LOOKS.map((look) => ({
     id: 'look:' + look, name: 'code look: ' + ({ game: 'handheld game', blocks: 'punchcard' }[look] || look),
     aliases: look === 'game' ? ['handheld', 'game'] : [],
     run: () => { state.blockLook = look; setBlocks(true); flashStatus('code look: ' + look); },
+  })),
+  // Z's three settings, by name
+  ...[['shown', false, false], ['hidden', true, false], ['the beat hidden', false, true]].map(([name, on, beat]) => ({
+    id: 'code:' + name, name: 'code: ' + name, aliases: beat ? ['drums', 'ambient', 'no beat'] : [],
+    run: () => { setCodeHidden(on, beat); flashStatus(codeSaid()); },
   })),
   ...GAME_SCREENS.map((screen) => ({
     id: 'screen:' + screen, name: 'handheld screens: ' + screenName(screen), aliases: screen === 'jp' ? ['japan', 'jp'] : [],
@@ -1846,8 +1870,13 @@ function nextWhat() {
   if (gameShowing()) return 'next screen';
   return { scenery: 'next scene', worlds: 'next look', chrome: 'collage', spectrogram: 'colours' }[VISUALS[state.visual]] || null;
 }
+// (Z's word: what it does next, as the code is now)
+function codeNext() {
+  return state.codeHidden ? 'code, no beat' : state.beatHidden ? 'all the code' : 'hide code';
+}
 function footerKeys() {
-  const parts = FOOTER.map((f) => (f[0] === 'strength' ? (nextWhat() ? `${K('strength')} ${nextWhat()}` : null) : `${f.slice(0, -1).map(K).join(' ')} ${f[f.length - 1]}`));
+  const word = (f) => (f[0] === 'code' ? codeNext() : f[f.length - 1]);
+  const parts = FOOTER.map((f) => (f[0] === 'strength' ? (nextWhat() ? `${K('strength')} ${nextWhat()}` : null) : `${f.slice(0, -1).map(K).join(' ')} ${word(f)}`));
   document.querySelector('footer .keys').textContent = [...parts.filter(Boolean), '? all keys'].join(' · ');
 }
 
@@ -1887,7 +1916,7 @@ const controls = createControls({
     crt: () => onoff(state.crt),
     name: () => state.manual?.title || '',
     hide: () => onoff(document.body.classList.contains('clean')),
-    code: () => onoff(state.codeHidden),
+    code: () => ({ text: state.codeHidden ? 'on' : state.beatHidden ? 'just the beat' : 'off', on: state.codeHidden || state.beatHidden }),
     full: () => onoff(document.fullscreenElement || document.webkitFullscreenElement),
   },
   can: {
@@ -2039,7 +2068,7 @@ setCamFx(state.camFx);
 setBlocks(state.blocks);
 setOrb(state.orb);
 setGlass(state.glass);
-setCodeHidden(state.codeHidden);
+setCodeHidden(state.codeHidden, state.beatHidden);
 setCrt(state.crt);
 setCalm(state.calm);
 setUpdates(state.updates);

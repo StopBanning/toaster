@@ -309,7 +309,7 @@ export function songStrudel(song, about) {
     else order.push({ name, bars: sec.bars });
   }
   const out = [
-    `// ${about}, decompiled by toaster: the song in exact phrases, each written once`,
+    `// ${about}, decompiled by toaster: the bars it kept, each phrase written once`,
     '// and played in order, including variations. ctrl+enter plays it, ctrl+. stops.',
     `setcpm(${song.bpm}/4)`,
     '',
@@ -333,14 +333,17 @@ export function songStrudel(song, about) {
 // phrases; each track's arrange list explicitly enumerates the exact bar variations.
 // This does not vote, quantize, or drop notes.
 export function songStrudelCompact(song, about) {
-  const exact = songStrudel(song, about);
+  return compactFromExact(song, about, songStrudel(song, about));
+}
+
+function compactFromExact(song, about, exact) {
   if (!exact) return null;
   // The file opens on what it is and how to play it; the exact writer's record of the timeline and
   // the coverage moves to the end, where it's there for checking without being the first thing read.
   const top = exact.slice(0, exact.indexOf('\nconst ')).trimEnd().split('\n');
   const record = top.slice(2).filter((l) => l.startsWith('//'));
   const header = [
-    `// ${about}, decompiled by toaster: every bar it heard, each phrase written once`,
+    `// ${about}, decompiled by toaster: the bars it kept, each phrase written once`,
     '// No events simplified. ctrl+enter plays it, ctrl+. stops',
     ...top.slice(2).filter((l) => !l.startsWith('//')),
   ];
@@ -408,4 +411,15 @@ export function songStrudelCompact(song, about) {
   };
   const tail = record.length ? ['// for checking the export:', ...record, ''] : [];
   return [...header, '', ...helpers, '', ...definitions, '', '$: stack(', ...tracks, ')', '', ...tail].map(wrap).join('\n');
+}
+
+// What X saves: the exact or the compact program, whichever is fewer bytes as the whole UTF-8 file
+// (comments and line ends too; a tie keeps the exact one). Both play the same events. The exact one
+// is written once and the compact one made from it, in the export worker.
+export function songStrudelShortest(song, about) {
+  const exact = songStrudel(song, about);
+  if (!exact) return null;
+  const compact = compactFromExact(song, about, exact);
+  const encoder = new TextEncoder();
+  return encoder.encode(compact).length < encoder.encode(exact).length ? compact : exact;
 }

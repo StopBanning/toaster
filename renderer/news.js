@@ -4,6 +4,12 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.26', items: [
+    { act: 'visual', text: "the code rain is back in the round: it rains your code over everything" },
+    { act: 'orb', text: "the orb is back: a cloud of dots in 3D shapes over any background, flowing into a new shape every 8 bars" },
+    { key: 'Ctrl+K', text: "the classic backgrounds are back by name: type warp, spiral, tunnel, pitch wheel, spectrum or scope" },
+    { act: 'code', text: "press it twice to hide just the beat: the drum lines and their grid go, and the tempo, key, bass, chords and vox stay, for music with no pulse" },
+  ] },
   { version: '0.4.25', items: [
     { act: 'blocks', text: "the handheld's bottom screen turns into the code now and then: its seven parts, typing as Toaster types, on the bar lines" },
     { act: 'strength', in: 'the game', text: "the neon and LCD screens have the code page too, each in its own light: the neon glows, the LCD's in dark segments" },
