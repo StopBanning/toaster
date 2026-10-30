@@ -281,6 +281,8 @@ body.live header, body.live footer { opacity: .14; }
 body.clean header, body.clean footer { opacity: 0 !important; }
 /* Z: the code hidden, just the visuals (still laid out, so it shows again as it stands) */
 body.nocode #code, body.nocode #err { visibility: hidden; }
+/* and Z's middle setting, the beat hidden: the drum lines and their grid, the rest closing up (still written underneath) */
+body.nobeat #ln-bd, body.nobeat #ln-sd, body.nobeat #ln-hhc, body.nobeat #ln-hho, body.nobeat #grid { display: none; }
 header:hover, footer:hover, header:focus-within { opacity: 1 !important; }
 /* recording: the bars stay out of the video (hover the header to reach stop; M stops it too) */
 body.recording header, body.recording footer { opacity: 0 !important; }
