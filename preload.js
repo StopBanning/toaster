@@ -46,6 +46,12 @@ contextBridge.exposeInMainWorld('nc', {
   // The header's star button: GitHub's star count (or null), and the project's page in the browser.
   stars: () => ipcRenderer.invoke('repo:stars'),
   openRepo: () => ipcRenderer.invoke('repo:open'),
+  // The radio's song: start reading the titles in the stream at url (null stops it), fn({ title,
+  // artist } or null) for each new one; and a song's cover from the iTunes Store, as the picture's
+  // bytes (null: none found).
+  radioTitles: (url) => ipcRenderer.invoke('radio:titles', url),
+  onRadioTitle: (fn) => ipcRenderer.on('radio:title', (_e, song) => fn(song)),
+  radioCover: (artist, title) => ipcRenderer.invoke('radio:cover', artist, title),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),
   handLogAdd: (text) => ipcRenderer.invoke('handlog:add', text),

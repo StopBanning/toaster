@@ -79,7 +79,7 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 | Space | tap the beat: from the fourth tap the tempo is yours, the beats on your taps and the first tap starting a bar. For a song it can't find the beat of (soft songs, rubato) or finds wrong. It stays until the song changes (the hits still fine-tune it), and a pause of 2 seconds starts the count over |
 | Q | hush: every part muted with a `_` in front of its name, the way Strudel's `hush()` stops everything, and the background dimmed (the sound itself keeps playing). Q again, an open hand or a new song brings it back |
 | K | camera effect: none, cut-out (just you over the visuals: where MediaPipe's selfie segmenter finds a person, the rest of the picture goes see-through, and the camera moves up over the backgrounds), slit-scan (each row a moment later than the one above, so anything moving bends down the picture), datamosh (what a video codec does when it loses its key frames: the picture melts along with whatever moves, and comes back fresh on every bar line), windows (the room gone, you only through little windows that pop open wherever you move, each keeping its moment, so moving leaves a trail of them, a burst on each kick, one on your face; after lo.fi.sci.fi's segcam), glass (you gone clear: the room, in colour, bent through your shape as through liquid glass, light glinting off its edges, the bend sharper on the kick; the room behind you is learned as you move, so step aside for a moment and it comes out clean; after ttyproj's "Transparent Distortion", made in TouchDesigner), dots (you as a neon dot matrix: each spot of the picture a round dot as big as it is bright, violet in the shadows to pink nearly white, with teal edges, the room faded to a faint grid; the kick swells the dots and each new chord slides the colours; after decayingsun's "dream machine"), voxels (the camera rebuilt as a room of cubes, each the colour of its patch of the picture: where the selfie segmenter finds you, your cubes stand out from the wall, a tiled floor runs out from its foot, and the view, from a little above, swings slowly side to side; the kick swells the cubes and lifts their light, yours most; after ntrxcam's voxel camera). The first three work on the ASCII camera too, and with it the windows show you as text. Remembered |
-| N | now-playing ID card: song, tempo, key, and your webcam as a 1-bit dithered picture (with the camera off, the song's cover from Windows if the player gives one, in finer dots and sharpened so its lettering survives, else the sound). N again makes it big (the cover or you in big dots, as big as fits), a third time puts it away. On by default in the vertical layout, each layout remembers its own setting. In the mini player it's the big one shrunk to fit beside the code |
+| N | now-playing ID card: song, tempo, key, and your webcam as a 1-bit dithered picture (with the camera off, the song's cover from Windows if the player gives one, or the radio's from the iTunes Store, in finer dots and sharpened so its lettering survives, else the sound). N again makes it big (the cover or you in big dots, as big as fits), a third time puts it away. On by default in the vertical layout, each layout remembers its own setting. In the mini player it's the big one shrunk to fit beside the code |
 | D | the drop, now: the drop effect (it also fires when the kick returns after a 3+ second break), and the backgrounds' drop moments: the scenery's toast pops, the koi gather, the sharks charge, the fireworks go up, the fire flares. With B set to off, just the backgrounds'. With the camera on, some pop-ups close in on your face or one eye (one on a little CRT screen) |
 | B | drop effect: XP takeover, blue screen, not responding (Windows XP's hung-window smear: the cursor drags a toaster.exe window round a figure 8 for 4 bars; it hangs, leaves a copy of itself every 8th, and shows the visuals under it in a new look every beat, negative, thermal, cyanotype, a green CRT, edges, dither, x-ray; then the trail rewinds), off. Off until you pick one |
 | I | machine readout (`const machine = {...}`) |
@@ -174,8 +174,9 @@ camera (off until you press C) is looked at by the system's own face detector (W
 detector, or the Mac's Vision framework) and by Google's MediaPipe, both running on your machine.
 Nothing is uploaded. It reaches the internet for three things only: GitHub, when it starts, to see
 whether there's a newer Toaster (turn that off in the help, under Updates), strudel.cc when you
-press O (your browser opens it with the code in the link), and the radio's stream while it plays
-(from the server at the address you typed).
+press O (your browser opens it with the code in the link), and the radio while it plays: its stream
+(from the server at the address you typed) and, for each song, the song's artist and title, sent to
+Apple's iTunes Search to find its cover (nothing else goes with them).
 
 ## Good to know
 
@@ -186,6 +187,8 @@ press O (your browser opens it with the code in the link), and the radio's strea
   Spotify, browsers and the rest.
 - The radio (S) plays an internet radio stream whose address you paste in; Toaster comes with no
   stations, but [docs/radio-stations.md](docs/radio-stations.md) lists a few that publish theirs.
+  In the app it reads the song titles the stream carries, and finds each song's cover in the iTunes
+  Store (none if no song there matches); in a browser the radio is untitled.
   More in [docs/how-it-works.md](docs/how-it-works.md#the-radio).
 - For the finger frame, the portals and the hand signs, keep your hands a little inside the camera's picture.
 - On a touch screen (an iPad, say), ☰ in the header opens every key as a button, each showing what it's set to.
