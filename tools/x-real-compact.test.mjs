@@ -27,7 +27,9 @@ test('compact instrument variations retain native events, tails, silence, wobble
     const before = JSON.stringify(song);
     const exactCode = tape.songStrudel(song, 'test');
     const code = tape.songStrudelCompact(song, 'test');
+    const selected = tape.songStrudelShortest(song, 'test');
     if (!exactCode) { assert.equal(code, null); continue; }
+    assert.equal(selected, Buffer.byteLength(code) < Buffer.byteLength(exactCode) ? code : exactCode);
     const exact = events(await runtime.evaluate(exactCode), 0, length);
     const compact = events(await runtime.evaluate(code), 0, length);
     assert.deepEqual(canonical(compact), canonical(exact));

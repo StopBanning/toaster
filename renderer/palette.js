@@ -24,7 +24,7 @@ export function matchCommands(entries, query, limit = 8) {
 
 // What each action is called here (one without a name goes by its id).
 export const ACTION_NAMES = {
-  source: 'audio source', visual: 'next background', strength: 'next scene or screen', blocks: 'next code look',
+  source: 'audio source', visual: 'next background', strength: 'next scene or screen', blocks: 'next code look', orb: 'the orb, 3D shapes',
   later: 'blocks timing later', earlier: 'blocks timing earlier', cam: 'camera', card: 'song ID card',
   strudel: 'open in Strudel', rec: 'record', clips: 'save clips', export: 'export the song', camfx: 'camera effects',
   tap: 'tap the beat', hush: 'hush every part', drop: 'trigger the drop', dropfx: 'next drop effect', machine: 'machine readout',

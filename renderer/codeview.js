@@ -70,6 +70,15 @@ export function head(s) {
   return s;
 }
 
+// Z goes round three settings for the code: all of it; none (just the visuals, for Toaster as a visualizer); then
+// all but the beat, the drum lines and their grid hidden (body.nobeat in the CSS), for music with no pulse. Each is
+// { codeHidden, beatHidden }, as the app saves it, so an older Toaster's codeHidden: true is still none of it.
+export function nextCodeSetting({ codeHidden, beatHidden }) {
+  if (codeHidden) return { codeHidden: false, beatHidden: true }; // none: all but the beat next
+  if (beatHidden) return { codeHidden: false, beatHidden: false }; // then all of it
+  return { codeHidden: true, beatHidden: false };
+}
+
 // Sliders: slider(value, min, max) parts, their values, and where a value sits in its range.
 const values = (parts) => parts.filter((p) => p.slider).map((p) => parseFloat(p.text.slice(7)));
 const unslid = (text) => text.replace(/slider\(-?[\d.]+/g, 'slider(#');
@@ -92,7 +101,8 @@ export function createCodeView(ids) {
   let cols = 0;
   const ruler = document.createElement('canvas').getContext('2d');
   function measure() {
-    const el = (lines.bd || Object.values(lines)[0]).el;
+    // (a code line that's showing: bd goes with the beat, Z's middle setting)
+    const el = ([lines.bd, lines.bassline].find((L) => L?.el.clientWidth) || lines.bd || Object.values(lines)[0]).el;
     ruler.font = getComputedStyle(el).font;
     const cw = ruler.measureText('0'.repeat(40)).width / 40;
     const n = cw > 0 ? Math.floor(el.clientWidth / cw) : 0;
@@ -153,10 +163,11 @@ export function createCodeView(ids) {
     const ops = [];
     for (let i = 0; i < a.length - s - p; i++) ops.push('del');
     const add = b.slice(p, b.length - s);
-    // now and then a slip: the last ) (or ") of what's typed left out until the error shows
+    // now and then a slip: the last ) (or ") of what's typed left out until the error shows (not on a line hidden
+    // with the beat, Z's middle setting: its error would point at nothing)
     let slip = -1;
     const now = performance.now() / 1000;
-    if (!slipsOff && SLIP_LINES.has(L.id) && !b.startsWith('//') && !b.startsWith('_') && add.length > 6 && now - lastSlip > SLIP_GAP && Math.random() < SLIP_CHANCE) {
+    if (!slipsOff && SLIP_LINES.has(L.id) && L.el.offsetWidth && !b.startsWith('//') && !b.startsWith('_') && add.length > 6 && now - lastSlip > SLIP_GAP && Math.random() < SLIP_CHANCE) {
       slip = add.lastIndexOf(')');
       if (slip < 0) slip = add.lastIndexOf('"');
       if (slip >= 0) lastSlip = now;

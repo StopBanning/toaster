@@ -35,9 +35,9 @@ to take it further in Strudel.
 - **O opens the code in strudel.cc**, where it plays.
 - **To build it up the way live coders do,** put a `_` in front of every part's name except the drums (`_bassline:`,
   `_chords:`), then delete them one at a time and press Ctrl+Enter.
-- **X exports the whole song** as Strudel code and MIDI.
-- **What to expect:** Toaster writes the drums, the bass line and the chords. It won't write a vocal melody, so adding
-  the hook by hand is a great moment on camera.
+- **X exports the song so far** as Strudel code and MIDI.
+- **What to expect:** Toaster writes the drums, the bass line and the chords. It won't transcribe the vocals (at most it guesses a
+  few lead notes), so adding the hook by hand is a great moment on camera.
 
 ## Credit
 
