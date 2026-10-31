@@ -4,6 +4,11 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.28', items: [
+    { act: 'theme', text: "a sixth theme, dynamic: the colours come from the song's cover (your music app's, the radio's or a file's own) and ease over to the next song's" },
+    { key: 'player bar', text: "a slim bar along the bottom with the song, play and pause, skip and a progress bar where the source has them (a file, the radio, the demo, Music and Spotify on a Mac, the media keys on Windows), and the tempo, key and bar: H hides it with the footer, and the help has its settings" },
+    { key: 'files', text: "a file you play names its song from its own title and artist tags: the code's first line, the ID card and the player bar say Daft Punk and Around the World where they said File and the file's name" },
+  ] },
   { version: '0.4.27', items: [
     { act: 'cam', text: "the camera can be shown as the camera sees it, not mirrored, to point it at your gear: untick Mirror the camera in the help, or Ctrl+K and type camera" },
     { act: 'source', text: "the radio shows each song's title as the station sends it, and its cover from the iTunes Store" },

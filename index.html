@@ -63,10 +63,14 @@
 <link rel="modulepreload" href="demo.js" />
 <link rel="modulepreload" href="news.js" />
 <link rel="modulepreload" href="controls.js" />
+<link rel="modulepreload" href="player.js" />
 <link rel="modulepreload" href="palette.js" />
 <link rel="modulepreload" href="firstrun.js" />
 <link rel="modulepreload" href="bug-report.js" />
 <link rel="modulepreload" href="presets.js" />
+<link rel="modulepreload" href="cover-palette.js" />
+<link rel="modulepreload" href="embedded-cover.js" />
+<link rel="modulepreload" href="audio-tags.js" />
 <link rel="preload" href="fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
 </head>
 <body>
@@ -146,6 +150,7 @@
   <span class="spacer"></span>
   <span class="keys">S source · V visual · A strength · P blocks · [ ] sync · C cam · N card · R orb · G glass · O strudel · M rec · J drop clips · X export · K cam fx · Space tap · Q hush · D drop now · B drop fx · I machine · L layout · W mini · T theme · E name · Z hide code · H hide · F full</span>
 </footer>
+<div id="player" role="region" aria-label="Player"></div>
 
 <div id="bsod" aria-hidden="true">
   <div class="face">:(</div>
@@ -187,11 +192,13 @@
   <label class="calm"><input type="checkbox" id="calm" /><span><b>Fewer flashes</b>: no full-screen flashes, hard cuts or colour flashes. On from the start if <span class="os-win">Windows' "Show animations" is off</span><span class="os-mac">the Mac's Reduce motion setting is on</span>.</span></label>
   <label class="calm"><input type="checkbox" id="updates" /><span><b>Updates</b>: when it starts, Toaster asks GitHub whether there's a newer version, and offers it if there is. Nothing else is sent.</span></label>
   <label class="calm"><input type="checkbox" id="mirror" /><span><b>Mirror the camera</b>: on, as a mirror shows you; off, as the camera sees it, for pointing it at your gear.</span></label>
+  <label class="calm"><input type="checkbox" id="playerbar" /><span><b>Player bar</b>: a slim bar along the bottom with the song, a progress bar and play, pause and skip where the source has them (a file, the radio and the demo; Music and Spotify on a Mac; the media keys on Windows), and the tempo, key and bar. <kbd data-k="hide">H</kbd> hides it with the footer; with the code hidden (<kbd data-k="code">Z</kbd>) it shows at the bottom edge.</span></label>
+  <label class="calm"><input type="checkbox" id="playerrec" /><span><b>Player bar in recordings</b>: off, a recording leaves the bar out, as it does the header and footer; on, it's in the video.</span></label>
   <table>
     <tr class="sec"><th colspan="2">look</th></tr>
     <tr data-act="visual"><td>V</td><td>background, best first: scenes (a new one each song), worlds, chrome, spaghetti, spectrogram, cuts, fire, the code rain, off</td></tr>
     <tr data-act="strength"><td>A</td><td>the next one of whatever's showing: the scene (auto, a new one each song; the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween, the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye; then auto in the theme's colours); the worlds' look (auto, night, film, ASCII, thermal, cells); the chrome's collage on or off; the spaghetti's noodles, snakes (a card each time round, a few of its noodles dancing) or endless (the cover stuck on top, the machine never stopping); the spectrogram in rainbow or the theme's colours; with the handheld on, its screens (Toaster's own, neon, LCD, the Japan edition: Toaster's own in Japanese, on a Famicom-style handheld). The footer says which</td></tr>
-    <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen</td></tr>
+    <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (the colours of the song's cover, from your music app, the radio or the file's own, easing over to the next song's; bluescreen's while there is none)</td></tr>
     <tr data-act="crt"><td>Y</td><td>CRT: an old TV over everything, on any theme: it comes on from a white line and goes off into a dot; scanlines, phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop, and each background (V) is a channel, its number on screen</td></tr>
         <tr data-act="blocks"><td>P</td><td>the code look: dominoes, then the handheld game (the song played on a little two-screen handheld), then the punchcard, then none</td></tr>
         <tr data-act="orb"><td>R</td><td>the orb: a cloud of dots in 3D shapes over any background (a sphere, a crystal, orbit paths, a galaxy and more), flowing into the next every 8 bars; again to turn it off</td></tr>

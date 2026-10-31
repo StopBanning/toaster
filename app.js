@@ -33,10 +33,14 @@ import { createClips } from './clips.js';
 import { makeDemo } from './demo.js';
 import { NEWS, newsSince } from './news.js';
 import { createControls } from './controls.js';
+import { createPlayerBar, readPlayerBar, readPlayerRec } from './player.js';
 import { createPalette, actionCommands } from './palette.js';
 import { advanceHints, initialHints } from './firstrun.js';
 import { createBugReport, errorSummary } from './bug-report.js';
 import { PRESETS, applyPreset } from './presets.js';
+import { BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, heatStops, themeVars } from './cover-palette.js';
+import { embeddedCover } from './embedded-cover.js';
+import { readTags, songOfFile } from './audio-tags.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -51,7 +55,8 @@ const V_NAME = { scenery: 'scenes', pitchwheel: 'pitch wheel' };
 const visName = (v) => V_NAME[v] || v;
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
-const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'];
+// (the last, dynamic, has no colours of its own: they're the song's cover's, see the dynamic theme below)
+const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic'];
 const DROPS = ['xp takeover', 'blue screen', 'not responding', 'off'];
 // The camera's effects (K): none, just you over the visuals, slit-scan, datamosh, windows, glass,
 // dots, voxels.
@@ -164,6 +169,9 @@ const state = {
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
   mirror: true, // the camera mirrored, as a selfie view is; off, as the camera sees it (the help's setting; see camview.js)
+  playerBar: true, // the player bar along the bottom (the help's setting; see player.js)
+  playerRec: false, // and in a recording, which leaves it out unless this is on (the help's setting too)
+  stopped: null, // the radio or the demo, stopped from the player bar: source is null then, and its play button brings it back
   radio: '', // the radio's address, as last played
   seenVersion: '', // the version last opened, to tell what's new after an update
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
@@ -178,7 +186,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion'];
+const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -216,6 +224,8 @@ function loadSettings() {
   state.card = state.card === true;
   state.cardV = state.cardV !== false;
   state.mirror = readMirror(state.mirror); // (an older profile has none: mirrored)
+  state.playerBar = readPlayerBar(state.playerBar); // (and none of these two: the bar on, and out of recordings)
+  state.playerRec = readPlayerRec(state.playerRec);
   state.cardBig = state.cardBig === true;
   state.spectroTheme = state.spectroTheme === true;
   state.sceneryTheme = state.sceneryTheme === true;
@@ -267,19 +277,24 @@ function detach() {
   }
   state.demo?.stop();
   state.node = state.stream = state.el = state.demo = null;
-  // (and the radio's titles, read beside its stream)
+  // (and the radio's titles, read beside its stream, and the cover of the file that was playing)
   window.nc?.radioTitles?.(null);
-  state.radioSong = radioArt = null;
+  state.radioSong = radioArt = fileArt = null;
+  fileTags = null;
   state.radioKey = '';
 }
 
 function attach(node, source, label) {
+  // (the names a file read before it started, if this is that file: see useFile)
+  fileTags = source === 'file' && pendingTags?.name === label ? pendingTags.tags : null;
+  pendingTags = null;
   node.connect(fast);
   node.connect(mid);
   node.connect(slow);
   state.node = node;
   state.source = source;
   state.label = label;
+  state.stopped = null;
   tapRecording();
   clips.retap();
   // a file or the demo plays from its start; system audio, inputs and the radio may be halfway through a song
@@ -388,7 +403,45 @@ async function playElement(source, label, load) {
 }
 
 async function useFile(file) {
-  await playElement('file', file.name, (el) => { el.src = URL.createObjectURL(file); el.loop = true; });
+  const cover = fileCover(file).catch(() => null); // (read while it starts to play)
+  // its title and artist are read before it starts (a few small reads), so the song is named by them from its first line; the
+  // file's attach takes them, and the next source's lets them go
+  const asked = picking;
+  pendingTags = { name: file.name, tags: await readTags(file).catch(() => null) };
+  if (picking !== asked) return; // (another source was picked meanwhile)
+  let mine = null;
+  await playElement('file', file.name, (el) => { mine = el; el.src = URL.createObjectURL(file); el.loop = true; });
+  const art = await cover;
+  if (art && mine && state.el === mine) fileArt = art; // (unless another source took over meanwhile)
+}
+
+// A file's own title and artist, from its tag (audio-tags.js): what the song it plays is called (see currentSong); read in useFile,
+// taken by the file's attach.
+let fileTags = null, pendingTags = null;
+
+// A file's own cover, the picture in its tag (embedded-cover.js), as a loaded image; null if it has none.
+let fileArt = null;
+async function fileCover(file) {
+  const found = await embeddedCover(file);
+  if (!found) return null;
+  const im = new Image();
+  im.src = URL.createObjectURL(new Blob([found.bytes], { type: found.type }));
+  try { await im.decode(); return im; } catch { return null; } finally { URL.revokeObjectURL(im.src); }
+}
+
+// The player bar's stop, for the radio and the demo: the source is let go (nothing plays, nothing is listened to, the page
+// looks as it does with no source), and which it was is kept, so the bar's play button can pick it again.
+function stopSource() {
+  const was = state.source;
+  if (was !== 'radio' && was !== 'demo') return;
+  picking++; // (a pick still opening gives up)
+  detach();
+  state.source = null;
+  state.label = '';
+  state.stopped = was;
+  document.body.classList.remove('live');
+  $('status').classList.remove('on');
+  $('status').textContent = restingStatus();
 }
 
 // The radio: the stream at an address you paste in (Toaster comes with no stations). It's read
@@ -577,7 +630,7 @@ function currentSong() {
   if (state.source === 'system') return state.winSong;
   if (state.source === 'radio') return state.radioSong;
   if (state.source === 'demo') return { title: 'demo_beat', artist: 'Toaster' };
-  if (state.source === 'file') return { title: state.label.replace(/\.[^.]+$/, ''), artist: 'File' };
+  if (state.source === 'file') return songOfFile(fileTags, state.label);
   // (an input, or the radio without a title: none, which also lets the engine drop a beat that's
   // gone, as when a station goes from a song to talking: see song() in engine.js)
   return null;
@@ -596,7 +649,7 @@ function isIcon(im) {
   const d = g.getImageData(0, 0, 16, 16).data, alpha = (x, y) => d[(y * 16 + x) * 4 + 3];
   return [alpha(0, 0), alpha(15, 0), alpha(0, 15), alpha(15, 15)].filter((a) => a < 128).length >= 3;
 }
-window.nc?.onNowPlaying((info) => {
+function nowPlaying(info) {
   if ((info?.art || '') !== artSrc) {
     artSrc = info?.art || '';
     artImg = null;
@@ -615,7 +668,8 @@ window.nc?.onNowPlaying((info) => {
   eng.note(`now playing: ${song.title} | ${song.artist} (${info.app || '?'}, ${info.playing ? 'playing' : 'paused'})${reset ? ' -> reset' : ''}`);
   if (state.source === 'system') { clipsThisSong = 0; lastClipAt = -99; }
   if (reset) freshStart(true);
-});
+}
+window.nc?.onNowPlaying(nowPlaying);
 
 // The radio's song, from the titles main.js reads in its stream. A title arrives with its sound's
 // bytes, which the player plays after what it has buffered ahead of them, so it's taken on then. A new
@@ -654,10 +708,14 @@ function radioTitle(el, song) {
   if (reset) freshStart(true);
 }
 
-// The playing song's picture, for the ID card and the backgrounds that show it: Windows' cover for the
-// system's song, the iTunes Store's for the radio's, none for a name you gave it. (An image, so it draws
-// on a canvas and loads as a texture.)
-function songArt() { return state.manual ? null : state.source === 'system' ? artImg : state.source === 'radio' ? radioArt : null; }
+// The playing song's picture, for the ID card, the backgrounds that show it and the dynamic theme: the
+// system's cover (Windows', or the Mac helper's) for its song, the iTunes Store's for the radio's, a file's
+// own, from its tag; none for a name you gave a song (a file's cover is still its cover, whatever it's
+// called). (An image, so it draws on a canvas and loads as a texture.)
+function songArt() {
+  if (state.source === 'file') return fileArt;
+  return state.manual ? null : state.source === 'system' ? artImg : state.source === 'radio' ? radioArt : null;
+}
 
 eng.on.kick = (s) => {
   field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick();
@@ -709,13 +767,56 @@ function glitch() {
   document.body.classList.add('glitch');
 }
 
-function applyTheme() {
-  if (state.theme === 0) delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = THEMES[state.theme];
-  const cs = getComputedStyle(document.documentElement);
+// The dynamic theme (the sixth): the colours of the song's cover (cover-palette.js). A cover's palette is worked
+// out once, from a 48 x 48 copy of it. When the song changes the colours ease to the next cover's over 1.2 s,
+// and each step goes through applyTheme, so everything that follows the theme follows the ease: the page's own
+// variables, col (the visuals' colours) and the Windows title bar.
+const swatch = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+swatch.canvas.width = swatch.canvas.height = 48;
+swatch.imageSmoothingQuality = 'high';
+const coverPalettes = new WeakMap(); // a cover's image -> its palette (null: nothing in it to take)
+const coverTheme = createDynamicTheme();
+let dynamicShown = false; // the dynamic theme is what's on screen (so applying it again is a step of the ease)
+let titleBarAt = -Infinity; // when the Windows title bar last took the colours (see applyTheme)
+function paletteOf(im) {
+  if (!coverPalettes.has(im)) {
+    let palette = null;
+    try {
+      swatch.clearRect(0, 0, 48, 48);
+      swatch.drawImage(im, 0, 0, 48, 48);
+      palette = coverPalette(swatch.getImageData(0, 0, 48, 48).data);
+    } catch { /* a picture the canvas won't give the pixels of */ }
+    coverPalettes.set(im, palette);
+  }
+  return coverPalettes.get(im);
+}
+// each frame while the dynamic theme is on: the cover to ease to (none: the last one's colours are held a while,
+// then bluescreen's), and the colours where the ease has got to
+function stepTheme(t) {
+  const art = songArt();
+  if (coverTheme.update(art ? paletteOf(art) : null, t)) applyTheme(t);
+}
+
+function applyTheme(now = nowSec()) {
+  const root = document.documentElement, dynamic = THEMES[state.theme] === 'dynamic';
+  if (state.theme === 0) delete root.dataset.theme;
+  else root.dataset.theme = THEMES[state.theme];
+  // The dynamic theme's colours are set on the page itself, over the stylesheet's (which, for a theme it has no
+  // word on, are bluescreen's: what the dynamic one shows with no cover); the others have the stylesheet's alone.
+  // Switched to, it takes the cover's colours at once, as the other themes switch.
+  if (dynamic && !dynamicShown) { const art = songArt(); coverTheme.jump((art && paletteOf(art)) || BLUESCREEN); }
+  dynamicShown = dynamic;
+  const vars = dynamic ? themeVars(coverTheme.palette(now)) : null;
+  for (const name of THEME_VARS) { if (vars) root.style.setProperty(name, vars[name]); else root.style.removeProperty(name); }
+  const cs = getComputedStyle(root);
   const get = (name) => cs.getPropertyValue(name).trim();
   col = { bg: rgbOf(get('--bg')), fg: rgbOf(get('--fg')), ink: rgbOf(get('--ink')) };
-  if (!onMac()) window.nc?.setTitleBar(get('--bg'), get('--fg'));
+  // (Windows' title bar too: while the dynamic theme's colours ease, a few times a second rather than every frame,
+  // as each is a trip to main and a repaint of the window's frame; the ease's last colours always go)
+  if (!onMac() && (!dynamic || !coverTheme.easing(now) || now - titleBarAt >= 0.15)) {
+    titleBarAt = now;
+    window.nc?.setTitleBar(get('--bg'), get('--fg'));
+  }
 }
 
 function setVisual(i) {
@@ -946,6 +1047,24 @@ function setMirror(on) {
   saveSettings();
 }
 $('mirror').addEventListener('change', (e) => setMirror(e.target.checked));
+
+// The player bar (renderer/player.js, #player and body.player-bar in the CSS): the help's checkbox, and Ctrl+K's "player bar:
+// shown" and "player bar: hidden". H hides it with the footer, Z's visualizer mode shows it only at the bottom edge, and a
+// recording leaves it out unless "in recordings" (the help's second checkbox, body.player-rec) is on.
+function setPlayerBar(on) {
+  state.playerBar = on;
+  document.body.classList.toggle('player-bar', on);
+  $('playerbar').checked = on;
+  saveSettings();
+}
+function setPlayerRec(on) {
+  state.playerRec = on;
+  document.body.classList.toggle('player-rec', on);
+  $('playerrec').checked = on;
+  saveSettings();
+}
+$('playerbar').addEventListener('change', (e) => setPlayerBar(e.target.checked));
+$('playerrec').addEventListener('change', (e) => setPlayerRec(e.target.checked));
 async function offerUpdate(u) {
   if (!state.updates || !window.nc?.updateCheck) return;
   u ||= await window.nc.updateCheck().catch(() => null);
@@ -1319,7 +1438,7 @@ function renderRoll() {
 // doesn't change with it.)
 function fitRoll() {
   const roll = $('roll'), r = roll.getBoundingClientRect();
-  roll.classList.toggle('cut', r.height > 0 && r.bottom > innerHeight + 1);
+  roll.classList.toggle('cut', r.height > 0 && r.bottom > innerHeight - playerBar.reserved() + 1); // (the player bar, while it's up, covers the bottom)
 }
 
 const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
@@ -1333,6 +1452,32 @@ function renderFooter() {
   parts.push(state.label || 'no source');
   if (eng.silent && state.node) parts.push('silence');
   setText($('stats'), parts.join(' · '));
+}
+
+// The player bar (renderer/player.js). A file plays and pauses on its own element; restarting it or moving in it starts the
+// page over from there, as a new song does (the code was written for the song as it was); the radio and the demo stop, and
+// play again as they were picked. The next button shows only where there's a queue to go on to, which is act.next: not given
+// yet (the library will).
+const playerBar = createPlayerBar({
+  document, root: $('player'), nc: window.nc, platform: window.nc?.platform || 'web', window,
+  act: {
+    restart: () => { if (state.el) { state.el.currentTime = 0; freshStart(true); } },
+    seek: (to) => { if (state.el) { state.el.currentTime = to; freshStart(to < 1); } },
+    stop: stopSource,
+    start: (kind) => (kind === 'radio' ? useRadio(state.radio) : useDemo()).catch(showError),
+    fail: showError,
+    note: (text) => showNotice(text),
+  },
+});
+// on screen just now: on, and not put away by H, the mini player or a recording (so it's worth asking Music where it is)
+const playerShowing = () => !document.hidden && !document.body.classList.contains('clean') && !state.mini && !(rec.mr && !state.playerRec);
+function updatePlayer(t) {
+  if (!state.playerBar || WIDGET) return;
+  playerBar.update({
+    t, active: playerShowing(), source: state.source, stopped: state.stopped, label: state.label, song: currentSong(),
+    app: state.winSong?.app || '', session: !!state.winSong, systemPlaying: !!state.winPlaying, el: state.el,
+    tempo: eng.tempo, key: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', at: eng.placeAt(t),
+  });
 }
 
 // ---------------------------------------------------------------- recording
@@ -1602,13 +1747,13 @@ function showLayers() {
 // nothing to hear the picture hardly moves, so after 3 seconds of quiet it draws 30 times a
 // second, and after 30 seconds 10 times, if the window isn't in front (it measured 16% of a core
 // drawing a still screen at 60). The next sound brings it straight back. Never while recording,
-// with the camera on or during a drop.
+// with the camera on, during a drop or while the dynamic theme's colours are easing (a song changed).
 let poolAt = 0, rollAt = 0, footerAt = 0, lastFrame = 0, windowShown = true;
 let worldsWarmScheduled = false;
 let trackShown = ''; // the tracking trouble last told about (see draw)
 window.nc?.onWindowShown((shown) => { windowShown = shown; });
 function frameGap(t) {
-  if (rec.mr || cam.on || takeover.active || storm.active) return 1000 / 61;
+  if (rec.mr || cam.on || takeover.active || storm.active || coverTheme.easing(t)) return 1000 / 61;
   const quiet = state.node ? t - eng.lastSound : Infinity;
   return quiet > 30 && !document.hasFocus() ? 1000 / 10.5 : quiet > 3 ? 1000 / 30.5 : 1000 / 61;
 }
@@ -1618,6 +1763,7 @@ function draw(now) {
   if (!windowShown || now - lastFrame < frameGap(t)) return;
   lastFrame = now;
   showLayers();
+  if (THEMES[state.theme] === 'dynamic') stepTheme(t);
   view.highlight(t, eng);
   const grid = renderGrid();
   renderRoll();
@@ -1638,7 +1784,7 @@ function draw(now) {
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'spaghetti') spaghetti.draw(t, eng, { col, calm: state.calm, offset: syncOffset(), picture: songArt(), endless: state.spaghettiKind === 'endless' });
-  else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
+  else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset(), stops: THEMES[state.theme] === 'dynamic' ? heatStops(col.fg) : null });
   else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: songArt() });
   // (a background still compiling, the window black: the field of glyphs over it, see wait.js)
@@ -1689,7 +1835,7 @@ function draw(now) {
   glass.draw(t, eng, col, LAYERS);
   storm.draw(t, eng, { layers: STORM_LAYERS, bg: `rgb(${col.bg})`, offset: syncOffset(), calm: state.calm });
   takeover.draw(t, grid, cam.frame, eng.bar, state.calm);
-  if (t - footerAt > 0.125) { footerAt = t; renderFooter(); }
+  if (t - footerAt > 0.125) { footerAt = t; renderFooter(); updatePlayer(t); }
 }
 
 // ---------------------------------------------------------------- controls
@@ -1771,7 +1917,7 @@ addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closes
 // the koi pond: a click on the water (not on a button, a menu or a panel) drops food there, and the
 // koi nearest come to it
 addEventListener('click', (e) => {
-  if (VISUALS[state.visual] === 'scenery' && sceneShown() === 'koi' && !e.target.closest('button, a, input, select, dialog, [role="menu"], .panel, #menu, #bar, footer, #alerts, #notice, #err, #card')) scenery.feed(e.clientX, e.clientY);
+  if (VISUALS[state.visual] === 'scenery' && sceneShown() === 'koi' && !e.target.closest('button, a, input, select, dialog, [role="menu"], .panel, #menu, #bar, footer, #player, #alerts, #notice, #err, #card')) scenery.feed(e.clientX, e.clientY);
 });
 $('b-blocks').onclick = () => nextBlocks();
 $('b-cam').onclick = () => toggleCam();
@@ -1835,7 +1981,7 @@ const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
 
 // Ctrl+K (renderer/palette.js): every action by name, then each scene, background, code look,
-// handheld screen and theme, the camera's mirror, and the bug report.
+// handheld screen and theme, the camera's mirror, the player bar, and the bug report.
 const sceneName = (scene) => SCENE_NAMES[scene] || scene;
 const screenName = (screen) => SCREEN_NAMES[screen] || screen;
 const paletteEntries = () => [
@@ -1875,6 +2021,15 @@ const paletteEntries = () => [
   ...[['mirrored', true, ['mirror', 'selfie']], ['not mirrored', false, ['unmirrored', 'flip', 'as the camera sees it', 'overhead', 'gear']]].map(([name, on, aliases]) => ({
     id: 'camera:' + name, name: 'camera: ' + name, aliases,
     run: () => { setMirror(on); flashStatus('camera: ' + name); },
+  })),
+  // the player bar, by name (the help's checkboxes): shown or hidden, and in recordings or not
+  ...[['shown', true, ['show', 'transport', 'progress']], ['hidden', false, ['hide', 'transport', 'progress']]].map(([name, on, aliases]) => ({
+    id: 'player:' + name, name: 'player bar: ' + name, aliases,
+    run: () => { setPlayerBar(on); flashStatus('player bar: ' + name); },
+  })),
+  ...[['in recordings', true, ['record', 'video']], ['not in recordings', false, ['record', 'video']]].map(([name, on, aliases]) => ({
+    id: 'player-rec:' + name, name: 'player bar: ' + name, aliases,
+    run: () => { setPlayerRec(on); flashStatus('player bar: ' + name); },
   })),
   ...PRESETS.map((p) => ({ id: 'preset:' + p.id, name: 'preset: ' + p.name.toLowerCase(), aliases: ['setup'], run: () => choosePreset(p.id) })),
   { id: 'report-bug', name: 'report a bug', aliases: ['bug', 'issue', 'problem'], run: () => bugReport.show() },
@@ -2149,7 +2304,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, songArt, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
+window.__nc = { get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {
@@ -2181,6 +2336,8 @@ setCrt(state.crt);
 setCalm(state.calm);
 setUpdates(state.updates);
 setMirror(state.mirror);
+setPlayerBar(state.playerBar);
+setPlayerRec(state.playerRec);
 setTimeout(() => offerUpdate(), 8000);
 applyCard();
 // the first time Toaster opens, a word on where to start (it's already listening to the PC)

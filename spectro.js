@@ -321,9 +321,10 @@ export function createSpectro(canvas, boxCanvas) {
       column.fill(0);
       heard = {}; bassAt = -1; chordWas = null; lastCol = null; peak = -30; floor = NaN; avg = null;
     },
-    // theme: the theme's name; themed: in its colours, not the rainbow; offset: how far ahead to
-    // draw (as the blocks), for the beat lines. (Fewer flashes isn't needed: nothing flashes.)
-    draw(t, eng, { theme, themed = false, offset = 0 } = {}) {
+    // theme: the theme's name; themed: in its colours, not the rainbow (stops: its five colours, for a theme
+    // MAPS has none for, as the dynamic one's change with the song); offset: how far ahead to draw (as the
+    // blocks), for the beat lines. (Fewer flashes isn't needed: nothing flashes.)
+    draw(t, eng, { theme, themed = false, offset = 0, stops = null } = {}) {
       if (broken || gl?.isContextLost()) return;
       if (!prog) {
         try {
@@ -351,7 +352,7 @@ export function createSpectro(canvas, boxCanvas) {
       while (chords.length > 4 || (chords.length && t - chords[0].t > spanS + 0.5)) chords.shift();
 
       // (the rainbow on black, its marks in white; or the theme's colours, on its background)
-      const map = (MAPS[theme] || MAPS.bluescreen).map(hex), bg = themed ? map[0] : [0, 0, 0], ink = themed ? map[4] : [1, 1, 1];
+      const map = (stops || MAPS[theme] || MAPS.bluescreen).map(hex), bg = themed ? map[0] : [0, 0, 0], ink = themed ? map[4] : [1, 1, 1];
       const view = H > W ? TALL : WIDE;
       const m = times(perspective(view.fov, W / H, 0.1, 20), lookAt(view.eye, view.look, [0, 1, 0]));
       gl.viewport(0, 0, W, H);
