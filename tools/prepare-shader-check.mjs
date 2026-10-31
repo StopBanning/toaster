@@ -112,8 +112,8 @@ const config = {
   },
 };
 
-const outDir = path.join(root, '_checks');
+const outDir = path.join(root, '_checks', 'shader-check');
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, 'shader-variants.js'), `export default ${JSON.stringify(config)};\n`);
-fs.writeFileSync(path.join(outDir, 'shader.html'), '<!doctype html><meta charset="utf-8"><script type="module" src="../tools/shader-compile.js"></script>\n');
-console.log('wrote _checks/shader-variants.js and _checks/shader.html');
+fs.writeFileSync(path.join(outDir, 'shader.html'), '<!doctype html><meta charset="utf-8"><script type="module" src="../../tools/shader-compile.js"></script>\n');
+console.log('wrote _checks/shader-check/shader-variants.js and _checks/shader-check/shader.html');

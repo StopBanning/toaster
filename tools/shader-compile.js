@@ -1,4 +1,4 @@
-import config from '../_checks/shader-variants.js';
+import config from '../_checks/shader-check/shader-variants.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const canvas = document.createElement('canvas');
@@ -44,16 +44,24 @@ async function compile(prog, id) {
 try {
   if (!par) throw new Error('KHR_parallel_shader_compile is required for this measurement');
   const info = gl.getExtension('WEBGL_debug_renderer_info');
-  window.progress = { rows: [], gpu: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'unknown' };
+  window.progress = { rows: [], baselineOnly: [], newOnly: [], gpu: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'unknown' };
 
   const { variants, variantOrder, repeats, names } = config;
-  const allNames = Object.keys(variants[variantOrder[0]]);
+  // Every program any variant has, not only the first variant's. One that only some variants have (a scene retired or
+  // added since the baseline) is compiled where it exists and listed as baseline-only or new-only: it can't stop the run.
+  const allNames = [...new Set(variantOrder.flatMap((variant) => Object.keys(variants[variant])))];
   const programNames = names.length ? names.filter((n) => allNames.includes(n)) : allNames;
 
   let id = Date.now() % 8000000;
   for (const name of programNames) {
+    const have = variantOrder.filter((variant) => variants[variant][name]);
+    if (have.length < variantOrder.length) {
+      const baselineOnly = have[0] === 'before';
+      window.progress[baselineOnly ? 'baselineOnly' : 'newOnly'].push(name);
+      console.log(`[shader-compile] ${name}: ${baselineOnly ? 'baseline-only' : 'new-only'} (compiled in ${have[0]} only)`);
+    }
     for (let repeat = 0; repeat < repeats; repeat++) {
-      const order = repeat % 2 ? [...variantOrder].reverse() : variantOrder;
+      const order = repeat % 2 ? [...have].reverse() : have;
       for (const variant of order) {
         const prog = variants[variant][name];
         const result = await compile(prog, ++id);

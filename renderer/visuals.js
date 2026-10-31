@@ -5,6 +5,7 @@ import { VOICES } from './engine.js';
 import { beatRuns } from './codegen.js';
 import { createDominoes } from './dominoes.js';
 import { compileProgram } from './program.js';
+import { pictureMap, toPicture, place, cropFrom, maskU } from './camview.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 export const RAMP = ' .:-=+*#%@';
@@ -247,7 +248,7 @@ export function createField(canvas) {
         });
       } else if (mode === 'cam') {
         // The camera as text: each character the light where its cell falls on the picture (as the
-        // camera layer shows it: mirrored, cropped to fill), from blank to dense; on a light theme
+        // camera layer shows it: mirrored or not, cropped to fill), from blank to dense; on a light theme
         // the shadows are the dense ones, so it isn't a negative. With the cut-out, nothing where
         // you aren't (the room is dark in the picture, and a light theme made that the densest).
         const fr = cam?.frame, r = cam?.rect;
@@ -646,7 +647,8 @@ export function createWebcam(canvas) {
   let video = null, stream = null, glitch = 0;
   let lum = new Uint8ClampedArray(0); // the latest frame as light levels (0-255), before tinting
   let grey = new Uint8Array(0); // the same, untouched, for finding faces
-  let map = null; // how the small picture sits on the camera's: offsets and scale (it's mirrored)
+  let map = null; // how the small picture sits on the camera's: offsets and scale, and whether it's mirrored (camview.js)
+  let mirror = true; // as a selfie view is; off, as the camera sees it (the help's setting)
   let shownAt = null; // where the picture was last drawn on screen (CSS pixels)
 
   // The camera effects (K), worked on the picture's light levels, so the ASCII camera and the
@@ -706,12 +708,12 @@ export function createWebcam(canvas) {
     if (fx === 'cut-out') {
       if (!mask || !map || !video?.videoWidth) return null; // till the first mask: all of it
       if (see?.length !== n) see = new Uint8ClampedArray(n);
-      const { scale, ox, oy } = map, vw = video.videoWidth, vh = video.videoHeight;
+      const { scale, oy } = map, vw = video.videoWidth, vh = video.videoHeight;
       for (let y = 0; y < sh; y++) {
         const row = Math.floor(at((y + 0.5 - oy) / scale / vh, 0, 0.999) * mask.h) * mask.w;
         for (let x = 0; x < sw; x++) {
-          // (the picture is mirrored)
-          const a = at((mask.data[row + Math.floor(at((sw - x - 0.5 - ox) / scale / vw, 0, 0.999) * mask.w)] - 77) * 2.5, 0, 255);
+          // (the mask is the camera's own frame: the picture's column is looked up in it, flipped if the picture is mirrored)
+          const a = at((mask.data[row + Math.floor(at(maskU(map, vw, x), 0, 0.999) * mask.w)] - 77) * 2.5, 0, 255);
           see[y * sw + x] = a;
           lum[y * sw + x] = (lum[y * sw + x] * a) / 255;
         }
@@ -724,7 +726,7 @@ export function createWebcam(canvas) {
   // Where your face and eyes are, for the close-up pop-ups and the ID card: the system's face
   // detector (Windows' own, or Vision on the Mac) looks a few times a second and gives the
   // face's box; the eyes are found inside it. Smoothed, so close-ups glide instead of jumping.
-  // All positions are 0-1 across the (mirrored) picture.
+  // All positions are 0-1 across the picture as it's shown.
   let face = null, seen = 0, asking = false, lastAsk = 0;
   // The eyes, as a pair: two dark spots side by side in the upper half of the face, about as far
   // apart as eyes are, with the lighter bridge of the nose between them. Looking for the pair keeps
@@ -862,35 +864,39 @@ export function createWebcam(canvas) {
       window.nc?.stopFaces?.();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     },
-    // Draws part of the picture (r: x, y, w, h, 0-1 of the mirrored picture) into a w x h canvas at
-    // the camera's full resolution, for the close-ups. False if there's no picture yet.
+    // Draws part of the picture (r: x, y, w, h, 0-1 of the picture as it's shown) into a w x h canvas
+    // at the camera's full resolution, for the close-ups. False if there's no picture yet.
     drawCrop(r, out, w, h) {
       if (!stream || !video || video.readyState < 2 || !map) return false;
-      const { sw, sh, ox, oy, scale } = map;
-      const x0 = r.x * sw, x1 = (r.x + r.w) * sw, y0 = r.y * sh, y1 = (r.y + r.h) * sh;
+      const c = cropFrom(map, r);
       out.save();
-      out.translate(w, 0);
-      out.scale(-1, 1);
-      out.drawImage(video, (sw - x1 - ox) / scale, (y0 - oy) / scale, (x1 - x0) / scale, (y1 - y0) / scale, 0, 0, w, h);
+      if (c.flip) {
+        out.translate(w, 0);
+        out.scale(-1, 1);
+      }
+      out.drawImage(video, c.x, c.y, c.w, c.h, 0, 0, w, h);
       out.restore();
       return true;
     },
     // For the hand and face tracking: the camera itself, where its picture is on screen, and where
-    // a point of the camera's own frame (0-1, not mirrored) lands on screen.
+    // a point of the camera's own frame (0-1, not mirrored) lands on screen: mirrored or not, as the
+    // picture was drawn (see camview.js).
     get video() { return stream ? video : null; },
     get rect() { return shownAt; },
     place(nx, ny) {
       if (!map || !shownAt || !video) return [0, 0];
-      const { sw, sh, scale, ox, oy } = map, r = shownAt;
-      const xs = sw - (ox + nx * video.videoWidth * scale), ys = oy + ny * video.videoHeight * scale;
-      return [r.x + (xs * r.w) / sw, r.y + (ys * r.h) / sh];
+      return place(map, shownAt, video.videoWidth, video.videoHeight, nx, ny);
     },
-    // The same point as 0-1 of the (mirrored) picture, the way face and crop positions are given.
+    // The same point as 0-1 of the picture as it's shown, the way face and crop positions are given.
     toPicture(nx, ny) {
       if (!map || !video) return [0, 0];
-      const { sw, sh, scale, ox, oy } = map;
-      return [(sw - (ox + nx * video.videoWidth * scale)) / sw, (oy + ny * video.videoHeight * scale) / sh];
+      return toPicture(map, video.videoWidth, video.videoHeight, nx, ny);
     },
+    // Mirrored, as a selfie view is (the default), or as the camera sees it (the help's "Mirror the
+    // camera"). Everything drawn from the camera follows (see camview.js); the effects' last pictures
+    // are let go, as they'd be flipped the wrong way.
+    get mirrored() { return mirror; },
+    setMirror(on) { mirror = on !== false; hist.length = 0; moshOut = see = null; },
     kick(s) { glitch = Math.min(1, 0.4 + s * 0.4); },
     // The effect (K): none, cut-out, slit-scan, datamosh.
     setFx(name) { fx = name; hist.length = 0; moshOut = see = null; },
@@ -907,12 +913,15 @@ export function createWebcam(canvas) {
       shownAt = r;
       const sw = small.width, sh = Math.max(1, Math.round((sw * r.h) / r.w));
       if (small.height !== sh) small.height = sh;
-      // mirror, and crop the video to fill the target shape
-      const vw = video.videoWidth, vh = video.videoHeight, scale = Math.max(sw / vw, sh / vh);
-      map = { sw, sh, scale, ox: (sw - vw * scale) / 2, oy: (sh - vh * scale) / 2 };
+      // mirror (unless it's off), and crop the video to fill the target shape
+      const vw = video.videoWidth, vh = video.videoHeight;
+      map = pictureMap(sw, sh, vw, vh, mirror);
+      const { scale } = map;
       sctx.save();
-      sctx.translate(sw, 0);
-      sctx.scale(-1, 1);
+      if (map.mirror) {
+        sctx.translate(sw, 0);
+        sctx.scale(-1, 1);
+      }
       sctx.drawImage(video, map.ox, map.oy, vw * scale, vh * scale);
       sctx.restore();
       // light levels: as they are (for finding faces), and evened out (for the picture)

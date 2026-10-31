@@ -31,7 +31,7 @@ export function createHandLog(nc = window.nc) {
       if (hands !== last && (hands.length || had)) put(t, { hands: hands.map((h) => ({ side: h.side, p: h.points.flatMap(([x, y]) => [r4(x), r4(y)]) })) });
       last = hands;
       had = hands.length;
-      // (the picture as x, y, width, height, and the camera frame's corners on screen: mirrored)
+      // (the picture as x, y, width, height, and the camera frame's corners on screen: mirrored or not, as the picture is)
       const now = { frame: rect ? [rect.x, rect.y, rect.w, rect.h, ...place(0, 0), ...place(1, 1)].map(Math.round) : null, portal: [portal.phase, portal.look, portal.next], lens, sign };
       for (const [k, v] of Object.entries(now)) if (JSON.stringify(v) !== was[k]) { was[k] = JSON.stringify(v); put(t, { [k]: v }); }
       if (t - sentAt > 5) { sentAt = t; send(); }

@@ -165,15 +165,20 @@ async function install(progress) {
 // What it did goes in toaster-update.log in the temp folder.
 const SWAP = `Set-Content -LiteralPath $Log -Value ("update to " + $Fresh + " started " + (Get-Date -Format s))
 function Note($what) { Add-Content -LiteralPath $Log -Value ((Get-Date -Format HH:mm:ss) + " " + $what) }
-function Open { Start-Process -FilePath (Join-Path $App $Exe) -WorkingDirectory $App }
-function Same($a, $b) { (Get-FileHash -LiteralPath $a).Hash -eq (Get-FileHash -LiteralPath $b).Hash }
+# (a start that fails is noted, never thrown: inside a catch, a throw here skipped the exit 1 after it)
+function Open { try { Start-Process -FilePath (Join-Path $App $Exe) -WorkingDirectory $App -ErrorAction Stop } catch { Note ("it couldn't be started: " + $_) } }
+# (hashed with .NET: Get-FileHash lives in a script module, which Windows PowerShell started from PowerShell 7 can't load)
+function Hash($p) { $s = [System.IO.File]::Open($p, 'Open', 'Read', 'ReadWrite'); try { [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($s)) } finally { $s.Close() } }
+function Same($a, $b) { (Hash $a) -eq (Hash $b) }
 function Put($from, $to) {
   $bytes = [System.IO.File]::ReadAllBytes($from)
   $s = [System.IO.File]::Open($to, 'OpenOrCreate', 'Write', 'ReadWrite')
   try { $s.SetLength(0); $s.Write($bytes, 0, $bytes.Length) } finally { $s.Close() }
 }
 function InPlace {
-  $files = @(Get-ChildItem -LiteralPath $Fresh -Recurse -File | ForEach-Object { $_.FullName.Substring($Fresh.Length) })
+  # (.NET keeps $Fresh exactly as given, so every path starts with it: Get-ChildItem can report a folder given by its
+  # short 8.3 name, like RUNNER~1, under its long one, runneradmin, and the relative paths came out a few letters off)
+  $files = @([System.IO.Directory]::EnumerateFiles($Fresh, '*', 'AllDirectories') | ForEach-Object { $_.Substring($Fresh.Length) })
   foreach ($r in $files) { if (Test-Path -LiteralPath ($App + $r)) { $s = [System.IO.File]::Open($App + $r, 'Open', 'ReadWrite', 'ReadWrite'); $s.Close() } }
   foreach ($r in $files) {
     if (Test-Path -LiteralPath ($App + $r)) { $null = New-Item -ItemType Directory -Force -Path (Split-Path ($Old + $r)); [System.IO.File]::Copy($App + $r, $Old + $r, $true) }

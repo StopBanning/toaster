@@ -49,14 +49,16 @@ function hold(file, share) {
 
 function runSwap(t) {
   const r = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', t.script], { encoding: 'utf8', timeout: 120000 });
-  return { code: r.status, log: fs.existsSync(t.log) ? fs.readFileSync(t.log, 'utf8').trim().split(/\r?\n/) : [] };
+  return { code: r.status, log: fs.existsSync(t.log) ? fs.readFileSync(t.log, 'utf8').trim().split(/\r?\n/) : [], err: (r.stderr || '').trim() };
 }
+// the log, and PowerShell's own errors when there are any, for a failure's message
+const why = (r) => r.log.concat(r.err ? ['stderr: ' + r.err] : []).join('\n');
 const read = (t, rel) => fs.readFileSync(path.join(t.app, rel), 'utf8');
 
 test('the swap moves the new copy in', { skip: !win }, () => {
   const t = setUp('plain');
   const r = runSwap(t);
-  assert.equal(r.code, 0, r.log.join('\n'));
+  assert.equal(r.code, 0, why(r));
   assert.match(read(t, 'resources/app.asar'), /^new asar/);
   assert.equal(read(t, 'resources/only-new.txt'), 'new file');
   assert.match(r.log.at(-1), /done/);
@@ -69,8 +71,8 @@ test('with app.asar held for reading (shared read+write), the new files go in ov
   const release = await hold(path.join(t.app, 'resources', 'app.asar'), 'ReadWrite');
   const r = runSwap(t);
   await release();
-  assert.equal(r.code, 0, r.log.join('\n'));
-  assert.ok(r.log.some((l) => /couldn't be moved/.test(l)), r.log.join('\n'));
+  assert.equal(r.code, 0, why(r));
+  assert.ok(r.log.some((l) => /couldn't be moved/.test(l)), why(r));
   assert.match(read(t, 'resources/app.asar'), /^new asar/);
   assert.equal(read(t, 'resources/app.asar').length, 'new asar '.length * 4000);
   assert.equal(read(t, 'locales/en-US.pak'), 'new pak');
@@ -84,8 +86,8 @@ test('with a file held exclusively, nothing changes and the old copy stays', { s
   const release = await hold(path.join(t.app, 'locales', 'en-US.pak'), 'None');
   const r = runSwap(t);
   await release();
-  assert.equal(r.code, 1, r.log.join('\n'));
-  assert.ok(r.log.some((l) => /old copy stays/.test(l)), r.log.join('\n'));
+  assert.equal(r.code, 1, why(r));
+  assert.ok(r.log.some((l) => /old copy stays/.test(l)), why(r));
   assert.match(read(t, 'resources/app.asar'), /^old asar/);
   assert.equal(read(t, 'locales/en-US.pak'), 'old pak');
   assert.ok(!fs.existsSync(path.join(t.app, 'resources', 'only-new.txt')));

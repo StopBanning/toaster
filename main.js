@@ -1,6 +1,6 @@
 // Toaster: main process. Opens the window, hands the page the machine's audio without a
 // share prompt, reports what the system says is playing, and answers questions about the machine.
-const { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, desktopCapturer, ipcMain, screen, session, shell } = require('electron');
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
@@ -28,29 +28,50 @@ async function repoStars() {
 // One station at a time: radioTitles stops it. (helpers/radio.cjs is loaded when it's first needed: the
 // test copies of the app don't carry helpers/.)
 let radioTitles = null;
-async function readTitles(url, signal, send) {
+async function readTitles(url, ctl, send) {
   const { net } = require('electron');
   const { icyTitles } = require('./helpers/radio.cjs');
-  const res = await net.fetch(url, { headers: { 'Icy-MetaData': '1' }, signal });
+  const res = await net.fetch(url, { headers: { 'Icy-MetaData': '1' }, signal: ctl.signal });
   const metaint = Number(res.headers.get('icy-metaint'));
-  if (!res.ok || !(metaint > 0)) return res.body?.cancel();
+  if (!res.ok || !(metaint > 0)) return ctl.abort(); // (cancelling only the body leaves net.fetch's connection open)
   const read = icyTitles(metaint, send);
   for await (const chunk of res.body) read(chunk);
 }
 
 const mac = process.platform === 'darwin';
 
+// Copies run from source for testing (the checks, the release smoke, a bench driven over the
+// debugging port) can keep apart from the copy you're using: --user-data-dir=<folder> (or
+// TOASTER_USER_DATA) gives one its own settings folder, and with it its own single-instance lock,
+// so it never hands off to yours or brings it forward; --hidden (or TOASTER_HIDDEN=1) keeps its
+// windows, its Dock icon and its menu out of sight. Neither does anything in the installed app.
+const switchValue = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const testData = app.isPackaged ? '' : switchValue('user-data-dir') || process.env.TOASTER_USER_DATA || '';
+const hidden = !app.isPackaged && (process.argv.includes('--hidden') || process.env.TOASTER_HIDDEN === '1');
+if (hidden && mac) app.dock?.hide();
+
 // Run from source (npm start, npm run dev, the checks), it keeps its settings in a folder of its
 // own, so trying things out never changes the installed app's.
-if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'Toaster (dev)'));
+if (!app.isPackaged) {
+  const profile = testData ? path.resolve(testData) : path.join(app.getPath('appData'), 'Toaster (dev)');
+  const canonical = (p) => fs.realpathSync(p);
+  const defaultProfile = path.join(app.getPath('appData'), 'Toaster (dev)');
+  if (testData && (profile === defaultProfile || (fs.existsSync(profile) && fs.existsSync(defaultProfile) && canonical(profile) === canonical(defaultProfile)))) {
+    console.error('Refusing test profile: --user-data-dir / TOASTER_USER_DATA must keep apart from Toaster (dev).');
+    app.exit(1);
+  } else {
+    app.setPath('userData', profile);
+    app.setPath('sessionData', profile);
+  }
+}
 
 // One Toaster at a time (two would both capture the sound and fight over the camera): opening it
-// again brings the one that's running to the front. (The copy run from source keeps its own
-// settings folder, so it runs alongside the installed one.)
+// again brings the one that's running to the front. (The lock is the settings folder's, so the copy
+// run from source runs alongside the installed one, and a test copy with its own folder alongside both.)
 const first = app.requestSingleInstanceLock();
 if (!first) app.quit();
 app.on('second-instance', () => {
-  if (!win) return;
+  if (!win || hidden) return;
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
@@ -99,6 +120,7 @@ function createWindow() {
     minWidth: 420,
     minHeight: 560,
     title: 'Toaster',
+    show: !hidden,
     backgroundColor: '#051db5',
     autoHideMenuBar: true,
     ...frame,
@@ -408,11 +430,11 @@ function setUpIpc() {
         if (lastNowPlaying) widget?.webContents.send('nowplaying', lastNowPlaying);
         widget?.webContents.executeJavaScript('window.startSystemAudio && window.startSystemAudio()', true);
       });
-      widget.once('ready-to-show', () => widget?.showInactive());
+      widget.once('ready-to-show', () => { if (!hidden) widget?.showInactive(); });
       widget.on('moved', () => { if (widget) widgetAt = widget.getBounds(); });
       widget.on('closed', () => {
         widget = null;
-        if (win) { win.showInactive(); win.webContents.send('win:shown', true); win.webContents.send('win:widget', false); }
+        if (win) { if (!hidden) win.showInactive(); win.webContents.send('win:shown', true); win.webContents.send('win:widget', false); }
       });
       win.webContents.send('win:shown', false);
       win.hide();
@@ -442,7 +464,7 @@ function setUpIpc() {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
     const page = e.sender;
     radioTitles = new AbortController();
-    readTitles(url, radioTitles.signal, (song) => { if (!page.isDestroyed()) page.send('radio:title', song); }).catch(() => {});
+    readTitles(url, radioTitles, (song) => { if (!page.isDestroyed()) page.send('radio:title', song); }).catch(() => {});
   });
   // The radio's song's cover: looked up in the iTunes Store's search (it needs no key) by its artist
   // and title, kept only if both match (pickCover), and handed over as the picture's bytes (the page
@@ -618,7 +640,8 @@ function endRecording() {
 
 app.whenReady().then(() => {
   if (!first) return;
-  if (mac) app.dock?.setIcon(path.join(__dirname, 'build', 'icon.png'));
+  if (hidden) Menu.setApplicationMenu(null);
+  if (mac && !hidden) app.dock?.setIcon(path.join(__dirname, 'build', 'icon.png'));
   ensureMacHelpers();
   setUpCapture();
   setUpIpc();

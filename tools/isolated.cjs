@@ -23,7 +23,7 @@ app.whenReady().then(async () => {
   win.webContents.on('console-message', (_e, ...args) => console.log('page', ...args));
   win.webContents.on('render-process-gone', (_e, details) => { console.error('renderer exited', details); app.exit(2); });
   setTimeout(() => { console.error('isolated check deadline'); app.exit(2); }, 1200000).unref();
-  const page = process.argv.find((s) => s.startsWith('--page='))?.slice(7) || path.join(root, '_checks', 'shader.html');
+  const page = process.argv.find((s) => s.startsWith('--page='))?.slice(7) || path.join(root, '_checks', 'shader-check', 'shader.html');
   await win.loadFile(page);
   win.showInactive();
   const timer = setInterval(async () => {

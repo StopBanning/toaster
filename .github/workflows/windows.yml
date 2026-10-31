@@ -1,0 +1,95 @@
+# Pushes only keep artifacts. Published releases also receive the checked zip.
+name: Windows build
+on:
+  release:
+    types: [published]
+  push:
+    branches: [windows-build]
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Record build start
+        run: |
+          "BUILD_STARTED=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
+      - run: npm ci
+      - name: Install test-only Strudel
+        run: |
+          $scratch = Join-Path $env:RUNNER_TEMP 'strudel-test-mods'
+          npm install --prefix $scratch --no-audit --no-fund @strudel/core@1.2.6 @strudel/mini@1.2.6 @strudel/tonal@1.2.6 @strudel/transpiler@1.2.6
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "STRUDEL_TEST_MODULES=$(Join-Path $scratch 'node_modules')" >> $env:GITHUB_ENV
+      - name: Tests on Windows
+        run: node --test tools/*.test.mjs
+      - run: npm run package:win
+      - name: Check and zip it
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:RELEASE_TAG -and $env:RELEASE_TAG -cne "v$version") { throw 'Release tag and package version differ' }
+          $zip = "Toaster-$version-win-x64.zip"
+          python tools/release-zip.py dist/Toaster-win32-x64 $zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "ZIP=$zip" >> $env:GITHUB_ENV
+          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ((Get-Content "$zip.sha256") -cne "$sha  $zip") { throw 'Checksum file differs' }
+          "SHA=$sha" >> $env:GITHUB_ENV
+          $elapsed = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - [long]$env:BUILD_STARTED
+          "Zip ready after $elapsed seconds of build time (excludes queue and checkout)." >> $env:GITHUB_STEP_SUMMARY
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+      - name: Start it, and a screenshot 25 s in
+        run: |
+          $app = Start-Process -FilePath "$pwd/dist/Toaster-win32-x64/Toaster.exe" -PassThru
+          try {
+            Start-Sleep -Seconds 25
+            $app.Refresh()
+            if ($app.HasExited) { throw "Toaster exited: $($app.ExitCode)" }
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+            $bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+              $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bounds.Size)
+              $bitmap.Save("$pwd/shot.png", [System.Drawing.Imaging.ImageFormat]::Png)
+            } finally {
+              $graphics.Dispose()
+              $bitmap.Dispose()
+            }
+          } finally {
+            if (-not $app.HasExited) { taskkill /PID $app.Id /T /F }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: toaster-windows
+          path: |
+            ${{ env.ZIP }}
+            ${{ env.ZIP }}.sha256
+            shot.png
+          if-no-files-found: warn
+      - name: Onto the release, then verify GitHub's digest
+        if: github.event_name == 'release'
+        run: |
+          gh release upload $env:RELEASE_TAG $env:ZIP --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $assets = @($release.assets | Where-Object { $_.name -ceq $env:ZIP })
+          if ($assets.Count -ne 1 -or $assets[0].digest -cne "sha256:$env:SHA") { throw 'Release asset digest missing or different' }
+          $gap = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($release.published_at)).TotalSeconds
+          "Verified $env:ZIP sha256:$env:SHA; publication-to-verification gap: $gap seconds." >> $env:GITHUB_STEP_SUMMARY
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}

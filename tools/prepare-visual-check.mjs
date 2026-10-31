@@ -3,10 +3,10 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(root, '_checks');
+const out = path.join(root, '_checks', 'visual-check');
 fs.mkdirSync(out, { recursive: true });
-fs.writeFileSync(path.join(out, 'visual.html'), '<!doctype html><style>:root{--font:monospace}body{margin:0;background:#000}</style><script type="module" src="../tools/visual-check.js"></script>');
-fs.writeFileSync(path.join(out, 'sea.html'), '<!doctype html><style>:root{--font:monospace}body{margin:0;background:#000}</style><script>window.onlySea=true;</script><script type="module" src="../tools/visual-check.js"></script>');
+fs.writeFileSync(path.join(out, 'visual.html'), '<!doctype html><style>:root{--font:monospace}body{margin:0;background:#000}</style><script type="module" src="../../tools/visual-check.js"></script>');
+fs.writeFileSync(path.join(out, 'sea.html'), '<!doctype html><style>:root{--font:monospace}body{margin:0;background:#000}</style><script>window.onlySea=true;</script><script type="module" src="../../tools/visual-check.js"></script>');
 for (const variant of ['before', 'after']) {
   const dir = path.join(out, variant, 'renderer'); fs.mkdirSync(dir, { recursive: true });
   fs.cpSync(path.join(root, 'renderer'), dir, { recursive: true });

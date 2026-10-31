@@ -431,8 +431,8 @@ void main() {
 }`;
 
 // The skull: its points turned as your head is, then seen straight on (no perspective: the turn
-// sells it), mirrored as the picture is, at its size on screen; its depth kept, for finding the
-// nearest of it.
+// sells it), mirrored as the picture is (or not, with the camera not mirrored), at its size on
+// screen; its depth kept, for finding the nearest of it.
 const SKULL_V = `#version 300 es
 layout(location = 0) in vec3 pos;  // a point of it: its own metres, about its pivot
 layout(location = 1) in vec3 nor;  // which way it faces there
@@ -440,12 +440,13 @@ uniform mat3 turn;  // how your head is turned
 uniform float px;   // CSS pixels a metre
 uniform vec2 at;    // where its pivot goes (CSS pixels): between your eyes
 uniform vec2 size;  // the canvas (CSS pixels)
+uniform float mir;  // 1: the picture is mirrored, 0: as the camera sees it
 out vec3 vN;
 out vec2 vP;
 void main() {
   vec3 q = turn * pos;
   vN = turn * nor;
-  vP = at - q.xy * px; // (the picture is mirrored, and its y is down)
+  vP = vec2(at.x + (mir > 0.5 ? -q.x : q.x) * px, at.y - q.y * px); // (its y is down)
   gl_Position = vec4(vP.x / size.x * 2.0 - 1.0, 1.0 - vP.y / size.y * 2.0, clamp(-q.z * 2.0, -1.0, 1.0), 1.0);
 }`;
 // Lit as on X-ray film: brightest where it turns away from you (its edges, where an X-ray passes
@@ -487,6 +488,7 @@ export function createPortal(canvas) {
   // card; where it goes on screen (its pivot, CSS pixels a metre, its turn, when your face was last
   // found) and how much of it shows (it fades in once your face is found, and out once it's lost)
   let skuller = null, skullMesh = null, skullAsked = false, bone = null, fit = null, skullA = 0;
+  let mirrored = true; // the camera's picture as the camera layer draws it (the skull is drawn the same way)
   const quad = new Float32Array(12);
   // the window: 'shut', 'held' (between the hands), 'full' (filling the picture) or 'closing';
   // its middle and radius, and where the hands would have them
@@ -549,7 +551,7 @@ export function createPortal(canvas) {
     echoes.loc = where(echoes, [...SHARED, 'before', 'focus', 'grow', 'keep']);
     copy.loc = where(copy, ['cam', 'size']);
     plater.loc = where(plater, ['cam', 'mask', 'plate', 'size']);
-    skuller.loc = where(skuller, ['turn', 'px', 'at', 'size', 'rect', 'circ', 'wipe', 'gain', 'pulse']);
+    skuller.loc = where(skuller, ['turn', 'px', 'at', 'mir', 'size', 'rect', 'circ', 'wipe', 'gain', 'pulse']);
     vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     buf = gl.createBuffer();
@@ -725,6 +727,7 @@ export function createPortal(canvas) {
     gl.uniformMatrix3fv(L.turn, false, fit.turn);
     gl.uniform1f(L.px, fit.px);
     gl.uniform2f(L.at, fit.at[0], fit.at[1]);
+    gl.uniform1f(L.mir, mirrored ? 1 : 0);
     gl.uniform2f(L.size, W, H);
     gl.uniform4f(L.rect, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
     gl.uniform3f(L.circ, C[0], C[1], R);
@@ -827,9 +830,11 @@ export function createPortal(canvas) {
     // hands: from the tracker; place(x, y): a camera point (0-1, not mirrored) on screen; rect:
     // where the camera's picture is on screen; video: the camera; mask: where a person is (from
     // the tracker, or null); col: the theme's colours; bar: the bar number; face, pose: the face's
-    // points and how it's turned (the tracker's, while it looks for them), for the skull.
-    draw(t, { hands, place, rect, video, mask, col, bar, face, pose }) {
+    // points and how it's turned (the tracker's, while it looks for them), for the skull; mirror: as
+    // the camera layer is drawn (cam.mirrored), which the skull follows.
+    draw(t, { hands, place, rect, video, mask, col, bar, face, pose, mirror = true }) {
       if (broken || gl?.isContextLost()) return;
+      mirrored = mirror;
       if (!ready) {
         try {
           if (!paint) build();

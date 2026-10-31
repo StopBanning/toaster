@@ -1,4 +1,4 @@
-import config from '../_checks/render-config.js';
+import config from '../_checks/render-check/render-config.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const rows = [];
@@ -25,10 +25,12 @@ for (const name of Object.getOwnPropertyNames(WebGL2RenderingContext.prototype).
   };
 }
 
-const SCENES = [
-  'lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls',
-  'halloween', 'sharks', 'festival', 'koi', 'space',
-];
+// The scenes a version has, from the app's own list (the one A and Ctrl+K go through), so a scene added later is
+// checked without anyone editing this file.
+async function sceneList(variant) {
+  const { createScenery } = await import(`../_checks/render-check/${variant}/renderer/scenery.js`);
+  return createScenery(document.createElement('canvas')).scenes;
+}
 const eng = {
   tempo: { locked: true, bpm: 120, P: 0.5 },
   bar: 0,
@@ -85,7 +87,7 @@ async function runReplayTiming(gl, ext, commands) {
 
 async function sceneryInstance(variant, scene) {
   window.progress.stage = `${scene} ${variant} warming`;
-  const { createScenery } = await import(`../_checks/${variant}/renderer/scenery.js`);
+  const { createScenery } = await import(`../_checks/render-check/${variant}/renderer/scenery.js`);
   let seed = 317;
   const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
   const c = document.createElement('canvas');
@@ -131,10 +133,20 @@ async function sceneryInstance(variant, scene) {
   };
 }
 
-async function sceneryPair(scene, cells = false) {
+async function sceneryPair(scene, cells = false, inBaseline = true) {
   window.forceCells = cells;
-  const a = await sceneryInstance('before', scene);
+  const a = inBaseline ? await sceneryInstance('before', scene) : null;
   const b = await sceneryInstance('after', scene);
+  if (!a) {
+    // New in this version, so nothing to compare it with: drawn alone, to know it draws and what it costs.
+    const gpu = { before: [], after: [], method: b.method, time: 42, day: false, theme: false };
+    if (!config.pixelsOnly) for (let r = 0; r < config.batches; r++) gpu.after.push(await b.timing());
+    console.log(`[shader-render] scenery:${scene}${cells ? '(cells)' : ''} new in this version, drawn alone${gpu.after.length ? ` gpu after=${gpu.after.map((v) => v.toFixed(4)).join(',')}` : ''}`);
+    rows.push({ scene, cells, newOnly: true, pixels: [], gpu, width: b.c.width, height: b.c.height });
+    b.close();
+    await wait(50);
+    return;
+  }
   const pixels = [];
   for (const time of [10, 20, 40]) {
     for (const day of [false, true]) {
@@ -205,8 +217,8 @@ async function measureWorlds() {
   };
 
   async function worldInstance(variant) {
-    const { createWorlds } = await import(`../_checks/${variant}/renderer/worlds.js`);
-    const { LOOKS, onePart } = await import(`../_checks/${variant}/renderer/worldlooks.js`);
+    const { createWorlds } = await import(`../_checks/render-check/${variant}/renderer/worlds.js`);
+    const { LOOKS, onePart } = await import(`../_checks/render-check/${variant}/renderer/worldlooks.js`);
     const c = document.createElement('canvas');
     const words = document.createElement('canvas');
     document.body.append(c, words);
@@ -356,20 +368,33 @@ async function measureWorlds() {
   b.close();
 }
 
+const scenesBaselineOnly = [];
+const scenesNewOnly = [];
 try {
   if (config.mode === 'scenery' || config.mode === 'both') {
-    const scenes = config.onlyScenes.length ? SCENES.filter((s) => config.onlyScenes.includes(s)) : SCENES;
+    // Every scene either version has. One only the baseline has (retired since) is listed, not drawn; one only this
+    // version has is drawn alone. Asking a version for a scene it hasn't would draw the lake under that name.
+    const baselineScenes = await sceneList('before');
+    const newScenes = await sceneList('after');
+    if (!newScenes.length) throw new Error('the app lists no scenes: nothing to check');
+    const scenes = [...new Set([...newScenes, ...baselineScenes])].filter((s) => !config.onlyScenes.length || config.onlyScenes.includes(s));
     for (const scene of scenes) {
-      await sceneryPair(scene, false);
+      if (!newScenes.includes(scene)) {
+        scenesBaselineOnly.push(scene);
+        console.log(`[shader-render] scenery:${scene} only in the baseline: not drawn`);
+        continue;
+      }
+      if (!baselineScenes.includes(scene)) scenesNewOnly.push(scene);
+      await sceneryPair(scene, false, baselineScenes.includes(scene));
     }
-    if (!config.noFallback && (!config.onlyScenes.length || config.onlyScenes.includes('koi'))) {
-      await sceneryPair('koi', true);
+    if (!config.noFallback && scenes.includes('koi') && newScenes.includes('koi')) {
+      await sceneryPair('koi', true, baselineScenes.includes('koi'));
     }
   }
   if (config.mode === 'worlds' || config.mode === 'both') {
     await measureWorlds();
   }
-  window.checkResult = { rows, worldRows, lookRows, artifacts };
+  window.checkResult = { rows, worldRows, lookRows, artifacts, scenesBaselineOnly, scenesNewOnly };
 } catch (err) {
-  window.checkResult = { error: String(err), stack: err.stack, rows, worldRows, lookRows, artifacts };
+  window.checkResult = { error: String(err), stack: err.stack, rows, worldRows, lookRows, artifacts, scenesBaselineOnly, scenesNewOnly };
 }

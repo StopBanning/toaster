@@ -3,6 +3,7 @@ import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
 import { createCodeView, nextCodeSetting } from './codeview.js';
 import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens, setGameCode } from './visuals.js';
+import { readMirror } from './camview.js';
 import { createOrb } from './orb.js';
 import { createDotCam } from './dotcam.js';
 import { createVoxCam } from './voxcam.js';
@@ -162,6 +163,7 @@ const state = {
   spaghettiKind: 'snakes', // the spaghetti's noodles (A while it's on): SPAGHETTI_KINDS
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
+  mirror: true, // the camera mirrored, as a selfie view is; off, as the camera sees it (the help's setting; see camview.js)
   radio: '', // the radio's address, as last played
   seenVersion: '', // the version last opened, to tell what's new after an update
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
@@ -176,7 +178,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion'];
+const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -213,6 +215,7 @@ function loadSettings() {
   worlds.setLook(state.worldLook);
   state.card = state.card === true;
   state.cardV = state.cardV !== false;
+  state.mirror = readMirror(state.mirror); // (an older profile has none: mirrored)
   state.cardBig = state.cardBig === true;
   state.spectroTheme = state.spectroTheme === true;
   state.sceneryTheme = state.sceneryTheme === true;
@@ -924,6 +927,18 @@ function setUpdates(on) {
   saveSettings();
 }
 $('updates').addEventListener('change', (e) => setUpdates(e.target.checked));
+
+// Mirror the camera: the help's checkbox, and Ctrl+K's "camera: mirrored" and "camera: not mirrored". On
+// (as it always was), the camera is shown as a mirror shows you; off, as the camera sees it, for pointing
+// it at your gear. The camera layer, the ASCII camera, the dots, the voxels, big eyes, the cut-out, the
+// finger frame and the portal all follow, through the camera's one flag (renderer/camview.js).
+function setMirror(on) {
+  state.mirror = on;
+  cam.setMirror(on);
+  $('mirror').checked = on;
+  saveSettings();
+}
+$('mirror').addEventListener('change', (e) => setMirror(e.target.checked));
 async function offerUpdate(u) {
   if (!state.updates || !window.nc?.updateCheck) return;
   u ||= await window.nc.updateCheck().catch(() => null);
@@ -1627,8 +1642,8 @@ function draw(now) {
   if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
   if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
-  if (dotCamOn()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
-  if (voxCamOn()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
+  if (dotCamOn()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, mirror: cam.mirrored, offset: syncOffset() });
+  if (voxCamOn()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, mirror: cam.mirrored, offset: syncOffset() });
   if (cam.on) {
     // (the face is looked for while the finger frame is open too: a wink changes its filter; and for
     // the portals' skull)
@@ -1643,7 +1658,7 @@ function draw(now) {
       if (tracker.error) showNotice(tracker.gaveUp ? `Hand and face tracking is off (${tracker.error}). The camera still works; turning it off and on (C) tries again.` : `Hand and face tracking had trouble (${tracker.error}); trying again.`);
       else if (optionalTrouble.length) showNotice(optionalTrouble.map(([name, err]) => `${name === 'face' ? 'Face tracking' : 'Cut-out'} is unavailable (${err.message}). ${err.retrying ? 'Trying again.' : 'Turn the camera off and on (C) to try again.'}`).join(' ') + ' Hand tracking still works.');
     }
-    const where = { place: cam.place, crop: cam.drawCrop, rect: cam.rect, col };
+    const where = { place: cam.place, crop: cam.drawCrop, rect: cam.rect, mirror: cam.mirrored, col };
     // a portal, while one is open, stands in for the finger frame (and the hand signs)
     portal.draw(t, { ...where, hands: tracker.hands, video: cam.video, mask: tracker.mask, bar: eng.bar, face: tracker.face, pose: tracker.pose });
     if (portal.showing) lens.clear();
@@ -1805,7 +1820,7 @@ const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
 
 // Ctrl+K (renderer/palette.js): every action by name, then each scene, background, code look,
-// handheld screen and theme, and the bug report.
+// handheld screen and theme, the camera's mirror, and the bug report.
 const sceneName = (scene) => SCENE_NAMES[scene] || scene;
 const screenName = (screen) => SCREEN_NAMES[screen] || screen;
 const paletteEntries = () => [
@@ -1840,6 +1855,11 @@ const paletteEntries = () => [
   ...THEMES.map((name, i) => ({
     id: 'theme:' + name, name: 'theme: ' + name,
     run: () => { state.theme = i; applyTheme(); saveSettings(); flashStatus('theme: ' + name); },
+  })),
+  // the camera's mirror, by name (the help's checkbox)
+  ...[['mirrored', true, ['mirror', 'selfie']], ['not mirrored', false, ['unmirrored', 'flip', 'as the camera sees it', 'overhead', 'gear']]].map(([name, on, aliases]) => ({
+    id: 'camera:' + name, name: 'camera: ' + name, aliases,
+    run: () => { setMirror(on); flashStatus('camera: ' + name); },
   })),
   ...PRESETS.map((p) => ({ id: 'preset:' + p.id, name: 'preset: ' + p.name.toLowerCase(), aliases: ['setup'], run: () => choosePreset(p.id) })),
   { id: 'report-bug', name: 'report a bug', aliases: ['bug', 'issue', 'problem'], run: () => bugReport.show() },
@@ -2145,6 +2165,7 @@ setCodeHidden(state.codeHidden, state.beatHidden);
 setCrt(state.crt);
 setCalm(state.calm);
 setUpdates(state.updates);
+setMirror(state.mirror);
 setTimeout(() => offerUpdate(), 8000);
 applyCard();
 // the first time Toaster opens, a word on where to start (it's already listening to the PC)

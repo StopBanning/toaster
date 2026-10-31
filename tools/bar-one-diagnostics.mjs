@@ -1,8 +1,9 @@
+import { readBaseline } from './paths.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {tempo,onsets,macro} from './event-score.mjs';
 const dir=process.argv.find(x=>x.startsWith('--dir='))?.slice(6)||'_checks/event-ledger';
-const baseline=JSON.parse(fs.readFileSync('docs/event-ledger-baseline.json'));
+const baseline=readBaseline(fs.readFileSync('docs/event-ledger-baseline.json', 'utf8'));
 const rows=[];
 for(const before of baseline.rows){
   const file=path.join(dir,before.key+'.json');if(!fs.existsSync(file))continue;

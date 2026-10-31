@@ -1,3 +1,4 @@
+import { inputPath } from './paths.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,6 +20,7 @@ const inputs = [], excluded = [];
 if (gt) {
   const manifest = JSON.parse(fs.readFileSync(path.join(gt, 'input-manifest.json'), 'utf8').replace(/^\uFEFF/, ''));
   for (const row of manifest.songs) {
+    row.audio = inputPath(row.audio);
     if (only && !only.includes(row.key)) continue;
     if (['funkytown','showmelove','upsidedown'].includes(row.key)) { excluded.push({key:row.key,reason:'unreadable audio excluded by bar-one handoff'}); continue; }
     const truthPath = path.join(gt, 'truth', row.key + '.json');
@@ -47,5 +49,5 @@ const quote = (s) => "'" + s.replaceAll("'", "''") + "'";
 // Child Chromium processes inherit the two-processor affinity and below-normal priority.
 const cmd = `$benchProcess = [Diagnostics.Process]::GetCurrentProcess(); $benchProcess.ProcessorAffinity = [IntPtr]3; $benchProcess.PriorityClass = 'BelowNormal'; & ${quote(electron)} ${quote(path.join(root, 'tools/event-ledger-host.cjs'))} | Out-Default; exit $LASTEXITCODE`;
 const env = { ...process.env, UV_THREADPOOL_SIZE: '2', OMP_NUM_THREADS: '2', EVENT_LEDGER_DIR: dir }; delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd], { cwd: root, env, windowsHide: true, stdio: 'inherit' });
+const child = spawn(process.platform === 'win32' ? 'powershell.exe' : electron, process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command', cmd] : [path.join(root, 'tools/event-ledger-host.cjs')], { cwd: root, env, windowsHide: true, stdio: 'inherit' });
 process.exitCode = await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });

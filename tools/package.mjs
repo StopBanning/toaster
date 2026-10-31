@@ -20,6 +20,14 @@ if (platform !== 'darwin' && platform !== 'win32') {
   process.exit(1);
 }
 
+// The copyright line the package carries: LegalCopyright in Toaster.exe, NSHumanReadableCopyright in the Mac app. Left
+// out, Windows shows Electron's own and the Mac shows none. It is LICENSE's own line, so the two can't disagree.
+const copyright = fs.readFileSync(path.join(root, 'LICENSE'), 'utf8').match(/^Copyright .+$/m)?.[0].trim();
+if (!copyright) {
+  console.error('package: no "Copyright ..." line in LICENSE');
+  process.exit(1);
+}
+
 if (platform === 'darwin') {
   run('bash', ['helpers/mac/build.sh', 'universal']);
   buildIcon();
@@ -28,6 +36,17 @@ if (platform === 'darwin') {
 // The packager's own script, run with this Node: node_modules/.bin/electron-packager is a shell
 // script, which Windows can't start without a shell (and through one, cmd mangles the ignores).
 const packager = path.join(root, 'node_modules', '@electron', 'packager', 'bin', 'electron-packager.mjs');
+
+// Only what git tracks goes in the package, plus what the build makes (node_modules, the Mac helpers' bin): notes,
+// drafts, recordings, test output and other leftovers in a working copy, ignored by git or not, stay out, so a
+// package built from a busy checkout holds what a clean one does. A clean checkout, as on GitHub's Macs, adds nothing.
+const BUILT = ['node_modules/', 'helpers/mac/bin/', 'build/icon.icns'];
+const untracked = spawnSync('git', ['ls-files', '--others', '--directory', '-z'], { cwd: root, encoding: 'utf8' });
+const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const untrackedIgnores = untracked.status === 0
+  ? untracked.stdout.split('\0').filter((p) => p && !BUILT.some((b) => p === b || p.startsWith(b)))
+    .map((p) => `--ignore=^/${escape(p.replace(/\/$/, ''))}(/|$)`)
+  : [];
 const ignore = [
   '--ignore=^/dist',
   '--ignore=^/tools',
@@ -35,6 +54,10 @@ const ignore = [
   '--ignore=^/\\.github',
   '--ignore=^/prototype',
   '--ignore=^/docs',
+  '--ignore=^/_checks',
+  // (a Windows package never needs the Mac helpers, built or not)
+  ...(platform === 'win32' ? ['--ignore=^/helpers/mac'] : []),
+  ...untrackedIgnores,
   '--ignore=^/[^/]+\\.html$',
   '--ignore=^/[^/]+\\.md$',
   '--ignore=tasks-vision/wasm/vision_wasm_internal',
@@ -49,6 +72,7 @@ const args = [
   `--platform=${platform}`,
   '--out=dist',
   '--overwrite',
+  `--app-copyright=${copyright}`,
   // Don't also pass --asar: this packager treats that as the whole option and then
   // ignores the sub-property. Helpers have to be real files. An asar is not a place
   // you can execute from.

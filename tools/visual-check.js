@@ -27,8 +27,8 @@ const saved = new Map();
 try {
   // Frozen worlds, each real look shader fully settled, with identical seeded shot and uniforms.
   for (const variant of window.onlySea ? [] : ['before', 'after']) {
-    const { createWorlds } = await import('../_checks/' + variant + '/renderer/worlds.js');
-    const { LOOKS, onePart, blueNoise } = await import('../_checks/' + variant + '/renderer/worldlooks.js');
+    const { createWorlds } = await import('../_checks/visual-check/' + variant + '/renderer/worlds.js');
+    const { LOOKS, onePart, blueNoise } = await import('../_checks/visual-check/' + variant + '/renderer/worldlooks.js');
     const c = document.createElement('canvas'), words = document.createElement('canvas'); document.body.append(c, words);
     const world = createWorlds(c, words), info = { song: { title: 'check' }, lines: ['sound("bd")'], bar: 0, col };
     const start = performance.now(); let asked = 0;
@@ -57,7 +57,7 @@ try {
   // and a trip away from the sharks. Each compared frame comes from the real simulation/draw.
   for (const variant of ['before', 'after']) {
     let seed = 317; Math.random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-    const { createScenery } = await import('../_checks/' + variant + '/renderer/scenery.js');
+    const { createScenery } = await import('../_checks/visual-check/' + variant + '/renderer/scenery.js');
     const c = document.createElement('canvas'); document.body.append(c); const api = createScenery(c);
     const args = { col, colours: 'own', offset: 0, strength: 1.5, scene: 'sharks', open: false };
     const at = performance.now();

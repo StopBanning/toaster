@@ -214,5 +214,8 @@ if mediaRemote == nil {
 while true {
     poll()
     if once { break }
+    // Toaster gone without stopping this (a crash, or killed): launchd has taken this over, so stop too. With no
+    // music playing nothing is ever written, so the closed pipe alone would never end it.
+    if getppid() == 1 { exit(0) }
     Thread.sleep(forTimeInterval: 1.5)
 }

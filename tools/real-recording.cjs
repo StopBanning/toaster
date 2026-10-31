@@ -56,7 +56,7 @@ global.recordCheckLoad = async (win) => {
 };
 let source = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 const change = (from, to) => { if (!source.includes(from)) throw new Error('missing test anchor ' + from); source = source.replace(from, to); };
-change("if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'Toaster (dev)'));", '');
+process.env.TOASTER_USER_DATA = app.getPath('userData');
 change('    width: 1280,', '    show: false, x: -20000, y: -20000,\n    width: 1280,');
 change("win.loadFile(path.join(__dirname, 'renderer', 'index.html'));", 'global.recordCheckLoad(win).catch(err=>{console.error(err);app.exit(1)});');
 change("win.webContents.executeJavaScript('window.startSystemAudio && window.startSystemAudio()', true);", '');

@@ -4,12 +4,13 @@
 // problem. So run this against a copy with a fresh profile (an empty cache), as every user's copy
 // is the first time they open an update.
 //
-// It reloads the window, then shows every background (V) and every scenery scene in turn, each
-// for 2 seconds, and reports the longest gap between frames after each switch. A second round
-// shows the same with everything compiled. Fails (exit code 1) if any switch held up longer than
-// the limit. Stops first (exit code 2) if the window isn't drawing with the graphics card: with no
-// GPU to use (a driver update half done, a remote desktop) Chrome draws on the processor instead,
-// and every number here would be the processor's.
+// It reloads the window, then shows every background (V) and every scene in turn, each for 2
+// seconds, and reports the longest gap between frames after each switch. A second round shows the
+// same with everything compiled. Fails (exit code 1) if any switch held up longer than the limit.
+// Stops first (exit code 2) if the window isn't drawing with the graphics card: with no GPU to use
+// (a driver update half done, a remote desktop) Chrome draws on the processor instead, and every
+// number here would be the processor's; or if the app lists no scenes to show. The scenes are the
+// app's own list, asked of it as Ctrl+K is, so a scene added later is shown without a change here.
 //
 //   node tools/hitch.mjs [port] [limit ms]     (port 9333 by default, limit 250)
 //
@@ -59,14 +60,29 @@ if (/Basic Render|WARP|SwiftShader|llvmpipe|Software/i.test(renderer)) {
   process.exit(2);
 }
 
-// everything to show: each background but the scenery, then the scenery's scenes
-// (the backgrounds' names from the V button, one index at a time till they run out)
-const visuals = await evaluate(`(() => { const out = []; for (let i = 0; i < 40; i++) { __nc.setVisual(i); const name = document.getElementById('b-visual')?.textContent?.replace(/[^a-z ]/gi, '').trim(); if (!name || name === 'undefined' || out.some((o) => o.name === name)) break; out.push({ i, name }); } __nc.setVisual(0); return out; })()`);
+// everything to show: each background but the scenes one, then the scenes. The backgrounds' names come from the V
+// button, one index at a time till they run out. The scenes, and the place V has for them, come from the app's own
+// Ctrl+K entries (a `scene:<name>` for each scene it has, which shows it; a `background:scenery` that puts V on the
+// scenes), so no scene's name and no background's name or number is kept here.
+const { visuals, sceneryAt, scenes } = await evaluate(`(() => {
+  const out = [];
+  for (let i = 0; i < 40; i++) { __nc.setVisual(i); const name = document.getElementById('b-visual')?.textContent?.replace(/[^a-z ]/gi, '').trim(); if (!name || name === 'undefined' || out.some((o) => o.name === name)) break; out.push({ i, name }); }
+  const entries = __nc.paletteEntries();
+  entries.find((e) => e.id === 'background:scenery').run();
+  const sceneryAt = __nc.state.visual;
+  __nc.setVisual(0);
+  return { visuals: out, sceneryAt, scenes: entries.filter((e) => e.id.startsWith('scene:')).map((e) => e.id.slice('scene:'.length)) };
+})()`);
+if (!scenes.length) {
+  console.log(`Toaster ${version}: the app lists no scenes to show (Ctrl+K has none).`);
+  console.log('Nothing measured: find out why the list is empty, then run this again.');
+  ws.close();
+  process.exit(2);
+}
 const steps = [];
-for (const v of visuals) if (!/scenery/i.test(v.name)) steps.push({ label: v.name || `visual ${v.i}`, js: `__nc.setVisual(${v.i})` });
-const scenery = visuals.find((v) => /scenery/i.test(v.name));
-for (const scene of ['lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls', 'halloween', 'sharks', 'festival', 'koi', 'space', 'eye']) {
-  steps.push({ label: `scenery: ${scene}`, js: `(__nc.state.sceneryScene = ${JSON.stringify(scene)}, __nc.state.sceneryTheme = false, __nc.setVisual(${scenery ? scenery.i : 9}))` });
+for (const v of visuals) if (v.i !== sceneryAt) steps.push({ label: v.name || `visual ${v.i}`, js: `__nc.setVisual(${v.i})` });
+for (const scene of scenes) {
+  steps.push({ label: `scene: ${scene}`, js: `__nc.paletteEntries().find((e) => e.id === ${JSON.stringify('scene:' + scene)}).run()` });
 }
 
 // one switch: the longest gap between frames in the 2 s after it

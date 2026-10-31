@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const baselineRef = process.env.BASELINE_REF || 'e376dba';
-const checkRoot = path.join(root, '_checks');
+const checkRoot = path.join(root, '_checks', 'render-check');
 
 function readBaseline(relPath) {
   return execFileSync('git', ['show', `${baselineRef}:${relPath}`], {
@@ -69,6 +69,6 @@ fs.mkdirSync(checkRoot, { recursive: true });
 fs.writeFileSync(path.join(checkRoot, 'render-config.js'), `export default ${JSON.stringify(renderConfig)};\n`);
 fs.writeFileSync(
   path.join(checkRoot, 'render.html'),
-  '<!doctype html><meta charset="utf-8"><style>:root{--font:monospace}body{margin:0;background:#000}</style><script type="module" src="../tools/shader-render.js"></script>\n',
+  '<!doctype html><meta charset="utf-8"><style>:root{--font:monospace}body{margin:0;background:#000}</style><script type="module" src="../../tools/shader-render.js"></script>\n',
 );
-console.log('prepared render check variants in _checks/before and _checks/after');
+console.log('prepared the render check in _checks/render-check (before, after, render-config.js, render.html)');
