@@ -22,7 +22,7 @@ node --test tools/*.test.mjs
 | `renderer/codegen.js`, `codeview.js` | The live Strudel code, and how it's typed onto the screen |
 | `renderer/tape.js`, `tape-export.js` | The song as it's recorded, and the X export (Strudel and MIDI) |
 | `renderer/visuals.js` | The blocks layer (punchcard, dominoes, the handheld's frame) and the ASCII backgrounds |
-| `renderer/scenery.js`, `worlds.js`, `chrome.js`, `spectro.js`, `cuts.js`, `fire.js` | The backgrounds |
+| `renderer/scenery.js`, `worlds.js`, `chrome.js`, `spaghetti.js` (with `spaghetti-kitchen.js`, `noodles.js`), `spectro.js`, `cuts.js`, `fire.js` | The backgrounds |
 | `renderer/game.js`, `gameboot.js`, `gameskins.js`, `gamewords.js` | The handheld rhythm game |
 | `renderer/lens.js`, `portal.js`, `gestures.js`, `tracking.js` | The camera and hand features |
 | `renderer/app.js` | Keys, menus and layout, and the wiring between all of the above |

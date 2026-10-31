@@ -176,8 +176,10 @@ here would make this app AGPL/GPL too. Nothing from either is in here now.
   (spiral and pitch wheel), `renderer/warp.js` (the warp shader) and
   `renderer/fx.js` (Windows XP takeover and message boxes, blue screen, machine readout),
   `renderer/cuts.js` (the cuts background), `renderer/worlds.js` (the worlds: the planets' shader,
-  the lens, the gold dust) and `renderer/worldlooks.js` (the looks they print in) are the
-  visuals; `renderer/clips.js` keeps the drop clips, `renderer/smooth.js` steadies the hands; `renderer/tracking.js` and `renderer/track-worker.js` run MediaPipe's hand and face
+  the lens, the gold dust), `renderer/worldlooks.js` (the looks they print in) and
+  `renderer/spaghetti.js` (the spaghetti: the time round, the card, the crank, the pictures; its
+  kitchen raymarched once in `renderer/spaghetti-kitchen.js`, its noodles' fall and dancers in
+  `renderer/noodles.js`) are the visuals; `renderer/clips.js` keeps the drop clips, `renderer/smooth.js` steadies the hands; `renderer/tracking.js` and `renderer/track-worker.js` run MediaPipe's hand and face
   tracking; `renderer/demo.js` is the test song.
 
 The bass line has its rhythm: the bar's note on the steps a bass note starts, written the Strudel

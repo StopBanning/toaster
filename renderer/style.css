@@ -34,7 +34,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none; }
 
-#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spectro, #spectrobox, #scenery, #wait, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spaghetti, #spectro, #spectrobox, #scenery, #wait, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #warp { opacity: .55; }
 #glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 #glass[hidden] { display: none; }
@@ -134,20 +134,20 @@ body.cam-cut #cam { z-index: 1; opacity: .92; }
 #voxcam { opacity: .85; } /* (the voxels in the camera's place, under the backgrounds; a room, so solid) */
 #field { opacity: calc(var(--field) * var(--field-k, 1.5) * var(--hush, 1)); } /* --field-k: the strength you pick (A) */
 /* hushed (a raised fist, or Q): the picture dims, while the code mutes itself line by line */
-#worlds, #worldwords, #chrome, #spectro, #spectrobox, #scenery, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s; }
+#worlds, #worldwords, #chrome, #spaghetti, #spectro, #spectrobox, #scenery, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s; }
 body.hushed { --hush: .3; }
 /* the camera as text (a layer of its own, over the background) stands out more than an ASCII
    background does */
 #asciicam { opacity: calc(var(--field) * 3.2 * var(--hush, 1)); }
 body.hushed #vis, body.hushed #orb, body.hushed #punch { opacity: .3; }
 body.hushed #warp { opacity: .17; }
-body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery { opacity: .3; }
-/* over the worlds (and the chrome, and the spectrogram) the code sits on the ID card's panel colour
-   (navy on the blue theme), not the theme's own, which fights the picture's colours */
-body.worlds-on, body.chrome-on, body.spectro-on { --line-bg: color-mix(in srgb, var(--ink) 70%, transparent); }
-/* the worlds (and the spectrogram, and the scenery) over the camera: you show through them (with the
-   cut-out you're in front of them) */
-body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery { opacity: .6; }
+body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spaghetti, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery { opacity: .3; }
+/* over the worlds (and the chrome, the spaghetti, the spectrogram) the code sits on the ID card's panel
+   colour (navy on the blue theme), not the theme's own, which fights the picture's colours */
+body.worlds-on, body.chrome-on, body.spaghetti-on, body.spectro-on { --line-bg: color-mix(in srgb, var(--ink) 70%, transparent); }
+/* the worlds (and the spaghetti, the spectrogram, the scenery) over the camera: you show through them
+   (with the cut-out you're in front of them) */
+body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spaghetti, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery { opacity: .6; }
 
 /* ---------- code ---------- */
 #code {
