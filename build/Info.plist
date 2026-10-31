@@ -4,6 +4,8 @@
 <dict>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.music</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Toaster's player bar asks Music or Spotify to play, pause or skip, and how far into the song it is, when one of them is what you're listening to.</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>Toaster listens to whatever this Mac is playing, so it can write it out as code. It uses the sound only.</string>
   <key>NSCameraUsageDescription</key>

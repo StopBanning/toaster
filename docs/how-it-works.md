@@ -85,6 +85,39 @@ The stream is read cross-origin (CORS), the only way the analysis hears sound fr
 The app's page is a file on your machine, which may read sound from any server; on the web page a
 stream only plays if its server allows it, and an https page can't play an http stream.
 
+## A file's own names
+
+A file you play names its song from its own tags (renderer/audio-tags.js: an MP3's ID3v2 title and artist, an M4A's
+`©nam` and `©ART`), so the code's first line reads `x = x.DaftPunk("Around the World")` and the card starts DAF-; the
+file's name and "File" stand in only where a tag is missing. Its cover, from the same file, goes to the card, the
+backgrounds that show one and the dynamic theme below.
+
+## The dynamic theme
+
+T's sixth theme, dynamic, takes its colours from the song's cover: the system's (your music app's, where Windows or the
+Mac helper hands it over), the radio's (the iTunes Store lookup above) or a played file's own, the picture in an MP3's
+ID3v2 tag or an M4A's `covr` atom, read from as few of the file's bytes as it takes (renderer/embedded-cover.js). The
+cover is drawn 48 × 48 and its pixels gathered into five colours in OKLab (renderer/cover-palette.js): the background is
+the commonest, made dark and keeping its hue, and the text the most saturated of the rest, lifted until it reads at 7:1
+or better against the background; the theme's other colours come from those two the way bluescreen's do. A near-grey
+cover stays grey, a cover of one colour is bluescreen in its hue, and with no cover it's bluescreen. When the song
+changes the colours ease to the next cover's over 1.2 seconds, in OKLab; a cover that goes is held for 4 seconds first,
+since the next song's often arrives a moment after its title. Everything that follows the theme follows the ease: the
+code, the scenes and blocks, the card's cover dots, the spectrogram and, on Windows, the title bar (a few times a
+second). The idea is after golden by Jon Soini (itsgolden.app).
+
+## The player bar
+
+Along the bottom, the player bar shows the source and the song, the buttons that source has, and the tempo, key and bar
+(renderer/player.js). A file plays, pauses, restarts and seeks on its own element (moving in it starts the code over from
+there, as a new song does); the radio and the demo play and stop. For the system's sound on a Mac it asks Music or
+Spotify, whichever the now-playing helper says is playing, in AppleScript: play and pause, next and previous, and every
+2 seconds where it is in the song (helpers/player.cjs). Each line asks whether the player is running first, so a closed
+player is never opened, and macOS asks you once whether Toaster may control it (System Settings, Privacy & Security,
+Automation). On Windows it presses the media keys (helpers/mediakeys.ps1), which reach whichever player Windows has;
+there's no progress bar there. Any other player gets no buttons. H hides the bar with the footer, Z's visualizer mode
+shows it only at the bottom edge, and recordings leave it out unless the help says otherwise.
+
 ## The camera
 
 Everything the camera sees stays on this machine. While it's on, two things look at it:

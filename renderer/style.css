@@ -397,6 +397,81 @@ html.darwin .os-win { display: none; }
 html.darwin header { left: 0; width: 100%; padding-left: 78px; padding-right: 12px; }
 html.darwin.full header { padding-left: 12px; }
 
+/* ---------- the player bar (player.js): a strip along the bottom, above the footer ---------- */
+/* The source and the song at its left, the transport (only the buttons the source can do), the progress bar where the position is
+   known, and the status line (tempo, key, bar and beat) at the right, in the theme's colours. It's up while body.player-bar is (the
+   help's setting). H puts it away with the footer; Z's visualizer mode (no code) shows it only while the pointer is at the bottom
+   edge; a recording leaves it out unless body.player-rec says it's in. --player-h is the room it takes, for what else sits at the
+   bottom (the notice, the first visit's hint, the machine readout, the code's roll). Narrower than 900 px it's two rows (the song
+   and the status line, then the transport and the progress bar), and under 560 px the status line goes. */
+body { --player-h: 0px; }
+body.player-bar { --player-h: 38px; }
+@media (max-width: 899px) { body.player-bar { --player-h: 62px; } }
+@media (hover: none) { body.player-bar { --player-h: 52px; } }
+@media (hover: none) and (max-width: 899px) { body.player-bar { --player-h: 100px; } }
+body.player-bar.clean, body.player-bar.mini, body.player-bar.recording:not(.player-rec), body.widget { --player-h: 0px; }
+#player {
+  position: fixed; left: 0; right: 0; bottom: 32px; z-index: 5; display: none; align-items: center; gap: 16px;
+  height: 38px; padding: 0 12px; font-size: 12px; white-space: nowrap;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); border-top: 1px solid var(--faint); transition: opacity .4s;
+}
+body.player-bar #player { display: flex; }
+body.mini #player, body.widget #player { display: none !important; }
+body.clean #player { opacity: 0 !important; pointer-events: none; }
+body.recording:not(.player-rec) #player { visibility: hidden; }
+body.nocode #player { opacity: 0; }
+body.nocode #player:hover, body.nocode footer:hover ~ #player { opacity: 1; }
+/* (and for someone tabbing to it; not for a click, which leaves a button focused too, and would keep it up) */
+body.nocode #player:has(:focus-visible) { opacity: 1; }
+body.vertical #player { padding-left: max(12px, var(--safe)); padding-right: max(12px, var(--safe)); }
+#player [hidden] { display: none !important; }
+/* (with no progress bar its room stays, empty, so the buttons keep their place from one source to the next) */
+#player .pl-progress[hidden] { display: flex !important; visibility: hidden; }
+#player .pl-id { flex: 1.4 1 0; min-width: 0; display: flex; align-items: center; gap: 10px; }
+#player .pl-chip { flex: none; padding: 2px 8px; border: 1px solid currentColor; letter-spacing: .1em; text-transform: uppercase; }
+#player .pl-chip.off { color: var(--dim); }
+#player .pl-song { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#player .pl-artist, #player .pl-idle { color: var(--dim); }
+#player .pl-transport { flex: none; display: flex; gap: 6px; }
+#player .pl-btn { display: grid; place-items: center; width: 30px; height: 26px; padding: 0; }
+#player .pl-btn svg { display: block; width: 13px; height: 13px; fill: currentColor; }
+#player .pl-play { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#player .pl-play:hover, #player .pl-play:focus-visible { background: color-mix(in srgb, var(--fg) 80%, var(--bg)); }
+#player .pl-progress { flex: 1 1 0; min-width: 140px; display: flex; align-items: center; gap: 10px; }
+#player .pl-time { flex: none; min-width: 4ch; color: var(--dim); font-variant-numeric: tabular-nums; }
+#player .pl-pos { text-align: right; }
+#player .pl-track { position: relative; flex: 1; height: 18px; outline: none; }
+#player .pl-track::before, #player .pl-fill { content: ''; position: absolute; left: 0; top: calc(50% - 2px); height: 4px; }
+#player .pl-track::before { right: 0; background: color-mix(in srgb, var(--fg) 24%, transparent); }
+#player .pl-fill { background: var(--fg); }
+#player .pl-fill::after { content: ''; position: absolute; right: -1px; top: -3px; width: 2px; height: 10px; background: var(--fg); }
+#player .pl-track.seek { cursor: pointer; }
+#player .pl-track.seek:hover::before, #player .pl-track.seek:hover .pl-fill { top: calc(50% - 3px); height: 6px; }
+#player .pl-track:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
+#player .pl-status { flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
+@media (max-width: 899px) {
+  body.player-bar #player { display: grid; height: 62px; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 1fr 1fr; grid-template-areas: "id id status" "transport progress progress"; gap: 0 12px; }
+  #player .pl-id { grid-area: id; } #player .pl-status { grid-area: status; } #player .pl-transport { grid-area: transport; } #player .pl-progress { grid-area: progress; min-width: 0; }
+}
+@media (max-width: 559px) {
+  body.player-bar #player { grid-template-areas: "id id id" "transport progress progress"; }
+  #player .pl-status { display: none; }
+}
+/* the 9:16 layout: the song gets the first row to itself, at any width (its sides are kept clear, and the status line is the code's to say) */
+body.vertical.player-bar #player { grid-template-areas: "id id id" "transport progress progress"; }
+body.vertical #player .pl-status { display: none; }
+/* a touch screen: buttons and track a finger can hit, and a bar tall enough for them */
+@media (hover: none) {
+  body.player-bar #player { height: 52px; }
+  #player .pl-btn { width: 44px; min-height: 44px; }
+  #player .pl-track { min-height: 44px; }
+}
+@media (hover: none) and (max-width: 899px) { body.player-bar #player { height: 100px; } }
+/* what else sits at the bottom, above the bar while it's up */
+#notice { bottom: calc(44px + var(--player-h, 0px)); }
+body #first-run-hint { bottom: calc(52px + var(--player-h, 0px)); } /* (body in front: the hint's own rule is further down the page, at the same weight) */
+body.vertical #sys { bottom: calc(40px + var(--player-h, 0px)); }
+
 /* ---------- menu ---------- */
 #menu { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
 #menu[hidden] { display: none; }

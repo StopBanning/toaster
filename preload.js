@@ -52,6 +52,12 @@ contextBridge.exposeInMainWorld('nc', {
   radioTitles: (url) => ipcRenderer.invoke('radio:titles', url),
   onRadioTitle: (fn) => ipcRenderer.on('radio:title', (_e, song) => fn(song)),
   radioCover: (artist, title) => ipcRenderer.invoke('radio:cover', artist, title),
+  // The player bar: play and pause, next or previous on the system's own player (who: 'music' or 'spotify' on a Mac,
+  // 'keys', the media keys, on Windows; action: 'playpause', 'next', 'previous'), and where it is in the song: { ok, ... }.
+  // playerSent is for the checks: what a copy started with --player-dry-run was asked to send (null in any other).
+  playerCommand: (who, action) => ipcRenderer.invoke('player:command', who, action),
+  playerPosition: (who) => ipcRenderer.invoke('player:position', who),
+  playerSent: () => ipcRenderer.invoke('player:sent'),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),
   handLogAdd: (text) => ipcRenderer.invoke('handlog:add', text),

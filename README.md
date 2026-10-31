@@ -85,11 +85,12 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 | I | machine readout (`const machine = {...}`) |
 | L | vertical 9:16 layout for TikTok/Shorts (resizes the window) |
 | W | mini player: the window shrinks to a small panel in the corner, on top of everything else, still listening (the code, and the card if it's on); W again brings it back. With the handheld game on, the handheld goes on your desktop on its own instead: no window round it, just the device and its shadow over whatever's there, on top; drag it anywhere, and Esc, W or its x brings Toaster back |
-| T | theme: bluescreen, blackscreen, terminal, pink, whitescreen |
+| T | theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (the colours of the song's cover, from your music app, the radio or a file's own, easing over to the next song's; after golden by Jon Soini) |
 | Y | CRT: an old TV over everything, on any theme. It comes on from a white line opening into the picture and goes off into a dot; scanlines and phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop; each background (V) is a channel, changed through static with its number in the corner, VCR green, and the theme (T) shows there as the picture setting. With fewer flashes, it stays still: no flicker, roll, static or white line. Remembered |
 | E | name the song yourself |
 | Z | hide the code: just the visuals, for Toaster as a visualizer. Again for the code without its beat (the drum lines and their grid), for music with no pulse, and again for all of it (it's still written underneath). The scenery opens out into the room the code kept: the sharks' float and the koi's lily pad come to the middle, the festival's stage moves to the middle, and in a tall window Halloween's moon rises into it. Remembered |
 | H / F | hide header and footer / fullscreen |
+| (bar) | the player bar along the bottom: the source and the song, only the buttons that source has (play and pause, skip, and a progress bar where it knows its place: a file, the radio, the demo, Music and Spotify on a Mac, the media keys on Windows), and the tempo, key and bar. H hides it with the footer, Z's visualizer mode shows it only at the bottom edge, and recordings leave it out unless the help says otherwise |
 | Ctrl+K | everything by name: every action, scene, background (the classics too: warp, spiral, tunnel, pitch wheel, spectrum and scope), code look, handheld screen and theme. Type a few letters, then Enter |
 
 The background, code look, card, theme, camera effect and drop-effect
@@ -216,8 +217,8 @@ How it works inside, and the test songs it's checked against: [docs/how-it-works
 
 ## Built with Toaster
 
-- **[golden](https://www.threads.com/@jon.soini/post/De9pkUDn0_t)** by jon.soini: an iPhone app he's building that plays
-  your Apple Music library through Toaster's code view, ID cards and themes.
+- **[golden](https://itsgolden.app)** by Jon Soini: a free iPhone player for Apple Music in Toaster's look, with its code
+  view, ID cards and themes. Toaster's dynamic theme, the colours of the song's cover, is after golden's.
 - **Internet radio** by Jeffrey Li ([#6](../../pull/6), [#7](../../pull/7)): paste a stream's address and Toaster
   plays it and writes it out. He has also built a background of his own on top of Toaster.
 - **A 3D-printed handheld** by Clemens ([@tokyo_impressions](https://www.instagram.com/tokyo_impressions)), printed

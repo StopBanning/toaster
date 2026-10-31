@@ -38,6 +38,23 @@ async function readTitles(url, ctl, send) {
   for await (const chunk of res.body) read(chunk);
 }
 
+// The player bar's transport (renderer/player.js): play, pause, next and previous on the system's own player, and where
+// it is in the song, asked through helpers/player.cjs (loaded when it's first needed, as radio.cjs is). A copy run from
+// source with --player-dry-run sends nothing, to any player: it keeps the commands it would have sent, which
+// player:sent hands over for the checks (null in any other copy). Neither does anything in the installed app.
+let playerControl = null, playerSent = null;
+function player() {
+  if (!playerControl) {
+    const { createPlayerControl, dryRunner } = require('./helpers/player.cjs');
+    if (!app.isPackaged && process.argv.includes('--player-dry-run')) {
+      const dry = dryRunner();
+      playerSent = dry.sent;
+      playerControl = createPlayerControl({ run: dry.run });
+    } else playerControl = createPlayerControl();
+  }
+  return playerControl;
+}
+
 const mac = process.platform === 'darwin';
 
 // Copies run from source for testing (the checks, the release smoke, a bench driven over the
@@ -482,6 +499,11 @@ function setUpIpc() {
     if (!pic.ok) throw new Error(`the cover: ${pic.status}`);
     return new Uint8Array(await pic.arrayBuffer());
   });
+  // The player bar's transport: who is 'music' or 'spotify' on a Mac, 'keys' (the media keys) on Windows, action one of
+  // playpause, next, previous. Each answers { ok: true } or { ok: false, why } (and position adds where it is, in seconds).
+  ipcMain.handle('player:command', (_e, who, action) => player().command(who, action));
+  ipcMain.handle('player:position', (_e, who) => player().position(who));
+  ipcMain.handle('player:sent', () => { player(); return playerSent; });
   ipcMain.handle('win:titlebar', (_e, color, symbolColor) => {
     try { win?.setTitleBarOverlay({ color, symbolColor }); } catch { /* not supported */ }
   });
