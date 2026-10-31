@@ -120,7 +120,7 @@ test('the setting: mirrored unless saved as not, and an older profile (none save
   assert.match(app, /const SAVED = \[[^\]]*'updates', 'mirror',/);
   assert.match(app, /state\.mirror = readMirror\(state\.mirror\);/);
   assert.match(app, /import \{ readMirror \} from '\.\/camview\.js';/);
-  assert.match(app, /setUpdates\(state\.updates\);\nsetMirror\(state\.mirror\);/);
+  assert.match(app, /setUpdates\(state\.updates\);\r?\nsetMirror\(state\.mirror\);/);
   assert.match(app, /function setMirror\(on\) \{\s*state\.mirror = on;\s*cam\.setMirror\(on\);\s*\$\('mirror'\)\.checked = on;\s*saveSettings\(\);\s*\}/);
 });
 
