@@ -50,6 +50,7 @@ const lookAt = (e, t, u) => { const z = norm(sub(e, t)), x = norm(cross(u, z)), 
 const mul = (a, b) => { const o = new Array(16).fill(0); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k]; return o; };
 
 import { compileProgram } from './program.js';
+import { frameU } from './camview.js';
 
 export function createVoxCam(canvas) {
   let gl = null, prog = null, vb = null, wall = null, floor = null, rows = 0, padY = 0, floorRows = 0, broken = false, U = null;
@@ -142,8 +143,8 @@ export function createVoxCam(canvas) {
       lastStep = heard = null;
     },
     // as the dots (dotcam.js): video, the cut-out's mask (or null), the camera's place on screen
-    // (CSS pixels, or null for the whole window), how far ahead to draw
-    draw(t, { video, mask, rect, eng, offset = 0 }) {
+    // (CSS pixels, or null for the whole window), mirror, how far ahead to draw
+    draw(t, { video, mask, rect, eng, mirror = true, offset = 0 }) {
       if (broken || !video || video.readyState < 2 || gl?.isContextLost()) return;
       if (!prog) {
         try { build(); } catch (err) { broken = true; console.error('voxels:', err); return; }
@@ -183,27 +184,27 @@ export function createVoxCam(canvas) {
         pulseV += a * h; pulse += pulseV * h;
       }
 
-      // the picture, mirrored, covering the camera's place
+      // the picture, mirrored (unless the camera isn't: mirror), covering the camera's place
       const now = performance.now();
       if (!px || now - sampledAt >= 1000 / 31) {
         sampledAt = now;
         const vw = video.videoWidth, vh = video.videoHeight, sc = Math.max(COLS / vw, rows / vh);
         fit = { dw: vw * sc, dh: vh * sc, ox: (COLS - vw * sc) / 2, oy: (rows - vh * sc) / 2 };
-        pcx.setTransform(-1, 0, 0, 1, COLS, 0);
+        pcx.setTransform(mirror ? -1 : 1, 0, 0, 1, mirror ? COLS : 0, 0);
         pcx.drawImage(video, fit.ox, fit.oy, fit.dw, fit.dh);
         sx.drawImage(pic, 0, 0, WC, WR);
         sx.drawImage(pic, PADX, padY);
         px = sx.getImageData(0, 0, WC, WR).data;
       }
       const { dw, dh, ox, oy } = fit;
-      // (the mask's frame is the camera's own, not mirrored: where a cube's patch falls in it)
+      // (the mask's frame is the camera's own, not mirrored: where a cube's patch falls in it, flipped if the picture is)
       const follow = 1 - Math.pow(0.4, dt * 60); // (how fast a cube takes up its new colour and height)
       for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) {
         const i = y * WC + x, R = px[i * 4] / 255, G = px[i * 4 + 1] / 255, B = px[i * 4 + 2] / 255;
         const lum = 0.299 * R + 0.587 * G + 0.114 * B, pc = x - PADX, pr = y - padY;
         let m = 0;
         if (mask && pc >= 0 && pc < COLS && pr >= 0 && pr < rows) {
-          const u = 1 - (pc + 0.5 - ox) / dw, v = (pr + 0.5 - oy) / dh;
+          const u = frameU(mirror, (pc + 0.5 - ox) / dw), v = (pr + 0.5 - oy) / dh;
           if (u >= 0 && u < 1 && v >= 0 && v < 1) m = mask.data[Math.min(mask.h - 1, Math.floor(v * mask.h)) * mask.w + Math.min(mask.w - 1, Math.floor(u * mask.w))] / 255;
         }
         // the room a low relief of tiles; you stand out, a little more where you're lighter

@@ -12,13 +12,13 @@ const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const VS = `#version 300 es
 in vec2 a; out vec2 uv; void main() { uv = a * 0.5 + 0.5; gl_Position = vec4(a, 0.0, 1.0); }`;
 // the dots: area is the camera's rectangle in the canvas (pixels from the bottom left), vid the
-// video's size; the video covers the rectangle, mirrored, as the camera is drawn
+// video's size; the video covers the rectangle, mirrored (mirror 1) or not (0), as the camera is drawn
 const DOTS = `#version 300 es
 precision highp float;
 uniform sampler2D cam, mask;
 uniform vec4 area;
 uniform vec2 vid;
-uniform float cell, pulse, hue, hasMask;
+uniform float cell, pulse, hue, hasMask, mirror;
 in vec2 uv; out vec4 o;
 vec3 neon(float x) {
   vec3 a = vec3(0.22, 0.04, 0.62), b = vec3(0.98, 0.18, 0.78), c = vec3(1.00, 0.82, 0.98);
@@ -35,7 +35,7 @@ void main() {
   if (rel.x < 0.0 || rel.y < 0.0 || rel.x > 1.0 || rel.y > 1.0) { o = vec4(0.0); return; }
   float sc = max(area.z / vid.x, area.w / vid.y);
   vec2 v = ((rel - 0.5) * area.zw) / (vid * sc) + 0.5;
-  vec2 cu = vec2(1.0 - v.x, 1.0 - v.y);
+  vec2 cu = vec2(mirror > 0.5 ? 1.0 - v.x : v.x, 1.0 - v.y);
   // (stretched: a webcam's picture sits in the middle greys; the dots run dark to blazing)
   float L = clamp((dot(texture(cam, cu).rgb, vec3(0.299, 0.587, 0.114)) - 0.12) * 1.7, 0.0, 1.0);
   float m = hasMask > 0.5 ? texture(mask, cu).r : 1.0;
@@ -153,8 +153,9 @@ export function createDotCam(canvas) {
     },
     // video: the camera; mask: the cut-out's (0-255 a pixel of the camera's own frame, not
     // mirrored) or null; rect: the camera's place on screen (CSS pixels) or null for the whole
-    // window; offset: how far ahead to draw (as the blocks), so the swell lands with the kick
-    draw(t, { video, mask, rect, eng, offset = 0 }) {
+    // window; mirror: as the camera layer is drawn (cam.mirrored); offset: how far ahead to draw (as
+    // the blocks), so the swell lands with the kick
+    draw(t, { video, mask, rect, eng, mirror = true, offset = 0 }) {
       if (broken || !video || video.readyState < 2 || gl?.isContextLost()) return;
       if (!P) {
         try { build(); } catch (err) { broken = true; console.error('dots:', err); return; }
@@ -221,6 +222,7 @@ export function createDotCam(canvas) {
       gl.uniform1f(U(P.dots, 'pulse'), pulse);
       gl.uniform1f(U(P.dots, 'hue'), hue);
       gl.uniform1f(U(P.dots, 'hasMask'), mask ? 1 : 0);
+      gl.uniform1f(U(P.dots, 'mirror'), mirror ? 1 : 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       // the glow: at half size, blurred across then down, twice (the second time wider)
       for (const [src, dst, dx, dy] of [[T.dots, T.h1, 1.5, 0], [T.h1, T.h2, 0, 1.5], [T.h2, T.h1, 3, 0], [T.h1, T.h2, 0, 3]]) {

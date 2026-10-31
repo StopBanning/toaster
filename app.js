@@ -3,6 +3,7 @@ import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
 import { createCodeView, nextCodeSetting } from './codeview.js';
 import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens, setGameCode } from './visuals.js';
+import { readMirror } from './camview.js';
 import { createOrb } from './orb.js';
 import { createDotCam } from './dotcam.js';
 import { createVoxCam } from './voxcam.js';
@@ -21,6 +22,7 @@ import { createFire } from './fire.js';
 import { createWarp } from './warp.js';
 import { createWorlds } from './worlds.js';
 import { createChrome } from './chrome.js';
+import { createSpaghetti } from './spaghetti.js';
 import { createSpectro } from './spectro.js';
 import { createScenery, FIELD } from './scenery.js';
 import { createWait } from './wait.js';
@@ -39,12 +41,12 @@ import { PRESETS, applyPreset } from './presets.js';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off'];
+const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off', 'spaghetti'];
 // What V goes round, best first, and their names on screen. The rest of VISUALS (spectrum, tunnel, spiral, pitch wheel,
 // warp, scope) are out of the round since 0.4.23: kept unlisted for a release, in case someone misses one, then gone.
 // The rain came back in 0.4.26: someone did miss it. The rest stay out of V but can be picked by name in Ctrl+K
 // ("background: warp (classic)"), and stay picked.
-const V_ROUND = ['scenery', 'worlds', 'chrome', 'spectrogram', 'cuts', 'fire', 'rain', 'off'];
+const V_ROUND = ['scenery', 'worlds', 'chrome', 'spaghetti', 'spectrogram', 'cuts', 'fire', 'rain', 'off'];
 const V_NAME = { scenery: 'scenes', pitchwheel: 'pitch wheel' };
 const visName = (v) => V_NAME[v] || v;
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
@@ -97,6 +99,7 @@ const fire = createFire($('vis')); // and the fire
 const warp = createWarp($('warp'));
 const worlds = createWorlds($('worlds'), $('worldwords'));
 const chrome = createChrome($('chrome'));
+const spaghetti = createSpaghetti($('spaghetti'));
 const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the pins over it
 const scenery = createScenery($('scenery'));
 const wait = createWait($('wait'), FIELD);
@@ -114,7 +117,7 @@ const sys = createSysinfo($('sys'), () => describeAudio());
 const card = createCard($('card'));
 const glass = createGlass($('glass'), $('code'));
 const orb = createOrb($('orb'));
-const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spectro', 'spectrobox', 'scenery', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
+const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spaghetti', 'spectro', 'spectrobox', 'scenery', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
 const storm = createStorm($('storm')); // the drop effect "not responding"
 const STORM_LAYERS = [...LAYERS, $('glass')]; // (what its window shows: the backgrounds, and the glass blob over them)
 const lens = createLens($('lens')); // the finger frame
@@ -144,6 +147,7 @@ const WIDGET = new URLSearchParams(location.search).has('widget');
 const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winKey: '', manual: null,
+  radioSong: null, radioKey: '', // the radio's song, from the titles in its stream (see radioTitle)
   visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
@@ -156,8 +160,10 @@ const state = {
   spectroTheme: false, // the spectrogram in the theme's colours rather than the rainbow (A while it's on)
   sceneryTheme: false, // the scenery in the theme's two colours rather than its own (A while it's on)
   sceneryScene: 'auto', // and its scene (A too): auto (a new one each song), or one by name
+  spaghettiKind: 'snakes', // the spaghetti's noodles (A while it's on): SPAGHETTI_KINDS
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
+  mirror: true, // the camera mirrored, as a selfie view is; off, as the camera sees it (the help's setting; see camview.js)
   radio: '', // the radio's address, as last played
   seenVersion: '', // the version last opened, to tell what's new after an update
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
@@ -172,7 +178,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'radio', 'seenVersion'];
+const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion'];
 function loadSettings() {
   let saved = {};
   try {
@@ -209,10 +215,12 @@ function loadSettings() {
   worlds.setLook(state.worldLook);
   state.card = state.card === true;
   state.cardV = state.cardV !== false;
+  state.mirror = readMirror(state.mirror); // (an older profile has none: mirrored)
   state.cardBig = state.cardBig === true;
   state.spectroTheme = state.spectroTheme === true;
   state.sceneryTheme = state.sceneryTheme === true;
   if (!['auto', ...scenery.scenes].includes(state.sceneryScene)) state.sceneryScene = 'auto';
+  if (!SPAGHETTI_KINDS.includes(state.spaghettiKind)) state.spaghettiKind = 'snakes';
   // the keys you changed: kept if they're single keys not taken twice
   const keys = state.keys && typeof state.keys === 'object' ? state.keys : {};
   state.keys = {};
@@ -259,6 +267,10 @@ function detach() {
   }
   state.demo?.stop();
   state.node = state.stream = state.el = state.demo = null;
+  // (and the radio's titles, read beside its stream)
+  window.nc?.radioTitles?.(null);
+  state.radioSong = radioArt = null;
+  state.radioKey = '';
 }
 
 function attach(node, source, label) {
@@ -393,6 +405,7 @@ async function useRadio(address) {
   if (state.source !== 'radio') return; // (another pick took over before it played)
   state.radio = url.href; // (kept for next time once it plays)
   saveSettings();
+  window.nc?.radioTitles?.(url.href); // (its songs' titles, in the app: see radioTitle)
 }
 
 // What went wrong when the microphone wouldn't open, said so it can be acted on. iOS asks about the
@@ -562,10 +575,11 @@ const lineTexts = () => Object.fromEntries(LINE_IDS.map((id) => [id, view.lines[
 function currentSong() {
   if (state.manual) return state.manual;
   if (state.source === 'system') return state.winSong;
+  if (state.source === 'radio') return state.radioSong;
   if (state.source === 'demo') return { title: 'demo_beat', artist: 'Toaster' };
   if (state.source === 'file') return { title: state.label.replace(/\.[^.]+$/, ''), artist: 'File' };
-  // (an input or the radio: no title, which also lets the engine drop a beat that's gone, as when
-  // a station goes from a song to talking: see song() in engine.js)
+  // (an input, or the radio without a title: none, which also lets the engine drop a beat that's
+  // gone, as when a station goes from a song to talking: see song() in engine.js)
   return null;
 }
 
@@ -603,6 +617,48 @@ window.nc?.onNowPlaying((info) => {
   if (reset) freshStart(true);
 });
 
+// The radio's song, from the titles main.js reads in its stream. A title arrives with its sound's
+// bytes, which the player plays after what it has buffered ahead of them, so it's taken on then. A new
+// title starts over, as a new song on the system does: not the first (joined halfway through), nor the
+// same one again after a gap without one (a DJ talking). Its cover is looked up in the iTunes Store
+// (main.js) once a song, and only the latest song's is shown.
+let radioArt = null;
+const radioCovers = new Map(); // 'artist title' -> a promise of its cover (an image, or null)
+window.nc?.onRadioTitle?.((song) => {
+  const el = state.el, b = el?.buffered;
+  setTimeout(() => radioTitle(el, song), b?.length ? Math.max(0, b.end(b.length - 1) - el.currentTime) * 1000 : 0);
+});
+function radioTitle(el, song) {
+  if (state.source !== 'radio' || state.el !== el) return; // (another source since, or the radio again)
+  const key = song ? `${song.artist} ${song.title}` : '';
+  state.radioSong = song;
+  radioArt = null;
+  if (song?.artist) {
+    if (!radioCovers.has(key)) {
+      radioCovers.set(key, window.nc.radioCover(song.artist, song.title).then(async (bytes) => {
+        if (!bytes) return null;
+        const im = new Image();
+        im.src = URL.createObjectURL(new Blob([bytes]));
+        await im.decode();
+        URL.revokeObjectURL(im.src);
+        return im;
+      }).catch(() => { radioCovers.delete(key); return null; })); // (one that couldn't be asked is asked again next time)
+    }
+    radioCovers.get(key).then((im) => { if (state.radioSong === song) radioArt = im; });
+  }
+  if (!key || key.toLowerCase() === state.radioKey) return;
+  const reset = !!state.radioKey && !state.manual && eng.tempo.locked;
+  state.radioKey = key.toLowerCase();
+  eng.note(`radio: ${song.title} | ${song.artist}${reset ? ' -> reset' : ''}`);
+  clipsThisSong = 0; lastClipAt = -99;
+  if (reset) freshStart(true);
+}
+
+// The playing song's picture, for the ID card and the backgrounds that show it: Windows' cover for the
+// system's song, the iTunes Store's for the radio's, none for a name you gave it. (An image, so it draws
+// on a canvas and loads as a texture.)
+function songArt() { return state.manual ? null : state.source === 'system' ? artImg : state.source === 'radio' ? radioArt : null; }
+
 eng.on.kick = (s) => {
   field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick();
   lens.kick(s, state.calm);
@@ -638,7 +694,11 @@ eng.on.drop = () => {
   else if (mode === 'not responding') storm.start(t, eng.tempo.locked ? eng.tempo.bpm : 0);
 };
 eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; nextAutoScene(); };
-// A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js).
+// A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js). The
+// radio's is known while it has a title: a station going from a song to talking sends an empty one,
+// which lets the song go (radioTitle), and then the beat goes after a minute without one, as on an
+// input. Only the system says a song is still playing: the radio's stream always plays, and a long
+// silence on it is dead air or the next song (which brings its own title), not a quiet part.
 eng.song = () => ({ known: !!currentSong(), playing: state.source === 'system' && !!state.winSong && !!state.winPlaying });
 
 // ---------------------------------------------------------------- look
@@ -662,11 +722,12 @@ function setVisual(i) {
   state.visual = i;
   const mode = VISUALS[i];
   if (!FIELD_VIS.includes(mode)) field.clear();
-  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spectrogram', spectro], ['scenery', scenery], ['fire', fire]]) if (mode !== name) v.clear();
+  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spaghetti', spaghetti], ['spectrogram', spectro], ['scenery', scenery], ['fire', fire]]) if (mode !== name) v.clear();
   $('b-visual').textContent = visName(mode) + ' ▾';
   queueMicrotask(footerKeys); // (A's word follows the background; after the page's first run, once the keys are set up)
   document.body.classList.toggle('worlds-on', mode === 'worlds');
   document.body.classList.toggle('chrome-on', mode === 'chrome');
+  document.body.classList.toggle('spaghetti-on', mode === 'spaghetti');
   document.body.classList.toggle('spectro-on', mode === 'spectrogram');
   applyStage();
   saveSettings();
@@ -687,6 +748,14 @@ function nextWorldLook() {
 function toggleCollage() {
   state.chromeCollage = !state.chromeCollage;
   flashStatus('collage: ' + (state.chromeCollage ? 'on' : 'off'));
+  saveSettings();
+}
+// A, while the spaghetti's on: its noodles, snakes (a card each time round, a few of its noodles
+// dancing) or endless (the card stuck in the slot, the crank never stopping)
+const SPAGHETTI_KINDS = ['snakes', 'endless'];
+function nextSpaghetti() {
+  state.spaghettiKind = SPAGHETTI_KINDS[(SPAGHETTI_KINDS.indexOf(state.spaghettiKind) + 1) % SPAGHETTI_KINDS.length];
+  flashStatus('noodles: ' + state.spaghettiKind);
   saveSettings();
 }
 // A, while the spectrogram is on: its colours, the rainbow or the theme's
@@ -865,6 +934,18 @@ function setUpdates(on) {
   saveSettings();
 }
 $('updates').addEventListener('change', (e) => setUpdates(e.target.checked));
+
+// Mirror the camera: the help's checkbox, and Ctrl+K's "camera: mirrored" and "camera: not mirrored". On
+// (as it always was), the camera is shown as a mirror shows you; off, as the camera sees it, for pointing
+// it at your gear. The camera layer, the ASCII camera, the dots, the voxels, big eyes, the cut-out, the
+// finger frame and the portal all follow, through the camera's one flag (renderer/camview.js).
+function setMirror(on) {
+  state.mirror = on;
+  cam.setMirror(on);
+  $('mirror').checked = on;
+  saveSettings();
+}
+$('mirror').addEventListener('change', (e) => setMirror(e.target.checked));
 async function offerUpdate(u) {
   if (!state.updates || !window.nc?.updateCheck) return;
   u ||= await window.nc.updateCheck().catch(() => null);
@@ -1501,6 +1582,7 @@ const LAYER_ON = {
   worlds: () => VISUALS[state.visual] === 'worlds',
   worldwords: () => VISUALS[state.visual] === 'worlds',
   chrome: () => VISUALS[state.visual] === 'chrome',
+  spaghetti: () => VISUALS[state.visual] === 'spaghetti',
   spectro: () => VISUALS[state.visual] === 'spectrogram',
   spectrobox: () => VISUALS[state.visual] === 'spectrogram',
   scenery: () => VISUALS[state.visual] === 'scenery',
@@ -1555,27 +1637,28 @@ function draw(now) {
     worlds.draw(t, eng, { song: currentSong(), lines: Object.values(lineTexts()).filter(Boolean), played, chord: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', codeBox, col });
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
+  else if (mode === 'spaghetti') spaghetti.draw(t, eng, { col, calm: state.calm, offset: syncOffset(), picture: songArt(), endless: state.spaghettiKind === 'endless' });
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset() });
   else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
-  else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: state.source === 'system' && !state.manual ? artImg : null });
+  else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: songArt() });
   // (a background still compiling, the window black: the field of glyphs over it, see wait.js)
-  wait.draw(t, !!{ worlds, chrome, spectrogram: spectro, warp, spectrum: field, rain: field, scope: field }[mode]?.waiting, col);
+  wait.draw(t, !!{ worlds, chrome, spaghetti, spectrogram: spectro, warp, spectrum: field, rain: field, scope: field }[mode]?.waiting, col);
   // Don't make the worlds' compiler compete with the first visual. In particular a cold scenery
   // shader may take longer than 30 seconds: start that clock only once it actually draws.
-  const settled = mode === 'scenery' ? !!scenery.drawnScene : mode === 'worlds' ? !worlds.broken : mode === 'chrome' ? !chrome.broken : true;
+  const settled = mode === 'scenery' ? !!scenery.drawnScene : mode === 'worlds' ? !worlds.broken : mode === 'chrome' ? !chrome.broken : mode === 'spaghetti' ? !spaghetti.broken : true;
   if (!worldsWarmScheduled && settled) {
     worldsWarmScheduled = true;
     setTimeout(() => worlds.warm(), 30000);
   }
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
-  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome', state.blockLook, currentSong()?.title, WIDGET ? 'widget' : state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
-  if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: state.source === 'system' && !state.manual ? artImg : null }, col);
+  if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome' || mode === 'spaghetti', state.blockLook, currentSong()?.title, WIDGET ? 'widget' : state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
+  if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: songArt() }, col);
   // (the code rain's characters: the code's lines, not the panels' boxes, which rained as +)
   if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
   if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
-  if (dotCamOn()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
-  if (voxCamOn()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, offset: syncOffset() });
+  if (dotCamOn()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, mirror: cam.mirrored, offset: syncOffset() });
+  if (voxCamOn()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, mirror: cam.mirrored, offset: syncOffset() });
   if (cam.on) {
     // (the face is looked for while the finger frame is open too: a wink changes its filter; and for
     // the portals' skull)
@@ -1590,7 +1673,7 @@ function draw(now) {
       if (tracker.error) showNotice(tracker.gaveUp ? `Hand and face tracking is off (${tracker.error}). The camera still works; turning it off and on (C) tries again.` : `Hand and face tracking had trouble (${tracker.error}); trying again.`);
       else if (optionalTrouble.length) showNotice(optionalTrouble.map(([name, err]) => `${name === 'face' ? 'Face tracking' : 'Cut-out'} is unavailable (${err.message}). ${err.retrying ? 'Trying again.' : 'Turn the camera off and on (C) to try again.'}`).join(' ') + ' Hand tracking still works.');
     }
-    const where = { place: cam.place, crop: cam.drawCrop, rect: cam.rect, col };
+    const where = { place: cam.place, crop: cam.drawCrop, rect: cam.rect, mirror: cam.mirrored, col };
     // a portal, while one is open, stands in for the finger frame (and the hand signs)
     portal.draw(t, { ...where, hands: tracker.hands, video: cam.video, mask: tracker.mask, bar: eng.bar, face: tracker.face, pose: tracker.pose });
     if (portal.showing) lens.clear();
@@ -1652,15 +1735,16 @@ function choosePreset(id) {
 }
 
 // The picker under the background button: a picture of each scene (auto first) and of each other background in V's
-// round, the one showing marked; a click shows it (a scene: the scenes, with that one picked). Its pictures are
-// renderer/thumbs, fetched only when it opens.
+// round (the spaghetti's two kinds each), the one showing marked; a click shows it (a scene: the scenes, with that one
+// picked). Its pictures are renderer/thumbs, fetched only when it opens.
 function showVisMenu(open) {
   visMenu.hidden = !open;
   if (!open) return;
   const now = VISUALS[state.visual];
   const tile = (kind, name, label, on) => `<button type="button" role="menuitem" class="tile${on ? ' on' : ''}" data-kind="${kind}" data-name="${name}"><img src="thumbs/${kind}-${name}.webp" alt="" width="160" height="100"><span>${label}</span></button>`;
   const scenes = ['auto', ...scenery.scenes].map((s) => tile('scene', s, s === 'auto' ? 'auto: a new one each song' : (SCENE_NAMES[s] || s).replace(/^the /, ''), now === 'scenery' && !state.sceneryTheme && state.sceneryScene === s));
-  const more = V_ROUND.filter((v) => v !== 'scenery').map((v) => tile('bg', v, v === 'off' ? 'off: just the code' : visName(v), now === v));
+  const more = V_ROUND.filter((v) => v !== 'scenery').flatMap((v) => (v === 'spaghetti' ? SPAGHETTI_KINDS.map((k) => tile('spaghetti', k, 'spaghetti: ' + k, now === v && state.spaghettiKind === k))
+    : [tile('bg', v, v === 'off' ? 'off: just the code' : visName(v), now === v)]));
   const presets = PRESETS.map((p) => `<button type="button" role="menuitem" class="tile" data-kind="preset" data-name="${p.id}"><img src="${p.picture}" alt="" width="160" height="100"><span>${p.name}</span></button>`);
   visMenu.innerHTML = `<div class="pick-head">presets</div><div class="pick-presets">${presets.join('')}</div><div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div><div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
   const b = $('b-visual');
@@ -1675,6 +1759,10 @@ visMenu.onclick = (e) => {
     state.sceneryScene = b.dataset.name; state.sceneryTheme = false;
     setVisual(VISUALS.indexOf('scenery'));
     flashStatus('scene: ' + (SCENE_NAMES[b.dataset.name] || b.dataset.name));
+  } else if (b.dataset.kind === 'spaghetti') {
+    state.spaghettiKind = b.dataset.name;
+    setVisual(VISUALS.indexOf('spaghetti'));
+    flashStatus('background: spaghetti, ' + b.dataset.name);
   } else { setVisual(VISUALS.indexOf(b.dataset.name)); flashStatus('background: ' + visName(b.dataset.name)); }
   saveSettings();
   showVisMenu(false); crtStatic(); crtOsd(crtChannel());
@@ -1707,7 +1795,7 @@ $('rename-form').addEventListener('submit', () => {
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'visual', key: 'v', run: () => { setVisual(VISUALS.indexOf(V_ROUND[(V_ROUND.indexOf(VISUALS[state.visual]) + 1) % V_ROUND.length])); flashStatus('background: ' + visName(VISUALS[state.visual])); crtStatic(); crtOsd(crtChannel()); } },
-  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the chrome's collage, the spectrogram's colours or the handheld's screens`)) },
+  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spaghetti' ? nextSpaghetti() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the chrome's collage, the spaghetti's noodles, the spectrogram's colours or the handheld's screens`)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // R: the orb, its 3D shapes over any background (off the keys in 0.4.23, back in 0.4.26: it was missed)
   { id: 'orb', key: 'r', run: () => { setOrb(!state.orb); flashStatus(state.orb ? 'the orb on' : 'the orb off'); } },
@@ -1747,7 +1835,7 @@ const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
 
 // Ctrl+K (renderer/palette.js): every action by name, then each scene, background, code look,
-// handheld screen and theme, and the bug report.
+// handheld screen and theme, the camera's mirror, and the bug report.
 const sceneName = (scene) => SCENE_NAMES[scene] || scene;
 const screenName = (screen) => SCREEN_NAMES[screen] || screen;
 const paletteEntries = () => [
@@ -1782,6 +1870,11 @@ const paletteEntries = () => [
   ...THEMES.map((name, i) => ({
     id: 'theme:' + name, name: 'theme: ' + name,
     run: () => { state.theme = i; applyTheme(); saveSettings(); flashStatus('theme: ' + name); },
+  })),
+  // the camera's mirror, by name (the help's checkbox)
+  ...[['mirrored', true, ['mirror', 'selfie']], ['not mirrored', false, ['unmirrored', 'flip', 'as the camera sees it', 'overhead', 'gear']]].map(([name, on, aliases]) => ({
+    id: 'camera:' + name, name: 'camera: ' + name, aliases,
+    run: () => { setMirror(on); flashStatus('camera: ' + name); },
   })),
   ...PRESETS.map((p) => ({ id: 'preset:' + p.id, name: 'preset: ' + p.name.toLowerCase(), aliases: ['setup'], run: () => choosePreset(p.id) })),
   { id: 'report-bug', name: 'report a bug', aliases: ['bug', 'issue', 'problem'], run: () => bugReport.show() },
@@ -1883,7 +1976,7 @@ $('report-bug').onclick = () => { $('help').close(); bugReport.show(); };
 // (A's word: what it changes on what's showing; left out where there's nothing to change)
 function nextWhat() {
   if (gameShowing()) return 'next screen';
-  return { scenery: 'next scene', worlds: 'next look', chrome: 'collage', spectrogram: 'colours' }[VISUALS[state.visual]] || null;
+  return { scenery: 'next scene', worlds: 'next look', chrome: 'collage', spaghetti: 'noodles', spectrogram: 'colours' }[VISUALS[state.visual]] || null;
 }
 // (Z's word: what it does next, as the code is now)
 function codeNext() {
@@ -1910,7 +2003,7 @@ const controls = createControls({
     strength: () => {
       const v = VISUALS[state.visual];
       if (state.blocks && state.blockLook === 'game') return `game screens: ${SCREEN_NAMES[state.gameScreens]}`;
-      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
+      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spaghetti' ? `noodles: ${state.spaghettiKind}` : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
         : v === 'scenery' ? state.sceneryScene + (state.sceneryTheme ? ", theme's colours" : '') : STRENGTHS[state.strength][0];
     },
     blocks: () => ({ text: !state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook], on: state.blocks }),
@@ -2056,7 +2149,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
+window.__nc = { get artImg() { return artImg; }, songArt, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {
@@ -2087,6 +2180,7 @@ setCodeHidden(state.codeHidden, state.beatHidden);
 setCrt(state.crt);
 setCalm(state.calm);
 setUpdates(state.updates);
+setMirror(state.mirror);
 setTimeout(() => offerUpdate(), 8000);
 applyCard();
 // the first time Toaster opens, a word on where to start (it's already listening to the PC)

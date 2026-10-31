@@ -49,6 +49,51 @@ The galaxy and Saturn in the eye's pupil, in renderer/eye/galaxy.jpg and rendere
   ESA/Hubble images: Creative Commons Attribution 4.0 International
     (https://creativecommons.org/licenses/by/4.0/; https://esahubble.org/copyright/).
 
+The spaghetti's pictures, in renderer/pictures (used when a song has no cover; each cropped to a
+square and resized from the source below):
+  01-merian-banana.jpg: Banana flower and fruit with moth and caterpillar, plate 12 of
+    Metamorphosis insectorum Surinamensium, Maria Sibylla Merian, 1705. Koninklijke Bibliotheek,
+    The Hague (KW 1792 A 19). Public domain.
+    https://commons.wikimedia.org/wiki/File:Metamorphosis_insectorum_Surinamensium_-_KW_1792_A_19_-_plaat12.jpg
+  02-seba-serpents.jpg: Snakes, Tab. XXVII of Locupletissimi rerum naturalium thesauri,
+    vol. 2, Albertus Seba, 1735 (hand-coloured). Biodiversity Heritage Library. Public domain.
+    https://commons.wikimedia.org/wiki/File:Locupletissimi_rerum_naturalium_thesauri_accurata_descriptio,_et_iconibus_artificiosissimis_expressio,_per_universam_physiees_historiam_(Tab_27)_BHL41024091.jpg
+  03-brueghel-ark.jpg: The Entry of the Animals into Noah's Ark (detail), Jan Brueghel the
+    Elder, 1613. The J. Paul Getty Museum, Los Angeles (92.PB.82). Public domain.
+    https://commons.wikimedia.org/wiki/File:The_Entry_of_the_Animals_into_Noah%27s_Ark_by_Jan_Brueghel_the_Elder.jpg
+  04-jakuchu-shells.jpg: Shells (Baikō-zu, detail), from Colorful Realm of Living Beings
+    (Dōshoku sai-e), Itō Jakuchū, 1761-65. Museum of the Imperial Collections, Sannomaru Shōzōkan,
+    Tokyo. Public domain.
+    https://commons.wikimedia.org/wiki/File:It%C5%8D_Jakuch%C5%AB_-_Shells_(Colorful_Realm_of_Living_Beings).jpg
+  05-courbet-loue.jpg: The Source of the Loue (detail), Gustave Courbet, 1864. The
+    Metropolitan Museum of Art, New York (29.100.122). Public domain (Met Open Access, CC0).
+    https://www.metmuseum.org/art/collection/search/436023
+  06-hamzanama-grocer.jpg: "Misbah the Grocer Brings the Spy Parran to his House" (detail),
+    folio from a Hamzanama, attributed to Dasavanta, India, ca. 1570. The Metropolitan Museum of
+    Art, New York (24.48.1). Public domain (Met Open Access, CC0).
+    https://www.metmuseum.org/art/collection/search/447752
+  07-sekka-hydrangeas.jpg: Hydrangea (Ajisai, detail), from Flowers of a Hundred Worlds
+    (Momoyogusa), Kamisaka Sekka, 1909-10. The Cleveland Museum of Art (1988.23.2.13). CC0.
+    https://clevelandart.org/art/1988.23.2.13
+  08-suzani.jpg: Cover (suzani, detail), embroidered silk on linen, present-day Uzbekistan,
+    early 19th century, maker unknown. The Metropolitan Museum of Art, New York (21.114.3). Public
+    domain (Met Open Access, CC0).
+    https://www.metmuseum.org/art/collection/search/447384
+  09-shahnama-zal.jpg: "Zal Expounds the Mysteries of the Magi" (detail), folio 87v from the
+    Shahnama of Shah Tahmasp, painting attributed to Qadimi and 'Abd al-'Aziz, Tabriz, ca. 1525. The
+    Metropolitan Museum of Art, New York (1970.301.14). Public domain (Met Open Access, CC0).
+    https://www.metmuseum.org/art/collection/search/452123
+  10-jnanadakini-mandala.jpg: Mandala of Jnanadakini, distemper on cloth, Tibet, late 14th
+    century. The Metropolitan Museum of Art, New York (1987.16). Public domain (Met Open Access, CC0).
+    https://www.metmuseum.org/art/collection/search/37802
+  11-morris-strawberry-thief.jpg: Strawberry Thief (detail), textile designed by William
+    Morris, 1883, printed ca. 1934. Cooper Hewitt, Smithsonian Design Museum, New York (object
+    18340065). Public domain.
+    https://commons.wikimedia.org/wiki/File:Textile,_Strawberry_Thief,_designed_1883,_printed_ca._1934_(CH_18340065).jpg
+  12-limbourg-april.jpg: April (detail), folio 4v of the Très Riches Heures du duc de Berry,
+    Limbourg brothers, ca. 1411-16. Musée Condé, Chantilly (MS 65). Public domain.
+    https://commons.wikimedia.org/wiki/File:012_MS_65_F4_V.jpg
+
 The ideas and looks it's after (none of their code is in Toaster, but for the orb's above):
   DJ_Dave, whose way of performing live code the code view follows: named lines typed
     from a blank window, lighting up as they play. Toaster is an independent project,

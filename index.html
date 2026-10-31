@@ -24,6 +24,7 @@
 <link rel="modulepreload" href="visuals.js" />
 <link rel="modulepreload" href="dominoes.js" />
 <link rel="modulepreload" href="program.js" />
+<link rel="modulepreload" href="camview.js" />
 <link rel="modulepreload" href="orb.js" />
 <link rel="modulepreload" href="glitchorb.js" />
 <link rel="modulepreload" href="dotcam.js" />
@@ -47,6 +48,9 @@
 <link rel="modulepreload" href="world-noise.js" />
 <link rel="modulepreload" href="chrome.js" />
 <link rel="modulepreload" href="collage.js" />
+<link rel="modulepreload" href="spaghetti.js" />
+<link rel="modulepreload" href="spaghetti-kitchen.js" />
+<link rel="modulepreload" href="noodles.js" />
 <link rel="modulepreload" href="spectro.js" />
 <link rel="modulepreload" href="scenery.js" />
 <link rel="modulepreload" href="scenery-source.js" />
@@ -74,6 +78,7 @@
 <canvas id="worlds" aria-hidden="true"></canvas>
 <canvas id="worldwords" aria-hidden="true"></canvas>
 <canvas id="chrome" aria-hidden="true"></canvas>
+<canvas id="spaghetti" aria-hidden="true"></canvas>
 <canvas id="spectro" aria-hidden="true"></canvas>
 <canvas id="spectrobox" aria-hidden="true"></canvas>
 <canvas id="scenery" aria-hidden="true"></canvas>
@@ -181,10 +186,11 @@
   <p>When the kick comes back after a break, the backgrounds answer the drop, and the drop effect, if you've picked one with <kbd data-k="dropfx">B</kbd>, takes over the screen. The camera features run on this <span class="os-win">PC</span><span class="os-mac">Mac</span>; nothing is uploaded. Your picks are remembered, except the camera, which always starts off.</p>
   <label class="calm"><input type="checkbox" id="calm" /><span><b>Fewer flashes</b>: no full-screen flashes, hard cuts or colour flashes. On from the start if <span class="os-win">Windows' "Show animations" is off</span><span class="os-mac">the Mac's Reduce motion setting is on</span>.</span></label>
   <label class="calm"><input type="checkbox" id="updates" /><span><b>Updates</b>: when it starts, Toaster asks GitHub whether there's a newer version, and offers it if there is. Nothing else is sent.</span></label>
+  <label class="calm"><input type="checkbox" id="mirror" /><span><b>Mirror the camera</b>: on, as a mirror shows you; off, as the camera sees it, for pointing it at your gear.</span></label>
   <table>
     <tr class="sec"><th colspan="2">look</th></tr>
-    <tr data-act="visual"><td>V</td><td>background, best first: scenes (a new one each song), worlds, chrome, spectrogram, cuts, fire, the code rain, off</td></tr>
-    <tr data-act="strength"><td>A</td><td>the next one of whatever's showing: the scene (auto, a new one each song; the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween, the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye; then auto in the theme's colours); the worlds' look (auto, night, film, ASCII, thermal, cells); the chrome's collage on or off; the spectrogram in rainbow or the theme's colours; with the handheld on, its screens (Toaster's own, neon, LCD, the Japan edition: Toaster's own in Japanese, on a Famicom-style handheld). The footer says which</td></tr>
+    <tr data-act="visual"><td>V</td><td>background, best first: scenes (a new one each song), worlds, chrome, spaghetti, spectrogram, cuts, fire, the code rain, off</td></tr>
+    <tr data-act="strength"><td>A</td><td>the next one of whatever's showing: the scene (auto, a new one each song; the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween, the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye; then auto in the theme's colours); the worlds' look (auto, night, film, ASCII, thermal, cells); the chrome's collage on or off; the spaghetti's noodles, snakes (a card each time round, a few of its noodles dancing) or endless (the cover stuck on top, the machine never stopping); the spectrogram in rainbow or the theme's colours; with the handheld on, its screens (Toaster's own, neon, LCD, the Japan edition: Toaster's own in Japanese, on a Famicom-style handheld). The footer says which</td></tr>
     <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen</td></tr>
     <tr data-act="crt"><td>Y</td><td>CRT: an old TV over everything, on any theme: it comes on from a white line and goes off into a dot; scanlines, phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop, and each background (V) is a channel, its number on screen</td></tr>
         <tr data-act="blocks"><td>P</td><td>the code look: dominoes, then the handheld game (the song played on a little two-screen handheld), then the punchcard, then none</td></tr>

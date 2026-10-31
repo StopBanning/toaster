@@ -4,6 +4,13 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.27', items: [
+    { act: 'cam', text: "the camera can be shown as the camera sees it, not mirrored, to point it at your gear: untick Mirror the camera in the help, or Ctrl+K and type camera" },
+    { act: 'source', text: "the radio shows each song's title as the station sends it, and its cover from the iTunes Store" },
+    { act: 'visual', text: "a new background, the spaghetti: the cover fed through a pasta machine, its noodles snakes or endless (A switches them)" },
+    { key: 'Mac', text: "the helper that reads song titles now stops with Toaster: after a crash or a force quit it used to keep running in the background" },
+    { key: 'Windows', text: "an update that has to copy over the old files now works when your temp folder has a short name or Toaster was started from PowerShell 7, and if it can't finish it says so" },
+  ] },
   { version: '0.4.26', items: [
     { act: 'visual', text: "the code rain is back in the round: it rains your code over everything" },
     { act: 'orb', text: "the orb is back: a cloud of dots in 3D shapes over any background, flowing into a new shape every 8 bars" },
