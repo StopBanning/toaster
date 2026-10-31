@@ -1,6 +1,6 @@
 # Toaster
 
-Toaster hears whatever is playing on your PC (Spotify, YouTube, anything) and writes it out as
+Toaster hears whatever is playing on your Mac or PC (Spotify, YouTube, anything) and writes it out as
 live Strudel code in front of you: named lines typed into a blank window and lighting up as they
 play. Around the code: every hit as a domino, a little world, a handheld rhythm game, or your webcam
 with effects you work with your hands. Toaster, as in Toaster Strudel.
