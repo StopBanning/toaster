@@ -196,6 +196,9 @@ press O (your browser opens it with the code in the link), and the radio while i
 Apple's iTunes Search to find its cover (with what any web request carries: your IP address and the app's name and
 version); the cover is fetched from Apple's image server.
 
+The site, toaster.locust.lol, works the same way: your audio never leaves your device. The site counts visits
+anonymously (Cloudflare Web Analytics, no cookies) and asks GitHub for the project's star count.
+
 ## Good to know
 
 - It does best with a steady beat. A song without clear drums can take 8 to 20 seconds to find

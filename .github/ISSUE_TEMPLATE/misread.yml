@@ -1,0 +1,50 @@
+name: Misread (Toaster got a song wrong)
+description: The tempo, the key or a drum line didn't match the music.
+title: "Misread: "
+labels: [misread]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The "report a misread" button in Toaster (the flag in the player bar, the help, or Ctrl+K) fills in most of this for you. It collects the version, the source, the song's name, the time into it, what Toaster read and your browser: no audio, nothing else. Check it, say what was wrong, and submit.
+  - type: textarea
+    id: what
+    attributes:
+      label: What was wrong?
+      description: What you heard, against what Toaster wrote.
+      placeholder: "The tempo says 140 and the song is 70. Or: the kick line has a hit on every beat and the song has it off the beat."
+    validations:
+      required: true
+  - type: input
+    id: song
+    attributes:
+      label: Song
+      placeholder: Artist - Title
+  - type: input
+    id: time
+    attributes:
+      label: Time into the song
+      description: Where it was wrong.
+      placeholder: "1:23 (83 s)"
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: system, file, mic, tab, radio or demo.
+  - type: input
+    id: version
+    attributes:
+      label: Toaster version
+      description: It's in the help (press ?).
+      placeholder: "0.4.29"
+  - type: textarea
+    id: read
+    attributes:
+      label: What Toaster read
+      description: The tempo, the key, and the kick, clap and hat lines, as the code showed them.
+      render: text
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and system
+      placeholder: Chrome 130 on macOS
