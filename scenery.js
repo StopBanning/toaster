@@ -4777,6 +4777,8 @@ uniform vec2 grid, cellPx, slot, sheetSize;
 uniform float gridK;     // the cells' grid, drawn faintly (the sharks' water); 0 none
 uniform float perRow, dpr, H, k, own, horizon, night, time, water;
 uniform vec3 bg, fg, top, low;
+uniform vec3 ground, lights, accent; // the dynamic theme's other colours (pal 1): see themed() and inkOf()
+uniform float pal;
 uniform vec3 tint;       // the toaster's colour at night (moonlight, firelight, the aurora's)
 uniform vec3 toneC;      // the paper shifted under a cell's tone (lighter at night, cooler by day)
 uniform vec4 spr;        // the boat: where it is (CSS pixels: x, y, w, h)
@@ -4801,7 +4803,24 @@ uniform float idle;      // (1: the scenery getting ready, nothing to show yet: 
 out vec4 o;
 uint whu(uvec2 q) { q *= uvec2(1597334673u, 3812015801u); return (q.x ^ q.y) * 1597334673u; }
 float wh2(vec2 q) { return float(whu(uvec2(ivec2(floor(q)) + 32768))) / 4294967295.0; }
-vec3 boat(vec4 sp) { return own > 0.5 ? sp.rgb * tint : mix(bg, fg, dot(sp.rgb, vec3(0.3, 0.55, 0.15))); }
+// The family of one of the scenery's own colours in the cover's palette (the dynamic theme, pal 1): a vivid warm one
+// (fire, lanterns, the koi) is the accent, a vivid cool one (water, the night sky) the ground, a grey or pale one (the
+// moon, the stars, the paper) the lights.
+vec3 family(vec3 c) {
+  float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+  float s = mx > 0.0 ? (mx - mn) / mx : 0.0, warm = clamp((c.r - c.b) / max(mx - mn, 1e-3), -1.0, 1.0);
+  return mix(lights, mix(ground, accent, smoothstep(-0.2, 0.5, warm)), smoothstep(0.15, 0.5, s));
+}
+// A colour of the scenery's own in the theme's: its lightness from the background to the text (the theme's two
+// colours); or with the cover's palette, from the background to its family's colour.
+vec3 themed(vec3 c) {
+  float l = dot(c, vec3(0.3, 0.55, 0.15));
+  if (pal < 0.5) return mix(bg, fg, l);
+  return mix(bg, family(c), clamp(l * 1.6, 0.0, 1.0));
+}
+// A glyph's ink in the theme's colours: the text colour, or with the cover's palette its own colour's family.
+vec3 inkOf(vec3 c) { return pal < 0.5 ? fg : family(c); }
+vec3 boat(vec4 sp) { return own > 0.5 ? sp.rgb * tint : themed(sp.rgb); }
 void main() {
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y) / dpr;
   vec2 cell = floor(p / cellPx);
@@ -4843,8 +4862,8 @@ void main() {
   // (in the theme's colours at night, each glyph as bright as it is in the scenery's own: its shadows
   // stay dark, its lights full; a tile a faint block of the theme's ink)
   } else {
-    vec3 under = rim ? mix(bg, fg, 0.05 * gridK) : mix(bg, fg, 0.22 * tl.a * min(1.0, k));
-    col = mix(under, fg, cov * min(1.0, c.g * k) * (night > 0.5 ? clamp(dot(cc, vec3(0.3, 0.55, 0.15)) * 2.2, 0.0, 1.0) : 1.0));
+    vec3 wash = pal > 0.5 ? ground : fg, under = rim ? mix(bg, wash, 0.05 * gridK) : mix(bg, wash, 0.22 * tl.a * min(1.0, k));
+    col = mix(under, inkOf(cc), cov * min(1.0, c.g * k) * (night > 0.5 ? clamp(dot(cc, vec3(0.3, 0.55, 0.15)) * 2.2, 0.0, 1.0) : 1.0));
   }
   // the pixel layer: its pictures in pixels over the glyphs, the later over the earlier, each only over
   // cells as near as it or further; a pixel's light in its alpha (255 plain, 254 lit by the kick at
@@ -4866,7 +4885,7 @@ void main() {
     if (lit && a8 > 253.5) c = c * (0.3 + 0.8 * pixK) + pixC2 * 0.3 * pixK;
     else if (lit && a8 > 252.5) c = mix(c, pixC, 0.85) * (0.85 + 0.4 * pixK);
     else if (lit) c *= 0.75 + 0.45 * pixH * (0.5 + 0.5 * sin(time * 31.0 + t.x * 1.7)) + 0.3 * pixK;
-    vec3 sc = own > 0.5 ? (lit || (a8 > 250.5 && a8 < 251.5) ? c : c * mix(tint, vec3(1.0), F.w)) : mix(bg, fg, dot(c, vec3(0.3, 0.55, 0.15)));
+    vec3 sc = own > 0.5 ? (lit || (a8 > 250.5 && a8 < 251.5) ? c : c * mix(tint, vec3(1.0), F.w)) : themed(c);
     col = mix(col, sc, (a8 > 249.5 ? 1.0 : a8 / 250.0) * F.y);
   }
   // the boat, in pixels over the glyphs (the way the stream draws its fisher); under the water's
@@ -4894,7 +4913,7 @@ void main() {
       float flick = floor(time * 24.0);
       float g2 = 1.0 + floor(wh2(cell + flick * 3.1) * (glyphs - 1.0));
       float cov2 = step(0.3, wh2(cell + flick * 1.7 + 11.0)) * texture(sheet, (vec2(mod(g2, perRow), floor(g2 / perRow)) + f) * slot / sheetSize).a;
-      vec3 ink2 = mix(mix(old, vec3(1.0), 0.6), own > 0.5 ? max(cc, vec3(0.45)) : fg, pr);
+      vec3 ink2 = mix(mix(old, vec3(1.0), 0.6), own > 0.5 ? max(cc, vec3(0.45)) : inkOf(cc), pr);
       col = mix(mix(old, col, pr), ink2, cov2 * (1.0 - 0.4 * pr));
     }
   }
@@ -5067,10 +5086,10 @@ const KOI_PX_DRAW = `
       vec4 kc = koiPix(j, kq, kp);
       if (kc.a <= 0.0) continue;
       vec3 kcol = night > 0.5 ? kc.rgb * vec3(0.72, 0.76, 0.88) : kc.rgb;
-      col = mix(col, own > 0.5 ? kcol : mix(bg, fg, dot(kcol, vec3(0.3, 0.55, 0.15))), kc.a);
+      col = mix(col, own > 0.5 ? kcol : themed(kcol), kc.a);
       kOn = true;
     }
-    if (kOn && cellD > 0.7) col = mix(col, own > 0.5 ? cc : fg, gA);
+    if (kOn && cellD > 0.7) col = mix(col, own > 0.5 ? cc : inkOf(cc), gA);
   }
 `;
 const PAINT_KOI = PAINT.replace('void main() {', () => KOI_PX + 'void main() {').replace('  float cellD = float(u.w & 255u) / 255.0;\n', (m) => m + KOI_PX_DRAW);
@@ -5379,7 +5398,7 @@ const SHARK_PX_DRAW = `
       if (own > 0.5) {
         vec3 pap = mix(top, low, smoothstep(0.0, horizon, p.y / sHc)) + toneC * c.b;
         col = rim ? mix(pap, night > 0.5 ? pap + 0.05 : pap * 0.9, gridK) : mix(pap, tl.rgb, tl.a);
-      } else col = rim ? mix(bg, fg, 0.05 * gridK) : mix(bg, fg, 0.22 * tl.a * min(1.0, k));
+      } else { vec3 wash = pal > 0.5 ? ground : fg; col = rim ? mix(bg, wash, 0.05 * gridK) : mix(bg, wash, 0.22 * tl.a * min(1.0, k)); }
     }
     vec2 spk = sharkPx > 0.0 ? (floor(p / sharkPx) + 0.5) * sharkPx : p;
     vec2 sq = vec2(spk.x, sHc - spk.y) / sHc;
@@ -5401,7 +5420,7 @@ const SHARK_PX_DRAW = `
       vec3 rcol = night > 0.5 ? rc.rgb * vec3(0.6, 0.68, 0.86) : rc.rgb;
       // (its skin's glyph from the cell, on its plain skin: the skin's tone darker)
       if (skin == 3 && rPlain && cov > 0.0) rcol = mix(rcol, rcol * 0.5, cov);
-      col = mix(col, own > 0.5 ? rcol : mix(bg, fg, dot(rcol, vec3(0.3, 0.55, 0.15))), rc.a);
+      col = mix(col, own > 0.5 ? rcol : themed(rcol), rc.a);
     }
     vec4 jc = fish ? vec4(0.0) : jellyPix(sq, spx, sAsp);
     if (jc.a > 0.0) {
@@ -5409,7 +5428,7 @@ const SHARK_PX_DRAW = `
       // (the grain on its bell from the cell: its skin's tone darker (by night lighter, glowing), or a
       // flash of white)
       if (skin == jWho && jPlain && cov > 0.0) jcol = mix(jcol, c.g > 0.998 ? vec3(1.0) : night > 0.5 ? min(jcol * 1.55, vec3(1.0)) : jcol * 0.72, cov);
-      col = mix(col, own > 0.5 ? jcol : mix(bg, fg, dot(jcol, vec3(0.3, 0.55, 0.15))), jc.a);
+      col = mix(col, own > 0.5 ? jcol : themed(jcol), jc.a);
     }
     // (the nearest first: the first one there is drawn)
     for (int j = 0; j < 3; j++) {
@@ -5421,7 +5440,7 @@ const SHARK_PX_DRAW = `
       // (its skin's glyph from the cell, on its pixels: the skin's own tone darker (by night lighter,
       // glowing), or as it shimmers a flash of colour or white)
       if (skin == j + 4 && cov > 0.0) scol = mix(scol, c.g > 0.998 ? cc : night > 0.5 ? min(scol * 1.5, vec3(1.0)) : scol * 0.62, cov);
-      col = mix(col, own > 0.5 ? scol : mix(bg, fg, dot(scol, vec3(0.3, 0.55, 0.15))), sc.a);
+      col = mix(col, own > 0.5 ? scol : themed(scol), sc.a);
       break;
     }
   }
@@ -7167,9 +7186,9 @@ export function createScenery(canvas) {
     },
     // col: the theme's colours (0-255), which also say day (a light theme) or night; offset: how far
     // ahead to draw (as the blocks), for the walk; colours: 'own' (the scenery's) or 'theme' (its
-    // two); strength: the ASCII backgrounds' strength (with the theme's colours), 1.5 the usual;
+    // two; with palette, the dynamic theme's { ground, lights, accent } too, 0-255); strength: the ASCII backgrounds' strength (with the theme's colours), 1.5 the usual;
     // scene: which (lake, sea, fire, snow); open: the code hidden (Z), so the scene can open out
-    draw(t, eng, { col, offset = 0, colours = 'own', strength = 1.5, scene = 'lake', open = false } = {}) {
+    draw(t, eng, { col, offset = 0, colours = 'own', palette = null, strength = 1.5, scene = 'lake', open = false } = {}) {
       if (broken || gl?.isContextLost()) return;
       if (!ready) {
         try { build(scene); } catch (err) { if (!gl?.isContextLost()) { broken = true; console.error('scenery:', err); } return; }
@@ -7658,6 +7677,10 @@ export function createScenery(canvas) {
       gl.uniform1f(p('horizon'), 1 - V.far[0]);
       gl.uniform3f(p('bg'), col.bg[0] / 255, col.bg[1] / 255, col.bg[2] / 255);
       gl.uniform3f(p('fg'), col.fg[0] / 255, col.fg[1] / 255, col.fg[2] / 255);
+      // (the dynamic theme's palette, for the scenery in the theme's colours; without it the shader keeps to the two)
+      const pal = colours === 'theme' && palette, v3 = (name, c) => gl.uniform3f(p(name), c[0] / 255, c[1] / 255, c[2] / 255);
+      gl.uniform1f(p('pal'), pal ? 1 : 0);
+      v3('ground', pal ? palette.ground : col.fg); v3('lights', pal ? palette.lights : col.fg); v3('accent', pal ? palette.accent : col.fg);
       // (the paper: a night sky, darkest overhead; or the day's warm paper)
       // (or the scene's own)
       const paper = night ? V.paperN || [[4, 5, 13], [14, 18, 46]] : V.paperD || (V.cool ? [[222, 230, 242], [244, 247, 251]] : [[238, 232, 214], [248, 244, 232]]);

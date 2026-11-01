@@ -21,6 +21,9 @@
 :root {
   --bg: #051db5; --fg: #fff; --ink: #020b45; --dim: rgba(255,255,255,.6); --faint: rgba(255,255,255,.14);
   --hl-bg: rgba(255,255,255,.18); --line-bg: rgba(5,29,181,.62); --field: .22;
+  /* the highlights' colour: the text colour in every fixed theme; the dynamic theme sets the cover's (4.5:1 for marks and
+     large text; --accent-text, the same hue at 7:1, for text) */
+  --accent: var(--fg); --accent-text: var(--fg);
   --font: "JetBrains Mono", Consolas, ui-monospace, monospace;
   --size: clamp(14px, 1.45vw, 24px);
   color-scheme: dark;
@@ -164,7 +167,7 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
   background: linear-gradient(var(--fg), var(--fg)) left bottom / calc(var(--k) * 100%) 2px no-repeat,
     linear-gradient(var(--dim), var(--dim)) left bottom / 100% 2px no-repeat;
 }
-.tok.on { outline: 2px solid var(--fg); background: var(--hl-bg); }
+.tok.on { outline: 2px solid var(--accent); background: var(--hl-bg); }
 .caret {
   display: inline-block; width: .6em; height: 1.2em; margin-right: -.6em; vertical-align: text-bottom;
   background: var(--fg); animation: blink 1s steps(1) infinite;
@@ -193,7 +196,7 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
   margin: .25em 0 .9em; font: inherit; font-size: .58em; line-height: 1.2; white-space: pre;
   display: inline-block; background: var(--line-bg); padding: .35em .7em .35em .4em;
 }
-.panel .cur, .panel .lab.on { background: var(--fg); color: var(--bg); }
+.panel .cur, .panel .lab.on { background: var(--accent); color: var(--bg); }
 .panel .dim { color: var(--dim); }
 #roll.cut { visibility: hidden; } /* (no room for all of it: see fitRoll) */
 #sys { position: fixed; z-index: 2; top: 48px; right: 24px; margin: 0; font-size: calc(var(--size) * .58); }
@@ -214,12 +217,12 @@ body.card-on #sys { right: 348px; }
 #card .c-bat { position: relative; display: inline-block; width: 22px; height: 10px; margin-left: 6px; padding: 1px; border: 1px solid currentColor; vertical-align: -1px; }
 #card .c-bat::after { content: ""; position: absolute; right: -4px; top: 2px; width: 2px; height: 4px; background: currentColor; }
 #card .c-bat i { display: block; width: 0; height: 100%; background: currentColor; }
-#card .c-id { margin: 1px 0 6px; font-size: 30px; font-weight: 700; line-height: 1.05; letter-spacing: .02em; text-transform: none; white-space: nowrap; overflow: hidden; }
+#card .c-id { margin: 1px 0 6px; color: var(--accent); font-size: 30px; font-weight: 700; line-height: 1.05; letter-spacing: .02em; text-transform: none; white-space: nowrap; overflow: hidden; }
 #card .c-mid { display: grid; grid-template-columns: 120px 1fr; gap: 10px; }
 #card .c-photo { width: 120px; height: 150px; image-rendering: pixelated; border: 1px solid var(--faint); }
 #card .c-fields { min-width: 0; }
 #card .c-title {
-  margin: 7px 0 6px; font-size: 16px; font-weight: 700; line-height: 1.12; letter-spacing: .02em; word-break: break-word;
+  margin: 7px 0 6px; color: var(--accent-text); font-size: 16px; font-weight: 700; line-height: 1.12; letter-spacing: .02em; word-break: break-word;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
 }
 #card .c-jp { font-size: 12px; letter-spacing: .12em; }
@@ -434,24 +437,34 @@ body.vertical #player { padding-left: max(12px, var(--safe)); padding-right: max
 #player [hidden] { display: none !important; }
 /* (with no progress bar its room stays, empty, so the buttons keep their place from one source to the next) */
 #player .pl-progress[hidden] { display: flex !important; visibility: hidden; }
-#player .pl-id { flex: 1.4 1 0; min-width: 0; display: flex; align-items: center; gap: 10px; }
+#player .pl-id { flex: 1.4 1 0; min-width: 0; display: flex; align-items: center; gap: 10px; container-type: inline-size; }
 #player .pl-chip { flex: none; padding: 2px 8px; border: 1px solid currentColor; letter-spacing: .1em; text-transform: uppercase; }
 #player .pl-chip.off { color: var(--dim); }
 #player .pl-song { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #player .pl-artist, #player .pl-idle { color: var(--dim); }
+/* a queue's line of what's near (golden's "01 Plague" , ▶ "02 Kerosene" , "03 Wrath of God"), where the song's room has space for it: after
+   the song in a wide bar (the song shrinks to its ellipsis first); in the song's place in a narrower one (the 9:16 layout's first row:
+   the song is in it, marked); and nowhere in one narrower still, so it never crowds the bar. What doesn't fit is cut off at its end. */
+#player .pl-near { display: none; flex: 0 .1 auto; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; color: var(--dim); white-space: pre; }
+#player .pl-near .now { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+@container (min-width: 600px) { #player .pl-near:not([hidden]) { display: block; } }
+@container (min-width: 400px) and (max-width: 599px) {
+  #player .pl-near:not([hidden]) { display: block; flex: 1 1 0; margin-left: 0; }
+  #player .pl-song:has(+ .pl-near:not([hidden])) { display: none; }
+}
 #player .pl-transport { flex: none; display: flex; gap: 6px; }
 #player .pl-btn { display: grid; place-items: center; width: 30px; height: 26px; padding: 0; }
 #player .pl-btn svg { display: block; width: 13px; height: 13px; fill: currentColor; }
-#player .pl-play { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-#player .pl-play:hover, #player .pl-play:focus-visible { background: color-mix(in srgb, var(--fg) 80%, var(--bg)); }
+#player .pl-play { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+#player .pl-play:hover, #player .pl-play:focus-visible { background: color-mix(in srgb, var(--accent) 80%, var(--bg)); }
 #player .pl-progress { flex: 1 1 0; min-width: 140px; display: flex; align-items: center; gap: 10px; }
 #player .pl-time { flex: none; min-width: 4ch; color: var(--dim); font-variant-numeric: tabular-nums; }
 #player .pl-pos { text-align: right; }
 #player .pl-track { position: relative; flex: 1; height: 18px; outline: none; }
 #player .pl-track::before, #player .pl-fill { content: ''; position: absolute; left: 0; top: calc(50% - 2px); height: 4px; }
 #player .pl-track::before { right: 0; background: color-mix(in srgb, var(--fg) 24%, transparent); }
-#player .pl-fill { background: var(--fg); }
-#player .pl-fill::after { content: ''; position: absolute; right: -1px; top: -3px; width: 2px; height: 10px; background: var(--fg); }
+#player .pl-fill { background: var(--accent); }
+#player .pl-fill::after { content: ''; position: absolute; right: -1px; top: -3px; width: 2px; height: 10px; background: var(--accent); }
 #player .pl-track.seek { cursor: pointer; }
 #player .pl-track.seek:hover::before, #player .pl-track.seek:hover .pl-fill { top: calc(50% - 3px); height: 6px; }
 #player .pl-track:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
@@ -489,6 +502,12 @@ body.vertical #sys { bottom: calc(40px + var(--player-h, 0px)); }
 .opts button { font-size: 14px; padding: 8px 14px; text-align: left; }
 .opts span { color: var(--dim); font-size: 12px; }
 #radio { display: contents; } /* (its button and field sit in the grid as the other rows do) */
+/* (a page's first visit: the demo is the one big first click, everything else is "your own music" under it) */
+.opts .hero { grid-column: 1 / -1; padding: 14px 18px; font-size: 18px; font-weight: 700; background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.opts .hero:hover, .opts .hero:focus-visible { background: var(--bg); color: var(--fg); outline: none; }
+.opts .hero-note { grid-column: 1 / -1; margin: -4px 0 6px; }
+.opts .own { grid-column: 1 / -1; margin-top: 4px; color: var(--fg); font-size: 13px; }
+html.web #go-demo, html.web #go-demo + span { display: none; }
 .tip { font-size: 12px; line-height: 1.5; margin: 16px 0 0; color: var(--dim); }
 .tip + .tip { margin-top: 6px; }
 /* (in a browser: where to get the desktop app, and the project) */
@@ -513,6 +532,10 @@ html.web .card .get { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 
   html.web .opts { grid-template-columns: 1fr; gap: 4px; }
   html.web .opts button { width: 100%; }
   html.web .opts span { margin-bottom: 8px; }
+  /* (and the menu sits at the bottom, a sheet, so the scene shows above it) */
+  html.web #menu { place-items: end center; background: linear-gradient(transparent 30%, color-mix(in srgb, var(--bg) 80%, transparent) 55%); }
+  html.web .card { max-height: 64vh; overflow-y: auto; }
+  html.web .card .tip.os-web-b { display: none; }
 }
 /* a touch screen (an iPad has no Esc or S): the bars stay readable while playing, the menu has a way out, and the buttons are big enough to hit */
 .menu-close { display: none; }
@@ -779,3 +802,170 @@ body.clean #first-run-hint, body.vertical #first-run-hint, body.mini #first-run-
 @media (max-width: 600px) { .pick-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* (the header stays solid while the picker is open, even where it fades on a touch screen) */
 header:has(#vis-menu:not([hidden])) { opacity: 1 !important; }
+
+/* ---------- the library (G; library-panel.js): your music, the radio and scenes, full screen over the visuals ---------- */
+/* The kept look: the cover of the open album in characters (golden's ramp) in the foreground colour, behind rows on the theme's line
+   background. Everything is in em of --lib-fs, the type of its track rows (12 px in the 9:16 still, 17 in the desktop one), and every
+   colour is the theme's, the dynamic one's too: the glyphs are an image used as a mask over var(--fg) (--mask, set from the script),
+   so a song's cover recolours all of it with nothing drawn again. --lib-line is the theme's line background (the background at 62%,
+   as the code's lines have it). It covers the header, which is put away while it is up: it has the title, the clock and, on the app's
+   own window, a strip along the top to drag it by (where the traffic lights or the window's buttons are, the panel starts below).
+   The player bar and the footer stay under it at the bottom. Wide windows (the same query as WIDE in library-panel.js) have the panel at
+   the left and the cover big at the right; narrower ones, and the 9:16 layout, the cover over the whole window at .62. */
+#library {
+  position: fixed; inset: 0; z-index: 4; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none;
+  --lib-fs: clamp(11px, 2.22vw, 17px); --lib-line: color-mix(in srgb, var(--bg) 62%, transparent); --lib-pw: 100%; --lib-left: 1.5em;
+}
+#library[hidden], body.mini #library { display: none; }
+body.library-open:not(.mini) header, body.library-open:not(.mini) #first-run-hint { visibility: hidden; }
+#library .lib-drag { display: none; }
+#library.titlebar .lib-drag { display: block; position: absolute; left: 0; right: 0; top: 0; height: 36px; -webkit-app-region: drag; }
+html.full #library .lib-drag { display: none; }
+#library button { font: inherit; border-radius: 0; }
+#library .lib-line { width: fit-content; max-width: 100%; padding: .08em .5em; background: var(--lib-line); }
+/* the cover, behind it all */
+#library .lib-art { position: absolute; inset: 0; pointer-events: none; }
+#library .lib-glyphs {
+  position: absolute; inset: 0; background: var(--fg); opacity: 0; transition: opacity .6s;
+  -webkit-mask: var(--mask) center / 100% 100% no-repeat; mask: var(--mask) center / 100% 100% no-repeat;
+}
+#library .lib-glyphs.in { opacity: .62; }
+body.calm #library .lib-glyphs, body.calm #library .lib-cover b { transition: none; }
+/* the panel: the top, the tabs, the open album, what's playing, its two lines, the rows (they scroll), the keys */
+#library .lib-panel { position: absolute; left: var(--lib-left); right: 1.5em; top: 1.5em; bottom: calc(var(--player-h, 0px) + 32px + .6em); display: flex; flex-direction: column; gap: .83em; min-height: 0; font-size: var(--lib-fs); }
+#library.titlebar .lib-panel { top: 5px; }
+html.full #library.titlebar .lib-panel { top: 1.5em; }
+html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(78px - var(--lib-left))); }
+#library.titlebar .lib-top { padding-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) - var(--lib-left))); }
+#library .lib-panel > * { flex: none; }
+#library .lib-top { display: flex; align-items: center; justify-content: space-between; gap: 1em; }
+#library .lib-brand { display: flex; gap: .67em; align-items: center; font-size: 1.05em; }
+#library .lib-live { padding: .08em .5em; background: var(--fg); color: var(--bg); font-weight: 700; }
+#library .lib-clock { font-size: 1.83em; font-weight: 800; font-style: italic; letter-spacing: -.02em; line-height: 1.2; }
+#library .lib-tabs { display: flex; }
+#library .lib-tabs button { padding: .25em .75em; border: 1px solid var(--faint); background: var(--lib-line); color: var(--dim); }
+#library .lib-tabs button.on { border-color: var(--fg); background: var(--hl-bg); color: var(--fg); }
+#library .lib-tabs button:hover, #library .lib-tabs button:focus-visible { border-color: var(--fg); background: var(--hl-bg); }
+#library .lib-tabs [role="tablist"] { display: flex; }
+#library .lib-tabs .lib-findbtn { margin-left: auto; cursor: pointer; }
+/* find: its line over the list (the word, what is typed, how many were found); the words marked in what it lists */
+#library .lib-find { display: flex; align-items: center; gap: .67em; }
+#library .lib-find[hidden] { display: none; }
+#library .lib-find > .lib-line:first-child { flex: none; background: var(--fg); color: var(--bg); font-weight: 700; }
+#library .lib-q { flex: 1 1 auto; min-width: 0; padding: .17em 0; border: 0; border-bottom: 1px solid var(--fg); border-radius: 0; outline: none; background: transparent; color: var(--fg); font: inherit; }
+#library .lib-q::placeholder { color: var(--dim); }
+#library .lib-q::-webkit-search-cancel-button { -webkit-appearance: none; }
+#library .lib-count { flex: none; color: var(--dim); font-size: .83em; letter-spacing: .04em; }
+#library .lib-count:empty { display: none; }
+#library .lib-row mark { background: none; color: var(--accent-text); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: .2em; }
+#library .lib-row.on mark { color: var(--bg); }
+#library .lib-row.track.found .t em { color: var(--dim); font-style: normal; }
+#library .lib-row.on.found .t em { color: var(--bg); }
+/* the open album: its cover in characters, the album in bold, artist · tracks · total time */
+#library .lib-head { display: flex; gap: .83em; align-items: center; min-height: 3.83em; }
+#library .lib-cover { position: relative; flex: none; width: 3.83em; height: 3.83em; background: var(--bg); outline: 1px solid var(--fg); }
+#library .lib-cover b { position: absolute; inset: 0; background: var(--fg); opacity: 0; transition: opacity .3s; -webkit-mask: var(--mask) center / 100% 100% no-repeat; mask: var(--mask) center / 100% 100% no-repeat; }
+#library .lib-cover b[style*="--mask"] { opacity: 1; }
+#library .lib-cover.small { width: 2em; height: 2em; }
+#library .lib-name { font-size: 1.67em; font-weight: 800; line-height: 1.1; }
+#library .lib-sub { margin-top: .18em; color: var(--dim); font-size: .92em; text-transform: lowercase; }
+/* what's playing: a bar of the foreground colour at its left, the title in bold italic, ARTIST  m:ss, a stop square */
+#library .lib-now { display: flex; align-items: stretch; background: var(--hl-bg); border-left: .42em solid var(--fg); }
+#library .lib-now[hidden] { display: none; }
+#library .lib-now .t { flex: 1; min-width: 0; padding: .5em .83em; }
+#library .lib-now .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 2.08em; font-weight: 800; font-style: italic; letter-spacing: -.024em; line-height: 1.05; text-transform: lowercase; }
+#library .lib-now .by { margin-top: .27em; overflow: hidden; text-overflow: ellipsis; white-space: pre; color: var(--dim); font-size: .92em; letter-spacing: .045em; text-transform: uppercase; }
+#library .lib-now .stop { position: relative; align-self: center; flex: none; width: 1em; height: 1em; margin-right: 1em; padding: 0; border: 0; background: var(--fg); cursor: pointer; }
+#library .lib-now .stop::after { content: ''; position: absolute; inset: -.9em; }
+#library .lib-now .stop:hover, #library .lib-now .stop:focus-visible { background: var(--fg); opacity: .75; }
+#library .lib-meta { display: flex; justify-content: space-between; align-items: center; gap: 1em; color: var(--dim); font-size: .83em; letter-spacing: .04em; }
+#library .lib-meta .lib-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#library .lib-meta > :first-child { flex: none; }
+#library .lib-folder { flex: 0 1 auto; border: 0; color: inherit; letter-spacing: inherit; cursor: pointer; }
+/* the queue's two modes, at its left: what repeats, and the order (each a button) */
+#library .lib-modes { display: flex; gap: .5em; min-width: 0; }
+#library .lib-mode { flex: none; border: 0; color: inherit; letter-spacing: inherit; cursor: pointer; }
+#library .lib-mode:hover, #library .lib-mode:focus-visible { background: var(--faint); color: var(--fg); }
+#library .lib-folder:disabled { cursor: default; }
+#library .lib-folder:not(:disabled):hover, #library .lib-folder:not(:disabled):focus-visible { background: var(--faint); color: var(--fg); }
+/* the rows: 01  Title  m:ss, the playing one inverted (▶ for its number), the cursor's outlined; the other albums folded below */
+#library .lib-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; outline: none; }
+#library .lib-list::-webkit-scrollbar { display: none; }
+#library .lib-row { display: grid; grid-template-columns: 2.5em minmax(0, 1fr) auto; align-items: center; padding: .25em .5em; background: var(--lib-line); cursor: pointer; }
+#library .lib-row:hover { background: var(--hl-bg); }
+#library .lib-row .n, #library .lib-row .d { color: var(--dim); font-variant-numeric: tabular-nums; }
+#library .lib-row .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#library .lib-row.on { background: var(--accent-text); color: var(--bg); font-weight: 700; }
+#library .lib-row.on .n, #library .lib-row.on .d, #library .lib-row.on .t em { color: var(--bg); }
+#library .lib-row.cursor { outline: 1px solid var(--fg); outline-offset: -1px; }
+/* the track the queue stopped on (after a restart): paused, where it was */
+#library .lib-row.resume .n, #library .lib-row.resume .d { color: var(--fg); }
+#library .lib-row.on.cursor { outline-color: var(--bg); outline-offset: -3px; }
+#library .lib-row.album { grid-template-columns: 2em minmax(0, 1fr) auto; gap: .67em; margin-top: .33em; }
+#library .lib-row.track + .lib-row.album { margin-top: .83em; }
+#library .lib-row.album .t b { font-weight: 800; text-transform: lowercase; }
+#library .lib-row.album .t em, #library .lib-row.station .t em { color: var(--dim); font-style: normal; }
+#library .lib-row.album .t em { text-transform: lowercase; }
+#library .lib-row.album .d { font-size: .83em; }
+#library .lib-row.station .t b { font-weight: 700; }
+#library .lib-address, #library .lib-rename { width: 100%; padding: 0; border: 0; border-bottom: 1px solid var(--dim); outline: none; background: transparent; color: inherit; font: inherit; }
+#library .lib-address::placeholder { color: var(--dim); }
+#library .lib-note { margin-bottom: .5em; color: var(--dim); font-size: .92em; }
+/* played lately: the last six albums, a small cover each over its name (← → along it, Enter or a click plays one) */
+#library .lib-shelf { display: flex; flex-direction: column; gap: .4em; }
+#library .lib-shelf[hidden] { display: none; }
+#library .lib-shelf > .lib-line { color: var(--dim); font-size: .83em; letter-spacing: .04em; }
+#library .lib-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5em; }
+#library .lib-tile { display: flex; flex-direction: column; gap: .2em; min-width: 0; padding: .3em; border: 1px solid var(--faint); background: var(--lib-line); color: inherit; text-align: left; cursor: pointer; }
+#library .lib-tile:hover, #library .lib-tile:focus-visible { background: var(--hl-bg); }
+#library .lib-tile.cursor { outline: 1px solid var(--fg); outline-offset: -1px; }
+#library .lib-tile.on { background: var(--accent-text); color: var(--bg); }
+#library .lib-tile.on .by { color: var(--bg); }
+#library .lib-cover.tile { width: 100%; height: auto; aspect-ratio: 1; }
+#library .lib-tile .nm, #library .lib-tile .by { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: lowercase; }
+#library .lib-tile .nm { font-size: .9em; font-weight: 700; }
+#library .lib-tile .by { color: var(--dim); font-size: .78em; }
+#library .lib-list.off .lib-row.cursor { outline-color: transparent; }
+/* scenes: a card each, its picture over its name (a scene of yours has rename and delete) */
+#library .lib-scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5em, 1fr)); gap: .67em; }
+#library .lib-card { display: flex; flex-direction: column; gap: .33em; min-width: 0; padding: .33em; border: 1px solid var(--faint); background: var(--lib-line); cursor: pointer; }
+#library .lib-card:hover { background: var(--hl-bg); }
+#library .lib-card .pic { display: grid; place-items: center; aspect-ratio: 8 / 5; overflow: hidden; background: var(--faint); }
+#library .lib-card .pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+#library .lib-card .pic span { color: var(--dim); font-size: 2.2em; }
+#library .lib-card .nm { display: flex; flex-direction: column; gap: .25em; min-width: 0; padding: .17em; }
+#library .lib-card .nm > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#library .lib-card.save .nm > span:first-child { white-space: normal; }
+/* rename and delete, on the card the cursor or the pointer is on (always, on a touch screen) */
+#library .lib-card .acts { display: none; gap: .33em; }
+#library .lib-card.cursor .acts, #library .lib-card:hover .acts, #library .lib-card:focus-within .acts { display: flex; }
+#library .lib-card .acts button { padding: 0 .4em; border: 1px solid var(--faint); background: transparent; color: var(--dim); font-size: .83em; }
+#library .lib-card .acts button:hover, #library .lib-card .acts button:focus-visible { border-color: var(--fg); color: var(--fg); }
+#library .lib-card.on .nm { background: var(--fg); color: var(--bg); font-weight: 700; }
+#library .lib-card.on .acts button { color: var(--bg); border-color: var(--bg); }
+#library .lib-card.cursor { outline: 1px solid var(--fg); outline-offset: 1px; }
+#library .lib-keys { color: var(--dim); font-size: .83em; letter-spacing: .02em; }
+/* (whole items: the ones that don't fit wrap out of sight, the line never cut mid-word) */
+#library .lib-keys .lib-line { display: flex; flex-wrap: wrap; height: 1.45em; overflow: hidden; white-space: pre; }
+/* a wide window: the panel down the left, the cover big on the right (a square, as tall as fits) */
+@media (min-width: 900px) and (min-aspect-ratio: 5/4) {
+  #library { --lib-fs: clamp(13px, .885vw, 26px); --lib-pw: clamp(420px, 34.4vw, 900px); --lib-left: 2.5vw; }
+  #library .lib-panel { left: var(--lib-left); right: auto; width: var(--lib-pw); top: 3.7vh; }
+  #library.titlebar .lib-panel, html.full #library.titlebar .lib-panel { top: max(3.7vh, 5px); }
+  #library.titlebar .lib-top { padding-right: 0; }
+  #library .lib-glyphs { inset: auto; right: max(24px, 3.65vw); top: calc(50% - 1.85vh); height: min(86vh, calc(100vw - 2.5vw - var(--lib-pw) - 3.65vw - 2vw)); aspect-ratio: 1; transform: translateY(-50%); }
+  #library .lib-glyphs.in { opacity: .9; }
+  #library .lib-clock { font-size: 2em; }
+  #library .lib-name { font-size: 1.76em; }
+  #library .lib-sub, #library .lib-now .by { font-size: .88em; }
+  #library .lib-cover { width: 3.76em; height: 3.76em; }
+  #library .lib-cover.small { width: 1.88em; height: 1.88em; }
+  #library .lib-now .title { font-size: 2.24em; }
+  #library .lib-meta, #library .lib-keys { font-size: .82em; }
+}
+/* a touch screen: rows and tabs a finger can hit */
+@media (hover: none) {
+  #library .lib-row, #library .lib-tabs button { min-height: 44px; }
+  #library .lib-card .acts { display: flex; }
+  #library .lib-card .acts button { min-height: 32px; }
+}
