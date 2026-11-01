@@ -37,6 +37,7 @@ import { createPlayerBar, readPlayerBar, readPlayerRec } from './player.js';
 import { createPalette, actionCommands } from './palette.js';
 import { advanceHints, initialHints } from './firstrun.js';
 import { createBugReport, errorSummary } from './bug-report.js';
+import { createMisreadReport } from './misread.js';
 import { PRESETS, applyPreset } from './presets.js';
 import { ACCENT_TEXT_VAR, ACCENT_VAR, BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, fullPalette, heatStops, paletteVars, terrainStops } from './cover-palette.js';
 import { embeddedCover } from './embedded-cover.js';
@@ -370,7 +371,7 @@ async function useSystem() {
   const track = stream.getAudioTracks()[0];
   if (!track || outdated(ticket)) {
     stream.getTracks().forEach((t) => t.stop());
-    if (!track && !outdated(ticket)) throw new Error(web ? "The browser didn't share any sound: pick a tab (or your whole screen) and turn on sharing its audio." : onMac() ? 'macOS did not hand over any audio.' : 'Windows did not hand over any audio.');
+    if (!track && !outdated(ticket)) throw new Error(web ? "No sound came with that share. In Chrome or Edge, pick a tab and turn on 'Share tab audio'. Firefox and Safari can't share a tab's sound: use your mic, a file, or the desktop app." : onMac() ? 'macOS did not hand over any audio.' : 'Windows did not hand over any audio.');
     return;
   }
   await track.applyConstraints(RAW_AUDIO).catch(() => {}); // in case the first request was ignored
@@ -560,7 +561,7 @@ function micTrouble(err, refused) {
   if (!onIOS()) return refused;
   const b = iosBrowser();
   if (navigator.standalone) return 'iOS has not allowed the microphone for this home-screen page. Open toaster.locust.lol in Safari instead, allow the microphone there, and try again.';
-  return `iOS is not letting ${b} use the microphone, and it only asks once. Open the Settings app, find ${b} and turn Microphone on (on newer iOS: Settings, Apps, ${b}). Then close ${b} completely, open this page again and tap "audio input".`
+  return `iOS is not letting ${b} use the microphone, and it only asks once. Open the Settings app, find ${b} and turn Microphone on (on newer iOS: Settings, Apps, ${b}). Then close ${b} completely, open this page again and tap "use your mic".`
     + (b === 'Safari' ? ' (In Safari you can also tap aA in the address bar, then Website Settings, then Microphone, then Allow.)' : '');
 }
 const openMic = async (audio, refused) => {
@@ -1562,6 +1563,7 @@ const playerBar = createPlayerBar({
     start: (kind) => (kind === 'radio' ? useRadio(state.radio) : useDemo()).catch(showError),
     fail: showError,
     note: (text) => showNotice(text),
+    misread: () => misreadReport.show(), // (the flag at the bar's right end)
     // the queue's buttons exist only while a library album is playing (a file on its own has no neighbours)
     get next() { return liveQueue() ? nextTrack : undefined; },
     get previous() { return liveQueue() ? previousTrack : undefined; },
@@ -1947,6 +1949,7 @@ $('go-demo').onclick = run(useDemo);
 $('go-demo-hero').onclick = () => $('go-demo').click(); // (a page's first visit: the same demo, as the one big first click)
 $('go-file').onclick = () => $('file').click();
 $('go-input').onclick = run(chooseInput);
+$('go-mic').onclick = run(() => useInput(null)); // (a phone or a tablet: its microphone at once, in the tap, as iOS needs)
 $('radio').onsubmit = (e) => { e.preventDefault(); useRadio($('radio-url').value).catch(showError); }; // (its button, or Enter in the field)
 $('file').onchange = () => { const f = $('file').files[0]; if (f) useFile(f).catch(showError); $('file').value = ''; };
 $('b-source').onclick = () => showMenu();
@@ -2088,7 +2091,7 @@ const K = (id) => keyName(keyOf(id)); // an action's key as written
 let byKey = new Map();
 
 // Ctrl+K (renderer/palette.js): every action by name, then each scene, background, code look,
-// handheld screen and theme, the camera's mirror, the player bar, and the bug report.
+// handheld screen and theme, the camera's mirror, the player bar, and the bug and misread reports.
 const sceneName = (scene) => SCENE_NAMES[scene] || scene;
 const screenName = (screen) => SCREEN_NAMES[screen] || screen;
 const paletteEntries = () => [
@@ -2148,6 +2151,7 @@ const paletteEntries = () => [
   { id: 'scene:save', name: 'scene: save this setup', aliases: ['save scene', 'save setup'], run: () => { saveSetupAsScene(); libraryPanel.update(); } },
   ...state.userScenes.map((s) => ({ id: 'user-scene:' + s.id, name: 'scene: ' + s.name.toLowerCase(), aliases: ['setup'], run: () => runPreset(s, 'scene') })),
   { id: 'report-bug', name: 'report a bug', aliases: ['bug', 'issue', 'problem'], run: () => bugReport.show() },
+  { id: 'report-misread', name: 'report a misread', aliases: ['misread', 'wrong', 'wrong tempo', 'wrong key', 'wrong beat', 'sounded wrong', 'got it wrong'], run: () => misreadReport.show() },
 ];
 const palette = createPalette({
   document, window, entries: paletteEntries, fail: showError,
@@ -2242,6 +2246,28 @@ const bugReport = createBugReport({
   fail: showError,
 });
 $('report-bug').onclick = () => { $('help').close(); bugReport.show(); };
+
+// Report a misread (renderer/misread.js), from the player bar's flag, the help or Ctrl+K: what Toaster read of the song just now.
+// How far into the song: a file's own position; for the rest, how long Toaster has been listening to this song (since the
+// engine's last start: the source picked, or a new song). The lines are the code's as it is now, or is being typed toward.
+// With no source nothing was read (the engine counts on with nothing feeding it), so the tempo and key are left out.
+function songSeconds() {
+  if (!state.source) return null;
+  if (state.source === 'file' && state.el && Number.isFinite(state.el.currentTime)) return state.el.currentTime;
+  return nowSec() - eng.resetAt;
+}
+const misreadReport = createMisreadReport({
+  document,
+  snapshot: () => ({
+    version: bugVersion, source: state.source, song: currentSong(), seconds: songSeconds(),
+    tempo: state.source ? eng.tempo : null, key: state.source && eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '',
+    lines: Object.values(lineTexts()), os: osName(), browser: browserName(),
+  }),
+  open: (url) => (desktopApp() ? window.nc.openBugIssue(url) : window.open(url, '_blank', 'noopener')),
+  clipboard: navigator.clipboard,
+  fail: showError,
+});
+$('report-misread').onclick = () => { $('help').close(); misreadReport.show(); };
 
 // (A's word: what it changes on what's showing; left out where there's nothing to change)
 function nextWhat() {
@@ -2491,7 +2517,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
+window.__nc = { get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {
@@ -2533,9 +2559,16 @@ const inBrowser = !window.nc || window.nc.platform === 'web';
 if (state.firstRun && !inBrowser) setTimeout(() => showNotice(`Toaster is listening to whatever your ${onMac() ? 'Mac' : 'PC'} plays and writing it as code. ? shows the keys and how it works; ${K('source')} picks another source; ${K('cam')} turns on the camera.`), 2500);
 requestAnimationFrame(draw);
 // (in a browser nothing's heard till a source is picked: screen capture needs a click. The menu says
-// where to start itself; a box over it hid its options. A phone's browser can't share a tab's sound,
-// so there the menu leaves that out)
+// where to start itself; a box over it hid its options. On a phone or a tablet, sharing a tab's sound is
+// no way in: its browser has no screen capture, or the screen is touch only. So there the menu leaves it
+// out and leads with the microphone, the song played out loud near it. Asked of the browser, not guessed
+// from its name)
 if (inBrowser) {
-  if (!navigator.mediaDevices?.getDisplayMedia) $('go-system').hidden = $('go-system').nextElementSibling.hidden = true;
+  const touchOnly = matchMedia('(hover: none) and (pointer: coarse)').matches;
+  if (!navigator.mediaDevices?.getDisplayMedia || touchOnly) {
+    document.documentElement.classList.add('mic-first');
+    const device = !touchOnly ? 'computer' : Math.min(screen.width, screen.height) < 600 ? 'phone' : 'tablet';   // (600: where a tablet starts, as Android counts it)
+    document.querySelectorAll('#menu .device').forEach((el) => { el.textContent = device; });
+  }
   showMenu();
 }

@@ -469,16 +469,21 @@ body.vertical #player { padding-left: max(12px, var(--safe)); padding-right: max
 #player .pl-track.seek:hover::before, #player .pl-track.seek:hover .pl-fill { top: calc(50% - 3px); height: 6px; }
 #player .pl-track:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
 #player .pl-status { flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
+/* the flag at the right end, report a misread (renderer/misread.js): as dim as the status line till it is pointed at, and out of a
+   recording's picture (the song and its progress may be in the video, a button is not) */
+#player .pl-misread { flex: none; color: var(--dim); }
+#player .pl-misread:hover, #player .pl-misread:focus-visible { color: var(--fg); }
+body.recording #player .pl-misread { visibility: hidden; }
 @media (max-width: 899px) {
-  body.player-bar #player { display: grid; height: 62px; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 1fr 1fr; grid-template-areas: "id id status" "transport progress progress"; gap: 0 12px; }
-  #player .pl-id { grid-area: id; } #player .pl-status { grid-area: status; } #player .pl-transport { grid-area: transport; } #player .pl-progress { grid-area: progress; min-width: 0; }
+  body.player-bar #player { display: grid; height: 62px; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-rows: 1fr 1fr; grid-template-areas: "id id status flag" "transport progress progress progress"; gap: 0 12px; }
+  #player .pl-id { grid-area: id; } #player .pl-status { grid-area: status; } #player .pl-transport { grid-area: transport; } #player .pl-progress { grid-area: progress; min-width: 0; } #player .pl-misread { grid-area: flag; align-self: center; }
 }
 @media (max-width: 559px) {
-  body.player-bar #player { grid-template-areas: "id id id" "transport progress progress"; }
+  body.player-bar #player { grid-template-areas: "id id id flag" "transport progress progress progress"; }
   #player .pl-status { display: none; }
 }
 /* the 9:16 layout: the song gets the first row to itself, at any width (its sides are kept clear, and the status line is the code's to say) */
-body.vertical.player-bar #player { grid-template-areas: "id id id" "transport progress progress"; }
+body.vertical.player-bar #player { grid-template-areas: "id id id flag" "transport progress progress progress"; }
 body.vertical #player .pl-status { display: none; }
 /* a touch screen: buttons and track a finger can hit, and a bar tall enough for them */
 @media (hover: none) {
@@ -508,6 +513,11 @@ body.vertical #sys { bottom: calc(40px + var(--player-h, 0px)); }
 .opts .hero-note { grid-column: 1 / -1; margin: -4px 0 6px; }
 .opts .own { grid-column: 1 / -1; margin-top: 4px; color: var(--fg); font-size: 13px; }
 html.web #go-demo, html.web #go-demo + span { display: none; }
+/* (a phone or a tablet, or a browser that can't share a tab's sound (app.js): no "system audio", and the microphone
+   first, one tap with no list of inputs to pick from; a file is one saved on the device) */
+.os-mic { display: none; }
+html.mic-first .os-mic { display: inline; }
+html.mic-first #go-system, html.mic-first #go-system + span, html.mic-first #go-input, html.mic-first #go-input + span, html.mic-first .os-nomic { display: none; }
 .tip { font-size: 12px; line-height: 1.5; margin: 16px 0 0; color: var(--dim); }
 .tip + .tip { margin-top: 6px; }
 /* (in a browser: where to get the desktop app, and the project) */
@@ -789,12 +799,14 @@ body.widget:hover #w-back { opacity: 1; }
 #first-run-hint kbd { display: inline-block; border: 1px solid var(--dim); padding: 1px 5px; font: inherit; color: var(--fg); }
 body.clean #first-run-hint, body.vertical #first-run-hint, body.mini #first-run-hint, body.widget #first-run-hint, body.recording #first-run-hint { display: none; }
 
-/* Report a bug: an XP error-report box (the window itself is the .xp style the alerts use) */
-#bug-report { position: fixed; width: min(540px, calc(100vw - 32px)); max-width: 540px; border: 0; padding: 0 3px 3px; box-sizing: border-box; }
-#bug-report .xp-msg p { max-width: none; font: 13px Tahoma, sans-serif; }
-#bug-report .bug-label { display: block; margin: 12px 16px 0; font: 12px Tahoma, sans-serif; color: #000; }
-#bug-report textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 5px; background: #fff; color: #000; border: 1px solid #7f9db9; padding: 6px; font: 12px Tahoma, sans-serif; resize: vertical; }
-#bug-report #bug-note { margin: 10px 16px; font: 12px Tahoma, sans-serif; }
+/* Report a bug, and report a misread: an XP error-report box (the window itself is the .xp style the alerts use) */
+#bug-report, #misread-report { position: fixed; width: min(540px, calc(100vw - 32px)); max-width: 540px; border: 0; padding: 0 3px 3px; box-sizing: border-box; }
+#bug-report .xp-msg p, #misread-report .xp-msg p { max-width: none; font: 13px Tahoma, sans-serif; }
+#bug-report .bug-label, #misread-report .bug-label { display: block; margin: 12px 16px 0; font: 12px Tahoma, sans-serif; color: #000; }
+#bug-report textarea, #misread-report textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 5px; background: #fff; color: #000; border: 1px solid #7f9db9; padding: 6px; font: 12px Tahoma, sans-serif; resize: vertical; }
+#bug-report #bug-note, #misread-report #misread-note { margin: 10px 16px; font: 12px Tahoma, sans-serif; }
+/* (the misread's report is code lines: monospace, kept on one row each, a scroll along it where they run long) */
+#misread-report textarea { font: 12px "Lucida Console", Consolas, monospace; }
 
 /* Presets: the picker's first row, five setups a click each (two to a row on a phone) */
 .pick-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }

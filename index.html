@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream: http: https:" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com https://cloudflareinsights.com; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream: http: https:" />
 <title>Toaster</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="Toaster hears whatever is playing and writes it out as live Strudel code in front of you: the beat, the bass line and the chords, typed out over visuals that move with them." />
@@ -67,12 +67,14 @@
 <link rel="modulepreload" href="palette.js" />
 <link rel="modulepreload" href="firstrun.js" />
 <link rel="modulepreload" href="bug-report.js" />
+<link rel="modulepreload" href="misread.js" />
 <link rel="modulepreload" href="presets.js" />
 <link rel="modulepreload" href="cover-palette.js" />
 <link rel="modulepreload" href="embedded-cover.js" />
 <link rel="modulepreload" href="audio-tags.js" />
 <link rel="modulepreload" href="library-core.js" />
 <link rel="preload" href="fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "a655fa1e08ad4c34af53177f41b5a88d"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
 <body>
 <script src="nc.js"></script>
@@ -168,13 +170,14 @@
     <div class="opts">
       <button id="go-demo-hero" class="hero os-web-b">▶ hear it on a demo song</button><span class="hero-note os-web-b">one click: a beat plays, and its code writes itself, lit up on every hit</span>
       <span class="own os-web-b">or play your own music:</span>
+      <button id="go-mic" class="os-mic">◉ use your mic</button><span class="os-mic">play the song out loud near your <span class="device">phone</span></span>
       <button id="go-system">▶ system audio</button><span><span class="os-desk">everything playing on this <span class="os-win">PC</span><span class="os-mac">Mac</span> (Spotify, YouTube, anything)</span><span class="os-web">a tab's sound, or your whole screen's: pick it in the browser's box and turn on sharing its audio</span></span>
       <button id="go-demo">✦ demo beat</button><span>built-in test track</span>
-      <button id="go-file">▤ audio file</button><span>or drop a file on the window</span>
+      <button id="go-file">▤ audio file</button><span><span class="os-nomic">or drop a file on the window</span><span class="os-mic">a song saved on your <span class="device">phone</span></span></span>
       <button id="go-input">◉ audio input</button><span>a mic or line-in</span>
       <form id="radio" novalidate><button id="go-radio">∿ radio</button><input id="radio-url" type="url" placeholder="paste a stream's address, then Enter" aria-label="the radio stream's address" autocomplete="off" /></form>
     </div>
-    <p class="tip">Nothing is recorded or uploaded.<span class="key-only"> Esc closes this.</span></p>
+    <p class="tip">Your audio never leaves your device; the site counts visits anonymously (Cloudflare Web Analytics, no cookies).<span class="key-only"> Esc closes this.</span></p>
     <p class="tip os-web-b">? shows the keys and how it works. The desktop app hears everything your PC plays by itself, no sharing.</p>
     <p class="get os-web-b"><a href="https://github.com/StopBanning/toaster/releases/latest" target="_blank" rel="noopener">⇩ get the desktop app</a><a class="star-link" href="https://github.com/StopBanning/toaster" target="_blank" rel="noopener"><svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>star on GitHub</span><span class="star-n"></span><span class="star-i" aria-hidden="true">★</span></a></p>
     <button id="menu-close" class="menu-close">✕ close</button>
@@ -189,7 +192,7 @@
 </dialog>
 
 <dialog id="help">
-  <p class="help-tools"><button type="button" id="search-commands">search: <span class="os-win">Ctrl+K</span><span class="os-mac">⌘K</span></button><button type="button" id="report-bug">report a bug</button></p>
+  <p class="help-tools"><button type="button" id="search-commands">search: <span class="os-win">Ctrl+K</span><span class="os-mac">⌘K</span></button><button type="button" id="report-bug">report a bug</button><button type="button" id="report-misread">report a misread</button></p>
   <h2>how it works <small class="ver"></small></h2>
   <p>Toaster listens to whatever your <span class="os-win">PC</span><span class="os-mac">Mac</span> plays and writes it out as Strudel code, live: the drums on a 16-step grid, the tempo, bass, chords, key and lead line. A new song starts a fresh page. It's a reconstruction for show, not an exact transcription; steady beats work best.</p>
   <p>When the kick comes back after a break, the backgrounds answer the drop, and the drop effect, if you've picked one with <kbd data-k="dropfx">B</kbd>, takes over the screen. The camera features run on this <span class="os-win">PC</span><span class="os-mac">Mac</span>; nothing is uploaded. Your picks are remembered, except the camera, which always starts off.</p>
