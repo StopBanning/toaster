@@ -334,6 +334,39 @@ function cpuPercent() {
   return total > 0 ? Math.round(100 * (1 - idle / total)) : 0;
 }
 
+// The library (G; renderer/library-panel.js): the folder your music is in, its scan, and the read of one file of it, all in
+// helpers/library.cjs (loaded when it's first needed, as the other helpers are: the test copies of the app don't carry helpers/).
+// It is main that keeps the folder you chose, so the page never names one; a copy run from source can be told to take a folder as
+// the one chosen (--library-folder=<folder>: no dialog to answer, for the checks) and, with a settings folder of its own, never
+// starts with your Music folder. Neither does anything in the installed app.
+let libraryKept = null;
+function library() {
+  if (!libraryKept) {
+    const { createLibrary, THUMB } = require('./helpers/library.cjs');
+    const { dialog, nativeImage } = require('electron');
+    const told = app.isPackaged ? '' : switchValue('library-folder') || '';
+    libraryKept = createLibrary({
+      dir: app.getPath('userData'), music: app.getPath('music'), home: os.homedir(), testCopy: !!testData, hidden, forced: told && path.resolve(told),
+      rendererDir: path.join(__dirname, 'renderer'),
+      dialog: {
+        pick: async (from) => {
+          const options = { title: 'Choose the folder your music is in', defaultPath: from, properties: ['openDirectory'] };
+          const picked = await (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options));
+          return picked.canceled ? null : picked.filePaths[0] || null;
+        },
+      },
+      // a cover's small picture for the cache (null for one it can't read)
+      thumbnail: (bytes) => {
+        const image = nativeImage.createFromBuffer(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length));
+        if (image.isEmpty()) return null;
+        const { width, height } = image.getSize(), k = Math.min(1, THUMB / Math.max(width, height));
+        return image.resize({ width: Math.max(1, Math.round(width * k)), height: Math.max(1, Math.round(height * k)), quality: 'good' }).toJPEG(72);
+      },
+    });
+  }
+  return libraryKept;
+}
+
 function setUpIpc() {
   ipcMain.handle('sys:info', () => {
     const d = screen.getPrimaryDisplay();
@@ -615,6 +648,14 @@ function setUpIpc() {
     if (typeof code === 'string' && code) fs.writeFileSync(base + '.strudel.js', code, { encoding: 'utf8', flag: 'wx' });
     return base + '.mid';
   });
+  // The library (above): the folder in force, choosing another (the system's dialog), what the last scan kept, a scan (its progress
+  // goes to the page that asked), and the bytes of one audio file of that folder, which helpers/library.cjs refuses unless it is
+  // inside it and audio. None of them takes a folder from the page: only the path of the one file it wants read.
+  ipcMain.handle('library:folder', () => library().folder());
+  ipcMain.handle('library:choose', () => library().choose());
+  ipcMain.handle('library:cached', () => library().cached());
+  ipcMain.handle('library:scan', (e) => library().scan((p) => { if (!e.sender.isDestroyed()) e.sender.send('library:progress', p); }));
+  ipcMain.handle('library:read', (_e, rel) => library().read(rel));
 }
 
 function stamp(d = new Date()) {
@@ -679,6 +720,7 @@ app.on('window-all-closed', () => {
   clearTimeout(nowPlayingTimer);
   nowPlayingProc?.kill();
   radioTitles?.abort();
+  libraryKept?.stop();
   stopFaces();
   endRecording().finally(() => app.quit());
 });

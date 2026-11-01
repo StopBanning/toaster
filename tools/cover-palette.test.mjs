@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BLUESCREEN, THEME_VARS, contrast, coverPalette, createDynamicTheme, fromOklab, heatStops, mixColours, themeVars, toOklab } from '../renderer/cover-palette.js';
+import { ACCENT_VAR, BLUESCREEN, THEME_VARS, contrast, coverPalette, createDynamicTheme, fromOklab, fullPalette, heatStops, mixColours, paletteVars, terrainStops, themeVars, toOklab } from '../renderer/cover-palette.js';
 import { COVERS, coverPixels, pixels } from './cover-fixtures.mjs';
 
 // WCAG's contrast ratio, written out again here (with the threshold its text gives, 0.03928) so the module is not checked by itself
@@ -112,7 +112,7 @@ test('a lifted text colour keeps its cover\'s hue where the screen allows: no bl
 
 test('a grey cover stays grey, a dark one dark, and a one-colour cover is bluescreen\'s look (white on a deep colour) in its hue', () => {
   const black = coverPalette(coverPixels('black')), grey = coverPalette(coverPixels('mid grey')), white = coverPalette(coverPixels('white'));
-  assert.deepEqual(black, { bg: [0, 0, 0], fg: [255, 255, 255] });
+  assert.deepEqual({ bg: black.bg, fg: black.fg }, { bg: [0, 0, 0], fg: [255, 255, 255] });
   for (const p of [grey, white, coverPalette(coverPixels('light grey')), coverPalette(coverPixels('dark grey'))]) {
     assert.ok(chroma(p.bg) < 0.005 && toOklab(p.bg)[0] <= 0.18 + 0.005, `${p.bg}`);
     assert.ok(chroma(p.fg) < 0.005 && wcag(p.fg, p.bg) >= 7);
@@ -245,7 +245,7 @@ test('a cover that comes while one is easing turns it round from where the colou
   assert.deepEqual(shown(theme, 1.7), TEAL);
   theme.update(TEAL, 1.8);
   // the same colours again (another picture of the same album) is not a new ease
-  const other = { bg: [...TEAL.bg], fg: [...TEAL.fg] };
+  const other = Object.fromEntries(Object.entries(TEAL).map(([k, c]) => [k, [...c]]));
   assert.equal(theme.update(other, 5), false);
   assert.equal(theme.easing(5.1), false);
 });
@@ -287,4 +287,74 @@ test('picking the theme shows a cover\'s colours at once (jump), and the next so
   assert.equal(theme.update(TEAL, 5.1), false);
   assert.equal(theme.update(RED, 6), true);
   assert.ok(dist(shown(theme, 6), TEAL) < 1e-5);
+});
+
+// ---------------------------------------------------------------- the accent and the ground (the richer palette, 0.4.29)
+
+const apartOf = (x, y) => { const [a, b] = [toOklab(x), toOklab(y)]; return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); };
+
+test('every cover also gets an accent and a ground: the accent reads at 4.5:1 and is another colour than the text (or is the text, on a cover with no hue), the ground is seen and darker than the text', () => {
+  let own = 0;
+  for (const name of NAMES) {
+    const p = coverPalette(coverPixels(name));
+    for (const c of [p.accent, p.ground]) assert.ok(c.length === 3 && c.every((v) => Number.isInteger(v) && v >= 0 && v <= 255), `${name}: ${c}`);
+    if (!p.accent.every((v, i) => v === p.fg[i])) {
+      own++;
+      assert.ok(wcag(p.accent, p.bg) >= 4.5, `${name}: the accent at ${wcag(p.accent, p.bg).toFixed(2)}:1`);
+      assert.ok(apartOf(p.accent, p.fg) >= 0.1, `${name}: the accent is another colour than the text`);
+    }
+    assert.ok(wcag(p.ground, p.bg) >= 2.2, `${name}: the ground at ${wcag(p.ground, p.bg).toFixed(2)}:1`);
+    assert.ok(toOklab(p.ground)[0] < toOklab(p.fg)[0], `${name}: the ground darker than the text`);
+  }
+  // (the ones without: black, white, the greys, black and white, a grey photo and the pastel, which have no hue to give)
+  assert.ok(own >= 20, `${own} of ${NAMES.length} covers have an accent of their own`);
+});
+
+test('a cover with a third colour gives it as the accent; a cover of one hue gets that hue at full strength', () => {
+  const navy = [14, 24, 70], orange = [255, 140, 20], cyan = [0, 200, 230], near = (x, y) => Math.abs(((x - y + 540) % 360) - 180) < 20;
+  const three = coverPalette(pixels((u, v) => (v > 0.7 && v < 0.82 ? orange : u > 0.7 && v < 0.3 ? cyan : navy)));
+  assert.ok((near(hue(three.fg), hue(orange)) && near(hue(three.accent), hue(cyan))) || (near(hue(three.fg), hue(cyan)) && near(hue(three.accent), hue(orange))), `text ${three.fg}, accent ${three.accent}`);
+  const two = coverPalette(coverPixels('navy with an orange stripe'));
+  // (navy with an orange stripe: the orange is the text, and a darker orange would be a shade of it, so the navy's own hue
+  // at full strength is the accent)
+  assert.ok((near(hue(two.accent), hue(two.fg)) || near(hue(two.accent), hue(two.bg))) && chroma(two.accent) >= chroma(two.fg) - 0.02, `accent ${two.accent} against text ${two.fg}`);
+});
+
+test('the ease moves every colour together and ends on the cover\'s exactly', () => {
+  const none = fullPalette(BLUESCREEN), theme = createDynamicTheme({ none });
+  assert.deepEqual(shown(theme, 0), none);
+  assert.equal(theme.update(RED, 10), true);
+  const mid = shown(theme, 10.6);
+  for (const k of ['bg', 'fg', 'accent', 'ground']) {
+    const want = toOklab(none[k]).map((v, i) => (v + toOklab(RED[k])[i]) / 2);
+    assert.ok(Math.abs(toOklab(mid[k])[0] - want[0]) < 1e-3, `${k} halfway: as light as the middle of the two`);
+  }
+  assert.deepEqual(shown(theme, 11.21), RED);
+  // and a cover that goes is let go to bluescreen's, all four colours of it
+  theme.update(null, 12);
+  theme.update(null, 16.1);
+  assert.deepEqual(shown(theme, 17.4), none);
+});
+
+test('a two-colour palette made whole takes its text as its accent and the middle of the two as its ground; the page gets --accent', () => {
+  const full = fullPalette(BLUESCREEN);
+  assert.deepEqual(full.accent, BLUESCREEN.fg);
+  assert.deepEqual(full.ground, mixColours(BLUESCREEN.bg, BLUESCREEN.fg, 0.5).map(Math.round));
+  const v = paletteVars(full);
+  assert.equal(v[ACCENT_VAR], '#ffffff');
+  for (const name of THEME_VARS) assert.equal(v[name], themeVars(BLUESCREEN)[name], name);
+  assert.equal(paletteVars(RED)[ACCENT_VAR], '#' + RED.accent.map((c) => c.toString(16).padStart(2, '0')).join(''));
+  // the stylesheet gives the fixed themes their text colour as the accent, so their highlights are as they were
+  const css = fs.readFileSync(new URL('../renderer/style.css', import.meta.url), 'utf8');
+  assert.match(css.match(/:root \{([^}]*)\}/)[1], /--accent:\s*var\(--fg\)/);
+});
+
+test('the terrain in the dynamic theme stands on the theme\'s background and climbs through the cover\'s colours, darkest to lightest, to near white', () => {
+  for (const name of NAMES) {
+    const p = coverPalette(coverPixels(name)), stops = terrainStops(p).map(hexOf), L = stops.map((c) => toOklab(c)[0]);
+    assert.equal(stops.length, 5);
+    assert.deepEqual(stops[0], p.bg, name);
+    for (let i = 1; i < 5; i++) assert.ok(L[i] >= L[i - 1] - 1e-6, `${name}: stop ${i} no darker than the one before`);
+    assert.ok(L[4] > 0.8, `${name}: the top near white (${L[4].toFixed(2)})`);
+  }
 });

@@ -711,9 +711,9 @@ test('the bar sits in the page after the footer, and the CSS keeps its colours t
   const rules = block.replace(/\/\*[\s\S]*?\*\//g, '');
   assert.doesNotMatch(rules, /#[0-9a-fA-F]{3,8}\b(?![\w-])/, 'no colour of its own: the theme\'s');
   assert.doesNotMatch(rules, /\brgba?\(|\bhsla?\(/);
-  for (const color of rules.match(/color-mix\([^)]*\)/g) || []) assert.match(color, /var\(--(bg|fg)\)/, color);
+  for (const color of rules.match(/color-mix\([^)]*\)/g) || []) assert.match(color, /var\(--(bg|fg|accent)\)/, color);
   assert.match(block, /#player \{[^}]*background: color-mix\(in srgb, var\(--bg\) 92%, transparent\)/);
-  assert.match(block, /#player \.pl-play \{ background: var\(--fg\); color: var\(--bg\);/);
+  assert.match(block, /#player \.pl-play \{ background: var\(--accent\); color: var\(--bg\);/);
 });
 
 test('H puts it away with the footer; Z\'s visualizer mode shows it only at the bottom edge; a recording leaves it out unless the setting says in', () => {

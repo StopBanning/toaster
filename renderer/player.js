@@ -92,7 +92,9 @@ const SEEK_KEY = 5; // seconds an arrow key moves the position
 
 // root: the bar's element (#player). nc: the page's bridge to the main process (window.nc), where there is one; platform:
 // its platform ('darwin', 'win32', or 'web'). act, what only the app can do: restart() and seek(seconds) for a file,
-// stop() and start(kind) for the radio and the demo, next() where there's a queue, fail(err) and note(text).
+// stop() and start(kind) for the radio and the demo, next() and previous() where there's a queue (the library's: the app gives
+// them while one is playing, and without them previous restarts the file), fail(err) and note(text). A snapshot's `near`, the
+// queue's line of what's near ([{ text, now }]), is shown beside the song where there's room.
 export function createPlayerBar({ document: doc, root, nc = null, platform = 'web', act = {}, window: win = globalThis }) {
   const bridge = !!nc && typeof nc.playerCommand === 'function';
   const el = (tag, cls, ...kids) => {
@@ -108,6 +110,10 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
 
   const chip = el('span', 'pl-chip'), title = el('b', 'pl-title'), artist = el('span', 'pl-artist'), idle = el('span', 'pl-idle');
   const song = el('span', 'pl-song', title, artist, idle);
+  // golden's line of what's near ("01 Plague" , ▶ "02 Kerosene" , "03 Wrath of God"): up to four items, each a separator, a mark and
+  // its label, made once and filled in as the queue moves
+  const nearItems = Array.from({ length: 4 }, () => ({ sep: el('span', 'pl-sep'), mark: el('span', 'pl-mark'), label: el('span', 'pl-label') }));
+  const near = el('span', 'pl-near', ...nearItems.flatMap((i) => [i.sep, i.mark, i.label]));
   const buttons = {};
   for (const kind of ['prev', 'play', 'next']) {
     const b = el('button', `pl-btn pl-${kind}`);
@@ -125,7 +131,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
   track.setAttribute('aria-label', 'position');
   const progress = el('div', 'pl-progress', pos, track, len);
   const status = el('div', 'pl-status');
-  root.append(el('div', 'pl-id', chip, song), transport, progress, status);
+  root.append(el('div', 'pl-id', chip, song, near), transport, progress, status);
 
   let last = null; // the latest snapshot (update)
   let ctl = controlsFor({}); // and what it gets
@@ -155,7 +161,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     return polled ? polled.playing : !!s.systemPlaying;
   }
   const playIcon = (s) => (!s.source ? 'play' : s.source === 'radio' || s.source === 'demo' ? 'stop' : playing(s) ? 'pause' : 'play');
-  const labelOf = (kind, s) => (kind === 'play' ? playIcon(s) : kind === 'prev' && s.source === 'file' ? 'restart' : kind === 'prev' ? 'previous' : 'next');
+  const labelOf = (kind, s) => (kind === 'play' ? playIcon(s) : kind === 'prev' && s.source === 'file' && typeof act.previous !== 'function' ? 'restart' : kind === 'prev' ? 'previous' : 'next');
 
   function paintProgress(there) {
     setHidden(progress, !there);
@@ -191,6 +197,15 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     setText(artist, line.artist ? ` · ${line.artist}` : '');
     setText(idle, line.idle);
     song.title = line.title ? `${line.title}${line.artist ? ' · ' + line.artist : ''}` : '';
+    const items = s.near && s.source === 'file' ? s.near.slice(0, nearItems.length) : [];
+    setHidden(near, !items.length);
+    nearItems.forEach((item, i) => {
+      const it = items[i];
+      setText(item.sep, it && i ? ' , ' : '');
+      setText(item.mark, it?.now ? '▶ ' : '');
+      setText(item.label, it ? it.text : '');
+      item.label.classList.toggle('now', !!it?.now);
+    });
 
     setHidden(transport, !ctl.buttons.length);
     for (const kind of ['prev', 'play', 'next']) {
@@ -244,7 +259,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     try {
       if (s.source === 'file') {
         if (kind === 'play') Promise.resolve(s.el.paused ? s.el.play() : s.el.pause()).catch((err) => act.fail?.(err));
-        else if (kind === 'prev') act.restart?.();
+        else if (kind === 'prev') (act.previous || act.restart)?.();
         else act.next?.();
       } else if (s.source === 'radio' || s.source === 'demo') act.stop?.();
       else if (!s.source) act.start?.(s.stopped);

@@ -118,6 +118,25 @@ Automation). On Windows it presses the media keys (helpers/mediakeys.ps1), which
 there's no progress bar there. Any other player gets no buttons. H hides the bar with the footer, Z's visualizer mode
 shows it only at the bottom edge, and recordings leave it out unless the help says otherwise.
 
+## The library
+
+G opens a panel over the visuals (renderer/library-panel.js, fetched with its two modules the first time it opens, so the
+page starts without them). Its first section is your music: a folder you pick in the system's dialog, which main keeps
+(helpers/library.cjs), so the page never names a folder. Main scans it in a worker thread (helpers/library-worker.cjs)
+with the page's own tag readers (renderer/audio-tags.js and embedded-cover.js: MP3 and M4A titles, artists, albums,
+track numbers and covers), groups it by album artist or artist, album, disc and track, and keeps the list as JSON in
+the settings folder: it's there at once next time, and a rescan reads only the files that changed. Other audio formats
+are listed by their file names. The one way the page gets a file's bytes is to ask main for a path from that list, and
+main reads it only if it's an audio file that, links followed, is inside the chosen folder. An album plays through and
+repeats, with the player bar's next and previous, or goes on to the next album, or repeats a track (Shift+R), in order or
+shuffled (Shift+S; renderer/library-core.js has the queue's steps). Find (Ctrl+F) narrows the list as you type to the
+albums and tracks with every word, accents and case aside. The last six albums played sit on a shelf above the list, and
+where the queue was is kept, so after a restart G opens on that track, paused where it stopped. The open album's cover is drawn in characters as a mask over the
+theme's text colour, so every theme, the dynamic one too, colours it. The radio section lists the stations you've played,
+the latest first, and takes a pasted address. Scenes are presets and setups you save by name (the background, the
+theme, the code look and the layout). In a browser the panel works the same, with the browser's folder picker; the folder
+isn't remembered between visits. The library is after golden's, by Jon Soini.
+
 ## The camera
 
 Everything the camera sees stays on this machine. While it's on, two things look at it:

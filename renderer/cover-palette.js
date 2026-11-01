@@ -8,7 +8,9 @@
 // colour is the text, lifted until it reads against the background (7:1). A cover that's grey or all one colour
 // has no second colour to take: it gets bluescreen's look (white on a deep colour) in the cover's hue, and a grey
 // cover as grey as it is. The theme's other variables come from those two the way style.css makes them for the
-// fixed themes. Easing between two covers' colours is here too (createDynamicTheme).
+// fixed themes. Two more colours come from the cover for what the two can't do (extras): an accent, for the
+// highlights, and a ground, the middle colour of the scenes and the spectrogram drawn in the cover's colours. Easing
+// between two covers' colours, all of them, is here too (createDynamicTheme).
 
 // style.css's own theme, what the dynamic one shows without a cover
 export const BLUESCREEN = { bg: [5, 29, 181], fg: [255, 255, 255] };
@@ -20,6 +22,13 @@ const SHARE = 0.03; // and how much of the cover it has to fill, so a speck of i
 const FULL_CHROMA = 0.1; // a cover with this much colour (or more) gets bluescreen's full strength in its hue
 const READS = 7.05; // the text against the background: 7:1, a hair over for the rounding to 8 bits
 const DIM_READS = 4.55; // the dim text against it: 4.5:1 (the note by --dim in style.css)
+const ACCENT_READS = 4.55; // the accent against the background: 4.5:1, for the marks and the large text it's on (text stays 7:1)
+const ACCENT_SHARE = 0.01; // the accent can be a small part of the cover (a hundredth of it: less is a speck)
+const ACCENT_APART = 0.1; // and has to look like another colour than the text
+const GREY = 0.03; // less chroma than this is grey: no accent from it, and a grey ground takes the text's hue
+const VIVID = 0.2; // the most chroma an accent made from one of the cover's hues is given
+const SAME_HUE = (25 * Math.PI) / 180; // two colours closer in hue than this are one hue
+const GROUND_READS = 2.2; // the ground against the background: seen, but well under the text and the lights
 
 // ---------------------------------------------------------------- colour maths
 
@@ -132,22 +141,58 @@ function cluster(points, n, k) {
 }
 
 // The text colour: the cluster's own, lifted (lighter, its hue and chroma kept as far as the screen allows) till it
-// reads against the background.
-function lifted(lab, bg) {
+// reads against the background (7:1; the accent asks less of it).
+function lifted(lab, bg, reads = READS) {
   const at = (L) => fromOklab([L, lab[1], lab[2]]).map(Math.round);
   const own = at(lab[0]);
-  if (contrast(own, bg) >= READS) return own;
+  if (contrast(own, bg) >= reads) return own;
   let lo = lab[0], hi = 1;
   for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2;
-    if (contrast(at(mid), bg) >= READS) hi = mid; else lo = mid;
+    if (contrast(at(mid), bg) >= reads) hi = mid; else lo = mid;
   }
   const out = at(hi);
-  return contrast(out, bg) >= READS ? out : [255, 255, 255];
+  return contrast(out, bg) >= reads ? out : [255, 255, 255];
 }
 
-// The cover's colours: { bg, fg } as [r, g, b], from its RGBA pixels (as many as there are: 48 x 48 in the app).
-// null if there's no picture in them (nearly all see-through).
+// The palette's other two (the cover's colours sorted biggest first; second, the one the text came from, if any).
+// The accent (the highlights: the lit steps, the card's title, the player bar's buttons, the library's playing row) is
+// the most vivid of the cover's other colours that isn't grey, raised till it reads (4.5:1) and clearly another colour
+// than the text. A cover with no such colour (most are nearly one hue) gets one of its hues at full strength: the
+// text's, then the background's, as dark as reads or brighter than the text: whichever of those is clearly apart from
+// the text, at least as vivid as it (a duller one is a shade, not a highlight) and the more vivid; and failing all
+// those, the text colour itself. The ground is the biggest of the cover's colours besides the
+// background and the text (a grey one in the text's hue), at a lightness between the two, as light as it takes to be
+// seen against the background.
+function extras(colours, n, second, bg, fg) {
+  const [top] = colours, F = toOklab(fg), B = toOklab(bg);
+  const chroma = (lab) => Math.hypot(lab[1], lab[2]), hue = (lab) => Math.atan2(lab[2], lab[1]), away = (c) => dist(toOklab(c), F);
+  let accent = null;
+  // (a shade of the text's own hue is no accent: it has to be another hue, or much more vivid)
+  const shade = (lab) => chroma(F) >= GREY && Math.abs(((hue(lab) - hue(F) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) < SAME_HUE && chroma(lab) < 1.5 * chroma(F);
+  const vivid = colours.slice(1).filter((c) => c !== second && c.n >= ACCENT_SHARE * n && chroma(c.lab) >= GREY && dist(c.lab, top.lab) >= APART && !shade(c.lab));
+  for (const c of vivid.sort((p, q) => chroma(q.lab) - chroma(p.lab) || q.n - p.n)) {
+    const a = lifted(c.lab, bg, ACCENT_READS);
+    if (away(a) >= ACCENT_APART) { accent = a; break; }
+  }
+  for (const lab of [F, B]) {
+    if (accent || chroma(lab) < GREY) continue;
+    const C = Math.min(VIVID, Math.max(0.12, chroma(lab) + 0.08)), h = hue(lab);
+    const dark = lifted(ofLch(B[0], C, h), bg, ACCENT_READS), bright = fromOklab(ofLch(Math.min(0.93, F[0] + 0.15), C, h)).map(Math.round);
+    const best = [dark, bright].filter((c) => contrast(c, bg) >= ACCENT_READS && away(c) >= ACCENT_APART && chroma(toOklab(c)) >= chroma(F) - 0.02)
+      .sort((p, q) => chroma(toOklab(q)) - chroma(toOklab(p)))[0];
+    if (best) accent = best;
+  }
+  const g = colours.slice(1).find((c) => c !== second) || second || top, tint = chroma(g.lab) >= GREY ? g.lab : F;
+  const at = (L) => fromOklab(ofLch(L, Math.min(0.12, Math.max(chroma(g.lab), chroma(F) * 0.5)), hue(tint))).map(Math.round);
+  const hi = Math.max(B[0] + 0.1, Math.min(0.62, F[0] - 0.12));
+  let L = Math.min(Math.max(g.lab[0], B[0] + 0.16), hi);
+  while (contrast(at(L), bg) < GROUND_READS && L < hi) L = Math.min(hi, L + 0.02);
+  return { accent: accent || [...fg], ground: at(L) };
+}
+
+// The cover's colours: { bg, fg, accent, ground } as [r, g, b], from its RGBA pixels (as many as there are: 48 x 48
+// in the app). null if there's no picture in them (nearly all see-through).
 export function coverPalette(rgba) {
   const total = Math.floor(rgba.length / 4), points = new Float64Array(total * 3);
   let n = 0;
@@ -167,13 +212,14 @@ export function coverPalette(rgba) {
   // saturated (below a trace of colour, the lighter: a grey cover's text is its light grey)
   const second = colours.slice(1).filter((c) => c.n >= SHARE * n && dist(c.lab, top) >= APART)
     .sort((p, q) => Math.max(Math.hypot(q.lab[1], q.lab[2]), 0.03) - Math.max(Math.hypot(p.lab[1], p.lab[2]), 0.03) || q.lab[0] - p.lab[0] || q.n - p.n)[0];
-  if (second) return { bg, fg: lifted(second.lab, bg) };
+  if (second) { const fg = lifted(second.lab, bg); return { bg, fg, ...extras(colours, n, second, bg, fg) }; }
   // one colour: bluescreen's look (white on a deep colour) in its hue, as light as bluescreen's as far as the cover
   // has colour to be that (grey stays dark, and a dark cover no lighter than it is), with its own chroma, no more
   // than bluescreen's
   const blue = toOklab(BLUESCREEN.bg), strength = Math.min(1, C / FULL_CHROMA);
   const L = Math.min(top[0], BG_LIGHTEST + strength * (blue[0] - BG_LIGHTEST));
-  return { bg: fromOklab(ofLch(L, Math.min(C, Math.hypot(blue[1], blue[2])), hue)).map(Math.round), fg: [...BLUESCREEN.fg] };
+  const deep = fromOklab(ofLch(L, Math.min(C, Math.hypot(blue[1], blue[2])), hue)).map(Math.round), white = [...BLUESCREEN.fg];
+  return { bg: deep, fg: white, ...extras(colours, n, null, deep, white) };
 }
 
 // ---------------------------------------------------------------- the theme's variables
@@ -194,26 +240,49 @@ export function themeVars({ bg, fg }) {
 }
 export const THEME_VARS = Object.keys(themeVars(BLUESCREEN));
 
+// A palette with all four colours: one with two (bluescreen's, a test's) takes its text colour as its accent and the
+// middle of the two as its ground, so with no cover the dynamic theme is bluescreen's look exactly.
+export const fullPalette = (p) => ({ bg: p.bg, fg: p.fg, accent: p.accent || [...p.fg], ground: p.ground || mixColours(p.bg, p.fg, 0.5).map(Math.round) });
+// The page's variables for a palette: the fixed themes' ones (themeVars), the accent (4.5:1: the lit steps, the play
+// button, the progress bar, the card's big ID) and the accent as text (the same hue lifted to 7:1, as the text is: the
+// card's song title, and the library's playing row, whose words sit on it). style.css gives the fixed themes their
+// text colour as both, so their highlights stay as they were.
+export const ACCENT_VAR = '--accent', ACCENT_TEXT_VAR = '--accent-text';
+export const paletteVars = (p) => {
+  const a = (p.accent || p.fg).map(Math.round), B = p.bg.map(Math.round);
+  return { ...themeVars(p), [ACCENT_VAR]: hex(a), [ACCENT_TEXT_VAR]: hex(contrast(a, B) >= READS ? a : lifted(toOklab(a), B)) };
+};
+
 // The five colours of a heat map up from black to white by way of the text colour (what the spectrogram's own
 // theme colours are, for the fixed themes: spectro.js).
 export const heatStops = (fg) => [[0, 0, 0], fg.map((v) => v * 0.22), fg.map((v) => v * 0.62), fg, fg.map((v) => v + (255 - v) * 0.88)].map(hex);
+// The dynamic theme's five: from its background up through the cover's ground, accent and text, darkest to lightest,
+// to the lightest of those near white. The terrain stands on the theme's own background.
+export function terrainStops(p) {
+  const { bg, fg, accent, ground } = fullPalette(p);
+  const mid = [ground, accent, fg].sort((a, b) => toOklab(a)[0] - toOklab(b)[0]);
+  return [bg, ...mid, mid[2].map((v) => v + (255 - v) * 0.7)].map(hex);
+}
 
 // ---------------------------------------------------------------- easing
 
 const ease = (k) => k * k * (3 - 2 * k);
-const sameColours = (a, b) => a === b || (a.bg.every((v, i) => v === b.bg[i]) && a.fg.every((v, i) => v === b.fg[i]));
+const sameColours = (a, b) => a === b || Object.keys(b).every((k) => a[k] && a[k].every((v, i) => v === b[k][i]));
 
 // The theme's colours over time. Each frame it's told the cover's palette (null: no cover) and the time, and says
 // whether the colours moved. A new cover's colours are eased to over `seconds` (in OKLab, smoothly at both ends)
 // from wherever they are, so a cover that comes while one is still easing turns it round without a jump. A cover
 // that's gone is let go only after `hold` seconds, and then back to bluescreen's: between two songs the old cover
 // is gone a moment before the next arrives (the radio's has to be looked up), and letting go at once was a detour
-// to blue and back.
-export function createDynamicTheme({ seconds = 1.2, hold = 4 } = {}) {
-  let from = BLUESCREEN, to = BLUESCREEN, began = -Infinity, goneAt = null, last = BLUESCREEN;
+// to blue and back. Every colour the palettes have eases together (none: what there is with no cover; the app gives
+// it bluescreen's with all four colours).
+export function createDynamicTheme({ seconds = 1.2, hold = 4, none = BLUESCREEN } = {}) {
+  let from = none, to = none, began = -Infinity, goneAt = null, last = none;
   const at = (now) => {
     const k = (now - began) / seconds;
-    return k >= 1 ? to : { bg: mixColours(from.bg, to.bg, ease(Math.max(0, k))), fg: mixColours(from.fg, to.fg, ease(Math.max(0, k))) };
+    if (k >= 1) return to;
+    const e = ease(Math.max(0, k));
+    return Object.fromEntries(Object.keys(to).map((key) => [key, mixColours(from[key] || to[key], to[key], e)]));
   };
   return {
     palette: at,
@@ -223,7 +292,7 @@ export function createDynamicTheme({ seconds = 1.2, hold = 4 } = {}) {
     update(cover, now) {
       let want = to;
       if (cover) { goneAt = null; want = cover; }
-      else { goneAt ??= now; if (now - goneAt >= hold) want = BLUESCREEN; }
+      else { goneAt ??= now; if (now - goneAt >= hold) want = none; }
       if (!sameColours(want, to)) { from = at(now); to = want; began = now; }
       const shown = at(now), moved = !sameColours(shown, last);
       last = shown;

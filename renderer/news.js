@@ -4,6 +4,10 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.29', items: [
+    { key: 'T', text: "the dynamic theme takes more of the cover's colours: an accent for the highlights (the lit steps, the card, the player bar), and the scenes and the spectrogram in the theme's colours (A) take its whole palette" },
+    { key: 'G', text: "the library, a panel over the visuals: your music from a folder you pick (its albums with their covers drawn in characters, the ones played lately on a shelf, Ctrl+F to find any song as you type, Shift+R and Shift+S for repeat and shuffle, and where you left off kept over a restart), the radio's stations, and scenes you save, rename and apply" },
+  ] },
   { version: '0.4.28', items: [
     { act: 'theme', text: "a sixth theme, dynamic: the colours come from the song's cover (your music app's, the radio's or a file's own) and ease over to the next song's" },
     { key: 'player bar', text: "a slim bar along the bottom with the song, play and pause, skip and a progress bar where the source has them (a file, the radio, the demo, Music and Spotify on a Mac, the media keys on Windows), and the tempo, key and bar: H hides it with the footer, and the help has its settings" },

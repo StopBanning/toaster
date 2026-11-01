@@ -86,6 +86,7 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 | L | vertical 9:16 layout for TikTok/Shorts (resizes the window) |
 | W | mini player: the window shrinks to a small panel in the corner, on top of everything else, still listening (the code, and the card if it's on); W again brings it back. With the handheld game on, the handheld goes on your desktop on its own instead: no window round it, just the device and its shadow over whatever's there, on top; drag it anywhere, and Esc, W or its x brings Toaster back |
 | T | theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (the colours of the song's cover, from your music app, the radio or a file's own, easing over to the next song's; after golden by Jon Soini) |
+| G | the library, a panel over the visuals: your music from a folder you pick (its albums, their covers drawn in characters, the ones played lately on a shelf, with the player bar's next and previous; Ctrl+F finds a song as you type, Shift+R picks what repeats, Shift+S shuffles, and after a restart it opens where you left off), the radio stations you've played (the latest first, or paste another), and scenes: the whole setup (background, theme, code look and layout) saved by name, beside the presets. Esc or G closes it. After golden by Jon Soini |
 | Y | CRT: an old TV over everything, on any theme. It comes on from a white line opening into the picture and goes off into a dot; scanlines and phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop; each background (V) is a channel, changed through static with its number in the corner, VCR green, and the theme (T) shows there as the picture setting. With fewer flashes, it stays still: no flicker, roll, static or white line. Remembered |
 | E | name the song yourself |
 | Z | hide the code: just the visuals, for Toaster as a visualizer. Again for the code without its beat (the drum lines and their grid), for music with no pulse, and again for all of it (it's still written underneath). The scenery opens out into the room the code kept: the sharks' float and the koi's lily pad come to the middle, the festival's stage moves to the middle, and in a tall window Halloween's moon rises into it. Remembered |
@@ -169,6 +170,20 @@ then the caret goes back to fix it.
 More on all three in [docs/how-it-works.md](docs/how-it-works.md). Filming Toaster for a video?
 [docs/creators.md](docs/creators.md) has the setup, the take, and how to carry on in Strudel.
 
+## For DJs and streamers
+
+Toaster makes live visuals for a set: it follows the beat, and the scenes answer the drop.
+
+1. **Let it hear the set.** On a Mac it hears everything the Mac plays, your DJ software too. With a mixer, pick its
+   USB or line-in as the audio input (**S**).
+2. **Set the look.** The *Visualizer* preset (the picker's first row, or Ctrl+K) shows the scenes with the code hidden;
+   **Z** brings the code back (all but the beat, then all). **V** picks the background, **T** the theme.
+3. **Clear the frame.** **H** hides the header, the footer and the player bar; **F** goes fullscreen.
+4. **The drop.** Toaster fires it by itself when the kick comes back after a break of three seconds or more; press **D**
+   the moment it lands to fire it yourself, and **B** to pick a drop effect.
+5. **Into OBS.** Add Toaster's window as a source: on a Mac, *macOS Screen Capture* with the window method; on Windows,
+   *Window Capture* with the capture method *Windows 10 (1903 and up)*. Or press **M** to record the window with its sound.
+
 ## Privacy
 
 Everything Toaster hears and sees stays on your machine. The sound is worked out in the app, and the
@@ -218,7 +233,8 @@ How it works inside, and the test songs it's checked against: [docs/how-it-works
 ## Built with Toaster
 
 - **[golden](https://itsgolden.app)** by Jon Soini: a free iPhone player for Apple Music in Toaster's look, with its code
-  view, ID cards and themes. Toaster's dynamic theme, the colours of the song's cover, is after golden's.
+  view, ID cards and themes. Toaster's dynamic theme (the colours of the song's cover) and its library (G) are after
+  golden's.
 - **Internet radio** by Jeffrey Li ([#6](../../pull/6), [#7](../../pull/7)): paste a stream's address and Toaster
   plays it and writes it out. He has also built a background of his own on top of Toaster.
 - **A 3D-printed handheld** by Clemens ([@tokyo_impressions](https://www.instagram.com/tokyo_impressions)), printed

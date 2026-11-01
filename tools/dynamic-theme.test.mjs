@@ -49,21 +49,23 @@ test('the fixed themes keep the stylesheet\'s colours alone: it names no dynamic
   // applyTheme: the page's own variables for the dynamic theme, cleared for every other, then the same read of them as before
   const apply = body('applyTheme');
   assert.match(apply, /if \(state\.theme === 0\) delete root\.dataset\.theme;\s*else root\.dataset\.theme = THEMES\[state\.theme\];/);
-  assert.match(apply, /for \(const name of THEME_VARS\) \{ if \(vars\) root\.style\.setProperty\(name, vars\[name\]\); else root\.style\.removeProperty\(name\); \}/);
-  assert.match(apply, /const vars = dynamic \? themeVars\(coverTheme\.palette\(now\)\) : null;/);
-  assert.match(apply, /col = \{ bg: rgbOf\(get\('--bg'\)\), fg: rgbOf\(get\('--fg'\)\), ink: rgbOf\(get\('--ink'\)\) \};/);
+  assert.match(apply, /for \(const name of \[\.\.\.THEME_VARS, ACCENT_VAR, ACCENT_TEXT_VAR\]\) \{ if \(vars\) root\.style\.setProperty\(name, vars\[name\]\); else root\.style\.removeProperty\(name\); \}/);
+  assert.match(apply, /const pal = dynamic \? coverTheme\.palette\(now\) : null, vars = pal \? paletteVars\(pal\) : null;/);
+  assert.match(apply, /col = \{ bg: rgbOf\(get\('--bg'\)\), fg: rgbOf\(get\('--fg'\)\), ink: rgbOf\(get\('--ink'\)\), accent: rgbOf\(get\('--accent'\)\) \};/);
+  // (the richer palette: the scenes in the theme's colours get the cover's ground, text and accent, the spectrogram all of them)
+  assert.match(apply, /themeLook = pal \? \{ scene: \{ ground: pal\.ground, lights: pal\.fg, accent: pal\.accent \}, terrain: terrainStops\(pal\) \} : null;/);
   // Windows' title bar: every fixed theme and every resting colour, but while the ease runs at most every 0.15 s
   assert.match(apply, /if \(!onMac\(\) && \(!dynamic \|\| !coverTheme\.easing\(now\) \|\| now - titleBarAt >= 0\.15\)\) \{\s*titleBarAt = now;\s*window\.nc\?\.setTitleBar\(get\('--bg'\), get\('--fg'\)\);\s*\}/);
   // switched to, it takes the cover's colours at once (no ease from the last theme's), and a step of the ease is the same call again
-  assert.match(apply, /if \(dynamic && !dynamicShown\) \{ const art = songArt\(\); coverTheme\.jump\(\(art && paletteOf\(art\)\) \|\| BLUESCREEN\); \}\s*dynamicShown = dynamic;/);
+  assert.match(apply, /if \(dynamic && !dynamicShown\) \{ const art = songArt\(\); coverTheme\.jump\(\(art && paletteOf\(art\)\) \|\| NO_COVER\); \}\s*dynamicShown = dynamic;/);
 });
 
 test('each frame: the ease steps while the theme is dynamic, applying its colours as they move, and the frame rate stays full while it eases', () => {
   assert.match(app, /showLayers\(\);\s*if \(THEMES\[state\.theme\] === 'dynamic'\) stepTheme\(t\);/);
   assert.match(body('stepTheme'), /const art = songArt\(\);\s*if \(coverTheme\.update\(art \? paletteOf\(art\) : null, t\)\) applyTheme\(t\);/);
   assert.match(body('frameGap'), /if \(rec\.mr \|\| cam\.on \|\| takeover\.active \|\| storm\.active \|\| coverTheme\.easing\(t\)\) return 1000 \/ 61;/);
-  assert.match(app, /const coverTheme = createDynamicTheme\(\);/);
-  assert.match(app, /import \{ BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, heatStops, themeVars \} from '\.\/cover-palette\.js';/);
+  assert.match(app, /const NO_COVER = fullPalette\(BLUESCREEN\);[^\n]*\nconst coverTheme = createDynamicTheme\(\{ none: NO_COVER \}\);/);
+  assert.match(app, /import \{ ACCENT_TEXT_VAR, ACCENT_VAR, BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, fullPalette, heatStops, paletteVars, terrainStops \} from '\.\/cover-palette\.js';/);
   // the palette is worked out once a cover, from 48 x 48 pixels
   assert.match(body('paletteOf'), /if \(!coverPalettes\.has\(im\)\)[\s\S]*swatch\.drawImage\(im, 0, 0, 48, 48\);[\s\S]*coverPalette\(swatch\.getImageData\(0, 0, 48, 48\)\.data\)[\s\S]*coverPalettes\.set\(im, palette\);/);
   assert.match(app, /const coverPalettes = new WeakMap\(\);/);
@@ -92,7 +94,9 @@ test('the two new modules are plain functions: no page, no imports, so the web b
   // and the spectrogram takes the dynamic theme's five colours, since no map names them
   assert.match(read('spectro.js'), /draw\(t, eng, \{ theme, themed = false, offset = 0, stops = null \} = \{\}\)/);
   assert.match(read('spectro.js'), /const map = \(stops \|\| MAPS\[theme\] \|\| MAPS\.bluescreen\)\.map\(hex\)/);
-  assert.match(app, /spectro\.draw\(t, eng, \{ theme: THEMES\[state\.theme\], themed: state\.spectroTheme, offset: syncOffset\(\), stops: THEMES\[state\.theme\] === 'dynamic' \? heatStops\(col\.fg\) : null \}\);/);
+  assert.match(app, /spectro\.draw\(t, eng, \{ theme: THEMES\[state\.theme\], themed: state\.spectroTheme, offset: syncOffset\(\), stops: THEMES\[state\.theme\] === 'dynamic' \? themeLook\?\.terrain \|\| heatStops\(col\.fg\) : null \}\);/);
+  // and the scenes, in the theme's colours, its palette (with sceneryTheme off they keep their own: scenery.js)
+  assert.match(app, /scenery\.draw\(t, eng, \{ col, offset: syncOffset\(\), colours: state\.sceneryTheme \? 'theme' : 'own', palette: themeLook\?\.scene \|\| null,/);
 });
 
 test('the news: one line for 0.4.28, at the top, lowercase, under T', () => {

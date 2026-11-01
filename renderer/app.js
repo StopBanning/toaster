@@ -38,9 +38,12 @@ import { createPalette, actionCommands } from './palette.js';
 import { advanceHints, initialHints } from './firstrun.js';
 import { createBugReport, errorSummary } from './bug-report.js';
 import { PRESETS, applyPreset } from './presets.js';
-import { BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, heatStops, themeVars } from './cover-palette.js';
+import { ACCENT_TEXT_VAR, ACCENT_VAR, BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, fullPalette, heatStops, paletteVars, terrainStops } from './cover-palette.js';
 import { embeddedCover } from './embedded-cover.js';
 import { readTags, songOfFile } from './audio-tags.js';
+// (the library's panel and its two modules, library-panel.js, library-source.js and library.js, are not imported here: they are fetched when
+// it is first opened, see makeLibrary below. library-core.js is what the page has of it from the start.)
+import { lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, readStations, noteStation, sceneIsOn, setupOf, nextRepeat, noteRecent, readRecent, readRepeat, readResume, withShuffle, deleteScene as dropScene, renameScene as nameScene, saveScene as addScene } from './library-core.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -173,6 +176,11 @@ const state = {
   playerRec: false, // and in a recording, which leaves it out unless this is on (the help's setting too)
   stopped: null, // the radio or the demo, stopped from the player bar: source is null then, and its play button brings it back
   radio: '', // the radio's address, as last played
+  radioStations: [], // the stations played, the latest first: { url, at } (the library's radio: see library.js)
+  userScenes: [], // the setups saved as scenes: { id, name, settings } in the shape of a preset (the library's scenes)
+  queueRepeat: 'album', queueShuffle: false, // what the library's queue does at an album's end (REPEATS in library-core.js), and in what order
+  recentAlbums: [], // the library's albums played lately, the latest first, by id (its shelf of six)
+  queueResume: null, // where the library's queue was: { path, at } (the track's path in the folder, and the seconds into it), for G after a restart
   seenVersion: '', // the version last opened, to tell what's new after an update
   firstRun: false, // nothing saved yet: this is the first time Toaster has opened
   hintsDone: true, // the first visit's key hints are over (only a first run starts without it)
@@ -186,7 +194,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion'];
+const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'queueRepeat', 'queueShuffle', 'queueResume', 'recentAlbums'];
 function loadSettings() {
   let saved = {};
   try {
@@ -226,6 +234,13 @@ function loadSettings() {
   state.mirror = readMirror(state.mirror); // (an older profile has none: mirrored)
   state.playerBar = readPlayerBar(state.playerBar); // (and none of these two: the bar on, and out of recordings)
   state.playerRec = readPlayerRec(state.playerRec);
+  // (the library's: an older profile has no scenes, and as its stations only the last one played)
+  state.userScenes = readScenes(state.userScenes, { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true });
+  state.radioStations = readStations(state.radioStations, state.radio);
+  state.queueRepeat = readRepeat(state.queueRepeat); // (an older profile has neither: the album repeats, in its order)
+  state.queueShuffle = state.queueShuffle === true;
+  state.queueResume = readResume(state.queueResume);
+  state.recentAlbums = readRecent(state.recentAlbums);
   state.cardBig = state.cardBig === true;
   state.spectroTheme = state.spectroTheme === true;
   state.sceneryTheme = state.sceneryTheme === true;
@@ -288,6 +303,8 @@ function attach(node, source, label) {
   // (the names a file read before it started, if this is that file: see useFile)
   fileTags = source === 'file' && pendingTags?.name === label ? pendingTags.tags : null;
   pendingTags = null;
+  // (and the library's queue, if this is a track picked there: it plays through, so the file doesn't loop)
+  if (source === 'file' && pendingQueue?.name === label) { queue = { ...pendingQueue.q, el: state.el }; state.el.loop = false; pendingQueue = null; }
   node.connect(fast);
   node.connect(mid);
   node.connect(slow);
@@ -398,14 +415,17 @@ async function playElement(source, label, load) {
 async function useFile(file) {
   const cover = fileCover(file).catch(() => null); // (read while it starts to play)
   // its title and artist are read before it starts (a few small reads), so the song is named by them from its first line; the
-  // file's attach takes them, and the next source's lets them go
-  const asked = picking;
-  pendingTags = { name: file.name, tags: await readTags(file).catch(() => null) };
-  if (picking !== asked) return; // (another source was picked meanwhile)
+  // file's attach takes them, and the next source's lets them go. It claims the player first (picking), so that a newer pick, of
+  // a file or anything else, which comes in while they are read wins over it, whichever of the two finishes reading first.
+  const asked = ++picking;
+  const tags = await readTags(file).catch(() => null);
+  if (picking !== asked) return; // (a newer pick came in meanwhile)
+  pendingTags = { name: file.name, tags };
   let mine = null;
   await playElement('file', file.name, (el) => { mine = el; el.src = URL.createObjectURL(file); el.loop = true; });
   const art = await cover;
   if (art && mine && state.el === mine) fileArt = art; // (unless another source took over meanwhile)
+  return mine;
 }
 
 // A file's own title and artist, from its tag (audio-tags.js): what the song it plays is called (see currentSong); read in useFile,
@@ -437,6 +457,73 @@ function stopSource() {
   $('status').textContent = restingStatus();
 }
 
+// The library's queue (G): the album from a track on, which plays through and then repeats (library.js has its steps). Each track is
+// read from the library (main, or the folder picked in a browser) and played as a file, so its cover reaches the theme and the card as
+// a picked file's does. The queue is live while the file it started is the source: any other pick takes the player over from it.
+let queue = null, pendingQueue = null, queuing = 0;
+const liveQueue = () => (queue && state.source === 'file' && state.el && state.el === queue.el ? queue : null);
+async function playQueue(q, at = 0) {
+  const ticket = ++queuing;
+  const file = await librarySrc.file(q.tracks[q.index]);
+  if (ticket !== queuing) return; // (another track was picked while this one was read)
+  const mine = pendingQueue = { name: file.name, q }; // (taken by that file's attach, so the bar's buttons and the song's names hold from its first moment)
+  const el = await useFile(file);
+  if (pendingQueue === mine) pendingQueue = null; // (only its own: a newer track's may be waiting)
+  if (ticket !== queuing || !el || state.el !== el) return;
+  if (liveQueue()?.el !== el) { queue = { ...q, el }; el.loop = false; } // (an older track's attach can have been first to the slot: then it is made so here)
+  if (state.recentAlbums[0] !== q.id) { state.recentAlbums = noteRecent(state.recentAlbums, q.id); saveSettings(); } // (the shelf of albums played lately)
+  el.onended = () => { if (liveQueue()?.el === el) playQueue(queueNext(queue, queueSteps(true))).catch(showError); };
+  if (at > 0 && at < (el.duration || Infinity) - 1) { el.currentTime = at; freshStart(false); } // (carried on from where it was)
+}
+// how the queue goes on: the library's repeat (Shift+R in it), and for repeat all the album after this one in the library's order
+const albumAfter = (id) => { const albums = libraryPanel.state?.albums || [], i = albums.findIndex((a) => a.id === id); return i < 0 || albums.length < 2 ? null : albums[(i + 1) % albums.length]; };
+const queueSteps = (ended) => ({ repeat: state.queueRepeat, ended, nextAlbum: albumAfter });
+const nextTrack = () => { const q = liveQueue(); if (q) playQueue(queueNext(q, queueSteps(false))).catch(showError); };
+// Where the queue is, kept a few times a minute while it plays and when the window goes, so G after a restart opens there and Enter
+// carries on from the same second (a file never starts by itself)
+let resumeAt = 0;
+function noteResume(t, now = false) {
+  const q = liveQueue();
+  if (!q || (!now && t - resumeAt < 5)) return;
+  resumeAt = t;
+  state.queueResume = { path: q.tracks[q.index].path, at: Math.round(state.el.currentTime * 10) / 10 };
+  saveSettings();
+}
+addEventListener('pagehide', () => noteResume(0, true));
+// Repeat and shuffle (Shift+R and Shift+S in the library, its two buttons, Ctrl+K): kept with the settings; shuffle reorders a queue that
+// is playing at once, from the track it is on
+const REPEAT_SAID = { album: 'repeat: the album', all: 'repeat: on through your music', one: 'repeat: this track' };
+function setQueueRepeat(mode) { state.queueRepeat = readRepeat(mode); saveSettings(); libraryPanel.update(); return REPEAT_SAID[state.queueRepeat]; }
+function setQueueShuffle(on) {
+  state.queueShuffle = !!on;
+  const q = liveQueue();
+  if (q) queue = { ...withShuffle(q, state.queueShuffle), el: q.el };
+  saveSettings();
+  libraryPanel.update();
+  return state.queueShuffle ? 'shuffle on' : 'shuffle off';
+}
+// previous: this track again once it's past its first seconds (or there is none before it), else the one before
+function previousTrack() {
+  const q = liveQueue();
+  if (!q) return;
+  const step = queuePrevious(q, state.el.currentTime);
+  if (step.restart) { state.el.currentTime = 0; freshStart(true); } else playQueue(step.queue).catch(showError);
+}
+// The library's stop square: the radio and the demo stop as the player bar's stop does; a file (and its queue) is let go
+function stopPlayback() {
+  if (state.source === 'radio' || state.source === 'demo') { stopSource(); return; }
+  if (state.source !== 'file') return;
+  picking++; // (a pick still opening gives up)
+  queue = null;
+  queuing++;
+  detach();
+  state.source = null;
+  state.label = '';
+  document.body.classList.remove('live');
+  $('status').classList.remove('on');
+  $('status').textContent = restingStatus();
+}
+
 // The radio: the stream at an address you paste in (Toaster comes with no stations). It's read
 // cross-origin, the only way the analysis hears another server's sound (see docs/how-it-works.md).
 async function useRadio(address) {
@@ -450,6 +537,7 @@ async function useRadio(address) {
   });
   if (state.source !== 'radio') return; // (another pick took over before it played)
   state.radio = url.href; // (kept for next time once it plays)
+  state.radioStations = noteStation(state.radioStations, url.href); // (and in the library's radio, the latest first)
   saveSettings();
   window.nc?.radioTitles?.(url.href); // (its songs' titles, in the app: see radioTitle)
 }
@@ -623,6 +711,8 @@ function currentSong() {
   if (state.source === 'system') return state.winSong;
   if (state.source === 'radio') return state.radioSong;
   if (state.source === 'demo') return { title: 'demo_beat', artist: 'Toaster' };
+  const q = liveQueue();
+  if (q) { const t = q.tracks[q.index]; return { title: t.title, artist: t.artist || 'File' }; } // (the library's names, from the tags and the folders)
   if (state.source === 'file') return songOfFile(fileTags, state.label);
   // (an input, or the radio without a title: none, which also lets the engine drop a beat that's
   // gone, as when a station goes from a song to talking: see song() in engine.js)
@@ -768,7 +858,9 @@ const swatch = document.createElement('canvas').getContext('2d', { willReadFrequ
 swatch.canvas.width = swatch.canvas.height = 48;
 swatch.imageSmoothingQuality = 'high';
 const coverPalettes = new WeakMap(); // a cover's image -> its palette (null: nothing in it to take)
-const coverTheme = createDynamicTheme();
+const NO_COVER = fullPalette(BLUESCREEN); // (what the dynamic theme shows with no cover: bluescreen's look, its four colours)
+const coverTheme = createDynamicTheme({ none: NO_COVER });
+let themeLook = null; // the dynamic theme's colours for the scenes and the spectrogram in its colours (null: a fixed theme's)
 let dynamicShown = false; // the dynamic theme is what's on screen (so applying it again is a step of the ease)
 let titleBarAt = -Infinity; // when the Windows title bar last took the colours (see applyTheme)
 function paletteOf(im) {
@@ -797,13 +889,16 @@ function applyTheme(now = nowSec()) {
   // The dynamic theme's colours are set on the page itself, over the stylesheet's (which, for a theme it has no
   // word on, are bluescreen's: what the dynamic one shows with no cover); the others have the stylesheet's alone.
   // Switched to, it takes the cover's colours at once, as the other themes switch.
-  if (dynamic && !dynamicShown) { const art = songArt(); coverTheme.jump((art && paletteOf(art)) || BLUESCREEN); }
+  if (dynamic && !dynamicShown) { const art = songArt(); coverTheme.jump((art && paletteOf(art)) || NO_COVER); }
   dynamicShown = dynamic;
-  const vars = dynamic ? themeVars(coverTheme.palette(now)) : null;
-  for (const name of THEME_VARS) { if (vars) root.style.setProperty(name, vars[name]); else root.style.removeProperty(name); }
+  const pal = dynamic ? coverTheme.palette(now) : null, vars = pal ? paletteVars(pal) : null;
+  for (const name of [...THEME_VARS, ACCENT_VAR, ACCENT_TEXT_VAR]) { if (vars) root.style.setProperty(name, vars[name]); else root.style.removeProperty(name); }
+  // (the scenes in the theme's colours take the cover's ground, text (their lights) and accent; the spectrogram in them
+  // climbs through all of them: see cover-palette.js)
+  themeLook = pal ? { scene: { ground: pal.ground, lights: pal.fg, accent: pal.accent }, terrain: terrainStops(pal) } : null;
   const cs = getComputedStyle(root);
   const get = (name) => cs.getPropertyValue(name).trim();
-  col = { bg: rgbOf(get('--bg')), fg: rgbOf(get('--fg')), ink: rgbOf(get('--ink')) };
+  col = { bg: rgbOf(get('--bg')), fg: rgbOf(get('--fg')), ink: rgbOf(get('--ink')), accent: rgbOf(get('--accent')) };
   // (Windows' title bar too: while the dynamic theme's colours ease, a few times a second rather than every frame,
   // as each is a trip to main and a repaint of the window's frame; the ease's last colours always go)
   if (!onMac() && (!dynamic || !coverTheme.easing(now) || now - titleBarAt >= 0.15)) {
@@ -1460,6 +1555,9 @@ const playerBar = createPlayerBar({
     start: (kind) => (kind === 'radio' ? useRadio(state.radio) : useDemo()).catch(showError),
     fail: showError,
     note: (text) => showNotice(text),
+    // the queue's buttons exist only while a library album is playing (a file on its own has no neighbours)
+    get next() { return liveQueue() ? nextTrack : undefined; },
+    get previous() { return liveQueue() ? previousTrack : undefined; },
   },
 });
 // on screen just now: on, and not put away by H, the mini player or a recording (so it's worth asking Music where it is)
@@ -1470,6 +1568,7 @@ function updatePlayer(t) {
     t, active: playerShowing(), source: state.source, stopped: state.stopped, label: state.label, song: currentSong(),
     app: state.winSong?.app || '', session: !!state.winSong, systemPlaying: !!state.winPlaying, el: state.el,
     tempo: eng.tempo, key: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', at: eng.placeAt(t),
+    near: liveQueue() ? queueLine(liveQueue()) : null,
   });
 }
 
@@ -1733,7 +1832,7 @@ function showLayers() {
 // second, and after 30 seconds 10 times, if the window isn't in front (it measured 16% of a core
 // drawing a still screen at 60). The next sound brings it straight back. Never while recording,
 // with the camera on, during a drop or while the dynamic theme's colours are easing (a song changed).
-let poolAt = 0, rollAt = 0, footerAt = 0, lastFrame = 0, windowShown = true;
+let poolAt = 0, rollAt = 0, footerAt = 0, lastFrame = 0, windowShown = true, libraryAt = 0;
 let worldsWarmScheduled = false;
 let trackShown = ''; // the tracking trouble last told about (see draw)
 window.nc?.onWindowShown((shown) => { windowShown = shown; });
@@ -1769,8 +1868,8 @@ function draw(now) {
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'spaghetti') spaghetti.draw(t, eng, { col, calm: state.calm, offset: syncOffset(), picture: songArt(), endless: state.spaghettiKind === 'endless' });
-  else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset(), stops: THEMES[state.theme] === 'dynamic' ? heatStops(col.fg) : null });
-  else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
+  else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset(), stops: THEMES[state.theme] === 'dynamic' ? themeLook?.terrain || heatStops(col.fg) : null });
+  else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', palette: themeLook?.scene || null, strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: songArt() });
   // (a background still compiling, the window black: the field of glyphs over it, see wait.js)
   wait.draw(t, !!{ worlds, chrome, spaghetti, spectrogram: spectro, warp, spectrum: field, rain: field, scope: field }[mode]?.waiting, col);
@@ -1821,6 +1920,8 @@ function draw(now) {
   storm.draw(t, eng, { layers: STORM_LAYERS, bg: `rgb(${col.bg})`, offset: syncOffset(), calm: state.calm });
   takeover.draw(t, grid, cam.frame, eng.bar, state.calm);
   if (t - footerAt > 0.125) { footerAt = t; renderFooter(); updatePlayer(t); }
+  noteResume(t); // (where the library's queue is: kept every five seconds while it plays)
+  if (libraryPanel.isOpen && t - libraryAt > 0.25) { libraryAt = t; libraryPanel.update(); } // (what's playing, and the clock)
 }
 
 // ---------------------------------------------------------------- controls
@@ -1849,17 +1950,21 @@ const presetSetters = {
   blockLook: (look) => { state.blockLook = look; setBlocks(true); },
   gameScreens: (screen) => { state.gameScreens = screen; setGameScreens(screen); saveSettings(); },
   theme: (name) => { state.theme = THEMES.indexOf(name); applyTheme(); saveSettings(); },
-  codeHidden: setCodeHidden,
+  codeHidden: (v) => (v === 'beat' ? setCodeHidden(false, true) : setCodeHidden(v)),
   vertical: async (on) => state.vertical === on || (await toggleLayout()),
 };
 let presetQueue = Promise.resolve();
 function choosePreset(id) {
   const preset = PRESETS.find((p) => p.id === id);
   if (!preset) return Promise.reject(new Error('Unknown preset'));
+  return runPreset(preset, 'preset');
+}
+// (a preset, or a scene of yours, which is the same shape: what it says by `word` once it's on)
+function runPreset(preset, word) {
   const run = async () => {
     // (with just the beat hidden, a preset's codeHidden: false still means all of the code)
     const current = { ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme], codeHidden: state.beatHidden ? 'beat' : state.codeHidden };
-    if (await applyPreset(preset, current, presetSetters)) flashStatus('preset: ' + preset.name.toLowerCase());
+    if (await applyPreset(preset, current, presetSetters)) flashStatus(`${word}: ${preset.name.toLowerCase()}`);
   };
   presetQueue = presetQueue.then(run, run);
   return presetQueue;
@@ -1902,7 +2007,7 @@ addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closes
 // the koi pond: a click on the water (not on a button, a menu or a panel) drops food there, and the
 // koi nearest come to it
 addEventListener('click', (e) => {
-  if (VISUALS[state.visual] === 'scenery' && sceneShown() === 'koi' && !e.target.closest('button, a, input, select, dialog, [role="menu"], .panel, #menu, #bar, footer, #player, #alerts, #notice, #err, #card')) scenery.feed(e.clientX, e.clientY);
+  if (VISUALS[state.visual] === 'scenery' && sceneShown() === 'koi' && !e.target.closest('button, a, input, select, dialog, [role="menu"], .panel, #menu, #bar, footer, #player, #alerts, #notice, #err, #card, #library')) scenery.feed(e.clientX, e.clientY);
 });
 $('b-blocks').onclick = () => nextBlocks();
 $('b-cam').onclick = () => toggleCam();
@@ -1925,6 +2030,7 @@ $('rename-form').addEventListener('submit', () => {
 // (only the ones that differ from these). Esc, ? and F11 stay as they are.
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
+  { id: 'library', key: 'g', run: () => toggleLibrary() },
   { id: 'visual', key: 'v', run: () => { setVisual(VISUALS.indexOf(V_ROUND[(V_ROUND.indexOf(VISUALS[state.visual]) + 1) % V_ROUND.length])); flashStatus('background: ' + visName(VISUALS[state.visual])); crtStatic(); crtOsd(crtChannel()); } },
   { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spaghetti' ? nextSpaghetti() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the chrome's collage, the spaghetti's noodles, the spectrogram's colours or the handheld's screens`)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
@@ -1958,7 +2064,7 @@ const ACTIONS = [
   { id: 'full', key: 'f', run: () => window.nc?.toggleFullscreen() },
 ];
 // the footer's list of keys, in this order: [actions..., what it says]
-const FOOTER = [['source', 'source'], ['visual', 'background'], ['strength', 'next'], ['blocks', 'code look'], ['theme', 'theme'], ['code', 'hide code']];
+const FOOTER = [['source', 'source'], ['library', 'library'], ['visual', 'background'], ['strength', 'next'], ['blocks', 'code look'], ['theme', 'theme'], ['code', 'hide code']];
 const RESERVED = new Set(['escape', '?', '/', 'f11', 'tab', 'enter', 'shift', 'control', 'alt', 'meta', 'capslock', 'contextmenu']);
 const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
@@ -2017,6 +2123,14 @@ const paletteEntries = () => [
     run: () => { setPlayerRec(on); flashStatus('player bar: ' + name); },
   })),
   ...PRESETS.map((p) => ({ id: 'preset:' + p.id, name: 'preset: ' + p.name.toLowerCase(), aliases: ['setup'], run: () => choosePreset(p.id) })),
+  // the library by name (its key, G, is an action above): its folder, a scan again, a setup saved as a scene, and the scenes saved
+  { id: 'library:choose', name: 'library: choose a folder', aliases: ['music folder', 'folder', 'open folder'], run: () => { libraryPanel.open('music'); return libraryPanel.choose(); } },
+  { id: 'library:scan', name: 'library: scan again', aliases: ['rescan', 'refresh music'], run: () => scanLibraryAgain() },
+  { id: 'library:repeat', name: 'library: repeat', aliases: ['repeat', 'repeat all', 'repeat one', 'loop'], run: () => flashStatus(setQueueRepeat(nextRepeat(state.queueRepeat))) },
+  { id: 'library:shuffle', name: 'library: shuffle', aliases: ['shuffle', 'random order'], run: () => flashStatus(setQueueShuffle(!state.queueShuffle)) },
+  { id: 'library:find', name: 'library: find', aliases: ['find music', 'search music', 'find a song', 'search'], run: () => { if (WIDGET || state.mini) { toggleLibrary(); return; } closeMenu(); return libraryPanel.find(); } },
+  { id: 'scene:save', name: 'scene: save this setup', aliases: ['save scene', 'save setup'], run: () => { saveSetupAsScene(); libraryPanel.update(); } },
+  ...state.userScenes.map((s) => ({ id: 'user-scene:' + s.id, name: 'scene: ' + s.name.toLowerCase(), aliases: ['setup'], run: () => runPreset(s, 'scene') })),
   { id: 'report-bug', name: 'report a bug', aliases: ['bug', 'issue', 'problem'], run: () => bugReport.show() },
 ];
 const palette = createPalette({
@@ -2037,7 +2151,7 @@ hintPill.setAttribute('aria-live', 'polite');
 document.body.append(hintPill);
 function updateHints(event = {}) {
   const blocked = !!rec.mr || rec.busy || document.body.classList.contains('clean') || state.vertical || state.mini || WIDGET
-    || !!document.querySelector('dialog[open]') || !$('menu').hidden || !visMenu.hidden || !$('notice').hidden;
+    || !!document.querySelector('dialog[open]') || !$('menu').hidden || !visMenu.hidden || !$('notice').hidden || libraryPanel.isOpen;
   const result = advanceHints(hintState, {
     now: nowSec(), hasCode: LINE_IDS.some((id) => !!view.lines[id].shown), enabled: !state.hintsDone, blocked,
     touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
@@ -2134,11 +2248,83 @@ const onoff = (v) => ({ text: v ? 'on' : 'off', on: !!v });
 const desktopApp = () => !!window.nc && window.nc.platform !== 'web';
 const standalone = () => !!navigator.standalone || matchMedia('(display-mode: standalone)').matches;
 const canRecord = () => !!window.nc?.recSource && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices && (desktopApp() || !!navigator.mediaDevices.getDisplayMedia);
+// The library (G; renderer/library-panel.js): its tracks come from the folder you chose (main keeps it; in a browser, the one you pick);
+// what plays and what it's called, the stations and the scenes you save are the page's, and the panel asks for each through `host`.
+// The panel is made, with its modules, when it is first wanted (G, its entries in the footer, the help, Ctrl+K and the touch panel all
+// come to toggleLibrary and libraryPanel below, which is library-core.js's handle for it): the page starts without them.
+let librarySrc = null; // (where its tracks come from: made with the panel, which is the only thing that starts a queue)
+const currentSetup = () => setupOf({ ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme], codeHidden: state.beatHidden ? 'beat' : state.codeHidden });
+function saveSetupAsScene() {
+  state.userScenes = addScene(state.userScenes, currentSetup());
+  const scene = state.userScenes[state.userScenes.length - 1];
+  saveSettings();
+  flashStatus('scene saved: ' + scene.name);
+  return scene;
+}
+// what's playing, for the panel's strip and its marks: the library track (by its path), the radio's station, the song's names
+function playingNow() {
+  const q = liveQueue(), song = currentSong(), track = q?.tracks[q.index];
+  const el = state.source === 'file' ? state.el : null, ms = track?.ms || (el && Number.isFinite(el.duration) ? el.duration * 1000 : 0);
+  const station = state.source === 'radio' && !song; // (a station that sends no titles: it is the station that is playing)
+  return {
+    id: `${state.source}|${song?.title}|${song?.artist}|${track?.path || ''}`, track: track?.path || null, radio: state.source === 'radio' ? state.radio : '',
+    title: station ? state.label : song?.title || '', artist: station ? 'radio' : song && song.artist !== 'File' ? song.artist : '', ms: Math.round(ms), stoppable: ['file', 'radio', 'demo'].includes(state.source),
+  };
+}
+// The three modules are asked for at once (the panel would only find library.js once it had arrived), and the panel is made from them.
+async function makeLibrary() {
+  const [{ createLibraryPanel }, { librarySource }] = await Promise.all([import('./library-panel.js'), import('./library-source.js'), import('./library.js')]);
+  librarySrc = librarySource(window);
+  return createLibraryPanel({
+    document, window, root: $('library'), source: librarySrc,
+    host: {
+      key: () => K('library'), titleBar: desktopApp, live: () => !!state.node,
+      blocked: () => !$('menu').hidden || !!document.querySelector('dialog[open]'),
+      playing: playingNow,
+      // (index null: the album, from its first track, or from any with shuffle on)
+      play: (album, index, at = 0) => playQueue(queueOf(album, index ?? (state.queueShuffle ? Math.floor(Math.random() * album.tracks.length) : 0), { shuffle: state.queueShuffle }), at).catch(showError),
+      resume: () => state.queueResume, recent: () => state.recentAlbums,
+      repeat: () => state.queueRepeat, setRepeat: setQueueRepeat, shuffle: () => state.queueShuffle, setShuffle: setQueueShuffle,
+      stop: stopPlayback,
+      stations: () => state.radioStations,
+      playStation: (url) => useRadio(url).catch(showError),
+      addStation: (text) => useRadio(text),
+      scenes: () => ({ presets: PRESETS, user: state.userScenes }),
+      sceneOn: (scene) => sceneIsOn(scene, currentSetup()),
+      applyScene: (scene) => runPreset(scene, 'scene').catch(showError),
+      saveScene: saveSetupAsScene,
+      renameScene: (id, name) => { state.userScenes = nameScene(state.userScenes, id, name); saveSettings(); },
+      deleteScene: (id) => { state.userScenes = dropScene(state.userScenes, id); saveSettings(); flashStatus('scene deleted'); },
+      say: flashStatus, fail: showError,
+    },
+  });
+}
+// (a page that can't fetch them says so at each ask; a page keeps a module that failed to load, so it takes a new page to get it)
+const libraryPanel = lazyLibrary({
+  load: makeLibrary,
+  fail: (err) => showError(new Error(`The library could not be loaded (${err?.message || err}). ${desktopApp() ? 'Restart Toaster' : 'Reload the page'} and press ${K('library')} again.`)),
+});
+// G: the library over the whole window (the mini player and the desktop handheld are too small for it)
+function toggleLibrary() {
+  if (WIDGET || state.mini) { flashStatus(`the library needs the full window (${K('mini')} brings it back)`); return; }
+  if (!libraryPanel.isOpen) closeMenu(); // (the source menu, which the web version starts with, would sit over it)
+  libraryPanel.toggle();
+}
+// Ctrl+K's "library: scan again": in the background, over whatever is showing, and what it found said at the end
+async function scanLibraryAgain() {
+  flashStatus('scanning the library…');
+  await libraryPanel.scan();
+  const l = libraryPanel.state;
+  if (!l) return; // (it could not be loaded, which was said)
+  flashStatus(l.error || `library: ${l.tracks} tracks in ${l.albums.length} albums`);
+}
+
 const controls = createControls({
   document, window, query: matchMedia('(hover: none)'), actions: ACTIONS, K, fail: (err) => showError(err),
   dock: new URLSearchParams(location.search).get('dock') || 'auto',
   now: {
     source: () => state.label || '',
+    library: () => onoff(libraryPanel.isOpen),
     visual: () => VISUALS[state.visual],
     strength: () => {
       const v = VISUALS[state.visual];
@@ -2289,7 +2475,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource };
+window.__nc = { get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {

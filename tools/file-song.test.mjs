@@ -68,9 +68,9 @@ test('the player bar shows a real artist beside the title, and still hides the "
 
 test('the page reads them when a file is picked, before it starts, and only that file\'s source has them', () => {
   assert.match(app, /import \{ readTags, songOfFile \} from '\.\/audio-tags\.js';/);
-  // read in useFile before the file plays, and not if another source was picked meanwhile
+  // read in useFile before the file plays (the pick claims the player first, and a newer one that comes in meanwhile wins)
   const use = body('useFile');
-  assert.match(use, /const asked = picking;\s*pendingTags = \{ name: file\.name, tags: await readTags\(file\)\.catch\(\(\) => null\) \};\s*if \(picking !== asked\) return;/);
+  assert.match(use, /const asked = \+\+picking;\s*const tags = await readTags\(file\)\.catch\(\(\) => null\);\s*if \(picking !== asked\) return;[^\n]*\n\s*pendingTags = \{ name: file\.name, tags \};/);
   assert.ok(use.indexOf('pendingTags =') < use.indexOf('await playElement('), 'before it plays');
   // taken by the attach of that file (by its name), and let go with any other source or with the file
   assert.match(body('attach'), /fileTags = source === 'file' && pendingTags\?\.name === label \? pendingTags\.tags : null;\s*pendingTags = null;/);

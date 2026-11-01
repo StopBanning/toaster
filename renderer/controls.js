@@ -38,6 +38,7 @@ export const CONTROLS = [
   ['full', 'window', 'fullscreen', ''],
   ['machine', 'window', 'machine readout', ''],
   ['source', 'setup', 'audio source', 'system, demo, file, input'],
+  ['library', 'setup', 'library', 'your music, the radio, scenes'],
   ['name', 'setup', 'name the song', 'if it got the title wrong'],
   ['later', 'setup', 'blocks later', 'if they land early'],
   ['earlier', 'setup', 'blocks earlier', 'if they land late'],

@@ -58,6 +58,16 @@ contextBridge.exposeInMainWorld('nc', {
   playerCommand: (who, action) => ipcRenderer.invoke('player:command', who, action),
   playerPosition: (who) => ipcRenderer.invoke('player:position', who),
   playerSent: () => ipcRenderer.invoke('player:sent'),
+  // The library (G): the folder your music is in as main has it ({ path, label, chosen } or null), choosing another (the system's
+  // dialog; the same, or null if it was cancelled), what the last scan kept at once and a scan ({ folder, tracks, covers }; fn({ seen,
+  // files, read, reading }) as it goes), and the bytes of one audio file in that folder ({ name, bytes }). main refuses a read of
+  // anything that isn't audio inside it; the page never names a folder.
+  libraryFolder: () => ipcRenderer.invoke('library:folder'),
+  libraryChoose: () => ipcRenderer.invoke('library:choose'),
+  libraryCached: () => ipcRenderer.invoke('library:cached'),
+  libraryScan: () => ipcRenderer.invoke('library:scan'),
+  libraryRead: (rel) => ipcRenderer.invoke('library:read', rel),
+  onLibraryProgress: (fn) => ipcRenderer.on('library:progress', (_e, p) => fn(p)),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),
   handLogAdd: (text) => ipcRenderer.invoke('handlog:add', text),
