@@ -31,6 +31,12 @@ jobs:
         run: |
           "BUILD_STARTED=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
       - run: npm ci
+      - name: Electron's own binary
+        # (since Electron 44 npm ci doesn't fetch it: the first program to ask downloads it, and the tests that start Electron run
+        # at once, so each would start the same download; fetched here, once, before them)
+        run: |
+          node node_modules/electron/install.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install test-only Strudel
         run: |
           $scratch = Join-Path $env:RUNNER_TEMP 'strudel-test-mods'
