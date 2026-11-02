@@ -4,7 +4,8 @@
 //   cached()        what was kept of the last scan at once (desktop only), as { folder, tracks, covers } or null
 //   scan(progress)  { folder, tracks, covers }: a track is { path, title, artist, albumArtist, album, track, disc, compilation, ms, cover }
 //                   (only the names the file has), covers are each cover's small picture as base64 JPEG by id; progress({ seen, files, read })
-//   choose()        the system's folder dialog or the browser's picker: the folder's label, or null if it was cancelled
+//   choose()        the system's folder dialog or the browser's picker: the folder's label, or null if it was cancelled; a folder picked
+//                   stops the scan that is running (main does it in the app, a browser's source itself): that scan fails, and says it stopped
 //   file(track)     the track as a File, for the file source to play
 //   folder          the folder's label ('' before there is one); kind: 'desktop' or 'web'
 import { embeddedCover } from './embedded-cover.js';
@@ -60,15 +61,19 @@ const recordOf = (path, tags, cover) => {
 };
 
 // The audio files under a directory handle, read for their names and covers, a few at a time with the page's frames let through
-// between (nothing is kept: a browser has no cache to put it in). thumbnail(bytes) is the page's own by default.
-export async function scanHandle(root, { progress = () => {}, thumbnail, hash, frame = () => new Promise((r) => setTimeout(r, 0)), limit = 200000 } = {}) {
+// between (nothing is kept: a browser has no cache to put it in). thumbnail(bytes) is the page's own by default. A signal that has
+// aborted stops it at the next file, and it gives nothing: it fails, saying the scan stopped. A folder it can't read is left out, as
+// main's walk leaves one out, and the rest is scanned.
+export async function scanHandle(root, { progress = () => {}, thumbnail, hash, frame = () => new Promise((r) => setTimeout(r, 0)), limit = 200000, signal } = {}) {
   const tracks = [], covers = {}, handles = new Map(), albumCover = new Map();
+  // (Date.now(): the scan's pace, so the page can breathe between files)
   let seen = 0, lastFrame = Date.now();
   async function walk(dir, prefix, depth) {
     const entries = [];
-    for await (const [name, handle] of dir.entries()) entries.push([name, handle]);
+    try { for await (const [name, handle] of dir.entries()) entries.push([name, handle]); } catch { if (!prefix) throw new Error('could not read the folder'); return; } // (the folder picked itself has to be read)
     entries.sort((a, b) => (a[0] < b[0] ? -1 : 1));
     for (const [name, handle] of entries) {
+      if (signal?.aborted) throw new Error('the scan stopped');
       if (name.startsWith('.') || tracks.length >= limit) continue;
       if (handle.kind === 'directory') { if (depth < 16) await walk(handle, `${prefix}${name}/`, depth + 1); continue; }
       if (handle.kind !== 'file' || !isAudioName(name)) continue;
@@ -94,12 +99,13 @@ export async function scanHandle(root, { progress = () => {}, thumbnail, hash, f
     }
   }
   await walk(root, '', 0);
+  if (signal?.aborted) throw new Error('the scan stopped');
   progress({ seen, files: seen, read: seen });
   return { tracks, covers, handles };
 }
 
 export function webSource(win) {
-  let handle = null, handles = new Map(), result = null;
+  let handle = null, handles = new Map(), result = null, reading = null; // (reading: the last scan's stop, which does nothing to one that has ended)
   const hash = async (bytes) => [...new Uint8Array(await win.crypto.subtle.digest('SHA-1', bytes))].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
   const source = {
     kind: 'web', folder: '', get supported() { return typeof win.showDirectoryPicker === 'function'; }, // (asked when it matters: a picker can turn up after the page loads)
@@ -107,14 +113,18 @@ export function webSource(win) {
     async cached() { return result; },
     async scan(onProgress) {
       if (!handle) throw new Error('no folder to scan');
-      const r = await scanHandle(handle, { progress: onProgress, thumbnail: (b) => thumbnailOf(b, win), hash, frame: () => new Promise((resolve) => win.requestAnimationFrame(() => resolve())) });
+      const root = handle, name = root.name, stop = reading = new AbortController(); // (the folder and its name are taken now: a folder picked while this one is read changes `handle`)
+      // (a frame, or a tenth of a second where there are none: a tab in the background draws none, and the scan would wait till it's back)
+      const frame = () => new Promise((resolve) => { win.requestAnimationFrame(() => resolve()); setTimeout(resolve, 100); });
+      const r = await scanHandle(root, { progress: onProgress, thumbnail: (b) => thumbnailOf(b, win), hash, frame, signal: stop.signal });
       handles = r.handles;
-      result = { folder: handle.name, tracks: r.tracks, covers: r.covers };
+      result = { folder: name, tracks: r.tracks, covers: r.covers };
       return result;
     },
     async choose() {
       const picked = await win.showDirectoryPicker({ id: 'toaster-music', mode: 'read', startIn: 'music' }).catch((err) => { if (err?.name === 'AbortError') return null; throw err; });
       if (!picked) return null;
+      reading?.abort(); // (the scan of the folder before this one stops at its next file, with nothing to show)
       handle = picked;
       source.folder = picked.name;
       result = null;

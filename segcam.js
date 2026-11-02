@@ -16,6 +16,7 @@
 // matches the text around it, under a title bar in the ID card's panel colour: you're only there
 // in code.
 import { RAMP } from './visuals.js';
+import { clock } from './clock.js';
 const PARTS = [
   { title: 'eye', ends: [33, 133], mid: [468], zoom: 1.9, size: 1.3 },
   { title: 'eye', ends: [362, 263], mid: [473], zoom: 1.9, size: 1.3 },
@@ -121,7 +122,8 @@ export function createSegcam(canvas) {
   // (Kept inside the picture: one reaching past its edge would show a strip of whatever its
   // canvas held before.)
   function open(cx, cy, frame, t, rect, crop, ascii, col) {
-    const [a, b] = SHAPES[Math.floor(Math.random() * SHAPES.length)], side = CELL * (1.6 + Math.random() * 2.4);
+    const dice = clock.rng('segcam-window', Math.round(t * 1000)); // (this window's dice: the time it opens)
+    const [a, b] = SHAPES[Math.floor(dice() * SHAPES.length)], side = CELL * (1.6 + dice() * 2.4);
     const sw = Math.min(frame.w, (side * a) / Math.max(a, b)), sh = Math.min(frame.h, (side * b) / Math.max(a, b)), k = rect.w / frame.w;
     cx = Math.min(frame.w - sw / 2, Math.max(sw / 2, cx));
     cy = Math.min(frame.h - sh / 2, Math.max(sh / 2, cy));
@@ -137,7 +139,7 @@ export function createSegcam(canvas) {
       ix.setTransform(dpr, 0, 0, dpr, 0, 0);
       asText(ix, w, h, frame, cx - sw / 2, cy - sh / 2, sw, sh, col.fg, col.bg, cw);
     } else if (!crop({ x: (cx - sw / 2) / frame.w, y: (cy - sh / 2) / frame.h, w: sw / frame.w, h: sh / frame.h }, ix, img.width, img.height)) { spare.push(img); return; }
-    wins.push({ x: rect.x + (cx - sw / 2) * k, y: rect.y + (cy - sh / 2) * k, w, h, cx, cy, born: t, life: 0.7 + Math.random() * 0.9, img, ascii, title: `motion#${1000 + Math.floor(Math.random() * 9000)}` });
+    wins.push({ x: rect.x + (cx - sw / 2) * k, y: rect.y + (cy - sh / 2) * k, w, h, cx, cy, born: t, life: 0.7 + dice() * 0.9, img, ascii, title: `motion#${1000 + Math.floor(dice() * 9000)}` });
     if (wins.length > MAX) spare.push(wins.shift().img);
   }
 

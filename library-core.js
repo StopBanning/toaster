@@ -1,8 +1,8 @@
 // What the page has of the library before its panel is opened. The panel (library-panel.js, with library.js's albums, rows and cursor and
 // library-source.js's tracks) is about 50 KB that are fetched the first time anything asks for it (G, its place in the footer, the help,
 // Ctrl+K or the touch panel), not with the page: a visit that never opens it doesn't pay for it. This file is what has to be there from
-// the start, so it is small: the queue that the player bar's next and previous and its line of what is near go by, the scenes you saved
-// and the stations you played (kept with the settings; Ctrl+K and the radio use them with no panel), and the handle that fetches the
+// the start, so it is small: the queue that the player bar's next and previous and its line of what is near go by, the scenes you saved,
+// the stations you played and the Spotify links you pasted (kept with the settings; Ctrl+K and the radio use them with no panel), and the handle that fetches the
 // panel when it is first wanted. library.js has all of these too (it re-exports this file), so tools/library.test.mjs runs them from
 // there. No page in it.
 import { PRESETS } from './presets.js';
@@ -53,6 +53,12 @@ export function queuePrevious(q, seconds = 0, restartAfter = 3) {
   const place = placeOf(q);
   return seconds > restartAfter || place === 0 ? { restart: true, queue: q } : { restart: false, queue: { ...q, index: trackAt(q, place - 1) } };
 }
+// Skip: a track that could not be read or played is left out, and the queue goes on to the next as the next button does (so repeat one does
+// not keep it on the track that failed). failed is how many tracks in a row have failed, this one counted: once it is every track of the
+// album there is nothing to play, and the answer is null, so an album that can't be played is tried through once and not for ever.
+export function queueSkip(q, failed, steps = {}) {
+  return failed >= q.tracks.length ? null : queueNext(q, { ...steps, ended: false });
+}
 const two = (n) => String(n).padStart(2, '0');
 export const trackLabel = (q, i) => `${two(i + 1)} ${q.tracks[i].title}`;
 // Golden's line of what's near: the track before, this one and the next two, in the order the queue plays ("01 Plague" , ▶ "02 Kerosene" ,
@@ -96,6 +102,7 @@ export function defaultSceneName(scenes) {
   for (let n = 1; ; n++) if (!taken.has(`my scene ${n}`)) return `my scene ${n}`;
 }
 // The scenes with this setup added (named, or "my scene N"); the new scene is the last
+// (Date.now(): a stamp, when it was saved, not a picture's time; a test gives its own)
 export function saveScene(scenes, settings, name = '', now = Date.now()) {
   let id = `s${now.toString(36)}`;
   for (let n = 2; scenes.some((s) => s.id === id); n++) id = `s${now.toString(36)}${n}`;
@@ -125,6 +132,44 @@ export function readStations(saved, last = '') {
 }
 // played now: first in the list
 export const noteStation = (stations, url, at = Date.now()) => [{ url, at }, ...stations.filter((s) => s.url !== url)].slice(0, MAX_STATIONS);
+
+// The covers the radio looked up, kept by song ('artist title' to a promise of its picture) so a song heard again is not asked for again.
+// A cover is a 600 px picture, so only the last 50 songs' are kept: a song goes last when it is noted (one heard again moves to the end),
+// and the one longest unheard goes while there are more. A Map keeps the order its entries went in. It is the page's own map that is
+// changed, not a copy.
+const MAX_RADIO_COVERS = 50;
+export function noteRadioCover(covers, key, cover, max = MAX_RADIO_COVERS) {
+  covers.delete(key);
+  covers.set(key, cover);
+  while (covers.size > max) covers.delete(covers.keys().next().value);
+  return cover;
+}
+// ---------------------------------------------------------------- the spotify section's pasted links
+
+const MAX_LINKS = 30;
+const LINK_URI = /^spotify:(track|album|playlist):[A-Za-z0-9]{22}$/;
+// The links pasted, as saved, most recently played first: { uri (spotify:<track|album|playlist>:<id>), at } and, once the player has shown
+// what it started on, title and artist. One that isn't a Spotify address of those three kinds is dropped, as a repeat is.
+export function readLinks(saved) {
+  const seen = new Set(), list = [];
+  for (const l of Array.isArray(saved) ? saved : []) {
+    if (!l || typeof l.uri !== 'string' || !LINK_URI.test(l.uri) || seen.has(l.uri)) continue;
+    seen.add(l.uri);
+    const one = { uri: l.uri, at: Number.isFinite(l.at) ? l.at : 0 };
+    const text = (v) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, 200) : '');
+    if (text(l.title)) { one.title = text(l.title); if (text(l.artist)) one.artist = text(l.artist); }
+    list.push(one);
+  }
+  return list.sort((a, b) => b.at - a.at).slice(0, MAX_LINKS);
+}
+// played now: first in the list (with the name it was given before, if it had one)
+export const noteLink = (links, uri, at = Date.now()) => [{ ...links.find((l) => l.uri === uri), uri, at }, ...links.filter((l) => l.uri !== uri)].slice(0, MAX_LINKS);
+// the song the player showed when the link started, as its name: song is { title, artist }
+export const nameLink = (links, uri, song) => links.map((l) => {
+  if (l.uri !== uri || !song?.title) return l;
+  const { artist, ...rest } = l;
+  return { ...rest, title: song.title, ...(song.artist ? { artist: song.artist } : {}) };
+});
 
 // ---------------------------------------------------------------- the panel, fetched when it is first wanted
 

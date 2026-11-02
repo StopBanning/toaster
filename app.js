@@ -1,4 +1,6 @@
 // Toaster: wires the audio sources, the listening engine, the code view and the visuals.
+import { clock } from './clock.js';
+import { createAnimationDriver } from './dom-time.js';
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
 import { createCodeView, nextCodeSetting } from './codeview.js';
@@ -9,7 +11,9 @@ import { createDotCam } from './dotcam.js';
 import { createVoxCam } from './voxcam.js';
 import { createTakeover, createSysinfo, showBsod, xpAlert } from './fx.js';
 import { createStorm } from './storm.js';
+import { createY2k } from './y2k.js';
 import { createCard } from './card.js';
+import { createPost, LOOKS } from './post.js';
 import { createGlass } from './glass.js';
 import { createTracker } from './tracking.js';
 import { createLens } from './lens.js';
@@ -25,11 +29,14 @@ import { createChrome } from './chrome.js';
 import { createSpaghetti } from './spaghetti.js';
 import { createSpectro } from './spectro.js';
 import { createScenery, FIELD } from './scenery.js';
+import { createLanes } from './lanes.js';
+import { createEarth, EARTH_CLIPS } from './earth.js';
 import { createWait } from './wait.js';
 import { createCuts } from './cuts.js';
 import { createTape } from './tape.js';
 import { buildSongFiles } from './tape-export.js';
 import { createClips } from './clips.js';
+import { createTakeTap } from './take-tap.js';
 import { makeDemo } from './demo.js';
 import { NEWS, newsSince } from './news.js';
 import { createControls } from './controls.js';
@@ -38,30 +45,31 @@ import { createPalette, actionCommands } from './palette.js';
 import { advanceHints, initialHints } from './firstrun.js';
 import { createBugReport, errorSummary } from './bug-report.js';
 import { createMisreadReport } from './misread.js';
+import { drawShareCard, shareCardName } from './share-card.js';
 import { PRESETS, applyPreset } from './presets.js';
 import { ACCENT_TEXT_VAR, ACCENT_VAR, BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, fullPalette, heatStops, paletteVars, terrainStops } from './cover-palette.js';
 import { embeddedCover } from './embedded-cover.js';
 import { readTags, songOfFile } from './audio-tags.js';
 // (the library's panel and its two modules, library-panel.js, library-source.js and library.js, are not imported here: they are fetched when
 // it is first opened, see makeLibrary below. library-core.js is what the page has of it from the start.)
-import { lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, readStations, noteStation, sceneIsOn, setupOf, nextRepeat, noteRecent, readRecent, readRepeat, readResume, withShuffle, deleteScene as dropScene, renameScene as nameScene, saveScene as addScene } from './library-core.js';
+import { lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, readStations, noteStation, sceneIsOn, setupOf, readLinks, noteLink, nameLink, nextRepeat, noteRecent, readRecent, readRepeat, readResume, withShuffle, deleteScene as dropScene, renameScene as nameScene, saveScene as addScene, noteRadioCover, queueSkip, trackLabel } from './library-core.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off', 'spaghetti'];
+const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off', 'spaghetti', 'lanes', 'earth'];
 // What V goes round, best first, and their names on screen. The rest of VISUALS (spectrum, tunnel, spiral, pitch wheel,
 // warp, scope) are out of the round since 0.4.23: kept unlisted for a release, in case someone misses one, then gone.
 // The rain came back in 0.4.26: someone did miss it. The rest stay out of V but can be picked by name in Ctrl+K
 // ("background: warp (classic)"), and stay picked.
-const V_ROUND = ['scenery', 'worlds', 'chrome', 'spaghetti', 'spectrogram', 'cuts', 'fire', 'rain', 'off'];
-const V_NAME = { scenery: 'scenes', pitchwheel: 'pitch wheel' };
+const V_ROUND = ['scenery', 'earth', 'worlds', 'chrome', 'spaghetti', 'spectrogram', 'lanes', 'cuts', 'fire', 'rain', 'off'];
+const V_NAME = { scenery: 'scenes', pitchwheel: 'pitch wheel', earth: 'the Earth' };
 const visName = (v) => V_NAME[v] || v;
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 // (the last, dynamic, has no colours of its own: they're the song's cover's, see the dynamic theme below)
-const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic'];
-const DROPS = ['xp takeover', 'blue screen', 'not responding', 'off'];
+const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub']; // (kept by its place in this list: a new one goes last)
+const DROPS = ['xp takeover', 'y2k bug', 'blue screen', 'not responding', 'off'];
 // The camera's effects (K): none, just you over the visuals, slit-scan, datamosh, windows, glass,
 // dots, voxels.
 const CAM_FX = ['none', 'cut-out', 'slit-scan', 'datamosh', 'windows', 'glass', 'dots', 'voxels'];
@@ -70,7 +78,16 @@ const STRENGTHS = [['soft', 1], ['normal', 1.5], ['bold', 2.2]];
 
 // ---------------------------------------------------------------- audio
 
-const ac = new AudioContext({ latencyHint: 'interactive' });
+// (in the perfect take's render mode (take-replay.js) the page is in the render's hidden window: the take says what it was like)
+const TAKE = window.takeRender?.meta || null;
+const ac = new AudioContext(TAKE ? { sampleRate: TAKE.sampleRate } : { latencyHint: 'interactive' });
+// (the take's cover, as the live page had it: the copy's card and cover colours are the live ones. It comes in during the run-up)
+let takeArt = null;
+if (TAKE?.art) { const im = new Image(); im.onload = () => { takeArt = im; }; im.src = TAKE.art; }
+// (and its seed, from the start: what the page rolls as it starts, the rain's first drops, the CRT's snow, the noodle dancers' dice,
+// would be rolled from this page's own seed, before the replay sets the take's, and two copies of one take would not agree)
+if (TAKE) clock.seed = TAKE.seed;
+clock.attach(ac); // the one clock (clock.js): on the audio clock while a source plays (see attach below), else the performance clock
 const analyser = (size) => {
   const a = ac.createAnalyser();
   a.fftSize = size;
@@ -109,11 +126,17 @@ const warp = createWarp($('warp'));
 const worlds = createWorlds($('worlds'), $('worldwords'));
 const chrome = createChrome($('chrome'));
 const spaghetti = createSpaghetti($('spaghetti'));
+const earth = createEarth($('earth')); // the planet from the space station, NASA's footage
+let earthSaid = false; // (told once that a clip couldn't come down)
+let pendingLook = null; // (the look last used, while the looks from outside load)
+const outsideLooks = new Set(); // (the looks from outside now in U's round)
 const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the pins over it
 const scenery = createScenery($('scenery'));
+const lanes = createLanes($('lanes')); // the patterns down a tunnel
 const wait = createWait($('wait'), FIELD);
 const cuts = createCuts($('vis')); // on the tunnel's canvas too
 const punch = createPunchcard($('punch')); // its own layer, so it can sit on top of any background
+const post = createPost($('post')); // U's looks: the layers above, run through a look, under the code
 const cam = createWebcam($('cam'));
 const dotCam = createDotCam($('dotcam'));
 const voxCam = createVoxCam($('voxcam'));
@@ -122,11 +145,12 @@ const takeover = createTakeover({
   back: $('desk-back'), front: $('desk-front'),
   sources: { cam: () => cam.on, face: () => meshFace() || cam.face, crop: (r, out, w, h) => cam.drawCrop(r, out, w, h) },
 });
+const y2k = createY2k({ back: $('desk-back'), front: $('desk-front'), bsod: $('bsod') }); // the drop effect "y2k bug": the same desktop, as Windows 98
 const sys = createSysinfo($('sys'), () => describeAudio());
 const card = createCard($('card'));
 const glass = createGlass($('glass'), $('code'));
 const orb = createOrb($('orb'));
-const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spaghetti', 'spectro', 'spectrobox', 'scenery', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
+const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spaghetti', 'earth', 'spectro', 'spectrobox', 'scenery', 'lanes', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
 const storm = createStorm($('storm')); // the drop effect "not responding"
 const STORM_LAYERS = [...LAYERS, $('glass')]; // (what its window shows: the backgrounds, and the glass blob over them)
 const lens = createLens($('lens')); // the finger frame
@@ -157,11 +181,12 @@ const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winKey: '', manual: null,
   radioSong: null, radioKey: '', // the radio's song, from the titles in its stream (see radioTitle)
-  visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, chromeCollage: true,
+  visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, glassPlates: true, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
   beatHidden: false, // Z's middle setting: just the beat hidden, the drum lines and their grid (for music with no pulse)
   crt: false, // Y: an old screen over everything (see #tube in the CSS)
+  look: 'off', // U: a look over the visuals and under the code (renderer/post.js)
   eyes: false, // the camera's third setting: big eyes over your face
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
   camFx: 0, // the camera's effect (K), in CAM_FX
@@ -170,6 +195,7 @@ const state = {
   sceneryTheme: false, // the scenery in the theme's two colours rather than its own (A while it's on)
   sceneryScene: 'auto', // and its scene (A too): auto (a new one each song), or one by name
   spaghettiKind: 'snakes', // the spaghetti's noodles (A while it's on): SPAGHETTI_KINDS
+  earthClip: 'aurora', // the Earth's view (A while it's on): EARTH_CLIPS
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
   mirror: true, // the camera mirrored, as a selfie view is; off, as the camera sees it (the help's setting; see camview.js)
@@ -179,7 +205,9 @@ const state = {
   radio: '', // the radio's address, as last played
   radioStations: [], // the stations played, the latest first: { url, at } (the library's radio: see library.js)
   userScenes: [], // the setups saved as scenes: { id, name, settings } in the shape of a preset (the library's scenes)
+  spotifyLinks: [], // the Spotify links pasted into the library's spotify section, the latest first: { uri, at } and, once Spotify's player showed what it started on, title and artist
   queueRepeat: 'album', queueShuffle: false, // what the library's queue does at an album's end (REPEATS in library-core.js), and in what order
+  libCover: 'chars', // the library's cover: 'chars' (all of it in characters) or 'photo' (the cover itself, framed, the characters faint around it; the album and its tracks written as code)
   recentAlbums: [], // the library's albums played lately, the latest first, by id (its shelf of six)
   queueResume: null, // where the library's queue was: { path, at } (the track's path in the folder, and the seconds into it), for G after a restart
   seenVersion: '', // the version last opened, to tell what's new after an update
@@ -195,7 +223,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'queueRepeat', 'queueShuffle', 'queueResume', 'recentAlbums'];
+const SAVED = ['perfectCopy', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip'];
 function loadSettings() {
   let saved = {};
   try {
@@ -222,6 +250,7 @@ function loadSettings() {
   // it's set: the scenes take the drop themselves, and a takeover over them was clunky
   const dropName = typeof saved.dropName === 'string' ? saved.dropName : ['xp takeover', 'blue screen', 'off'][saved.drop];
   state.drop = DROPS.includes(dropName) ? DROPS.indexOf(dropName) : DROPS.indexOf('off');
+  if (DROPS[state.drop] === 'y2k bug') y2k.prepare(); // (its font, ready for the drop)
   if (!Number.isFinite(state.syncTrim)) state.syncTrim = 0;
   if (!(state.strength in STRENGTHS)) state.strength = 1;
   if (!(state.camFx in CAM_FX)) state.camFx = 0;
@@ -230,6 +259,9 @@ function loadSettings() {
   setGameScreens(state.gameScreens);
   if (!worlds.looks.includes(state.worldLook)) state.worldLook = 'auto';
   worlds.setLook(state.worldLook);
+  if (!EARTH_CLIPS.includes(state.earthClip)) state.earthClip = 'aurora';
+  state.glassPlates = state.glassPlates !== false;
+  earth.setClip(state.earthClip);
   state.card = state.card === true;
   state.cardV = state.cardV !== false;
   state.mirror = readMirror(state.mirror); // (an older profile has none: mirrored)
@@ -238,8 +270,10 @@ function loadSettings() {
   // (the library's: an older profile has no scenes, and as its stations only the last one played)
   state.userScenes = readScenes(state.userScenes, { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true });
   state.radioStations = readStations(state.radioStations, state.radio);
+  state.spotifyLinks = readLinks(state.spotifyLinks); // (an older profile has none)
   state.queueRepeat = readRepeat(state.queueRepeat); // (an older profile has neither: the album repeats, in its order)
   state.queueShuffle = state.queueShuffle === true;
+  if (state.libCover !== 'photo') state.libCover = 'chars';
   state.queueResume = readResume(state.queueResume);
   state.recentAlbums = readRecent(state.recentAlbums);
   state.cardBig = state.cardBig === true;
@@ -247,15 +281,14 @@ function loadSettings() {
   state.sceneryTheme = state.sceneryTheme === true;
   if (!['auto', ...scenery.scenes].includes(state.sceneryScene)) state.sceneryScene = 'auto';
   if (!SPAGHETTI_KINDS.includes(state.spaghettiKind)) state.spaghettiKind = 'snakes';
-  // the keys you changed: kept if they're single keys not taken twice
-  const keys = state.keys && typeof state.keys === 'object' ? state.keys : {};
-  state.keys = {};
-  const used = new Set();
-  for (const [id, k] of Object.entries(keys)) if (typeof k === 'string' && k && !used.has(k)) { state.keys[id] = k; used.add(k); }
+  state.keys = readKeys(state.keys); // (the keys you changed)
   state.glass = state.glass === true;
   state.codeHidden = state.codeHidden === true;
   state.beatHidden = state.beatHidden === true && !state.codeHidden;
   state.crt = state.crt === true;
+  state.perfectCopy = state.perfectCopy === true;
+  pendingLook = state.look; // (a look from outside isn't in yet: it's put back once it is, see loadLooks)
+  state.look = LOOKS.includes(state.look) ? state.look : 'off';
 }
 
 // How far ahead (seconds) to draw the blocks so they land when you hear the beat. The beat clock
@@ -272,11 +305,12 @@ function heardAfter() {
   return state.source === 'system' ? 0 : state.source === 'input' ? -30 : output + 8;
 }
 function syncOffset() {
+  if (TAKE) return 0.014; // (a render has no screen and no speakers: only the ~14 ms the engine takes to notice a hit)
   const display = 35, notice = 14;
   return (display + notice - heardAfter() + state.syncTrim) / 1000;
 }
 function saveSettings() {
-  if (WIDGET) return;
+  if (WIDGET || TAKE) return;
   const out = Object.fromEntries(SAVED.map((k) => [k, state[k]]));
   out.visualName = VISUALS[state.visual];
   out.dropName = DROPS[state.drop];
@@ -293,6 +327,7 @@ function detach() {
   }
   state.demo?.stop();
   state.node = state.stream = state.el = state.demo = null;
+  clock.playing = false;
   // (and the radio's titles, read beside its stream, and the cover of the file that was playing)
   window.nc?.radioTitles?.(null);
   state.radioSong = radioArt = fileArt = null;
@@ -310,11 +345,13 @@ function attach(node, source, label) {
   node.connect(mid);
   node.connect(slow);
   state.node = node;
+  clock.playing = true;
   state.source = source;
   state.label = label;
   state.stopped = null;
   tapRecording();
   clips.retap();
+  takeFollow();
   // a file or the demo plays from its start; system audio, inputs and the radio may be halfway through a song
   freshStart(source === 'file' || source === 'demo');
   $('menu').hidden = true;
@@ -327,6 +364,7 @@ function attach(node, source, label) {
 // New source or new song: wipe the screen and start typing again from a blank window. top: the
 // song starts now, from its beginning (see listenOpening in engine.js).
 function freshStart(top = false) {
+  clock.newSong(); // the dice of a song (clock.rng) are its own; a take keeps the seed so a render rolls them the same
   if (state.hushed) setHush(false); // a new song comes in unhushed
   punch.newSong(gameShowing() && !eng.silent);
   eng.reset({ top });
@@ -334,6 +372,8 @@ function freshStart(top = false) {
   resetCodegen();
   view.clear();
   takeover.stop();
+  y2k.stop();
+  storm.stop();
   glitch();
   clipsThisSong = 0;
   lastClipAt = -99;
@@ -416,8 +456,31 @@ async function playElement(source, label, load) {
     throw err;
   }
   if (outdated(ticket)) { el.pause(); return; }
+  // A stream can take seconds to start, and the engine, started over at attach, has heard only that silence: music after a
+  // silence it takes for a song from its start, whose first chord is home (see listenOpening in engine.js), which a station
+  // joined halfway through a song isn't. So it starts over again now the sound begins, as attach had it.
+  if (eng.silent) eng.reset({ top: source === 'file' });
+  if (source === 'file') followPauses(el);
   // (a stream that ends, or anything that drops, says so, as system audio does when it stops)
   el.onended = el.onerror = () => { if (state.el === el) showMenu(`${label} stopped playing. Pick a source.`, 'warning'); };
+}
+
+// A file paused and played on: the song goes on from where it stopped, so the beat goes on from where it was, its grid moved on
+// by the time the file stood still. (The engine keeps the beat through the silence, as it does through a quiet part of a song:
+// see eng.song. Before, a pause over 4 s started the code over and moved the scenes on, and the beat was found again from
+// scratch; a shorter one left the grid off the beat by the pause's length.) A take notes each move, for the copy to make.
+function followPauses(el) {
+  let pausedAt = null;
+  el.addEventListener('pause', () => { if (!el.ended) pausedAt = nowSec(); });
+  el.addEventListener('playing', () => {
+    if (pausedAt === null) return;
+    const t = nowSec(), gap = t - pausedAt;
+    pausedAt = null;
+    if (state.el !== el || !eng.tempo.locked) return; // (moved in meanwhile, or the beat let go: there is no grid to move on)
+    eng.resume(gap); // (the grid and the hits it was found from, together)
+    if (takeRec.id) takeRec.changes.push({ t, resume: gap });
+    takeRec.resumes = [...(takeRec.resumes || []).filter((x) => x.t > t - TAKE_RUNUP), { t, gap }]; // (the run-up's, for a take begun after)
+  });
 }
 
 async function useFile(file) {
@@ -450,6 +513,24 @@ async function fileCover(file) {
   try { await im.decode(); return im; } catch { return null; } finally { URL.revokeObjectURL(im.src); }
 }
 
+// The library's cover look (Shift+C in the library): all of it in characters, or the cover itself with the characters around it
+function setLibCover(look) {
+  state.libCover = look === 'photo' ? 'photo' : 'chars';
+  saveSettings();
+  libraryPanel.update();
+  return state.libCover === 'photo' ? 'cover: half ascii' : 'cover: full ascii';
+}
+// An album's own cover at full size (the scan keeps 160 px ones), from its first track's tag that has one: an object URL, or null
+async function albumCover(album) {
+  for (const t of album?.tracks?.slice(0, 3) || []) {
+    try {
+      const found = await embeddedCover(await librarySrc.file(t));
+      if (found) return URL.createObjectURL(new Blob([found.bytes], { type: found.type }));
+    } catch { /* a track gone from the folder: the next */ }
+  }
+  return null;
+}
+
 // The player bar's stop, for the radio and the demo: the source is let go (nothing plays, nothing is listened to, the page
 // looks as it does with no source), and which it was is kept, so the bar's play button can pick it again.
 function stopSource() {
@@ -457,6 +538,7 @@ function stopSource() {
   if (was !== 'radio' && was !== 'demo') return;
   picking++; // (a pick still opening gives up)
   detach();
+  takeover.stop(); y2k.stop(); storm.stop(); // (and the drop effects go with it)
   state.source = null;
   state.label = '';
   state.stopped = was;
@@ -468,20 +550,44 @@ function stopSource() {
 // The library's queue (G): the album from a track on, which plays through and then repeats (library.js has its steps). Each track is
 // read from the library (main, or the folder picked in a browser) and played as a file, so its cover reaches the theme and the card as
 // a picked file's does. The queue is live while the file it started is the source: any other pick takes the player over from it.
+// A track that can't be read or played is skipped, not the end of the album (skipTrack); failed is how many have been skipped in a row.
 let queue = null, pendingQueue = null, queuing = 0;
 const liveQueue = () => (queue && state.source === 'file' && state.el && state.el === queue.el ? queue : null);
-async function playQueue(q, at = 0) {
-  const ticket = ++queuing;
-  const file = await librarySrc.file(q.tracks[q.index]);
-  if (ticket !== queuing) return; // (another track was picked while this one was read)
-  const mine = pendingQueue = { name: file.name, q }; // (taken by that file's attach, so the bar's buttons and the song's names hold from its first moment)
-  const el = await useFile(file);
-  if (pendingQueue === mine) pendingQueue = null; // (only its own: a newer track's may be waiting)
+async function playQueue(q, at = 0, failed = 0) {
+  const ticket = ++queuing, picked = picking;
+  let el;
+  try {
+    const file = await librarySrc.file(q.tracks[q.index]);
+    if (ticket !== queuing || picked !== picking) return; // (another track, or another source, was picked while this one was read: that one wins)
+    const mine = pendingQueue = { name: file.name, q }; // (taken by that file's attach, so the bar's buttons and the song's names hold from its first moment)
+    try { el = await useFile(file); } finally { if (pendingQueue === mine) pendingQueue = null; } // (only its own: a newer track's may be waiting)
+  } catch (err) {
+    if (ticket === queuing) skipTrack(q, err, failed + 1); // (unless another track was picked meanwhile)
+    return;
+  }
   if (ticket !== queuing || !el || state.el !== el) return;
   if (liveQueue()?.el !== el) { queue = { ...q, el }; el.loop = false; } // (an older track's attach can have been first to the slot: then it is made so here)
   if (state.recentAlbums[0] !== q.id) { state.recentAlbums = noteRecent(state.recentAlbums, q.id); saveSettings(); } // (the shelf of albums played lately)
   el.onended = () => { if (liveQueue()?.el === el) playQueue(queueNext(queue, queueSteps(true))).catch(showError); };
+  el.onerror = () => { if (liveQueue()?.el === el) skipTrack(queue, el.error, 1); }; // (and a track that breaks part-way through)
+  if (el.error) { skipTrack(queue, el.error, 1); return; } // (one that broke before these were set)
   if (at > 0 && at < (el.duration || Infinity) - 1) { el.currentTime = at; freshStart(false); } // (carried on from where it was)
+}
+// A track that can't be read or played (a file the player can't decode, one that has gone from the folder) is skipped: the queue goes on to
+// the next, as the next button does, and the page says which was left out. Once every track of the album has failed in a row there is
+// nothing to play: it stops, as the library's stop square does, and says so.
+function skipTrack(q, err, failed) {
+  retainBugError(err);
+  const next = queueSkip(q, failed, queueSteps(false));
+  if (!next) {
+    if (liveQueue()) stopPlayback(); // (the track before it ended, or broke: nothing plays, and the page looks as it does after the stop)
+    queue = null;
+    const why = String(err?.message || 'it would not start').replace(/^Error invoking remote method '[^']*': (Error: )?/, '').replace(/\.$/, '');
+    showError(new Error(`Could not play ${q.tracks.length === 1 ? 'that track' : `any of the ${q.tracks.length} tracks of this album`} (${why}).`));
+    return;
+  }
+  showNotice(`skipped "${trackLabel(q, q.index)}": it could not be played`);
+  playQueue(next, 0, next.id === q.id ? failed : 0).catch(showError); // (another album, with repeat all, starts the count again)
 }
 // how the queue goes on: the library's repeat (Shift+R in it), and for repeat all the album after this one in the library's order
 const albumAfter = (id) => { const albums = libraryPanel.state?.albums || [], i = albums.findIndex((a) => a.id === id); return i < 0 || albums.length < 2 ? null : albums[(i + 1) % albums.length]; };
@@ -525,6 +631,7 @@ function stopPlayback() {
   queue = null;
   queuing++;
   detach();
+  takeover.stop(); y2k.stop(); storm.stop(); // (and the drop effects go with it)
   state.source = null;
   state.label = '';
   document.body.classList.remove('live');
@@ -715,6 +822,7 @@ function codeBox() {
 const lineTexts = () => Object.fromEntries(LINE_IDS.map((id) => [id, view.lines[id].target || view.lines[id].shown]));
 
 function currentSong() {
+  if (TAKE?.song) return TAKE.song; // (a copy: the song the take was of, not the silent source it listens through)
   if (state.manual) return state.manual;
   if (state.source === 'system') return state.winSong;
   if (state.source === 'radio') return state.radioSong;
@@ -740,6 +848,18 @@ function isIcon(im) {
   const d = g.getImageData(0, 0, 16, 16).data, alpha = (x, y) => d[(y * 16 + x) * 4 + 3];
   return [alpha(0, 0), alpha(15, 0), alpha(0, 15), alpha(15, 15)].filter((a) => a < 128).length >= 3;
 }
+// A Spotify link pasted into the library is named by the first song Spotify's player shows after it (the system's now-playing says which app a
+// song is from): linkNaming is the link just played, the title that was showing then, and until when. (Declared here, with nowPlaying, which
+// can be called while the rest of the page is still loading.)
+let linkNaming = null;
+function nameTheLink(song, key) {
+  if (!linkNaming) return;
+  if (Date.now() > linkNaming.until) { linkNaming = null; return; }
+  if (!song || !/spotify/i.test(song.app || '') || key === linkNaming.was) return;
+  state.spotifyLinks = nameLink(state.spotifyLinks, linkNaming.uri, song);
+  linkNaming = null;
+  saveSettings();
+}
 function nowPlaying(info) {
   if ((info?.art || '') !== artSrc) {
     artSrc = info?.art || '';
@@ -751,11 +871,16 @@ function nowPlaying(info) {
   state.winPlaying = !!info?.playing;
   // A new song on the system: start over, the way the code gets rewritten for each track. Only a
   // different title counts: a reading without one (between tracks, or a hiccup) or an artist that
-  // fills in late is still the same song.
+  // fills in late is still the same song. Nor does the first title of all: that's the song that was
+  // playing when Toaster started. (main.js starts the helper 2 seconds after the window, and on
+  // Windows PowerShell takes a few more to load, so that reading can come after the beat was found:
+  // it threw the beat away and looked for it again.)
   const key = song ? song.title.trim().toLowerCase() : '';
+  nameTheLink(song, key);
   if (!key || key === state.winKey) return;
+  const changed = !!state.winKey;
   state.winKey = key;
-  const reset = state.source === 'system' && !state.manual && eng.tempo.locked;
+  const reset = changed && state.source === 'system' && !state.manual && eng.tempo.locked;
   eng.note(`now playing: ${song.title} | ${song.artist} (${info.app || '?'}, ${info.playing ? 'playing' : 'paused'})${reset ? ' -> reset' : ''}`);
   if (state.source === 'system') { clipsThisSong = 0; lastClipAt = -99; }
   if (reset) freshStart(true);
@@ -789,6 +914,7 @@ function radioTitle(el, song) {
         return im;
       }).catch(() => { radioCovers.delete(key); return null; })); // (one that couldn't be asked is asked again next time)
     }
+    noteRadioCover(radioCovers, key, radioCovers.get(key)); // (this song last in line, asked for now or heard before: the covers are 600 px, so only the last 50 songs' are kept)
     radioCovers.get(key).then((im) => { if (state.radioSong === song) radioArt = im; });
   }
   if (!key || key.toLowerCase() === state.radioKey) return;
@@ -804,12 +930,13 @@ function radioTitle(el, song) {
 // own, from its tag; none for a name you gave a song (a file's cover is still its cover, whatever it's
 // called). (An image, so it draws on a canvas and loads as a texture.)
 function songArt() {
+  if (takeArt) return takeArt;
   if (state.source === 'file') return fileArt;
   return state.manual ? null : state.source === 'system' ? artImg : state.source === 'radio' ? radioArt : null;
 }
 
 eng.on.kick = (s) => {
-  field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick();
+  field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick(); y2k.kick();
   lens.kick(s, state.calm);
   fire.kick(s, state.calm);
   portal.kick(s, state.calm);
@@ -838,17 +965,21 @@ eng.on.drop = () => {
   if (state.crt && !state.calm) { replay(document.body, 'jolt'); crtStatic(); }
   const mode = DROPS[state.drop];
   // a bar's length in seconds; half a second a beat if the tempo isn't known yet
-  if (mode === 'xp takeover') takeover.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4);
-  else if (mode === 'blue screen') showBsod($('bsod'), glitch);
+  if (mode === 'xp takeover') { y2k.stop(); takeover.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4); }
+  else if (mode === 'y2k bug') { takeover.stop(); y2k.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4); }
+  else if (mode === 'blue screen') showBsod($('bsod'), glitch, eng.tempo.P || 0.35);
   else if (mode === 'not responding') storm.start(t, eng.tempo.locked ? eng.tempo.bpm : 0);
 };
-eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; nextAutoScene(); };
+eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); y2k.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; nextAutoScene(); };
 // A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js). The
 // radio's is known while it has a title: a station going from a song to talking sends an empty one,
 // which lets the song go (radioTitle), and then the beat goes after a minute without one, as on an
-// input. Only the system says a song is still playing: the radio's stream always plays, and a long
-// silence on it is dead air or the next song (which brings its own title), not a quiet part.
-eng.song = () => ({ known: !!currentSong(), playing: state.source === 'system' && !!state.winSong && !!state.winPlaying });
+// input. The system says when its song is still playing; a file's song is the file's, playing or
+// paused, until it ends (a pause is a silence the same song comes back from: see followPauses; and a
+// perfect copy of a file's take, which listens through no element, hears it the same). The radio's
+// stream always plays, and a long silence on it is dead air or the next song (which brings its own
+// title), not a quiet part.
+eng.song = () => ({ known: !!currentSong(), playing: (state.source === 'system' && !!state.winSong && !!state.winPlaying) || (state.source === 'file' && !state.el?.ended) });
 
 // ---------------------------------------------------------------- look
 
@@ -919,7 +1050,7 @@ function setVisual(i) {
   state.visual = i;
   const mode = VISUALS[i];
   if (!FIELD_VIS.includes(mode)) field.clear();
-  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spaghetti', spaghetti], ['spectrogram', spectro], ['scenery', scenery], ['fire', fire]]) if (mode !== name) v.clear();
+  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spaghetti', spaghetti], ['earth', earth], ['spectrogram', spectro], ['scenery', scenery], ['lanes', lanes], ['fire', fire]]) if (mode !== name) v.clear();
   $('b-visual').textContent = visName(mode) + ' ▾';
   queueMicrotask(footerKeys); // (A's word follows the background; after the page's first run, once the keys are set up)
   document.body.classList.toggle('worlds-on', mode === 'worlds');
@@ -939,6 +1070,13 @@ function nextWorldLook() {
   state.worldLook = all[(all.indexOf(state.worldLook) + 1) % all.length];
   worlds.setLook(state.worldLook);
   flashStatus('look: ' + state.worldLook);
+  saveSettings();
+}
+// A, while the Earth is on: the next view (the aurora, the northern lights, city lights, dawn, the day side)
+function nextEarthClip() {
+  state.earthClip = EARTH_CLIPS[(EARTH_CLIPS.indexOf(state.earthClip) + 1) % EARTH_CLIPS.length];
+  earth.setClip(state.earthClip);
+  flashStatus('the Earth: ' + state.earthClip);
   saveSettings();
 }
 // A, while the chrome is on: the collage over it, off and on
@@ -974,7 +1112,9 @@ function nextScene() {
 }
 // with auto, the scene shown: a new one each song, in turn (from one picked at random at the start)
 // (Halloween's among them only in October)
-let autoScene = Math.floor(Math.random() * 64), autoSceneAt = -99;
+// (a copy starts from the live page's: rolled here, it would be rolled from this page's own seed, before the take's is set)
+let autoScene = Number.isInteger(TAKE?.autoScene) ? TAKE.autoScene : Math.floor(clock.rng('auto-scene', 0)() * 64), autoSceneAt = -99;
+// (the month, for Halloween's scene: not a time of any picture)
 const autoScenes = () => scenery.scenes.filter((s) => s !== 'halloween' || new Date().getMonth() === 9);
 const sceneShown = () => (state.sceneryScene === 'auto' ? autoScenes()[autoScene % autoScenes().length] : state.sceneryScene);
 function nextAutoScene() {
@@ -1053,11 +1193,45 @@ function codeSaid() {
 // monitor); its scanlines and phosphor stripes are spaced in whole device pixels, so the window's scale
 // sets them. It comes on from a white line, as an old set does (at launch too, when it was left on), and
 // goes off into a dot.
-let crtOffT = 0;
+// U: a look over the visuals (trails, dots, LED, halftone, VHS, line art), under the code (renderer/post.js).
+// The looks from outside (docs/looks-from-shaders.md): the ones that ship (renderer/looks: chroma kick) and, in the
+// app, the shaders in the looks folder (custom: <file>). One that won't compile stays out of U's round and is said.
+async function loadLooks(say = false) {
+  for (const n of outsideLooks) post.removeLook(n);
+  outsideLooks.clear();
+  const kept = window.nc?.looksList || window.takeRender?.looksList; // (a perfect copy's render has no nc: its preload asks main)
+  const list = kept ? await kept().catch(() => [])
+    : await fetch(new URL('./looks/chroma-kick.frag', import.meta.url)).then((r) => (r.ok ? r.text() : null)).then((text) => (text ? [{ name: 'chroma kick', text, mine: false }] : []), () => []);
+  const errors = [];
+  for (const { name, text, mine } of list) {
+    const id = mine ? 'custom: ' + name : name, err = post.addLook(id, text);
+    if (err) errors.push(`${name}: ${err.split('\n').find((l) => l.trim()) || err}`);
+    else outsideLooks.add(id);
+  }
+  const want = pendingLook || state.look; // (the look in use: reloading took it out, so it goes back on)
+  if (want !== 'off' && LOOKS.includes(want) && post.look !== want) setLook(want, false);
+  pendingLook = null;
+  if (say) flashStatus(errors.length ? `a look wouldn't compile: ${errors[0]}` : `looks: ${list.filter((l) => l.mine).length} from the folder`);
+  else for (const e of errors) console.warn('look', e);
+}
+// The code on glass (Ctrl+K): each line and panel on a pane of liquid glass over the picture, or on its flat plate.
+function setGlassPlates(on, say = true) {
+  state.glassPlates = on;
+  const ok = post.setGlass(on);
+  document.body.classList.toggle('glass-on', ok);
+  if (say) flashStatus(on && !ok ? 'the glass needs WebGL 2' : on ? 'the code on glass' : 'the code on plates');
+  saveSettings();
+}
+function setLook(name, say = true) {
+  state.look = post.set(name);
+  if (say) flashStatus(post.broken ? 'looks need WebGL 2' : `look: ${state.look}`);
+  saveSettings();
+}
+let crtOffT = null; // (a clock timer's cancel: the classes below come off on the clock, so a render sees them go at the same time)
 function setCrt(on) {
   state.crt = on;
   const tube = $('tube');
-  clearTimeout(crtOffT);
+  crtOffT?.();
   tube.style.setProperty('--crt-px', `${1 / (devicePixelRatio || 1)}px`);
   if (on) {
     if (!tube.style.getPropertyValue('--crt-static')) tube.style.setProperty('--crt-static', crtSnow());
@@ -1065,13 +1239,13 @@ function setCrt(on) {
     tube.hidden = false;
     tube.classList.remove('power-off');
     replay(tube, 'power-on');
-    crtOffT = setTimeout(() => tube.classList.remove('power-on'), 700);
+    crtOffT = clock.after(0.7, () => tube.classList.remove('power-on'));
     crtOsd(crtChannel());
   } else if (!tube.hidden) {
     // (the picture shrinks into the dot, then the page is back as it was)
     tube.classList.remove('power-on');
     replay(tube, 'power-off');
-    crtOffT = setTimeout(() => { tube.hidden = true; tube.classList.remove('power-off'); document.body.classList.remove('tube-on'); }, state.calm ? 0 : 520);
+    crtOffT = clock.after(state.calm ? 0 : 0.52, () => { tube.hidden = true; tube.classList.remove('power-off'); document.body.classList.remove('tube-on'); });
   }
   saveSettings();
 }
@@ -1083,8 +1257,9 @@ function crtSnow() {
   const c = document.createElement('canvas');
   c.width = 160; c.height = 90;
   const x = c.getContext('2d'), im = x.createImageData(160, 90);
+  const dice = clock.rng('crt-snow', 0);
   for (let i = 0; i < im.data.length; i += 4) {
-    const v = Math.random() < 0.5 ? Math.random() * 90 : 120 + Math.random() * 135;
+    const v = dice() < 0.5 ? dice() * 90 : 120 + dice() * 135;
     im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255;
   }
   x.putImageData(im, 0, 0);
@@ -1094,21 +1269,21 @@ function crtStatic() { if (state.crt && !state.calm) replay($('tube'), 'static')
 // The set's lettering, top right, for a couple of seconds: the channel (the background, V) or the
 // picture (the theme, T)
 const crtChannel = () => `CH ${String(state.visual + 1).padStart(2, '0')}\n${VISUALS[state.visual].toUpperCase()}`;
-let crtOsdT = 0;
+let crtOsdT = null;
 function crtOsd(text) {
   if (!state.crt) return;
   const osd = $('tube').querySelector('.t-osd');
   osd.textContent = text;
   osd.classList.add('on');
-  clearTimeout(crtOsdT);
-  crtOsdT = setTimeout(() => osd.classList.remove('on'), 2200);
+  crtOsdT?.();
+  crtOsdT = clock.after(2.2, () => osd.classList.remove('on'));
 }
 // (the kick: the tube's darkness eased off for a moment, and back over a third of a second (the CSS))
-let crtKickT = 0;
+let crtKickT = null;
 function crtKick() {
   $('tube').classList.add('kick');
-  clearTimeout(crtKickT);
-  crtKickT = setTimeout(() => $('tube').classList.remove('kick'), 60);
+  crtKickT?.();
+  crtKickT = clock.after(0.06, () => $('tube').classList.remove('kick'));
 }
 
 // Fewer flashes: the help's checkbox (see eng.on.kick, cuts, the takeover and body.calm in the CSS).
@@ -1122,9 +1297,10 @@ $('calm').addEventListener('change', (e) => setCalm(e.target.checked));
 
 // Updates: the help's checkbox, and the offer of a newer Toaster (update.js in the main process
 // looks it up on GitHub): a few seconds after it starts, once, not over a recording. Update now:
-// it downloads, checks it, closes and opens again as the new one; or, where it can't (a Mac, a
-// copy it can't write beside, a try at that version that didn't go through in the last day, with
-// why), the release's page.
+// it downloads, checks it, closes and opens again as the new one (on a Mac, with the old one in the
+// Trash); or, where it can't (a copy it can't write beside, a Mac copy run from Downloads or a disk
+// image, which says to move it into Applications first, a try at that version that didn't go
+// through in the last day, with why), the release's page.
 function setUpdates(on) {
   state.updates = on;
   $('updates').checked = on;
@@ -1170,7 +1346,9 @@ async function offerUpdate(u) {
     title: 'toaster update', icon: 'info',
     text: u.failed
       ? `Toaster ${u.version} is out (this one is ${u.current}), but installing it here didn't go through last time (${u.failed}). Open its page to get it?`
-      : `Toaster ${u.version} is out (this one is ${u.current}). ${u.canInstall ? 'Update now? It downloads, then closes and opens again as the new one.' : 'Open its page to get it?'}`,
+      : u.why
+        ? `Toaster ${u.version} is out (this one is ${u.current}), but ${u.why}. Open its page to get it?`
+        : `Toaster ${u.version} is out (this one is ${u.current}). ${u.canInstall ? 'Update now? It downloads, then closes and opens again as the new one.' : 'Open its page to get it?'}`,
     buttons: [u.canInstall ? 'Update now' : 'Open page', 'Later'],
   });
   $('alerts').querySelector('button').addEventListener('click', async () => {
@@ -1646,7 +1824,9 @@ async function startRecording() {
   // the note about the last recording goes first, and is off the screen before the capture starts
   // (hidden once recording had begun, it was in the first second of the video)
   hideNotice();
+  // (the recorder waits for the page to paint: real time, the screen's)
   await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, 100); });
+  // (Date.now() below: how long the recorder's file has made no progress, a watchdog in real time)
   const s = { active: true, mr: null, video: null, tap: null, queue: [], pending: 0, writing: false, write: Promise.resolve(), lastWrite: Date.now() };
   rec.session = s;
   s.video = await windowStream();
@@ -1675,6 +1855,7 @@ async function startRecording() {
     if (recCurrent(s) && s.pending && Date.now() - s.lastWrite >= REC_PROGRESS_MS) recordingFailed(s, 'the file has not made progress for 10 seconds');
   }, 250);
   mr.start(1000);
+  takeBegin().catch((err) => console.error('perfect copy:', err)); // (a take that can't begin leaves the recording as it is, and says why)
   document.body.classList.add('recording');
   $('b-rec').textContent = '■ stop';
 }
@@ -1707,6 +1888,130 @@ function tapRecording() {
   state.node?.connect(tap.delay);
 }
 
+// The perfect take (stream B): with the perfect copy on (Ctrl+K, "perfect copy"), a tap (take-tap.js) keeps the last 30 s of
+// what the app hears. M starts a take with that run-up, and sends the rest as it comes; M's stop ends it with what changed
+// on the way, and main draws it again in a hidden window, one exact frame at a time, as "<recording> perfect.mp4"
+// (take-replay.js is the page's half of that). The take holds what the page was like at M: its size (the recording's: the long
+// side at most 1920 pixels, an even number each way), the settings and the storage it opens with, the clock's seed.
+const TAKE_RUNUP = 30;
+const takeRec = { tap: null, starting: false, node: null, blocks: [], id: null, t0: 0, setup: '', changes: [], skipped: '' };
+async function takeFollow() {
+  if (TAKE || !window.nc?.takeBegin) return;
+  if (takeRec.starting) return; // (the tap is being made, and follows the page as it is by then: a second go would find it not there yet)
+  if (!state.perfectCopy || !state.node) { takeStop(); return; }
+  if (!takeRec.tap) {
+    takeRec.starting = true;
+    try { takeRec.tap = await createTakeTap(ac, { send: takeBlock }); } catch (err) { console.error('perfect copy:', err); } finally { takeRec.starting = false; }
+    if (!takeRec.tap) return;
+    if (!state.perfectCopy || !state.node) { takeStop(); return; } // (turned off, or the source gone, while it started)
+  }
+  if (takeRec.node === state.node) return;
+  try { takeRec.node?.disconnect(takeRec.tap.node); } catch { /* gone */ }
+  takeRec.node = state.node;
+  state.node?.connect(takeRec.tap.node);
+}
+function takeStop() {
+  if (!takeRec.tap) return;
+  takeEnd(false); // (a take still recording would have no sound from here, or a gap in it if the tap came back: a copy with a hole in its sound is no copy, so it goes)
+  try { takeRec.node?.disconnect(takeRec.tap.node); } catch { /* gone */ }
+  takeRec.tap.stop();
+  takeRec.tap = takeRec.node = null;
+  takeRec.blocks = [];
+}
+// a block of sound: to the take, while there is one, else into the run-up (the last 30 s)
+function takeBlock(b) {
+  if (takeRec.id) { window.nc.takeSound(takeRec.id, b.data); return; }
+  takeRec.blocks.push(b);
+  if (takeRec.beginning) return; // (a take is beginning: takeBegin sends these with the run-up)
+  while (takeRec.blocks.length > 1 && takeRec.blocks[takeRec.blocks.length - 1].at - takeRec.blocks[0].at > TAKE_RUNUP) takeRec.blocks.shift();
+}
+// the page's storage as it is (what it opens with in the render), the small entries only
+function storageNow() {
+  const out = {};
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), v = localStorage.getItem(k); if (v !== null && v.length < 65536) out[k] = v; } } catch { /* none */ }
+  return out;
+}
+// The cover as a take keeps it: a small JPEG of songArt() (at most 320 px), or nothing (none, or a picture that won't be read)
+function artData() {
+  const im = songArt(), w = im?.naturalWidth || im?.width || 0, h = im?.naturalHeight || im?.height || 0;
+  if (!w || !h) return '';
+  try {
+    const s = Math.min(1, 320 / Math.max(w, h)), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.85);
+  } catch { return ''; }
+}
+// A take that can't begin gives no copy, and the recording goes on as it was: said in the status, and again when the recording stops
+// (the header is out of the picture while M records, and the picture is the video, so it can't be read then)
+function takeSkip(why) {
+  takeRec.skipped = `no perfect copy of this recording: ${why}`;
+  flashStatus(takeRec.skipped);
+}
+// what main's refusal says, without the IPC's own words before it
+const takeSaid = (err) => (err?.message || String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+async function takeBegin() {
+  takeRec.skipped = '';
+  if (!state.perfectCopy || takeRec.id) return; // (off: nothing to say; a take already begun goes on)
+  if (!takeRec.tap) return takeSkip(!state.node ? 'there is no sound playing for it to keep' : takeRec.starting ? 'its sound tap is only just starting' : "its sound tap didn't start");
+  if (!takeRec.blocks.length) return takeSkip('it has heard no sound yet (it was turned on a moment ago)');
+  const dpr = devicePixelRatio * Math.min(2, 1920 / Math.max(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio));
+  const first = takeRec.blocks[0], t0 = clock.now(), soundAt = clock.fromAudio(first.at);
+  if (!Number.isFinite(soundAt)) return takeSkip("the clock isn't on the sound yet");
+  const song = currentSong();
+  const meta = {
+    // (the CSS size as it is: the render rounds the pixels down to even, take-render.cjs outputSize)
+    css: { width: innerWidth, height: innerHeight }, dpr, fps: 30, sampleRate: ac.sampleRate, channels: 2,
+    soundAt, t0, runup: t0 - soundAt, seed: clock.seed, source: state.source, label: state.label || '', storage: storageNow(),
+    vertical: !!state.vertical, mini: !!state.mini, // (the window's layout: the render's window is already that shape, the page is told)
+    song: song?.title ? { title: song.title, artist: song.artist || '' } : null, art: artData(), autoScene, autoSceneAt, // (what names and colours it, and the scene: the counter and when it last moved)
+  };
+  // (the blocks that come while main answers join the run-up, none trimmed, so its first is still where the take's sound
+  // begins; then all of them go, in order)
+  takeRec.beginning = true;
+  try { takeRec.id = await window.nc.takeBegin(meta); }
+  catch (err) { return takeSkip(takeSaid(err)); } // (main said no: a sound rate or pixel ratio it has no list for, a full disk)
+  finally { takeRec.beginning = false; }
+  const blocks = takeRec.blocks;
+  takeRec.blocks = [];
+  for (const b of blocks) window.nc.takeSound(takeRec.id, b.data);
+  takeRec.t0 = t0; takeRec.setup = JSON.stringify(takeSetup());
+  // (taps of tap tempo in the run-up are the take's too: the copy hears the run-up again, and taps it again where they fell)
+  takeRec.changes = [...(eng.taps || []).filter((x) => x >= soundAt).map((x) => ({ t: x, tap: true })),
+    ...(takeRec.dropsAt || []).filter((x) => x >= soundAt).map((x) => ({ t: x, drop: true })),
+    ...(takeRec.resumes || []).filter((x) => x.t >= soundAt).map((x) => ({ t: x.t, resume: x.gap }))].sort((a, b) => a.t - b.t); // (and a file played on after a pause: followPauses)
+}
+// what changed during the take (a background, a scene, the blocks, the theme, the code hidden): noted at its time (not the
+// layout: the copy keeps the shape the recording began with)
+// (and the toggles and A's variants a scene doesn't hold: the orb, the card, hush, the drop effect, the CRT, the look, the worlds'
+// look, the chrome's collage, the noodles, the spectrogram's colours; applied in the copy by takeSetters)
+const TAKE_EXTRAS = ['orb', 'card', 'cardV', 'cardBig', 'hushed', 'drop', 'crt', 'look', 'worldLook', 'chromeCollage', 'spaghettiKind', 'spectroTheme'];
+const takeSetup = () => { const { vertical, ...rest } = currentSetup(); return { ...rest, ...Object.fromEntries(TAKE_EXTRAS.map((k) => [k, state[k]])) }; };
+function takeNote(t) {
+  const now = JSON.stringify(takeSetup());
+  if (now !== takeRec.setup) { takeRec.setup = now; takeRec.changes.push({ t, set: JSON.parse(now) }); }
+}
+function takeEnd(keep) {
+  if (!takeRec.id) { if (keep && takeRec.skipped) flashStatus(takeRec.skipped); takeRec.skipped = ''; return; } // (no take: why, now the header is back)
+  takeRec.tap?.flush(); // (the last second, not yet a whole block, goes to the take first)
+  const id = takeRec.id;
+  takeRec.id = null;
+  window.nc.takeEnd(id, { duration: clock.now() - takeRec.t0, changes: takeRec.changes, keep: !!keep })
+    // (said once main has the take to draw: one whose sound couldn't be kept is gone, and nothing will follow)
+    .then((drawing) => { if (drawing) flashStatus('making a perfect copy…'); })
+    .catch((err) => showNotice('the perfect copy could not be made: ' + takeSaid(err)));
+}
+function setPerfectCopy(on) {
+  state.perfectCopy = on;
+  saveSettings();
+  const recording = !!takeRec.id; // (turned off now, its take goes: see takeStop)
+  takeFollow();
+  flashStatus(on ? `perfect copy: on (${rec.mr ? 'from the next recording' : 'each recording is drawn again, frame by frame, beside it'})` : recording ? 'perfect copy: off (this recording gets none)' : 'perfect copy: off');
+}
+window.nc?.onTakeProgress?.((f) => { takeRec.making = true; flashStatus(`making a perfect copy… ${Math.floor(f * 100)}%`); });
+window.nc?.onTakeDone?.((file) => { takeRec.making = false; showNotice('saved ' + file.split(/[\\/]/).pop(), file); });
+window.nc?.onTakeFailed?.((why) => { takeRec.making = false; showNotice('the perfect copy could not be made: ' + why); });
+
 async function stopRecording() {
   const s = rec.session;
   if (!s) return;
@@ -1720,6 +2025,7 @@ async function stopRecording() {
     if (!recCurrent(s)) return;
     endRecordingTracks(s);
     if (file) showNotice((file.endsWith('.part') ? 'recording stopped before the file could be finished; kept ' : 'saved ') + file.split(/[\\/]/).pop(), file);
+    takeEnd(file && !file.endsWith('.part'));
   })(), REC_STOP_MS, 'finishing the recording took more than 15 seconds');
 }
 
@@ -1733,6 +2039,7 @@ function recordingFailed(s, why) {
   try { s.mr.ondataavailable = null; if (s.mr.state !== 'inactive') s.mr.stop(); } catch { /* already stopping */ }
   endRecordingTracks(s);
   if (s.token !== undefined) recWithin(Promise.resolve(window.nc?.recStop?.(s.token, true)), 5000, 'file close timed out').catch(() => {});
+  takeEnd(false); // (no recording, no perfect copy: the take is dropped)
   showNotice('recording stopped: ' + why);
 }
 // The window is closing mid-recording (main.js asks): finish the video properly, then close.
@@ -1800,17 +2107,45 @@ function hideNotice() { $('notice').hidden = true; }
 // Listening runs on a timer so it keeps going when the window is covered; drawing uses frames.
 // The engine runs every tick (~66 a second); the code it writes is refreshed every third tick,
 // which is plenty since patterns change at bar lines. Typing runs every tick to stay smooth.
-let tick = 0, hushWas = false;
-setInterval(() => {
-  const t = nowSec();
-  if (state.node) eng.frame(t, ac.currentTime); // the audio clock times the onsets for the tempo
-  if (tick++ % 3 === 0) {
-    view.slipsOff = !!rec.mr || clips.on; // (no staged slips in a video: see codeview.js)
+// (in render mode the page's CSS animations run on the clock's time, not the browser's: see dom-time.js)
+const domTime = createAnimationDriver();
+clock.timerHook = (at) => domTime(at); // (an animation a clock timer starts takes its age from the timer's own time)
+let codeAt = -Infinity, hushWas = false;
+// (the page's words that are not a layer, refreshed on the engine's ticks: when each last was)
+let footerAt = -Infinity, poolAt = -Infinity, rollAt = -Infinity;
+// The code's share of a tick: what the engine knows is typed into the code view (about every third tick: 40 ms or
+// more after the last time, counted on the clock, not in ticks, so where a render starts doesn't change it) and the
+// view goes a step on. A render (the clock in render mode, stream B) calls this itself at each tick of its take, with
+// the engine's state put in place first; live, the timer below does, after the engine has listened.
+function codeTick(t) {
+  if (t - codeAt >= 0.04 || t < codeAt) {
+    codeAt = t;
+    view.slipsOff = !!rec.mr || clips.on || !!TAKE; // (no staged slips in a video: see codeview.js; a perfect copy is one)
     const lines = buildLines(eng, { song: currentSong(), source: state.label || 'nothing yet', hushed: state.hushed }, t);
     view.update(lines, t, state.hushed !== hushWas); // a hush goes in at once
     hushWas = state.hushed;
   }
   view.step(t);
+  // The tokens that light with the hits and the changes that land on the bar line (each flashes: a CSS animation begins), as
+  // of this tick: so which are lit, and when a flash began, is the same whatever frames are drawn.
+  view.highlight(t, eng);
+  // What the page says in words, apart from the layers, is refreshed here, on the engine's ticks (which a render runs the same
+  // at any frame rate), not on whatever frames happen to come: the footer's readout (the level, the tempo and key) 8 times a
+  // second, the rain's pool of characters every 2 s, whether the roll fits every half second.
+  if (t - footerAt > 0.125 || t < footerAt) { footerAt = t; renderFooter(); }
+  // (the rain's characters: the code's lines, not the panels' boxes, which rained as +)
+  if (t - poolAt > 2 || t < poolAt) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
+  if (t - rollAt > 0.5 || t < rollAt) { rollAt = t; fitRoll(); }
+  if (clock.mode === 'render') domTime(t);
+  else if (takeRec.id) takeNote(t);
+}
+setInterval(() => {
+  if (clock.mode === 'render') return; // (a render is driven from outside: it listens to nothing live)
+  const t = nowSec();
+  // (the audio clock times the onsets for the tempo; after a stop the engine goes on listening, to nothing, till it hears the
+  // silence, else it would beat on to a song that stopped: the rings, the scenery's walk, the chrome)
+  if (state.node || (eng.tempo.locked && !eng.silent)) eng.frame(t, ac.currentTime);
+  codeTick(t);
 }, 15);
 
 // Layers whose feature is off are taken out of the page: an empty full-window canvas still costs
@@ -1829,9 +2164,11 @@ const LAYER_ON = {
   worldwords: () => VISUALS[state.visual] === 'worlds',
   chrome: () => VISUALS[state.visual] === 'chrome',
   spaghetti: () => VISUALS[state.visual] === 'spaghetti',
+  earth: () => VISUALS[state.visual] === 'earth',
   spectro: () => VISUALS[state.visual] === 'spectrogram',
   spectrobox: () => VISUALS[state.visual] === 'spectrogram',
   scenery: () => VISUALS[state.visual] === 'scenery',
+  lanes: () => VISUALS[state.visual] === 'lanes',
   field: () => FIELD_VIS.includes(VISUALS[state.visual]),
   asciicam: () => cam.on && state.ascii && !asciiCam.waiting,
   orb: () => state.orb,
@@ -1849,23 +2186,31 @@ function showLayers() {
 // second, and after 30 seconds 10 times, if the window isn't in front (it measured 16% of a core
 // drawing a still screen at 60). The next sound brings it straight back. Never while recording,
 // with the camera on, during a drop or while the dynamic theme's colours are easing (a song changed).
-let poolAt = 0, rollAt = 0, footerAt = 0, lastFrame = 0, windowShown = true, libraryAt = 0;
+let playerAt = 0, lastFrame = 0, windowShown = true, libraryAt = 0;
 let worldsWarmScheduled = false;
 let trackShown = ''; // the tracking trouble last told about (see draw)
 window.nc?.onWindowShown((shown) => { windowShown = shown; });
 function frameGap(t) {
-  if (rec.mr || cam.on || takeover.active || storm.active || coverTheme.easing(t)) return 1000 / 61;
+  if (rec.mr || cam.on || takeover.active || y2k.active || storm.active || coverTheme.easing(t)) return 1000 / 61;
   const quiet = state.node ? t - eng.lastSound : Infinity;
   return quiet > 30 && !document.hasFocus() ? 1000 / 10.5 : quiet > 3 ? 1000 / 30.5 : 1000 / 61;
 }
+// (`now`, the frame's own timestamp, only decides whether this frame is drawn: what a drawn frame shows is a function
+// of the clock's time, and of what the engine heard. A render draws its frames itself, with drawFrame.)
 function draw(now) {
   requestAnimationFrame(draw);
+  if (clock.mode === 'render') return;
   const t = nowSec();
   if (!windowShown || now - lastFrame < frameGap(t)) return;
   lastFrame = now;
+  drawFrame(t);
+}
+// One frame, for time t: every layer drawn as it is at that time. Live, draw() above calls it as the screen asks; in
+// render mode whoever drives the clock calls it, once per frame of the video, after clock.set(t).
+function drawFrame(t) {
   showLayers();
   if (THEMES[state.theme] === 'dynamic') stepTheme(t);
-  view.highlight(t, eng);
+  if (clock.mode === 'render') domTime(t); // (in a render each CSS animation takes its age from the clock: see dom-time.js)
   const grid = renderGrid();
   renderRoll();
   const mode = VISUALS[state.visual];
@@ -1879,14 +2224,19 @@ function draw(now) {
   else if (mode === 'pitchwheel') wheel.draw(t, eng, col, stageRect());
   else if (mode === 'warp') warp.draw(t, eng, col);
   else if (mode === 'fire') fire.draw(t, eng, col);
+  else if (mode === 'earth') {
+    earth.draw(t, eng, { offset: syncOffset() });
+    if (earth.failed && !earthSaid) { earthSaid = true; flashStatus("the Earth's views come down the first time: no connection"); }
+  }
   else if (mode === 'worlds') {
-    const played = ['bd', 'sd', 'hhc', 'hho'].filter((id) => eng.present(id, t)).map((id) => ({ bd: 'kick', sd: 'clap', hhc: 'hats', hho: 'open hats' })[id]).join(' ');
+    const played = ['bd', 'sd', 'hhc', 'hho'].filter((id) => eng.presentAt(id, t)).map((id) => ({ bd: 'kick', sd: 'clap', hhc: 'hats', hho: 'open hats' })[id]).join(' ');
     worlds.draw(t, eng, { song: currentSong(), lines: Object.values(lineTexts()).filter(Boolean), played, chord: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', codeBox, col });
   }
   else if (mode === 'chrome') chrome.draw(t, eng, { song: currentSong(), calm: state.calm, collage: state.chromeCollage });
   else if (mode === 'spaghetti') spaghetti.draw(t, eng, { col, calm: state.calm, offset: syncOffset(), picture: songArt(), endless: state.spaghettiKind === 'endless' });
   else if (mode === 'spectrogram') spectro.draw(t, eng, { theme: THEMES[state.theme], themed: state.spectroTheme, offset: syncOffset(), stops: THEMES[state.theme] === 'dynamic' ? themeLook?.terrain || heatStops(col.fg) : null });
   else if (mode === 'scenery') scenery.draw(t, eng, { col, offset: syncOffset(), colours: state.sceneryTheme ? 'theme' : 'own', palette: themeLook?.scene || null, strength: STRENGTHS[state.strength][1], scene: sceneShown(), open: state.codeHidden });
+  else if (mode === 'lanes') lanes.draw(t, eng, col, syncOffset());
   else if (mode === 'cuts') cuts.draw(t, eng, col, syncOffset(), state.calm, { lines: lineTexts(), cam: cam.frame, art: songArt() });
   // (a background still compiling, the window black: the field of glyphs over it, see wait.js)
   wait.draw(t, !!{ worlds, chrome, spaghetti, spectrogram: spectro, warp, spectrum: field, rain: field, scope: field }[mode]?.waiting, col);
@@ -1897,12 +2247,9 @@ function draw(now) {
     worldsWarmScheduled = true;
     setTimeout(() => worlds.warm(), 30000);
   }
-  if (state.orb) orb.draw(t, eng, col, syncOffset(), (out) => bands(eng, out), storm.orbRect(stageRect()));
+  if (state.orb) orb.draw(t, eng, col, syncOffset(), (out, at) => bands(eng, out, 40, 14000, at), storm.orbRect(stageRect()));
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome' || mode === 'spaghetti', state.blockLook, currentSong()?.title, WIDGET ? 'widget' : state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: songArt() }, col);
-  // (the code rain's characters: the code's lines, not the panels' boxes, which rained as +)
-  if (t - poolAt > 2) { poolAt = t; field.setPool(Object.values(lineTexts()).filter(Boolean).join('\n')); }
-  if (t - rollAt > 0.5) { rollAt = t; fitRoll(); }
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
   if (dotCamOn()) dotCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, mirror: cam.mirrored, offset: syncOffset() });
   if (voxCamOn()) voxCam.draw(t, { video: cam.video, mask: tracker.mask, rect: camRect(), eng, mirror: cam.mirrored, offset: syncOffset() });
@@ -1933,10 +2280,12 @@ function draw(now) {
     if (handLog.on) handLog.update(t, tracker.hands, { place: cam.place, rect: cam.rect, portal: portal.state, lens: lens.showing, sign: gestures.holding });
     if (state.eyes || windows) segcam.draw(t, { ...where, face: tracker.face, eyes: state.eyes, windows, frame: cam.frame, ascii: state.ascii });
   }
+  post.draw(t, eng, col, syncOffset());
   glass.draw(t, eng, col, LAYERS);
   storm.draw(t, eng, { layers: STORM_LAYERS, bg: `rgb(${col.bg})`, offset: syncOffset(), calm: state.calm });
   takeover.draw(t, grid, cam.frame, eng.bar, state.calm);
-  if (t - footerAt > 0.125) { footerAt = t; renderFooter(); updatePlayer(t); }
+  y2k.draw(t, grid, state.calm);
+  if (t - playerAt > 0.125 || t < playerAt) { playerAt = t; updatePlayer(t); } // (the player bar: a control of the page, on the frames; the footer's readout is codeTick's)
   noteResume(t); // (where the library's queue is: kept every five seconds while it plays)
   if (libraryPanel.isOpen && t - libraryAt > 0.25) { libraryAt = t; libraryPanel.update(); } // (what's playing, and the clock)
 }
@@ -1999,6 +2348,7 @@ function showVisMenu(open) {
   const tile = (kind, name, label, on) => `<button type="button" role="menuitem" class="tile${on ? ' on' : ''}" data-kind="${kind}" data-name="${name}"><img src="thumbs/${kind}-${name}.webp" alt="" width="160" height="100"><span>${label}</span></button>`;
   const scenes = ['auto', ...scenery.scenes].map((s) => tile('scene', s, s === 'auto' ? 'auto: a new one each song' : (SCENE_NAMES[s] || s).replace(/^the /, ''), now === 'scenery' && !state.sceneryTheme && state.sceneryScene === s));
   const more = V_ROUND.filter((v) => v !== 'scenery').flatMap((v) => (v === 'spaghetti' ? SPAGHETTI_KINDS.map((k) => tile('spaghetti', k, 'spaghetti: ' + k, now === v && state.spaghettiKind === k))
+    : v === 'earth' ? EARTH_CLIPS.map((c) => tile('earth', c.replace(/ /g, '-'), 'the Earth: ' + c, now === v && state.earthClip === c))
     : [tile('bg', v, v === 'off' ? 'off: just the code' : visName(v), now === v)]));
   const presets = PRESETS.map((p) => `<button type="button" role="menuitem" class="tile" data-kind="preset" data-name="${p.id}"><img src="${p.picture}" alt="" width="160" height="100"><span>${p.name}</span></button>`);
   visMenu.innerHTML = `<div class="pick-head">presets</div><div class="pick-presets">${presets.join('')}</div><div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div><div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
@@ -2018,6 +2368,11 @@ visMenu.onclick = (e) => {
     state.spaghettiKind = b.dataset.name;
     setVisual(VISUALS.indexOf('spaghetti'));
     flashStatus('background: spaghetti, ' + b.dataset.name);
+  } else if (b.dataset.kind === 'earth') {
+    state.earthClip = b.dataset.name.replace(/-/g, ' ');
+    earth.setClip(state.earthClip);
+    setVisual(VISUALS.indexOf('earth'));
+    flashStatus('the Earth: ' + state.earthClip);
   } else { setVisual(VISUALS.indexOf(b.dataset.name)); flashStatus('background: ' + visName(b.dataset.name)); }
   saveSettings();
   showVisMenu(false); crtStatic(); crtOsd(crtChannel());
@@ -2051,7 +2406,7 @@ const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'library', key: 'g', run: () => toggleLibrary() },
   { id: 'visual', key: 'v', run: () => { setVisual(VISUALS.indexOf(V_ROUND[(V_ROUND.indexOf(VISUALS[state.visual]) + 1) % V_ROUND.length])); flashStatus('background: ' + visName(VISUALS[state.visual])); crtStatic(); crtOsd(crtChannel()); } },
-  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spaghetti' ? nextSpaghetti() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the chrome's collage, the spaghetti's noodles, the spectrogram's colours or the handheld's screens`)) },
+  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'earth' ? nextEarthClip() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spaghetti' ? nextSpaghetti() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the Earth's view, the chrome's collage, the spaghetti's noodles, the spectrogram's colours or the handheld's screens`)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // R: the orb, its 3D shapes over any background (off the keys in 0.4.23, back in 0.4.26: it was missed)
   { id: 'orb', key: 'r', run: () => { setOrb(!state.orb); flashStatus(state.orb ? 'the orb on' : 'the orb off'); } },
@@ -2070,13 +2425,19 @@ const ACTIONS = [
   // (D: the drop, now, for everything that answers one: the drop effect (none when B has it off),
   // the worlds' look, the chrome's splash, and the scenery's moment, which watches the engine's drop
   // time: the toast pops, the koi gather, the sharks charge, the fireworks go up)
-  { id: 'drop', key: 'd', run: () => { eng.lastDrop = nowSec(); eng.on.drop(); } },
-  { id: 'dropfx', key: 'b', run: () => { state.drop = (state.drop + 1) % DROPS.length; saveSettings(); flashStatus('drop fx: ' + DROPS[state.drop]); } },
+  { id: 'drop', key: 'd', run: () => {
+    const t = nowSec();
+    eng.lastDrop = t; eng.on.drop();
+    takeRec.dropsAt = [...(takeRec.dropsAt || []).filter((x) => x > t - TAKE_RUNUP), t]; // (the run-up's, for a take begun after)
+    if (takeRec.id) takeRec.changes.push({ t, drop: true }); // (a perfect copy drops it again, at the same time: take-replay.js)
+  } },
+  { id: 'dropfx', key: 'b', run: () => { state.drop = (state.drop + 1) % DROPS.length; if (DROPS[state.drop] === 'y2k bug') y2k.prepare(); saveSettings(); flashStatus('drop fx: ' + DROPS[state.drop]); } },
   { id: 'machine', key: 'i', run: () => { state.info = !state.info; sys.show(state.info); } },
   { id: 'layout', key: 'l', run: () => toggleLayout() },
   { id: 'mini', key: 'w', run: () => (WIDGET ? window.nc?.setWidget(false) : gameShowing() && window.nc?.setWidget ? window.nc.setWidget(true) : toggleMini()) },
   { id: 'theme', key: 't', run: () => nextTheme() },
   { id: 'crt', key: 'y', run: () => { setCrt(!state.crt); flashStatus(state.crt ? 'crt on' : 'crt off'); } },
+  { id: 'look', key: 'u', run: () => setLook(LOOKS[(LOOKS.indexOf(state.look) + 1) % LOOKS.length]) },
   { id: 'name', key: 'e', run: () => renameSong() },
   { id: 'hide', key: 'h', run: () => document.body.classList.toggle('clean') },
   { id: 'code', key: 'z', run: () => { const next = nextCodeSetting(state); setCodeHidden(next.codeHidden, next.beatHidden); flashStatus(codeSaid()); } },
@@ -2085,6 +2446,17 @@ const ACTIONS = [
 // the footer's list of keys, in this order: [actions..., what it says]
 const FOOTER = [['source', 'source'], ['library', 'library'], ['visual', 'background'], ['strength', 'next'], ['blocks', 'code look'], ['theme', 'theme'], ['code', 'hide code']];
 const RESERVED = new Set(['escape', '?', '/', 'f11', 'tab', 'enter', 'shift', 'control', 'alt', 'meta', 'capslock', 'contextmenu']);
+// The keys you changed, as saved: kept if they're single keys, not taken twice, and not the key another action has as its own. A profile
+// from before an action had its key may have set that key for another one (U's look and G's library came later): that one goes back
+// to its own, and so on if that is taken too. (Two actions that traded keys were saved together: neither takes the other's own.)
+function readKeys(saved) {
+  const keys = {}, used = new Set();
+  for (const [id, k] of Object.entries(saved && typeof saved === 'object' ? saved : {})) if (typeof k === 'string' && k && !used.has(k)) { keys[id] = k; used.add(k); }
+  const taken = (id) => ACTIONS.some((a) => a.id !== id && (keys[a.id] ?? a.key) === keys[id]);
+  let clash;
+  while ((clash = Object.keys(keys).find(taken))) delete keys[clash];
+  return keys;
+}
 const keyOf = (id) => state.keys[id] ?? ACTIONS.find((a) => a.id === id).key;
 const keyName = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
 const K = (id) => keyName(keyOf(id)); // an action's key as written
@@ -2108,6 +2480,14 @@ const paletteEntries = () => [
   ...VISUALS.filter((name) => !V_ROUND.includes(name)).map((name) => ({
     id: 'background:' + name, name: `background: ${visName(name)} (classic)`, aliases: ['classic', 'old'],
     run: () => { setVisual(VISUALS.indexOf(name)); flashStatus(`background: ${visName(name)} (classic)`); },
+  })),
+  { id: 'looks:folder', name: 'looks folder', aliases: ['shaders', 'hyprland', 'custom looks'], run: () => (window.nc?.looksOpen ? window.nc.looksOpen() : flashStatus('looks from a folder are in the app')) },
+  { id: 'looks:reload', name: 'reload looks', aliases: ['shaders'], run: () => loadLooks(true) },
+  { id: 'code:glass', name: 'code on glass (on or off)', aliases: ['glass', 'liquid glass', 'acrylic', 'plates'], run: () => setGlassPlates(!state.glassPlates) },
+  // the Earth's views, by name
+  ...EARTH_CLIPS.map((c) => ({
+    id: 'earth:' + c, name: 'the Earth: ' + c, aliases: ['earth', 'space', 'nasa', ...(c.includes('aurora') || c.includes('northern') ? ['aurora', 'northern lights'] : [])],
+    run: () => { state.earthClip = c; earth.setClip(c); setVisual(VISUALS.indexOf('earth')); flashStatus('the Earth: ' + c); },
   })),
   ...BLOCK_LOOKS.map((look) => ({
     id: 'look:' + look, name: 'code look: ' + ({ game: 'handheld game', blocks: 'punchcard' }[look] || look),
@@ -2146,10 +2526,15 @@ const paletteEntries = () => [
   { id: 'library:choose', name: 'library: choose a folder', aliases: ['music folder', 'folder', 'open folder'], run: () => { libraryPanel.open('music'); return libraryPanel.choose(); } },
   { id: 'library:scan', name: 'library: scan again', aliases: ['rescan', 'refresh music'], run: () => scanLibraryAgain() },
   { id: 'library:repeat', name: 'library: repeat', aliases: ['repeat', 'repeat all', 'repeat one', 'loop'], run: () => flashStatus(setQueueRepeat(nextRepeat(state.queueRepeat))) },
+  { id: 'library:cover', name: 'library: cover, full or half ascii', aliases: ['cover', 'ascii cover', 'album art'], run: () => flashStatus(setLibCover(state.libCover === 'photo' ? 'chars' : 'photo')) },
   { id: 'library:shuffle', name: 'library: shuffle', aliases: ['shuffle', 'random order'], run: () => flashStatus(setQueueShuffle(!state.queueShuffle)) },
+  { id: 'library:spotify', name: 'library: spotify', aliases: ['spotify', 'playlists', 'paste a spotify link', 'connect spotify'], run: () => { if (WIDGET || state.mini) { toggleLibrary(); return; } closeMenu(); return libraryPanel.open('spotify'); } },
   { id: 'library:find', name: 'library: find', aliases: ['find music', 'search music', 'find a song', 'search'], run: () => { if (WIDGET || state.mini) { toggleLibrary(); return; } closeMenu(); return libraryPanel.find(); } },
   { id: 'scene:save', name: 'scene: save this setup', aliases: ['save scene', 'save setup'], run: () => { saveSetupAsScene(); libraryPanel.update(); } },
   ...state.userScenes.map((s) => ({ id: 'user-scene:' + s.id, name: 'scene: ' + s.name.toLowerCase(), aliases: ['setup'], run: () => runPreset(s, 'scene') })),
+  { id: 'perfect-copy', name: `perfect copy: ${state.perfectCopy ? 'off' : 'on'} (M's recordings drawn again, frame by frame)`, aliases: ['perfect take', 'export', 'render', 'recording'], run: () => setPerfectCopy(!state.perfectCopy) },
+  ...(takeRec.making ? [{ id: 'perfect-copy:stop', name: 'perfect copy: stop making it', aliases: ['cancel', 'stop render'], run: () => window.nc?.takeCancel?.() }] : []),
+  { id: 'share-card', name: 'share card: save a picture of this song', aliases: ['share', 'picture', 'post', 'image'], run: () => saveShareCard() },
   { id: 'report-bug', name: 'report a bug', aliases: ['bug', 'issue', 'problem'], run: () => bugReport.show() },
   { id: 'report-misread', name: 'report a misread', aliases: ['misread', 'wrong', 'wrong tempo', 'wrong key', 'wrong beat', 'sounded wrong', 'got it wrong'], run: () => misreadReport.show() },
 ];
@@ -2170,7 +2555,8 @@ hintPill.hidden = true;
 hintPill.setAttribute('aria-live', 'polite');
 document.body.append(hintPill);
 function updateHints(event = {}) {
-  const blocked = !!rec.mr || rec.busy || document.body.classList.contains('clean') || state.vertical || state.mini || WIDGET
+  // (none in a perfect copy: its timer runs on real time, so a hint would show in whatever frames that time fell on)
+  const blocked = !!TAKE || !!rec.mr || rec.busy || document.body.classList.contains('clean') || state.vertical || state.mini || WIDGET
     || !!document.querySelector('dialog[open]') || !$('menu').hidden || !visMenu.hidden || !$('notice').hidden || libraryPanel.isOpen;
   const result = advanceHints(hintState, {
     now: nowSec(), hasCode: LINE_IDS.some((id) => !!view.lines[id].shown), enabled: !state.hintsDone, blocked,
@@ -2234,6 +2620,20 @@ function browserName() {
   return 'unknown';
 }
 const SOURCE_KINDS = { system: 'system', file: 'file', input: 'mic', tab: 'tab', demo: 'demo', radio: 'stream' };
+// The share card (share-card.js): the ID card, the code's first lines and the link as one picture, saved as a file to post.
+// It shows the card first if it's off, so the picture has the song's ID, title and cover.
+async function saveShareCard() {
+  if (!document.body.classList.contains('card-on')) toggleCard();
+  // (the card's ID decodes in for a moment when it appears: the picture waits till it has held still a little, 5 s at most)
+  const id = () => $('card').querySelector('.c-id')?.textContent;
+  for (let last = id(), held = 0, waited = 0; held < 400 && waited < 5000; waited += 100) { await new Promise((r) => setTimeout(r, 100)); const now = id(); held = now === last ? held + 100 : 0; last = now; }
+  await document.fonts.ready;
+  const blob = await new Promise((r) => drawShareCard(document).toBlob(r, 'image/png'));
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: shareCardName(document) });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  flashStatus('share card saved');
+}
 const bugReport = createBugReport({
   document,
   context: () => ({
@@ -2272,7 +2672,7 @@ $('report-misread').onclick = () => { $('help').close(); misreadReport.show(); }
 // (A's word: what it changes on what's showing; left out where there's nothing to change)
 function nextWhat() {
   if (gameShowing()) return 'next screen';
-  return { scenery: 'next scene', worlds: 'next look', chrome: 'collage', spaghetti: 'noodles', spectrogram: 'colours' }[VISUALS[state.visual]] || null;
+  return { scenery: 'next scene', worlds: 'next look', chrome: 'collage', spaghetti: 'noodles', spectrogram: 'colours', earth: 'next view' }[VISUALS[state.visual]] || null;
 }
 // (Z's word: what it does next, as the code is now)
 function codeNext() {
@@ -2313,6 +2713,32 @@ function playingNow() {
     title: station ? state.label : song?.title || '', artist: station ? 'radio' : song && song.artist !== 'File' ? song.artist : '', ms: Math.round(ms), stoppable: ['file', 'radio', 'demo'].includes(state.source),
   };
 }
+// The library's spotify section (library-panel.js; main has the rest, helpers/spotify.cjs). A link pasted is read and played in the Spotify
+// app by main (a browser has no main: it opens Spotify's web player in a new tab and asks for that tab's sound), is kept in the section's list,
+// and is named by the first song Spotify's player shows after it; Toaster then hears it as the system's sound, as it hears anything. What the
+// listener's own library lists and plays is main's too, with its tokens: the page asks, and gets rows or errors in words, never a token.
+const spotifyBridge = () => (desktopApp() && typeof window.nc.spotifyList === 'function' ? window.nc : null);
+// Spotify plays in its own app, so Toaster takes the system's sound for its source, unless it has it already (the library's other plays do the same for theirs)
+const hearSystem = () => { if (state.source !== 'system') useSystem().catch(showError); };
+async function spotifyOpen(text, link) {
+  const nc = spotifyBridge();
+  const played = nc ? await nc.spotifyOpen(text) : link;
+  state.spotifyLinks = noteLink(state.spotifyLinks, played.uri);
+  saveSettings();
+  if (nc) {
+    linkNaming = { uri: played.uri, was: state.winKey, until: Date.now() + 90000 };
+    hearSystem();
+  } else {
+    window.open(`https://open.spotify.com/${played.kind}/${played.id}`, '_blank', 'noopener');
+    useSystem().catch(() => flashStatus('Spotify is open in a new tab: pick source system audio and that tab to let Toaster hear it'));
+  }
+  return played;
+}
+async function spotifyPlay(request) {
+  const said = await spotifyBridge().spotifyPlay(request);
+  hearSystem();
+  return said;
+}
 // The three modules are asked for at once (the panel would only find library.js once it had arrived), and the panel is made from them.
 async function makeLibrary() {
   const [{ createLibraryPanel }, { librarySource }] = await Promise.all([import('./library-panel.js'), import('./library-source.js'), import('./library.js')]);
@@ -2321,16 +2747,30 @@ async function makeLibrary() {
     document, window, root: $('library'), source: librarySrc,
     host: {
       key: () => K('library'), titleBar: desktopApp, live: () => !!state.node,
-      blocked: () => !$('menu').hidden || !!document.querySelector('dialog[open]'),
+      blocked: () => WIDGET || state.mini || !$('menu').hidden || !!document.querySelector('dialog[open]'), // (in the mini player it's hidden: the keys are the player's)
       playing: playingNow,
       // (index null: the album, from its first track, or from any with shuffle on)
+      // (Math.random: which track a shuffled album starts on, not a picture's dice)
       play: (album, index, at = 0) => playQueue(queueOf(album, index ?? (state.queueShuffle ? Math.floor(Math.random() * album.tracks.length) : 0), { shuffle: state.queueShuffle }), at).catch(showError),
       resume: () => state.queueResume, recent: () => state.recentAlbums,
       repeat: () => state.queueRepeat, setRepeat: setQueueRepeat, shuffle: () => state.queueShuffle, setShuffle: setQueueShuffle,
+      coverLook: () => state.libCover, setCoverLook: setLibCover, fullCover: albumCover,
       stop: stopPlayback,
+      spotify: {
+        get app() { return !!spotifyBridge(); },
+        links: () => state.spotifyLinks,
+        open: spotifyOpen,
+        status: () => spotifyBridge().spotifyStatus(),
+        connect: (clientId) => spotifyBridge().spotifyConnect(clientId),
+        disconnect: () => spotifyBridge().spotifyDisconnect(),
+        list: (request) => spotifyBridge().spotifyList(request),
+        play: spotifyPlay,
+        cover: (url) => spotifyBridge().spotifyCover(url),
+      },
       stations: () => state.radioStations,
       playStation: (url) => useRadio(url).catch(showError),
       addStation: (text) => useRadio(text),
+      openStations: window.nc?.openStations ? () => window.nc.openStations() : null, // (a page has none: its link opens a tab)
       scenes: () => ({ presets: PRESETS, user: state.userScenes }),
       sceneOn: (scene) => sceneIsOn(scene, currentSetup()),
       applyScene: (scene) => runPreset(scene, 'scene').catch(showError),
@@ -2371,7 +2811,7 @@ const controls = createControls({
     strength: () => {
       const v = VISUALS[state.visual];
       if (state.blocks && state.blockLook === 'game') return `game screens: ${SCREEN_NAMES[state.gameScreens]}`;
-      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spaghetti' ? `noodles: ${state.spaghettiKind}` : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
+      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spaghetti' ? `noodles: ${state.spaghettiKind}` : v === 'earth' ? state.earthClip : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
         : v === 'scenery' ? state.sceneryScene + (state.sceneryTheme ? ", theme's colours" : '') : STRENGTHS[state.strength][0];
     },
     blocks: () => ({ text: !state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook], on: state.blocks }),
@@ -2390,6 +2830,7 @@ const controls = createControls({
     mini: () => onoff(state.mini),
     theme: () => THEMES[state.theme],
     crt: () => onoff(state.crt),
+    look: () => state.look,
     name: () => state.manual?.title || '',
     hide: () => onoff(document.body.classList.contains('clean')),
     code: () => ({ text: state.codeHidden ? 'on' : state.beatHidden ? 'just the beat' : 'off', on: state.codeHidden || state.beatHidden }),
@@ -2416,7 +2857,8 @@ function nudgeSync(ms) {
 // tap tempo: four taps on the beat set it, for a song it can't find (or finds wrong)
 function tapBeat() {
   document.activeElement?.blur?.();
-  const n = eng.tap(nowSec());
+  const t = nowSec(), n = eng.tap(t);
+  if (takeRec.id) takeRec.changes.push({ t, tap: true }); // (a perfect copy taps it again, at the same time: take-replay.js)
   flashStatus(n < 4 ? 'tap ' + '•'.repeat(n) : `tempo ${Math.round(eng.tempo.bpm)} (tapped)`);
 }
 function renameSong() {
@@ -2517,7 +2959,12 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-window.__nc = { get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
+const prepareFrame = (t) => Promise.all([scenery.prepare(t), spaghetti.prepare(), earth.prepare(t)]);
+window.__nc = { clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
+// (for the clock harness, tools/clock-harness.mjs, and for whatever drives a render: the layers and what a look is made of)
+Object.assign(window.__nc, { setAutoScene: (n, at) => { autoScene = n; if (Number.isFinite(at)) autoSceneAt = at; }, lookWaiting, setPerfectCopy, takeBegin, takeEnd, takeState: () => ({ id: takeRec.id, tapping: !!takeRec.tap, runup: takeRec.blocks.length, making: !!takeRec.making }), VISUALS, BLOCK_LOOKS, THEMES, SPAGHETTI_KINDS, DROPS, scenery, chrome, spaghetti, spectro, warp, fire, tunnel, spiral, wheel, field, wait, storm, sceneShown, applyCard, setCrt, freshStart, setPostLook: (name) => setLook(name === 'none' ? 'off' : name, false), setGlassPlates: (on) => setGlassPlates(on, false) });
+// (the looks as they are now: the ones from outside come in after the page starts)
+Object.defineProperty(window.__nc, 'postLooks', { get: () => LOOKS.filter((l) => l !== 'off'), configurable: true });
 
 // the version, in the menu and the help; and what's new since the version last opened
 window.nc?.version?.().then((v) => {
@@ -2546,6 +2993,9 @@ setOrb(state.orb);
 setGlass(state.glass);
 setCodeHidden(state.codeHidden, state.beatHidden);
 setCrt(state.crt);
+setLook(state.look, false);
+setGlassPlates(state.glassPlates, false);
+loadLooks();
 setCalm(state.calm);
 setUpdates(state.updates);
 setMirror(state.mirror);
@@ -2563,7 +3013,7 @@ requestAnimationFrame(draw);
 // no way in: its browser has no screen capture, or the screen is touch only. So there the menu leaves it
 // out and leads with the microphone, the song played out loud near it. Asked of the browser, not guessed
 // from its name)
-if (inBrowser) {
+if (inBrowser && !TAKE) {
   const touchOnly = matchMedia('(hover: none) and (pointer: coarse)').matches;
   if (!navigator.mediaDevices?.getDisplayMedia || touchOnly) {
     document.documentElement.classList.add('mic-first');
@@ -2571,4 +3021,42 @@ if (inBrowser) {
     document.querySelectorAll('#menu .device').forEach((el) => { el.textContent = device; });
   }
   showMenu();
+}
+
+// The perfect take's render mode (take-replay.js): this page, in the render's hidden window, listening again to a take's own
+// sound and drawing it a frame at a time. It started with the settings and storage it had at M (the preload put them back);
+// what changed during the take goes in on its time, through the same setters as a scene of yours (applySetup).
+const takeSetters = {
+  ...presetSetters,
+  orb: (on) => setOrb(on), hushed: (on) => setHush(on), crt: (on) => setCrt(on), look: (name) => setLook(name, false),
+  card: (on) => { state.card = on; applyCard(); }, cardV: (on) => { state.cardV = on; applyCard(); }, cardBig: (on) => { state.cardBig = on; applyCard(); },
+  drop: (i) => { state.drop = i; }, worldLook: (look) => { state.worldLook = look; worlds.setLook(look); },
+  chromeCollage: (on) => { state.chromeCollage = on; }, spaghettiKind: (kind) => { state.spaghettiKind = kind; }, spectroTheme: (on) => { state.spectroTheme = on; },
+};
+const applySetup = (settings) => applyPreset({ name: 'take', settings }, { ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme], codeHidden: state.beatHidden ? 'beat' : state.codeHidden }, takeSetters).catch(() => false);
+// (the look's own pieces ready, its shaders compiled and pictures loaded: drawn again and again at one moment of the clock till
+// they are, so the wait changes nothing; then a moment for a compile's last driver work and the fonts)
+// (the look as it is now not ready: its shaders still compiling, its pictures not loaded; the replay asks before each frame, see take-replay.js)
+function lookWaiting() {
+  const mode = VISUALS[state.visual], w = { worlds, chrome, spaghetti, spectrogram: spectro, warp, scenery, earth }[mode];
+  return mode === 'scenery' ? !scenery.drawnScene || scenery.drawnScene !== sceneShown() : !!w?.waiting || !!w?.broken;
+}
+async function lookReady(t) {
+  await document.fonts.ready;
+  for (let tries = 0; ; tries++) { // (50 ms a try: two minutes at most; the frame's time limit, frameMs in main.js, is longer, as a look is waited for in a frame too)
+    clock.set(t); await prepareFrame(t); drawFrame(t);
+    await new Promise((r) => setTimeout(r, 50));
+    if (!lookWaiting()) break;
+    if (tries > 2400) throw new Error('the look never finished loading');
+  }
+  await new Promise((r) => setTimeout(r, 1500));
+}
+if (TAKE) {
+  document.body.classList.add('recording'); // (as M records: the header and footer out of the picture)
+  // (the layout the take was made in: the 9:16 one or the mini player, set as changeWindowMode sets it, without resizing a window)
+  for (const mode of ['vertical', 'mini']) if (TAKE[mode]) { state[mode] = true; document.body.classList.add(mode); }
+  applyCard();
+  import('./take-replay.js')
+    .then(async ({ replay }) => replay(window.__nc, await window.takeRender.take(), window.takeRender, { apply: applySetup, waitReady: lookReady }))
+    .catch((err) => window.takeRender.failed(err?.message || String(err)));
 }

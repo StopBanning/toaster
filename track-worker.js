@@ -58,6 +58,7 @@ function featureFailed(name, err) {
   f.model = null;
   f.error = String(err?.message || err);
   f.tries = Math.max(1, f.tries);
+  // (performance.now() in this worker: when to try a model again and how long one took to load; a worker has no clock of the page's)
   f.retryAt = performance.now() + 3000 * f.tries;
 }
 function wantFeature(name, make) {

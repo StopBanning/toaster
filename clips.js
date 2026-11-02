@@ -44,6 +44,7 @@ export function createClips(deps) {
   function startStretch() {
     const src = source;
     const mr = new MediaRecorder(new MediaStream([...src.video.getVideoTracks(), ...src.dest.stream.getAudioTracks()]), { mimeType: type, videoBitsPerSecond: 8e6, audioBitsPerSecond: 192e3 });
+    // (performance.now() in this file: how long the drop clips' recorder has been recording a live stream, real time)
     const st = { mr, type, chunks: [], at: performance.now(), kept: false, source: src };
     stretches.push(st);
     mr.ondataavailable = (e) => { if (!st.finished && e.data.size) st.chunks.push(e.data); };

@@ -1,14 +1,19 @@
 // Drop effects, error messages and the machine readout.
-// - Takeover: on a drop (or the D key), the screen becomes a desktop (huge title text, yellow
-//   folders) and windows pop open on every kick: webcam windows in each theme colour, an XP
-//   message box, a little blue screen and Notepad. After the "Give it 2 me" malware music video.
-//   Lasts 8 bars.
+// - Takeover: on a drop (or the D key), the screen becomes an XP desktop (huge title text, the
+//   song's files as icons, the taskbar with its start button (toast), a button per open window and
+//   the bar in the tray) and windows pop open on every kick, in stacks of three that cascade as a
+//   pop-up attack does: webcam windows in each theme colour, an XP message box, an XP stop screen
+//   and Notepad. A balloon from the tray says the song's been found. After the "Give it 2 me"
+//   malware music video. Lasts 8 bars.
 // - XP alerts: real errors (like "couldn't capture audio") use the same message box.
-// - Blue screen: the Windows crash screen, for a moment.
+// - Blue screen: the Windows crash screen for two beats, its percentage counting up.
 // - Machine readout: OS, CPU, RAM and screen as a const object.
 
+import { clock, simulate } from './clock.js';
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const ICONS = ['kick.wav', 'clap.wav', 'vox_chop.wav', 'bassline.js', 'hardcore_software.zip', 'memory_leak.exe', 'airglow.mp3', 'strudel'];
+// (each file's icon by its kind: a sound, a script, a zipped folder, a program, or a folder)
+const iconKind = (name) => ({ wav: 'sound', mp3: 'sound', js: 'script', zip: 'zip', exe: 'program' })[name.split('.').pop()] || 'folder';
 
 // Classic XP messages, rewritten around the music (Memory Leak, Hard Refresh and Always Learning
 // are tracks on Hardcore Software).
@@ -30,8 +35,11 @@ function messages(song) {
 // eye) and little computer screens showing one eye; the rest are a message box, a little blue
 // screen and Notepad. Without it, those three take turns.
 const MAX_WINDOWS = 8;
+// where each stack of windows starts (shares of the screen): the top left, the middle, lower down on the left
+const STACKS = [[0.015, 0.05], [0.4, 0.36], [0.06, 0.6]];
 const PLAN_CAM = ['cam', 'screen', 'box', 'cam', 'bsod', 'cam', 'notepad', 'cam'];
-const PLAN_NO_CAM = ['box', 'notepad', 'bsod'];
+// (in that order, so in each stack of three the message box, the joke, is on top)
+const PLAN_NO_CAM = ['bsod', 'notepad', 'box'];
 // One webcam window per theme colour, each with its own effect.
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const CAMS = [
@@ -62,6 +70,7 @@ function xpWindow({ title, kind = 'box', icon, text, list = null, buttons = ['OK
   el.innerHTML = `<div class="xp-title"><span>${esc(title)}</span><span class="xp-ctl">${controls}</span></div><div class="xp-frame">${body}</div>`;
   el.kind = kind;
   el.title = title;
+  el.icon = icon;
   return el;
 }
 
@@ -77,15 +86,16 @@ function crtScreen(look, which) {
   return el;
 }
 
-// A little blue screen, like the full-screen drop effect, in a thin monitor bezel. Its
-// "% complete" counts up while it's open.
+// A little stop screen in a thin monitor bezel, XP's own (white Lucida Console on its royal blue, as
+// the windows around it are XP's), its memory dump counting up while it's open.
 function miniBsod() {
   const el = document.createElement('div');
   el.className = 'mini-bsod';
-  el.innerHTML = '<div class="face">:(</div>'
-    + "<p>Your PC ran into a drop and needs to dance. We're just collecting some bass, and then we'll restart for you.</p>"
-    + '<p><span class="pct">0</span>% complete</p>'
-    + '<div class="foot"><i class="qr"></i><small>For more information about this issue, keep listening<br />Stop code: BASS_DROP_DETECTED</small></div>';
+  el.innerHTML = '<p>A problem has been detected and Windows has been shut down to prevent damage to your speakers.</p>'
+    + '<p>BASS_DROP_DETECTED</p>'
+    + "<p>If this is the first time you've seen this Stop error screen, turn it up. If this screen appears again, the drop is real.</p>"
+    + '<p>Technical information:</p><p>*** STOP: 0x000000D1 (0x0000007B, 0x00000002, 0x00000000, 0xF86B5A89)</p>'
+    + '<p>Beginning dump of physical memory<br />Dumping the bass to disk: <span class="pct">0</span></p>';
   el.kind = 'bsod';
   el.pct = 0;
   return el;
@@ -185,11 +195,33 @@ const FLASHES = ['#ffffff', '#1f3dff', '#000000', '#9fd0ff'];
 
 export function createTakeover({ back, front, sources }) {
   let active = false, until = 0, wins = [], spawned = 0, camCount = 0, screenCount = 0, boxCount = 0, song = '';
-  let lastBar = null, flashes = 0, ending = 0, goodbye = null, closing = false;
+  let lastBar = null, flashes = 0, ending = 0, goodbye = null, closing = false, began = 0, barLen = 2;
   const big = back.querySelector('.big'), icons = back.querySelector('.icons'), winLayer = front.querySelector('.wins');
+  const tasks = front.querySelector('.tasks'), trayClock = front.querySelector('.clock'), balloon = front.querySelector('.balloon');
   const flash = document.createElement('div');
   flash.style.cssText = 'position:absolute;inset:0;display:none';
   front.prepend(flash);
+  const closeWindow = (w) => { w.task?.remove(); w.remove(); };
+  // What goes on in steps of a 60th of a second on the clock's own grid (clock.js simulate), not once a frame: the little blue
+  // screens' percent, and the closing (a window a step, then the alert). So it goes the same at 30 frames a second as at 144.
+  const sim = simulate(60, (st) => {
+    wins.forEach((w, i) => { if (w.kind === 'bsod' && w.pct < 100 && st > w.born) w.pct = Math.min(100, w.pct + clock.rng('xp-bsod', Math.round(st * 60) + 31 * i)() * 1.2); }); // (from the step after it opened)
+    if (st > until) {
+      // windows close one at a time (no new ones), then one alert on the empty desktop, then the desktop goes
+      closing = true;
+      const w = wins.pop();
+      if (w) closeWindow(w);
+      else if (!ending) {
+        ending = st;
+        goodbye = xpWindow({ title: 'toaster.exe', icon: 'info', text: `${(song || 'this song').toUpperCase().slice(0, 40)} NEEDS YOUR LOVE`, buttons: ['Not Now', 'OK'] });
+        goodbye.dataset.born = st; // (its pop starts on this step, not when the next tick meets it: dom-time.js)
+        winLayer.append(goodbye);
+        tasks.innerHTML = '<div class="task on box info"><i></i><span>toaster.exe</span></div>';
+        goodbye.style.left = Math.round((innerWidth - (goodbye.offsetWidth || 240)) / 2) + 'px';
+        goodbye.style.top = Math.round((innerHeight - (goodbye.offsetHeight || 150)) / 2) + 'px';
+      }
+    }
+  });
 
   function spawnWindow() {
     const plan = sources.cam() ? PLAN_CAM : PLAN_NO_CAM;
@@ -213,10 +245,23 @@ export function createTakeover({ back, front, sources }) {
       el = xpWindow(all[boxCount++ % all.length]);
     }
     winLayer.append(el);
-    const w = el.offsetWidth || 320, h = el.offsetHeight || 150;
-    el.style.left = 12 + Math.random() * Math.max(10, innerWidth - w - 24) + 'px';
-    el.style.top = 44 + Math.random() * Math.max(10, innerHeight - h - 90) + 'px';
+    // the cascade: in stacks of three, each window a step down and right of the last, each stack somewhere else on the
+    // screen (kept on it, above the taskbar)
+    const w = el.offsetWidth || 320, h = el.offsetHeight || 150, STEP = 28;
+    const [ax, ay] = STACKS[Math.floor(spawned / 3) % STACKS.length], k = spawned % 3;
+    el.style.left = Math.round(Math.max(4, Math.min(innerWidth - w - 4, ax * innerWidth + k * STEP))) + 'px';
+    el.style.top = Math.round(Math.max(4, Math.min(innerHeight - h - 38, ay * innerHeight + k * STEP))) + 'px';
     if (el.kind === 'cam') el.cam = el.querySelector('canvas').getContext('2d', { willReadFrequently: el.fx === 'face' || el.fx === 'eye' });
+    el.born = clock.now(); // (when it opened: what counts up in it starts then, not at the frame that drew it first)
+    // and its button on the taskbar (the windows only: the little screens aren't programs), the newest one pressed
+    if (el.classList.contains('xp')) {
+      for (const b of tasks.children) b.classList.remove('on');
+      const b = document.createElement('div');
+      b.className = `task on ${el.kind} ${el.icon || ''}`;
+      b.innerHTML = `<i></i><span>${esc(el.title)}</span>`;
+      tasks.append(b);
+      el.task = b;
+    }
     wins.push(el);
     spawned++;
   }
@@ -230,13 +275,22 @@ export function createTakeover({ back, front, sources }) {
       lastBar = null;
       ending = 0;
       closing = false;
-      // (a drop while the last one's alert is still up: that alert goes)
+      sim.reset();
+      // (a drop while the last one is still up: its windows go, which are left with no buttons on the new taskbar and use up the new
+      // ones' places, and its alert)
+      wins.forEach(closeWindow);
+      wins = [];
       goodbye?.remove();
       goodbye = null;
       flash.style.display = 'none';
       song = title || '';
       big.textContent = (title || 'bass drop').toUpperCase().slice(0, 28);
-      icons.innerHTML = ICONS.map((n) => `<div class="icon"><i></i><span>${n}</span></div>`).join('');
+      icons.innerHTML = ICONS.map((n) => `<div class="icon ${iconKind(n)}"><i></i><span>${n}</span></div>`).join('');
+      began = t;
+      barLen = barSeconds;
+      tasks.innerHTML = '';
+      balloon.hidden = true;
+      balloon.querySelector('span').textContent = `${title || 'A song'} is installed and ready to dance.`;
       back.classList.add('on');
       front.classList.add('on');
       spawnWindow();
@@ -246,8 +300,10 @@ export function createTakeover({ back, front, sources }) {
       active = false;
       back.classList.remove('on');
       front.classList.remove('on');
-      wins.forEach((w) => w.remove());
+      wins.forEach(closeWindow);
       wins = [];
+      tasks.innerHTML = '';
+      balloon.hidden = true;
       goodbye?.remove();
       goodbye = null;
       ending = 0;
@@ -260,10 +316,15 @@ export function createTakeover({ back, front, sources }) {
         if (lastBar !== null && !calm) {
           flash.style.background = FLASHES[flashes++ % FLASHES.length];
           flash.style.display = 'block';
-          setTimeout(() => { flash.style.display = 'none'; }, 90);
+          clock.after(0.09, () => { flash.style.display = 'none'; }); // (on the clock: a render has it up for the same 90 ms)
         }
         lastBar = bar;
       }
+      // the tray: the bar it's on; the balloon from the second bar to the fourth
+      trayClock.textContent = bar !== null ? `bar ${bar}` : '';
+      const showBalloon = t - began > barLen && t - began < barLen * 3.5;
+      if (showBalloon && balloon.hidden) balloon.dataset.born = began + barLen; // (its pop starts at the second bar on the clock, not at the frame that shows it: dom-time.js)
+      balloon.hidden = !showBalloon;
       // the webcam only changes ~30 times a second, so the cam windows update every other frame
       this.odd = !this.odd;
       const face = sources.face?.();
@@ -273,32 +334,25 @@ export function createTakeover({ back, front, sources }) {
           else drawCam(w, camFrame);
         }
         if (w.kind === 'notepad') w.querySelector('pre').textContent = gridText;
-        if (w.kind === 'bsod' && w.pct < 100) {
-          w.pct = Math.min(100, w.pct + Math.random() * 1.2);
-          w.querySelector('.pct').textContent = Math.floor(w.pct);
-        }
       }
-      if (t > until) {
-        // windows close one at a time (no new ones), then one alert on the empty desktop, then
-        // the desktop goes
-        closing = true;
-        const w = wins.pop();
-        if (w) w.remove();
-        else if (!ending) {
-          ending = t;
-          goodbye = xpWindow({ title: 'toaster.exe', icon: 'info', text: `${(song || 'this song').toUpperCase().slice(0, 40)} NEEDS YOUR LOVE`, buttons: ['Not Now', 'OK'] });
-          winLayer.append(goodbye);
-          goodbye.style.left = Math.round((innerWidth - (goodbye.offsetWidth || 240)) / 2) + 'px';
-          goodbye.style.top = Math.round((innerHeight - (goodbye.offsetHeight || 150)) / 2) + 'px';
-        } else if (t - ending > 1.6) this.stop();
-      }
+      sim.advance(t);
+      for (const w of wins) if (w.kind === 'bsod' && w.shown !== Math.floor(w.pct)) { w.shown = Math.floor(w.pct); w.querySelector('.pct').textContent = w.shown; }
+      if (closing && ending && t - ending > 1.6) this.stop();
     },
   };
 }
 
-export function showBsod(el, after) {
+// The blue screen: up for two beats (beat: a beat's length in seconds), its percentage counting up an 8th at a time and
+// at 100% for the last; after() once it's gone. (A drop while it's up starts it over.)
+export function showBsod(el, after, beat = 0.35) {
+  const dur = Math.min(1.5, Math.max(0.6, beat * 2)), pct = el.querySelector('.pct'), run = (el.run = (el.run || 0) + 1);
+  el.style.animationDuration = dur * 1000 + 'ms'; // (with fewer flashes it fades in and out over the same time)
+  if (pct) pct.textContent = 0;
+  el.classList.remove('show');
+  void el.offsetWidth;
   el.classList.add('show');
-  setTimeout(() => { el.classList.remove('show'); after?.(); }, 700);
+  [25, 60, 100].forEach((p, i) => clock.after((dur * (i + 1)) / 4, () => { if (el.run === run && pct) pct.textContent = p; }));
+  clock.after(dur, () => { if (el.run !== run) return; el.classList.remove('show'); after?.(); }); // (on the clock, as the flash is)
 }
 
 export function createSysinfo(el, describeAudio) {

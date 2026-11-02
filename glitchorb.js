@@ -8,6 +8,9 @@
 // surface is wrapped round the ball as its longitude and latitude, tilted to the slant, and turns
 // with the orb. Drawn in the orb's own WebGL context: the surface is a texture worked out on the
 // graphics card from the last one, 120 steps a second.
+import { clock } from './clock.js';
+import { hash32, mulberry32 } from './random.js';
+
 const SW = 512, SH = 256; // the surface: longitude across, latitude up
 const RATE = 120; // its steps a second
 const SPARKLE = 0.002; // fresh noise between the kicks too, a step's share of the blocks
@@ -96,7 +99,9 @@ export function createGlitch(gl, parallel) {
   };
   const step = program(STEP), draw = program(DRAW), loc = { step: {}, draw: {} };
   let ready = false, broken = false, quad = null, A = null, B = null;
-  let seed = Math.random() * 100, dragSeed = seed, reseed = 1, kicks = 0, ones = 0, lastBar = null, slant = -0.35, slantTo = -0.35, due = 0;
+  // (its noise is seeded: each kick's from the song's seed and its count, so the same kicks make the same surface)
+  const dice = (what, n) => mulberry32(hash32(clock.seed, what, n))();
+  let seed = dice('start', 0) * 100, dragSeed = seed, reseed = 1, kicks = 0, ones = 0, fresh = 0, lastBar = null, slant = -0.35, slantTo = -0.35;
 
   const surface = () => {
     const t = gl.createTexture();
@@ -143,26 +148,25 @@ export function createGlitch(gl, parallel) {
       try { return init(); } catch (err) { broken = true; console.error('glitch orb:', err); return false; }
     },
     // a fresh surface (all of it new blocks of noise), for when the form comes round
-    fresh() { seed = Math.random() * 100; dragSeed = seed; reseed = 1; },
+    fresh() { seed = dice('fresh', ++fresh) * 100; dragSeed = seed; reseed = 1; },
     // a kick; bar: the bar it fell in (on the beat grid), or nothing (no beat yet: every fourth kick
     // counts as a bar's first)
     kick(bar) {
       kicks++;
-      seed = Math.random() * 100;
+      seed = dice('kick', kicks) * 100;
       const one = bar === undefined ? kicks % 4 === 1 : bar !== lastBar;
       if (bar !== undefined) lastBar = bar;
       if (one) {
         if (ones++ % 2 === 0) dragSeed = seed;
-        slantTo = -0.35 + (Math.random() - 0.5) * 0.3;
+        slantTo = -0.35 + (dice('slant', kicks) - 0.5) * 0.3;
       }
       reseed = Math.max(reseed, one ? 0.4 : 0.06);
     },
-    // the surface's steps due by now, then the ball (into the canvas's own drawing buffer, w by h
-    // pixels): cx, cy its middle (pixels from the bottom left), radius, spin (turns), ink (the dark,
-    // 0 to 1 each), alpha
-    draw(dt, w, h, { cx, cy, radius, spin, time, alpha, ink }) {
+    // One of the surface's steps, RATE of them a second (the orb calls it at each step of the clock's grid that falls on
+    // one, with the seeds as the kicks left them by then): the surface drawn again from the last, a few blocks of it new
+    // noise.
+    step() {
       if (!ready) return;
-      due = Math.min(4, due + dt * RATE);
       gl.disable(gl.BLEND);
       use(step, loc.step);
       gl.uniform4f(loc.step.box, 0, 0, 1, 1);
@@ -171,19 +175,23 @@ export function createGlitch(gl, parallel) {
       gl.uniform1f(loc.step.dragSeed, dragSeed);
       gl.activeTexture(gl.TEXTURE0);
       gl.viewport(0, 0, SW, SH);
-      for (; due >= 1; due--) {
-        gl.bindFramebuffer(gl.FRAMEBUFFER, B.f);
-        gl.bindTexture(gl.TEXTURE_2D, A.t);
-        gl.uniform1f(loc.step.reseed, reseed);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        [A, B] = [B, A];
-        reseed = SPARKLE;
-      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, B.f);
+      gl.bindTexture(gl.TEXTURE_2D, A.t);
+      gl.uniform1f(loc.step.reseed, reseed);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      [A, B] = [B, A];
+      reseed = SPARKLE;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      // (the slant eases to its new angle)
+      slant += (slantTo - slant) * (1 - Math.exp(-(1 / RATE) / 0.35));
+    },
+    rate: RATE,
+    // the ball (into the canvas's own drawing buffer, w by h pixels): cx, cy its middle (pixels from the bottom left),
+    // radius, spin (turns), ink (the dark, 0 to 1 each), alpha
+    draw(w, h, { cx, cy, radius, spin, time, alpha, ink }) {
+      if (!ready) return;
       gl.viewport(0, 0, w, h);
       gl.enable(gl.BLEND);
-      // (the slant eases to its new angle)
-      slant += (slantTo - slant) * (1 - Math.exp(-dt / 0.35));
       use(draw, loc.draw);
       // (only the square the ball is in, a few pixels over for the crackling edge)
       const R = radius * 1.02 + 2;

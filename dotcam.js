@@ -75,6 +75,7 @@ uniform sampler2D src; in vec2 uv; out vec4 o;
 void main() { vec3 c = texture(src, uv).rgb; o = vec4(c, max(c.r, max(c.g, c.b))); }`;
 
 import { compileProgram } from './program.js';
+import { clock } from './clock.js';
 
 export function createDotCam(canvas) {
   let gl = null, P = null, quad = null, camTex = null, maskTex = null, T = null, broken = false;
@@ -194,7 +195,7 @@ export function createDotCam(canvas) {
       hue += (hueTo - hue) * (1 - Math.exp(-dt / 0.6));
 
       // the camera at most 31 times a second (as the camera's own drawing: a webcam gives about 30)
-      const now = performance.now();
+      const now = clock.now() * 1000;
       if (!uploadedAt || now - uploadedAt >= 1000 / 31) {
         uploadedAt = now;
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);

@@ -18,6 +18,7 @@ export const CONTROLS = [
   ['strength', 'look', 'next', 'the next scene, look or screen'],
   ['theme', 'look', 'theme', 'the colours'],
   ['crt', 'look', 'old TV (CRT)', 'scanlines and glass'],
+  ['look', 'look', 'look', 'trails, dots, LED, halftone, VHS, line art'],
   ['blocks', 'look', 'code look', 'dominoes, handheld, punchcard, none'],
   ['orb', 'look', 'the orb', 'dots in 3D shapes over any background'],
   ['card', 'look', 'ID card', 'off, on, big'],

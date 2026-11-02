@@ -6,6 +6,8 @@
 // bright the new stripes come in. Worked out at half the window's size (feedback is soft anyway)
 // and stretched to fit, on the graphics card: a couple of calls a frame.
 import { compileProgram } from './program.js';
+import { simulate } from './clock.js';
+import { createPulses } from './pulse.js';
 
 const VERT = `#version 300 es
 in vec2 p;
@@ -48,9 +50,10 @@ void main() { float v = texture(frame, uv).r; color = vec4(mix(bg, fg, v), 1.0);
 export function createWarp(canvas) {
   let gl = null, ok = false, stepProg, showProg, buf, tex = [], fbo = [], loc = {}, show = {}, i = 0, w = 0, h = 0;
   let jobs = null;
-  let pulse = 0, last = 0, spin = 0;
-  const band = (eng, lo, hi) => {
-    const db = eng.fastDb, hz = eng.hzFast;
+  let spin = 0, cur = null;
+  const kicks = createPulses(1 / 6); // the zoom punches on a kick and lets go over about a sixth of a second
+  const band = (eng, lo, hi, at) => {
+    const db = eng.dbAt(at), hz = eng.hzFast;
     let m = -160;
     for (let k = Math.max(1, Math.floor(lo / hz)); k <= Math.min(db.length - 1, Math.ceil(hi / hz)); k++) m = Math.max(m, db[k]);
     return Math.min(1, Math.max(0, (m + 90) / 60));
@@ -110,10 +113,35 @@ export function createWarp(canvas) {
   canvas.addEventListener('webglcontextrestored', () => { tex = []; fbo = []; build(); });
   let built = false; // (built the first time it's shown, not at startup)
 
+  const sim = simulate(60, (st, h) => {
+    const { eng, W, H } = cur, pulse = kicks.at(st);
+    const low = band(eng, 40, 200, st), high = band(eng, 6000, 14000, st), level = Math.min(1, eng.levelAt(st) * 6);
+    spin += h * (0.08 + 0.5 * high);
+    const bpm = eng.bpmAt(st) || 110;
+    // new stripes: one picture's brightness from the other
+    const from = i, to = 1 - i;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[to]);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(stepProg);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex[from]);
+    gl.uniform1i(loc.prev, 0);
+    gl.uniform1f(loc.time, st * (bpm / 120));
+    gl.uniform1f(loc.aspect, W / H);
+    gl.uniform1f(loc.zoom, 0.006 + 0.03 * pulse);
+    gl.uniform1f(loc.spin, Math.sin(spin) * 0.01);
+    gl.uniform1f(loc.sides, 6);
+    gl.uniform1f(loc.freq, 34 - 16 * low);
+    gl.uniform1f(loc.gain, eng.silentAt(st) ? 0 : 0.35 + 0.65 * level);
+    gl.uniform1f(loc.wobble, 1.2 + 2 * low);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    i = to;
+  });
+
   return {
     get broken() { return !ok; },
     get waiting() { return !built || !!jobs; },
-    kick(s) { pulse = Math.max(pulse, 0.5 + 0.5 * Math.min(1, s)); },
+    kick(s) { kicks.hit(0.5 + 0.5 * Math.min(1, s)); },
     // Not in use: drop the pictures' memory too (draw() makes them again).
     clear() { if (ok) { size(1, 1); } canvas.width = canvas.height = 1; },
     draw(t, eng, col) {
@@ -123,38 +151,20 @@ export function createWarp(canvas) {
       const W = Math.max(1, Math.round(innerWidth / 2)), H = Math.max(1, Math.round(innerHeight / 2));
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
       size(W, H);
-      const dt = Math.min(0.1, Math.max(0, t - last));
-      last = t;
-      pulse *= Math.exp(-dt * 6);
-      const low = band(eng, 40, 200), high = band(eng, 6000, 14000), level = Math.min(1, (eng.level || 0) * 6);
-      spin += dt * (0.08 + 0.5 * high);
-      const bpm = eng.tempo.locked ? eng.tempo.bpm : 110;
-      // new stripes: one picture's brightness from the other, then onto the screen
-      const from = i, to = 1 - i;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[to]);
-      gl.viewport(0, 0, W, H);
-      gl.useProgram(stepProg);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, tex[from]);
-      gl.uniform1i(loc.prev, 0);
-      gl.uniform1f(loc.time, t * (bpm / 120));
-      gl.uniform1f(loc.aspect, W / H);
-      gl.uniform1f(loc.zoom, 0.006 + 0.03 * pulse);
-      gl.uniform1f(loc.spin, Math.sin(spin) * 0.01);
-      gl.uniform1f(loc.sides, 6);
-      gl.uniform1f(loc.freq, 34 - 16 * low);
-      gl.uniform1f(loc.gain, eng.silent ? 0 : 0.35 + 0.65 * level);
-      gl.uniform1f(loc.wobble, 1.2 + 2 * low);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      // the feedback goes a step on at each step of the clock's grid, 60 a second (it was tuned to one a frame
+      // at 60 frames a second: each step draws the last picture again, 0.93 as bright, zoomed in a little and
+      // turned), each from what the engine heard at the step's time; the screen shows the picture as it stands
+      cur = { eng, W, H };
+      sim.advance(t);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, W, H);
       gl.useProgram(showProg);
-      gl.bindTexture(gl.TEXTURE_2D, tex[to]);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex[i]);
       gl.uniform1i(show.frame, 0);
       gl.uniform3f(show.bg, col.bg[0] / 255, col.bg[1] / 255, col.bg[2] / 255);
       gl.uniform3f(show.fg, col.fg[0] / 255, col.fg[1] / 255, col.fg[2] / 255);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-      i = to;
     },
   };
 }

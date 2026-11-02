@@ -29,6 +29,7 @@ export function createTracker(on = 'gpu') {
     if (wanted && tries < 3) { tries++; retry = setTimeout(() => { retry = 0; if (wanted && !worker) open(); }, 3000 * tries); }
   };
   function open() {
+    // (performance.now() in this file: when the camera's sensors last saw a hand, a face or a mask: the camera's own clock, and the camera is left out of the clock's pictures)
     handAt = performance.now();
     const active = worker = new Worker(new URL(`./track-worker.js?on=${on}`, import.meta.url), { type: 'module' });
     answered = false;

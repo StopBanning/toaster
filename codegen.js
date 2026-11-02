@@ -144,12 +144,12 @@ function bassParts(eng) {
 }
 
 // "The Weeknd" -> TheWeeknd, for the x = x.Artist("Song") header.
-function ident(name) {
+export function ident(name) {
   const words = String(name || '').normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
   const id = words.map((w) => w[0].toUpperCase() + w.slice(1)).join('');
   return !id ? 'Unknown' : /^\p{N}/u.test(id) ? '_' + id : id;
 }
-function cleanTitle(title) {
+export function cleanTitle(title) {
   const t = String(title || '')
     .replace(/\p{Extended_Pictographic}|\uFE0F|\u200D/gu, ' ')
     .replace(/["\\]/g, "'")
@@ -178,19 +178,29 @@ const lastBody = {};
 // songs from a recording (Oct 15) the kick and clap lines changed half as often, mostly a step
 // coming and going, and matched the bars' hits as well. (Only the code: the blocks, the export and
 // the test songs see the patterns as learned. Holding them back in the engine kept out a pop kick
-// it only catches some bars.)
+// it only catches some bars.) The bars are counted here, as the bar number changes: the engine's
+// numbering starts again at each lock (a new tempo), and a change waiting from before one was held
+// until the new count caught up with the old, a minute or more. turned: how far the engine has
+// turned its steps (relabel: new bar lines, the beat found on another 16th); the line written turns
+// with them, or a pattern moved a beat read as a change of a step or two, and waited two bars.
 const written = {};
-function calm(id, on, bar) {
+function calm(id, on, bar, turned = 0) {
   if (!on || bar === null) return on;
   const w = written[id];
-  if (!w) { written[id] = { on: on.slice(), cand: null, since: 0 }; return on; }
+  if (!w) { written[id] = { on: on.slice(), cand: null, since: 0, bar, bars: 0, turned }; return on; }
+  if (bar !== w.bar) { w.bar = bar; w.bars++; }
+  if (turned !== w.turned) {
+    const old = w.on.slice(), d = turned - w.turned;
+    for (let s = 0; s < 16; s++) w.on[(((s - d) % 16) + 16) % 16] = old[s];
+    w.turned = turned; w.cand = null;
+  }
   const diff = on.reduce((n, x, s) => n + (x !== w.on[s]), 0);
   if (diff === 0) w.cand = null;
   else if (diff > 2) { w.on = on.slice(); w.cand = null; }
   else {
     const key = on.join();
-    if (w.cand !== key) { w.cand = key; w.since = bar; }
-    else if (bar - w.since >= 2) { w.on = on.slice(); w.cand = null; }
+    if (w.cand !== key) { w.cand = key; w.since = w.bars; }
+    else if (w.bars - w.since >= 2) { w.on = on.slice(); w.cand = null; }
   }
   return w.on;
 }
@@ -218,7 +228,7 @@ export function buildLines(eng, meta, t) {
   const k = eng.knobs;
   for (const id of ['bd', 'sd', 'hhc', 'hho']) {
     const d = DRUMS[id];
-    const on = calm(id, eng.v[id].shown, eng.bar);
+    const on = calm(id, eng.v[id].shown, eng.bar, eng.v[id].turned);
     const body = eng.present(id, t) && on ? stepParts(on.map((x) => (x ? d.token : null))) : null;
     if (body) {
       lastBody[id] = body.map((p) => p.text).join('');

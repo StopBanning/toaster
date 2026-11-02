@@ -2,6 +2,7 @@
 // wireframe tunnel like the Hardcore Software visualizers, Strudel-style floating punchcard
 // blocks, and the webcam tinted to the theme.
 import { VOICES } from './engine.js';
+import { clock, simulate } from './clock.js';
 import { beatRuns } from './codegen.js';
 import { createDominoes } from './dominoes.js';
 import { compileProgram } from './program.js';
@@ -28,9 +29,10 @@ function fit(canvas, scale = 1) {
   return [w, h];
 }
 
-// Log-spaced bands (0..1) from the fast analyser's spectrum, written into `out`.
-export function bands(eng, out, lo = 40, hi = 14000) {
-  const n = out.length, db = eng.fastDb, hz = eng.hzFast;
+// Log-spaced bands (0..1) from the fast analyser's spectrum, written into `out`. With a time, the spectrum as it was
+// at that time (the engine's history, eng.dbAt): for a picture that moves in steps of its own (clock.js simulate).
+export function bands(eng, out, lo = 40, hi = 14000, at) {
+  const n = out.length, db = at === undefined ? eng.fastDb : eng.dbAt(at), hz = eng.hzFast;
   for (let i = 0; i < n; i++) {
     const f0 = lo * (hi / lo) ** (i / n), f1 = lo * (hi / lo) ** ((i + 1) / n);
     let m = -160;
@@ -181,7 +183,29 @@ export function createField(canvas) {
   if (!gpu && canvas.getContext('webgl2')) { const fresh = canvas.cloneNode(); canvas.replaceWith(fresh); canvas = fresh; }
   let ctx = gpu ? null : canvas.getContext('2d');
   const meter = document.createElement('canvas').getContext('2d');
-  const f = { cols: 0, rows: 0, cw: 8.4, spec: null, band: null, heights: null, grid: [], rings: [], drops: [], last: 0, pool: 'strudel$:()[]<>~*.' };
+  const f = { cols: 0, rows: 0, cw: 8.4, spec: null, band: null, heights: null, grid: [], rings: [], drops: [], pool: 'strudel$:()[]<>~*.' };
+  // The field is made 24 times a second, 24 Hz being plenty for text art, on the clock's own grid (clock.js simulate):
+  // what moves in it (the spectrum's fall, the rain) goes a step at each, from what the engine heard at that step's
+  // time, and the picture is drawn at that time. So the same time is the same field, however often it is asked for.
+  const STEP_HZ = 24;
+  // (the mountains fell by 0.86 of what they were at each picture, and at 60 frames a second the pictures came about 20 a
+  // second: so a step of the 24 a second lets them fall by that much less)
+  const FALL = 0.86 ** (20 / STEP_HZ);
+  let cur = null; // { eng, mode } of the draw that is running the steps
+  const sim = simulate(STEP_HZ, (st, h) => {
+    const { eng, mode } = cur;
+    if (mode === 'rain') {
+      const dice = clock.rng('rain', Math.round(st * STEP_HZ)), speed = 0.6 + eng.levelAt(st) * 6;
+      for (const d of f.drops) {
+        d.y += d.v * speed * h;
+        if (d.y - 12 > f.rows) { d.y = dice() * -8; d.v = 8 + dice() * 14; }
+      }
+    } else if (mode !== 'cam' && mode !== 'scope') {
+      // spectrum "mountains": each column falls away behind the loudest it has been
+      bands(eng, f.band, 40, 14000, st);
+      for (let x = 0; x < f.cols; x++) f.spec[x] = Math.max(f.band[x], f.spec[x] * FALL);
+    }
+  });
   function measure() {
     const dpr = Math.min(1.5, devicePixelRatio || 1), font = getComputedStyle(document.documentElement).getPropertyValue('--font');
     canvas.width = Math.round(innerWidth * dpr);
@@ -200,7 +224,8 @@ export function createField(canvas) {
     f.band = new Float32Array(f.cols);
     f.heights = new Float32Array(f.cols);
     f.grid = Array.from({ length: f.rows }, () => new Array(f.cols).fill(' '));
-    f.drops = Array.from({ length: f.cols }, () => ({ y: Math.random() * -f.rows, v: 8 + Math.random() * 14 }));
+    const dice = clock.rng('rain-start', 0);
+    f.drops = Array.from({ length: f.cols }, () => ({ y: dice() * -f.rows, v: 8 + dice() * 14 }));
   }
   // (sized again on a resize and once the font's in, unless it's off: then draw() sizes it when it's
   // next shown, and a background that isn't up keeps no window-sized buffers)
@@ -212,7 +237,7 @@ export function createField(canvas) {
   return {
     get waiting() { return !!gpu?.waiting; },
     kick(s) {
-      f.rings.push({ t: performance.now() / 1000, s: 0.8 + 0.2 * Math.min(1.5, s) });
+      f.rings.push({ t: clock.now(), s: 0.8 + 0.2 * Math.min(1.5, s) });
       if (f.rings.length > 5) f.rings.shift();
     },
     setPool(text) { f.pool = text.replace(/\s+/g, '') || f.pool; },
@@ -229,17 +254,15 @@ export function createField(canvas) {
         const fresh = canvas.cloneNode(); canvas.replaceWith(fresh); canvas = fresh;
         gpu = null; ctx = canvas.getContext('2d'); measure();
       }
-      if (t - f.last < 1 / 24) return; // 24 fps is plenty for text art
       if (!canvas.width) measure();
-      const dt = Math.min(0.1, t - f.last);
-      f.last = t;
+      cur = { eng, mode };
+      if (!sim.advance(t)) return; // (a new picture 24 times a second: between them, the one there is)
+      t = sim.at; // (drawn as it is at the step: the time of everything below)
       const { cols, rows, grid } = f;
       for (const row of grid) row.fill(' ');
       if (mode === 'rain') {
-        const pool = f.pool, speed = 0.6 + eng.level * 6;
+        const pool = f.pool;
         f.drops.forEach((d, x) => {
-          d.y += d.v * speed * dt;
-          if (d.y - 12 > rows) { d.y = Math.random() * -8; d.v = 8 + Math.random() * 14; }
           for (let k = 0; k < 12; k++) {
             const y = Math.floor(d.y) - k;
             if (y < 0 || y >= rows) continue;
@@ -270,7 +293,7 @@ export function createField(canvas) {
           }
         }
       } else if (mode === 'scope') {
-        const buf = eng.time, mid = rows / 2;
+        const buf = eng.timeAt(t), mid = rows / 2;
         let prevY = null;
         for (let x = 0; x < cols; x++) {
           const v = buf[Math.floor((x / cols) * buf.length)] || 0;
@@ -281,11 +304,7 @@ export function createField(canvas) {
         }
       } else {
         // spectrum "mountains" plus a ripple on every kick
-        bands(eng, f.band);
-        for (let x = 0; x < cols; x++) {
-          f.spec[x] = Math.max(f.band[x], f.spec[x] * 0.86);
-          f.heights[x] = f.spec[x] * rows * 0.85;
-        }
+        for (let x = 0; x < cols; x++) f.heights[x] = f.spec[x] * rows * 0.85;
         f.rings = f.rings.filter((r) => t - r.t < 1.4);
         const cx = cols / 2, cy = rows / 2, aspect = FIELD_PX / f.cw, level = f.band; // band is free to reuse now
         const mark = (row, x, a) => { if (a > 0.1) row[x] = RAMP[Math.min(9, Math.floor(a * 9.99))]; };
@@ -345,26 +364,35 @@ export function createTunnel(canvas) {
   // Point buffers reused every frame (this ring and the one behind it), so drawing makes no garbage.
   let pts = new Float32Array(M * 2), prev = new Float32Array(M * 2);
   const spec = new Float32Array(M);
-  let flash = 0, last = 0;
+  // The rings fly toward you and the kick's flash speeds them: moved in steps of a 240th of a second on the clock's own
+  // grid (clock.js simulate), the flash letting go as it did a frame at a time at 60 a second (0.86 a frame: a time
+  // constant of 0.11 s), so where the rings are depends on the time, not on how many frames drew it. The kicks come in
+  // with their times (the engine's tick) and take hold at the step they fall in.
+  const FLASH_TAU = -1 / (60 * Math.log(0.86));
+  let flash = 0, cur = null;
+  const kicks = [];
+  const sim = simulate(240, (st, h) => {
+    while (kicks.length && kicks[0].t <= st) flash = Math.min(1, 0.5 + kicks.shift().s * 0.35);
+    const bpm = cur.bpmAt(st) || 110;
+    const speed = 0.11 * (bpm / 120) * (1 + flash * 1.8);
+    flash *= Math.exp(-h / FLASH_TAU);
+    for (const r of rings) { r.z -= speed * h; if (r.z <= 0.03) r.z += 1; }
+  });
   // Drawn at 75% resolution and stretched to fit: a soft background of thin lines looks the same,
   // and it's about half the pixels to fill.
   const SCALE = 0.75;
   return {
-    kick(s) { flash = Math.min(1, 0.5 + s * 0.35); },
+    kick(s) { kicks.push({ t: clock.now(), s }); if (kicks.length > 32) kicks.shift(); },
     // Not in use: drop the canvas's memory too.
     clear() { canvas.width = canvas.height = 0; },
     draw(t, eng, col) {
       const [W, H] = fit(canvas, SCALE);
-      const dt = Math.min(0.05, t - last || 0.016);
-      last = t;
-      const bpm = eng.tempo.locked ? eng.tempo.bpm : 110;
-      const speed = 0.11 * (bpm / 120) * (1 + flash * 1.8);
-      flash *= 0.86;
+      cur = eng;
+      sim.advance(t);
       bands(eng, spec);
       ctx.clearRect(0, 0, W, H);
       const cx = W / 2 + Math.sin(t * 0.3) * W * 0.05, cy = H / 2 + Math.cos(t * 0.23) * H * 0.05;
       const base = Math.min(W, H) * 0.055;
-      for (const r of rings) { r.z -= speed * dt; if (r.z <= 0.03) r.z += 1; }
       rings.sort((a, b) => b.z - a.z); // far to near; sorts in place
       let first = true;
       for (const r of rings) {
@@ -456,8 +484,8 @@ export function createPunchcard(canvas) {
   // Is a part playing? Heard within its longest gap between hits plus two beats, so a missed
   // hit or two doesn't count as stopping.
   const playing = (eng, id, t) => {
-    const v = eng.v[id], on = v.shown;
-    if (!on || v.tooBusy) return false; // (a clap pattern too busy to be one isn't shown anywhere)
+    const L = eng.learnedAt(t), on = L.shown[id]; // (the patterns as they were at t)
+    if (!on || L.tooBusy[id]) return false; // (a clap pattern too busy to be one isn't shown anywhere)
     let first = -1, prev = -1, gap = 0;
     for (let s = 0; s < 16; s++) {
       if (!on[s]) continue;
@@ -467,47 +495,93 @@ export function createPunchcard(canvas) {
     }
     if (prev < 0) return false;
     gap = Math.max(gap, first + 16 - prev);
-    return t - v.last < ((gap + 8) * eng.tempo.P) / 4;
+    return t - eng.lastHitAt(id, t) < ((gap + 8) * eng.tempo.P) / 4; // (the last hit the engine had filed by t: see lastHitAt)
   };
 
   // Queues every step up to `to` from the patterns as they are now. For the game (look), a part that starts sending
   // blocks again (its pattern just learned, or back after 8 bars gone) also fills the steps already queued ahead of the
   // playhead, so its lane fills at once instead of a bar later (marked late: they fade in, not falling in from the top).
   const queue = (eng, t, to, look) => {
+    const L = eng.learnedAt(t); // (the patterns, the bar's chords and bass notes as they were at t)
     const recent = (seen) => t - seen < 32 * eng.tempo.P; // heard in the last 8 bars
     for (const id of VOICES) {
-      const v = eng.v[id], now = !!v.shown?.some(Boolean) && !v.tooBusy && recent(v.last);
+      const shown = L.shown[id], now = !!shown?.some(Boolean) && !L.tooBusy[id] && recent(eng.lastHitAt(id, t));
       if (look === 'game' && now && sending[id] === false) {
-        for (let g = Math.floor(vg) + 1; g <= queuedTo; g++) if (v.shown[((g % 16) + 16) % 16]) blocks.push({ lane: id, g, len: 0.9, lit: false, late: t });
+        for (let g = Math.floor(vg) + 1; g <= queuedTo; g++) if (shown[((g % 16) + 16) % 16]) blocks.push({ lane: id, g, len: 0.9, lit: false, late: t });
       }
       sending[id] = now;
     }
-    const rhythm = eng.v.bass.shown?.some(Boolean) && recent(eng.v.bass.last) ? eng.v.bass.shown : null;
+    const rhythm = L.shown.bass?.some(Boolean) && recent(eng.lastHitAt('bass', t)) ? L.shown.bass : null;
     for (let g = Math.floor(queuedTo) + 1; g <= to; g++) {
       const s = ((g % 16) + 16) % 16, past = g < vg;
       for (const id of VOICES) {
-        const v = eng.v[id];
-        if (v.shown?.[s] && !v.tooBusy && recent(v.last)) blocks.push({ lane: id, g, len: 0.9, lit: past && level[id] > 0.5 });
+        if (L.shown[id]?.[s] && !L.tooBusy[id] && recent(eng.lastHitAt(id, t))) blocks.push({ lane: id, g, len: 0.9, lit: past && level[id] > 0.5 });
       }
       // The bass: a block per note when its rhythm is known (each lasting to the next, at the note
       // of its beat where the bass moves in the bar), else one for each of the bar's notes by the
       // beat (engine.js bassTrack), or one for the bar.
-      const k4 = ((Math.floor(g / 16) % 4) + 4) % 4, slot = eng.slots[k4], runs = beatRuns(eng.bassBeats?.[k4]);
+      const k4 = ((Math.floor(g / 16) % 4) + 4) % 4, slot = L.slots[k4], runs = beatRuns(L.bassBeats?.[k4]);
       const run = runs?.find((r) => r.beats.includes(s >> 2));
-      if ((rhythm ? rhythm[s] : runs ? run.beats[0] * 4 === s : s === 0) && (run || slot?.bass) && recent(eng.bassSeen)) {
+      if ((rhythm ? rhythm[s] : runs ? run.beats[0] * 4 === s : s === 0) && (run || slot?.bass) && recent(eng.seenAt('bass', t))) {
         const pc = run ? run.m % 12 : PCS.indexOf(slot.bass.replace(/\d+$/, ''));
         let len = rhythm || !run ? 16 - s : run.beats.length * 4;
         if (rhythm) for (let k = s + 1; k < 16; k++) if (rhythm[k]) { len = k - s; break; }
         if (pc >= 0) blocks.push({ lane: 'bass', g, len: len - 0.3, pc, lit: past && level.bass > 0.5 });
       }
       if (s !== 0) continue;
-      if (slot?.chord && recent(eng.chordSeen)) {
+      if (slot?.chord && recent(eng.seenAt('chords', t))) {
         // (tone: which of the chord's notes, for the dominoes, which stand them one behind another)
         [0, slot.chord.third, 7].forEach((iv, tone) => blocks.push({ lane: 'chords', g, len: 15.6, pc: (slot.chord.root + iv) % 12, tone, lit: past && level.chords > 0.5 }));
       }
     }
     queuedTo = Math.max(queuedTo, to);
   };
+
+  // The blocks' clock, the parts' levels and the queue move in steps of a 240th of a second on the clock's own grid
+  // (clock.js simulate), and the dominoes' physics with them: each step reads the beat grid and the tempo as the engine
+  // had them at its time (eng.stepAt(t, asOf), eng.bpmAt), so where the playhead is, which block is crossing and which
+  // domino is falling at a time are the same however often the screen was drawn. (The queue makes a block from the
+  // pattern as it stands when the block is made, as it always did.)
+  let cur = null;
+  const sim = simulate(240, (st, h) => {
+    const { eng, offset, look, W, H } = cur;
+    const target = eng.stepAt(st + offset, st);
+    if (target === null || vg === null) return;
+    const bpm = eng.bpmAt(st) || 120;
+    // The engine renumbered its steps (new bar lines, a new tempo, the beat found on another
+    // 16th): same moment, new numbers. Shift everything by exactly that, so nothing moves.
+    const d = eng.renumberAt(st) - moved;
+    if (d) {
+      moved += d;
+      vg += d;
+      queuedTo += d;
+      for (const b of blocks) b.g += d;
+    }
+    if (Math.abs(target - vg) > 3) {
+      // A jump the engine didn't announce (shouldn't happen): follow it, keeping blocks in place.
+      const jump = target - vg;
+      vg = target;
+      queuedTo += jump;
+      for (const b of blocks) b.g += jump;
+    } else {
+      // A smooth clock for drawing: glide at the tempo and ease into the engine's corrections, instead of
+      // jumping each time it re-estimates where the beat is.
+      vg += (bpm / 15) * h;
+      vg += (target - vg) * (1 - Math.exp(-3 * h));
+    }
+    const ease = 1 - Math.exp(-8 * h);
+    for (const id of VOICES) level[id] += ((playing(eng, id, st) ? 1 : 0) - level[id]) * ease;
+    level.bass += ((eng.playingAt('bass', st) ? 1 : 0) - level.bass) * ease;
+    level.chords += ((eng.playingAt('chords', st) ? 1 : 0) - level.chords) * ease;
+    queue(eng, st, Math.floor(vg + AHEAD + 1), look); // made just past the right edge
+    // Blocks leave once they've scrolled off the left edge.
+    // (marked gone as they leave: the dominoes mustn't lean a new one on a block that no longer moves with the clock)
+    if (blocks.length && blocks[0].g + blocks[0].len < vg - AHEAD - 1) blocks = blocks.filter((b) => b.g + b.len >= vg - AHEAD - 1 || ((b.gone = true), false));
+    // a block lights up as it crosses the playhead, if its part is playing
+    for (const b of blocks) if (vg >= b.g && vg < b.g + b.len && level[b.lane] > 0.5) b.lit = true;
+    if (look === 'dominoes') dominoes.step(st, h, { blocks, vg, W, H, level, ahead: AHEAD, rows: ROWS, sps: bpm / 15 });
+    else if (look === 'game') game?.step(st, { blocks, vg, level, eng, offset });
+  });
 
   return {
     // For tests (tools/checks.js): the drawing clock and the queued blocks.
@@ -531,7 +605,7 @@ export function createPunchcard(canvas) {
       const [W, H] = fit(canvas, look === 'dominoes' || look === 'game' ? Math.min(2, devicePixelRatio || 1) : 1);
       const gap = t - last, dt = Math.min(0.1, gap || 0.016);
       last = t;
-      const target = eng.stepAt(t + offset);
+      const target = eng.stepAt(t + offset, t);
       // The handheld game stands by instead of fading or playing on: a device stays where it is, its screens saying why.
       // It does from the moment it's picked till a song's beat is found, once the music has stopped, and while a new
       // song's beat isn't found yet. Stopped is when the engine itself would give up on the song: 4 s of quiet, or 20 s
@@ -556,50 +630,23 @@ export function createPunchcard(canvas) {
         reset();
         return;
       }
-      const T = eng.tempo;
       if (vg === null || gap > 0.5) {
         // Starting, or back after the window was hidden: fill the screen from the patterns.
         vg = target;
-        moved = T.renumber;
+        moved = eng.renumberAt(t);
         blocks = [];
         dominoes.reset();
         game?.reset();
         queuedTo = Math.floor(vg) - AHEAD - 2;
-      } else {
-        // The engine renumbered its steps (new bar lines, a new tempo, the beat found on another
-        // 16th): same moment, new numbers. Shift everything by exactly that, so nothing moves.
-        const d = T.renumber - moved;
-        if (d) {
-          moved = T.renumber;
-          vg += d;
-          queuedTo += d;
-          for (const b of blocks) b.g += d;
-        }
-        if (Math.abs(target - vg) > 3) {
-          // A jump the engine didn't announce (shouldn't happen): follow it, keeping blocks in place.
-          const s = target - vg;
-          vg = target;
-          queuedTo += s;
-          for (const b of blocks) b.g += s;
-        } else {
-          // A smooth clock for drawing: glide at the tempo (by the real time since the last frame,
-          // so a frame that came late doesn't leave the blocks behind) and ease into the engine's
-          // corrections, instead of jumping each time it re-estimates where the beat is.
-          vg += (4 / T.P) * gap;
-          vg += (target - vg) * Math.min(1, dt * 3);
-        }
+        queue(eng, t, Math.floor(vg + AHEAD + 1), look); // (the screen filled from the patterns as they stand now)
+        sim.reset();
       }
-      const ease = Math.min(1, dt * 8);
-      for (const id of VOICES) level[id] += ((playing(eng, id, t) ? 1 : 0) - level[id]) * ease;
-      level.bass += ((eng.playing(eng.bassSeen, t) ? 1 : 0) - level.bass) * ease;
-      level.chords += ((eng.playing(eng.chordSeen, t) ? 1 : 0) - level.chords) * ease;
-      queue(eng, t, Math.floor(vg + AHEAD + 1), look); // made just past the right edge
-      // Blocks leave once they've scrolled off the left edge.
-      // (marked gone as they leave: the dominoes mustn't lean a new one on a block that no longer moves with the clock)
-      if (blocks.length && blocks[0].g + blocks[0].len < vg - AHEAD - 1) blocks = blocks.filter((b) => b.g + b.len >= vg - AHEAD - 1 || ((b.gone = true), false));
+      // the clock, the levels and the queue, stepped up to now (see the sim above)
+      cur = { eng, offset, look, W, H };
+      sim.advance(t);
 
       if (look === 'dominoes') {
-        dominoes.draw(ctx, { blocks, vg, W, H, col, level, t, dt, ahead: AHEAD, rows: ROWS, sps: 4 / (T.P || 0.5) });
+        dominoes.draw(ctx, { blocks, vg, W, H, col, level, t, ahead: AHEAD, rows: ROWS });
         return;
       }
       if (look === 'game') {
@@ -611,7 +658,6 @@ export function createPunchcard(canvas) {
       const fg = col.fg, stepW = W / (2 * AHEAD), laneH = H / 7, mid = W / 2;
       for (const b of blocks) {
         const waiting = vg < b.g, crossing = !waiting && vg < b.g + b.len;
-        if (crossing && level[b.lane] > 0.5) b.lit = true; // lights up as it crosses, if the part is playing
         let a = b.lit ? WAITING : GHOST, pad = 2;
         if (waiting) a = GHOST + (WAITING - GHOST) * level[b.lane];
         else if (crossing && b.lit) { a = LIT; pad = 0; }
@@ -797,6 +843,8 @@ export function createWebcam(canvas) {
   const SURE = 200;
   let rel = null;
   function track(w, h) {
+    // (the camera is a sensor on its own clock: how long since the last look for a face, and how long since one was
+    // seen, are real time, whatever the clock says; the camera is left out of the clock's pictures)
     const now = performance.now();
     if (asking || now - lastAsk < 200 || !window.nc?.findFaces) return;
     asking = true;
@@ -906,7 +954,7 @@ export function createWebcam(canvas) {
     draw(col, rect, opts) {
       if (!stream || !video || video.readyState < 2) return;
       const now = performance.now();
-      if (now - (this.lastDraw || 0) < 1000 / 31) return;
+      if (now - (this.lastDraw || 0) < 1000 / 31) return; // (the camera's own pace)
       this.lastDraw = now;
       const [W, H] = fit(canvas);
       const r = rect || { x: 0, y: 0, w: W, h: H };
@@ -948,9 +996,10 @@ export function createWebcam(canvas) {
       ctx.drawImage(small, r.x, r.y, r.w, r.h);
       // on a kick, a few slices of the picture jump sideways
       if (glitch > 0.05) {
+        const dice = clock.rng('camera-glitch');
         for (let k = 0; k < 6; k++) {
-          const y = r.y + Math.random() * r.h, h = Math.random() * r.h * 0.07 + 2;
-          ctx.drawImage(canvas, r.x, y, r.w, h, r.x + (Math.random() - 0.5) * 60 * glitch, y, r.w, h);
+          const y = r.y + dice() * r.h, h = dice() * r.h * 0.07 + 2;
+          ctx.drawImage(canvas, r.x, y, r.w, h, r.x + (dice() - 0.5) * 60 * glitch, y, r.w, h);
         }
         glitch *= 0.82;
       }

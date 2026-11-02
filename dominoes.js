@@ -29,6 +29,17 @@ const cx = new Float64Array(10), cy = new Float64Array(10);
 // and the shadow's 8 corners on the floor
 const shadowPts = Array.from({ length: 8 }, () => [0, 0]);
 
+// How the dominoes lie on a canvas: a step's width, a lane's height, the middle, and a domino's size (U)
+function layoutOf(W, H, ahead, rows) {
+  const span = W < H ? Math.min(ahead, 8) : ahead;
+  const stepW = W / (2 * span), laneH = H / rows.n, mid = W / 2;
+  const U = Math.min(laneH * 0.8, stepW * 2.3);
+  return {
+    span, stepW, laneH, mid, U,
+    L: { U, floor: (lane) => rows[lane] * laneH + laneH * 0.84, pitchBase: (lane, pc) => rows[lane] * laneH + laneH * (0.9 - (0.45 * pc) / 11) },
+  };
+}
+
 export function createDominoes() {
   let lastDown = new Map(); // per lane and height: the last domino knocked over (the next one may lean on it)
   let lastW = 0, lastH = 0, order = null, orderOf = null;
@@ -130,20 +141,18 @@ export function createDominoes() {
     reset,
     // Turned off: let go of the shadows' canvas too.
     release() { shade.width = shade.height = 0; lastW = lastH = 0; reset(); },
-    // blocks and vg: the queue and the clock (in steps); W, H: the canvas; col: the theme's
-    // colours; level: how much each part is playing (0..1); t, dt: now and the frame's length (s).
+    // The layout of the dominoes for a canvas: how wide a step is, how tall a lane, the size of a domino (U), and where
+    // things stand.
+    // blocks and vg: the queue and the clock (in steps); W, H: the canvas; level: how much each part is playing (0..1).
     // ahead: the steps the queue makes on each side of the playhead; on a tall screen (the 9:16
     // layout) half as many show, a bar across, so the dominoes come out bigger.
     // sps: steps a second (the tempo's), to knock each domino early enough to land on its beat.
-    draw(ctx, { blocks, vg, W, H, col, level, t, dt, ahead, rows, sps }) {
-      const span = W < H ? Math.min(ahead, 8) : ahead;
-      const stepW = W / (2 * span), laneH = H / rows.n, mid = W / 2;
-      const U = Math.min(laneH * 0.8, stepW * 2.3);
-      const L = {
-        U,
-        floor: (lane) => rows[lane] * laneH + laneH * 0.84,
-        pitchBase: (lane, pc) => rows[lane] * laneH + laneH * (0.9 - (0.45 * pc) / 11),
-      };
+    //
+    // step(st, h, ...): the physics, one step of h seconds at the time st (the knocks, the falls, the landings, a held
+    // note's slab going down), called by the blocks' simulation at each step of the clock's grid (clock.js simulate)
+    // and not once a frame, so a domino is knocked, falls and lands at the same times however often the screen is drawn.
+    step(st, h, { blocks, vg, W, H, level, ahead, rows, sps }) {
+      const { stepW, U, L } = layoutOf(W, H, ahead, rows);
       // A new size (the window, the layout, the screen's scale): sizes, heights and the angles
       // dominoes lean at were all worked out in pixels, so every domino is made again at the new
       // size, set down as it was: one played lies at rest (b.lit), one to come stands.
@@ -153,13 +162,6 @@ export function createDominoes() {
         lastW = W;
         lastH = H;
       }
-      if (rows !== orderOf) { order = Object.keys(rows).filter((k2) => k2 !== 'n').sort((a, b) => rows[a] - rows[b]); orderOf = rows; }
-      const X = (g) => mid + (g - vg) * stepW;
-      const tone = toneOf(col);
-      const line = `rgba(${col.ink.join(',')},0.9)`;
-      const lw = Math.max(1, U * 0.016);
-      // the physics: knocks, falls and landings, in small steps
-      const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
       for (const b of blocks) {
         if (!b.posts) {
           build(b, L);
@@ -181,11 +183,11 @@ export function createDominoes() {
         // landing as the note ends), and the slab drops with them; not played, they stand, faint.
         if (sl && !sl.released && vg >= b.g + b.len - 0.45 - b.posts[b.posts.length - 1].tf * sps) {
           sl.released = true;
-          if (on) b.posts.forEach((p, i, all) => { p.knockAt = t + (all.length - 1 - i) * 0.04; });
+          if (on) b.posts.forEach((p, i, all) => { p.knockAt = st + (all.length - 1 - i) * 0.04; });
           else for (const p of b.posts) if (p.st === 0) p.ghost = true;
         }
         for (const p of b.posts) {
-          const due = sl ? p.knockAt !== undefined && t >= p.knockAt : on && vg >= at(p) - p.tf * sps;
+          const due = sl ? p.knockAt !== undefined && st >= p.knockAt : on && vg >= at(p) - p.tf * sps;
           if (p.st === 0 && !p.ghost && due) {
             p.st = 1; p.th = 0.02; p.om = PUSH; p.hit = undefined; // (it lights up as it lands)
             p.rest = restFor(p, b.lane + '|' + Math.round(p.base), stepW);
@@ -193,36 +195,41 @@ export function createDominoes() {
           } else if (!sl && p.st === 0 && vg >= at(p) + 1) p.ghost = true; // its part wasn't playing: it stays up, faint
           if (p.st !== 1) continue;
           const G = (GRAV * U) / p.h;
-          for (let i = 0; i < n; i++) {
-            p.om += G * Math.sin(p.th) * h;
-            p.th += p.om * h;
-            if (p.th >= p.rest) {
-              p.th = p.rest;
-              if (p.hit === undefined) p.hit = t; // the landing: the beat
-              // it comes to rest once a landing is too soft to lift it clear of the next step's
-              // pull back down (at some frame lengths a fixed speed was never reached, and it kept
-              // landing, unseen, every step)
-              if (p.om > Math.max(2.5, 1.5 * G * h)) p.om = -p.om * BOUNCE;
-              else { p.om = 0; p.st = 2; break; }
-            }
+          p.om += G * Math.sin(p.th) * h;
+          p.th += p.om * h;
+          if (p.th >= p.rest) {
+            p.th = p.rest;
+            if (p.hit === undefined) p.hit = st; // the landing: the beat
+            // it comes to rest once a landing is too soft to lift it clear of the next step's
+            // pull back down (at some frame lengths a fixed speed was never reached, and it kept
+            // landing, unseen, every step)
+            if (p.om > Math.max(2.5, 1.5 * G * h)) p.om = -p.om * BOUNCE;
+            else { p.om = 0; p.st = 2; }
           }
         }
         if (sl) {
           const holding = on && vg >= b.g && vg < b.g + b.len;
-          sl.glow += ((holding ? 1 : 0) - sl.glow) * Math.min(1, dt * 14);
+          sl.glow += ((holding ? 1 : 0) - sl.glow) * (1 - Math.exp(-14 * h));
           // it drops once its legs are going (one left standing, its part not playing, holds it up)
           if (!sl.down && sl.released && b.posts.every((p) => p.st !== 0)) sl.down = true;
           if (sl.down) {
             // onto its fallen posts
             const floor = sl.y - b.posts[0].w;
-            for (let i = 0; i < n; i++) {
-              sl.vy += 30 * U * h;
-              sl.dy += sl.vy * h;
-              if (sl.dy >= floor) { sl.dy = floor; sl.vy = sl.vy > 0.6 * U ? -sl.vy * 0.25 : 0; }
-            }
+            sl.vy += 30 * U * h;
+            sl.dy += sl.vy * h;
+            if (sl.dy >= floor) { sl.dy = floor; sl.vy = sl.vy > 0.6 * U ? -sl.vy * 0.25 : 0; }
           }
         }
       }
+    },
+    // col: the theme's colours; t: now (s). What is drawn is the blocks as the steps have left them.
+    draw(ctx, { blocks, vg, W, H, col, level, t, ahead, rows }) {
+      const { span, stepW, laneH, mid, U } = layoutOf(W, H, ahead, rows);
+      if (rows !== orderOf) { order = Object.keys(rows).filter((k2) => k2 !== 'n').sort((a, b) => rows[a] - rows[b]); orderOf = rows; }
+      const X = (g) => mid + (g - vg) * stepW;
+      const tone = toneOf(col);
+      const line = `rgba(${col.ink.join(',')},0.9)`;
+      const lw = Math.max(1, U * 0.016);
 
       // the shadows, all at once: drawn small and stretched, so their edges come out soft
       const k = 1 / 3, sw = Math.ceil(W * k), shh = Math.ceil(H * k);

@@ -51,6 +51,7 @@ const mul = (a, b) => { const o = new Array(16).fill(0); for (let c = 0; c < 4; 
 
 import { compileProgram } from './program.js';
 import { frameU } from './camview.js';
+import { clock as master } from './clock.js'; // (the page's; the voxels' own `clock` below runs with its own time)
 
 export function createVoxCam(canvas) {
   let gl = null, prog = null, vb = null, wall = null, floor = null, rows = 0, padY = 0, floorRows = 0, broken = false, U = null;
@@ -185,7 +186,7 @@ export function createVoxCam(canvas) {
       }
 
       // the picture, mirrored (unless the camera isn't: mirror), covering the camera's place
-      const now = performance.now();
+      const now = master.now() * 1000;
       if (!px || now - sampledAt >= 1000 / 31) {
         sampledAt = now;
         const vw = video.videoWidth, vh = video.videoHeight, sc = Math.max(COLS / vw, rows / vh);

@@ -28,7 +28,7 @@ export const ACTION_NAMES = {
   later: 'blocks timing later', earlier: 'blocks timing earlier', cam: 'camera', card: 'song ID card',
   strudel: 'open in Strudel', rec: 'record', clips: 'save clips', export: 'export the song', camfx: 'camera effects',
   tap: 'tap the beat', hush: 'hush every part', drop: 'trigger the drop', dropfx: 'next drop effect', machine: 'machine readout',
-  layout: 'vertical layout', mini: 'mini player', theme: 'next theme', crt: 'CRT television', name: 'name the song',
+  layout: 'vertical layout', mini: 'mini player', theme: 'next theme', crt: 'CRT television', look: 'next look (trails, dots, LED, halftone, VHS, line art)', name: 'name the song',
   hide: 'hide header and footer', code: 'hide the code', full: 'fullscreen',
 };
 

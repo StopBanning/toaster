@@ -13,6 +13,8 @@ import { LOOKS, onePart } from './worldlooks.js';
 const KEPT = ['film', 'ascii', 'thermal', 'cells']; // (the looks A goes round, and auto's after a drop; the rest unlisted)
 import { WORLD_NOISE } from './world-noise.js';
 import { RAMP } from './visuals.js';
+import { clock } from './clock.js';
+import { createPulses } from './pulse.js';
 // how long a look's program has been done before it's shown (ms): the graphics driver's own
 // finishing of a shader new to it, about half a second, over by then (as the scenery has it)
 const SETTLE_MS = 1500;
@@ -1187,7 +1189,10 @@ export function createWorlds(canvas, wordsCanvas) {
   const tex = {}; // the code, the ledger and the engraving's mark, as pictures the shader reads
   const pics = { code: makeCanvas(1024), ledger: makeCanvas(1024), mark: makeCanvas(1024) };
   const wctx = wordsCanvas.getContext('2d');
-  let shotNow = null, shotAt = 0, cutAt = -9, kickAt = -9, hit = 0, pulse = 0, last = 0, frame = 0;
+  let shotNow = null, shotAt = 0, cutAt = -9, kickAt = -9, started = 0;
+  // the music's light and the camera's punch: a kick's glow at the time of the kick, fading from then (pulse.js)
+  const hits = createPulses(0.2), punches = createPulses(1 / 6);
+  let hit = 0;
   let deck = [], rnd = seeded(1), title = '', artist = '', parts = [], partI = 0, partAt = 0, barSeen = null;
   let calmNow = false, seenIds = []; // fewer flashes, as the last kick had it; the worlds shown lately (newest last)
   let night = false; // night skies: every world's sky as dark as a night's (see shot)
@@ -1240,6 +1245,7 @@ export function createWorlds(canvas, wordsCanvas) {
     gl.bindAttribLocation(pr, 0, 'aPos');
     gl.linkProgram(pr);
     let doneAt = 0, linked = false;
+    // (performance.now() here and below: how long a look's program took to compile and settle, real time, for the driver)
     const done = () => doneAt || (!par || gl.getProgramParameter(pr, par.COMPLETION_STATUS_KHR) ? (doneAt = performance.now()) : 0);
     const ready = () => {
       if (linked) return true;
@@ -1664,8 +1670,8 @@ export function createWorlds(canvas, wordsCanvas) {
     kick(s, t, calm, beat, onOne = null) {
       kickAt = t;
       calmNow = calm;
-      hit = Math.max(hit, 0.5 + 0.5 * Math.min(1, s));
-      if (!calm) pulse = Math.max(pulse, 0.5 + 0.5 * Math.min(1, s));
+      hits.hit(0.5 + 0.5 * Math.min(1, s), t);
+      if (!calm) punches.hit(0.5 + 0.5 * Math.min(1, s), t);
       // (never more than about three cuts a second either way, as the cuts background has it: a new
       // world is a change of the whole screen's light, and faster can set off seizures: WCAG's
       // flash limit)
@@ -1713,16 +1719,13 @@ export function createWorlds(canvas, wordsCanvas) {
       // every look's program started in the background once the worlds draw, one every few frames
       // (all eleven in the first frame, with the pictures they need, held it up 45-90 ms; the look
       // in use is started whenever it's asked for)
-      if (par && looksStarted < LOOKS.length && frame % 6 === 0) {
+      if (par && looksStarted < LOOKS.length && started++ % 6 === 0) {
         const l = LOOKS[looksStarted++];
         if (l.frag) try { lookProg(l); } catch (err) { console.error('worlds look:', l.key, err); }
       }
       boxOf = info.codeBox || null;
-      const dt = Math.min(0.1, Math.max(0, t - last));
-      last = t;
-      frame++;
-      hit *= Math.exp(-dt * 5);
-      pulse *= Math.exp(-dt * 6);
+      hit = hits.at(t);
+      const pulse = punches.at(t), tick = clock.tick;
       const beat = eng.tempo.P || 0.5;
       // a new song: its own order of worlds, its title in pieces, and the title card first
       const name = info.song?.title || '';
@@ -1857,7 +1860,7 @@ export function createWorlds(canvas, wordsCanvas) {
       gl.uniform1f(post.uApex, Z * C);
       gl.uniform1f(post.uScale, C);
       gl.uniform1f(post.uDof, card ? 0 : w.dof ? 1 : 0.35);
-      gl.uniform1f(post.uFrame, frame % 1000);
+      gl.uniform1f(post.uFrame, tick % 1000); // (the grain is new each tick of the clock's 60 a second)
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (lp) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1897,7 +1900,7 @@ export function createWorlds(canvas, wordsCanvas) {
         } else {
           gl.uniform1i(lp.at('uSeed'), seed);
           gl.uniform1f(lp.at('uTime'), t - lookAt);
-          gl.uniform1i(lp.at('uFrame'), frame);
+          gl.uniform1i(lp.at('uFrame'), tick);
           for (const [name, v] of Object.entries(look.set || {})) { if (Array.isArray(v)) gl.uniform2f(lp.at(name), v[0], v[1]); else gl.uniform1f(lp.at(name), v); }
           gl.uniform3f(lp.at('uBg'), colours.bg[0] / 255, colours.bg[1] / 255, colours.bg[2] / 255);
           gl.uniform3f(lp.at('uFg'), colours.fg[0] / 255, colours.fg[1] / 255, colours.fg[2] / 255);

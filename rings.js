@@ -9,6 +9,8 @@
 // the chord of the bar is drawn as a shape between its notes, the bass note as a line out from the
 // middle, and the melody's notes as dots outside the circle that fade.
 import { NOTES } from './engine.js';
+import { createPulses } from './pulse.js';
+import { simulate } from './clock.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const rgba = ([r, g, b], a) => `rgba(${r},${g},${b},${clamp(a, 0, 1).toFixed(3)})`;
@@ -37,16 +39,14 @@ const STEPS = 8; // steps of brightness the marks fade through as they curl in
 
 export function createSpiral(canvas) {
   const ctx = canvas.getContext('2d');
-  let pulse = 0, last = 0;
+  const kicks = createPulses(1 / 7); // the playhead swells on a kick and lets go over about a seventh of a second
   return {
-    kick(s) { pulse = Math.max(pulse, 0.35 + 0.4 * s); },
+    kick(s) { kicks.hit(0.35 + 0.4 * s); },
     clear() { canvas.width = canvas.height = 0; },
     // rect: where to draw it (CSS pixels), or null for the whole window
     draw(t, eng, col, rect) {
       const [W, H] = fit(canvas);
-      const dt = clamp(t - last, 0, 0.1);
-      last = t;
-      pulse *= Math.exp(-dt * 7);
+      const pulse = kicks.at(t);
       ctx.clearRect(0, 0, W, H);
       const { cx, cy, size } = stage(W, H, rect), R = size * 0.47, r0 = R * 0.1, gap = (R - r0) / TURNS;
       // where a moment is, in bars: from the beat when there is one, else a turn every 2 seconds
@@ -118,25 +118,30 @@ export function createWheel(canvas) {
   const ctx = canvas.getContext('2d');
   const glow = new Float32Array(12); // each note's light, easing toward what's heard
   const leads = []; // the melody's notes: { pc, t }
-  let leadAt = -10, pulse = 0, last = 0, font = '', fontFor = 0;
+  const kicks = createPulses(1 / 6); // the ring swells on a kick and lets go over about a sixth of a second
+  // The notes' lights ease toward what is heard, in steps of a 240th of a second on the clock's own grid (clock.js
+  // simulate), from the notes the engine heard at each step's time.
+  let leadAt = -10, font = '', fontFor = 0, cur = null;
+  const sim = simulate(240, (st, h) => {
+    const c = cur.chromaAt(st), silent = cur.silentAt(st);
+    let top = 1e-9;
+    for (let i = 0; i < 12; i++) top = Math.max(top, c[i]);
+    const k = 1 - Math.exp(-h * 9);
+    for (let i = 0; i < 12; i++) glow[i] += ((silent ? 0 : c[i] / top) ** 1.6 - glow[i]) * k;
+  });
   return {
-    kick(s) { pulse = Math.max(pulse, 0.3 + 0.4 * s); },
+    kick(s) { kicks.hit(0.3 + 0.4 * s); },
     clear() { canvas.width = canvas.height = 0; },
     // rect: where to draw it (CSS pixels), or null for the whole window
     draw(t, eng, col, rect) {
       const [W, H] = fit(canvas);
-      const dt = clamp(t - last, 0, 0.1);
-      last = t;
-      pulse *= Math.exp(-dt * 6);
+      const pulse = kicks.at(t);
+      cur = eng;
+      sim.advance(t);
       ctx.clearRect(0, 0, W, H);
       const { cx, cy, size } = stage(W, H, rect), R = size * 0.36 * (1 + 0.04 * pulse);
       const at = (pc, r = R) => { const a = -Math.PI / 2 + (2 * Math.PI * pc) / 12; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; };
-      // what's sounding now (tonal peaks only, so drums barely count), as a share of the loudest
-      const c = eng.frameChroma;
-      let top = 1e-9;
-      for (let i = 0; i < 12; i++) top = Math.max(top, c[i]);
-      const k = Math.min(1, dt * 9);
-      for (let i = 0; i < 12; i++) glow[i] += ((eng.silent ? 0 : c[i] / top) ** 1.6 - glow[i]) * k;
+      // (what's sounding now, tonal peaks only so drums barely count, as a share of the loudest: the glow, above)
       // the circle, and the twelve notes on it
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, 2 * Math.PI);

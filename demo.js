@@ -8,6 +8,7 @@ export function makeDemo(ctx) {
   const sixteenth = 60 / 124 / 4;
   const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const nd = noise.getChannelData(0);
+  // (Math.random here and below: the noise and the start of the demo beat's drum sounds: audio the demo plays, not a picture)
   for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
   const BASS = [40, 36, 43, 38]; // E2 C2 G2 D2
   const CHORDS = [[64, 67, 71], [60, 64, 67], [67, 71, 74], [62, 66, 69]]; // Em C G D

@@ -8,6 +8,8 @@
 // the fire flares: the flames leap to twice their height and die back over a few seconds.
 // (After not.axel's ask on Threads: Doom fire with the "pixels" tied to the sound.)
 import { bands } from './visuals.js';
+import { clock, simulate } from './clock.js';
+import { mulberry32 } from './random.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
@@ -30,7 +32,8 @@ const BANDS = 24; // the spectrum along the bottom, mirrored: 24 bands each way 
 // The steps' dice: each one's low two bits the sideways step, 0..3 as Math.round(random * 3) gives
 // them (1 and 2 twice as often as 0 and 3), the eight above them a roll for cooling (out of 256).
 const DICE_MASK = (1 << 16) - 1;
-const DICE = Uint16Array.from({ length: DICE_MASK + 1 }, () => (Math.round(Math.random() * 3) & 3) | (((Math.random() * 256) | 0) << 2));
+// (made once from a seed of its own: a table of noise, the same on every machine)
+const DICE = (() => { const rand = mulberry32(0xf14e5eed); return Uint16Array.from({ length: DICE_MASK + 1 }, () => (Math.round(rand() * 3) & 3) | (((rand() * 256) | 0) << 2)); })();
 const FLARE = 1.5; // a flare dies back over about this many seconds
 
 export function createFire(canvas) {
@@ -38,8 +41,61 @@ export function createFire(canvas) {
   const grid = document.createElement('canvas'), gctx = grid.getContext('2d');
   let cols = 0, rows = 0, heat = null, img = null, px = null;
   let top = 0, drawnTop = 0; // the highest row with any heat in it, now and as last drawn
-  let last = 0, acc = 0, kickLift = 0, lift = 0, flare = 0, seen = 0, shown = false;
+  let kickLift = 0, lift = 0, flare = 0, seen = 0, shown = false;
   const spec = new Float32Array(BANDS), smooth = new Float32Array(BANDS);
+  // What moves it moves in steps on the clock's own grid, 60 a second (clock.js simulate): the flames, and what
+  // drives them (the flare, the kick's lift, the spectrum's smoothing, the sparks), each step from what the engine
+  // heard at its time, so the fire at a time is the same however often it was drawn. The kicks and drops come in
+  // with their times and take hold at the step they fall in.
+  const events = [];
+  let listening = null; // the engine of the draw that is running the steps
+  const sim = simulate(1 / TICK, (st, h) => {
+    const eng = listening;
+    while (events.length && events[0].t <= st) {
+      const e = events.shift();
+      if (e.drop) { flare = 1; kickLift = Math.max(kickLift, 1); } else kickLift = Math.max(kickLift, e.lift);
+    }
+    flare *= Math.exp(-h / FLARE);
+    // the kick's lift: quick up (~60 ms), slow down (~400 ms)
+    kickLift *= Math.exp(-h * 2.5);
+    lift += (kickLift - lift) * (1 - Math.exp(-h / (kickLift > lift ? 0.06 : 0.4)));
+    const loud = clamp(eng.levelAt(st) * 6, 0, 1);
+
+    // now and then a hat spits a spark, low down in the flames
+    let dice = null;
+    for (const o of eng.onsets) {
+      if (o.t <= seen || (o.known ?? o.t) > st) continue; // (not before the engine filed it)
+      if (o.id === 'hh') {
+        dice ||= mulberry32(((st * 60) | 0) + 7919);
+        if (dice() < 0.35) {
+          const x = (dice() * cols) | 0, y = rows - 2 - ((dice() * rows * 0.15) | 0);
+          heat[y * cols + x] = TOP;
+          top = Math.min(top, y); // (stepped from there on)
+        }
+      }
+    }
+    for (const o of eng.onsets) if ((o.known ?? o.t) <= st && o.t > seen) seen = o.t;
+
+    // the bottom row: near full heat all along, as the original's, a little lower where the
+    // spectrum is quiet (smoothed over ~150 ms and across neighbouring bands, so it breathes
+    // rather than flickers)
+    bands(eng, spec, 40, 14000, st);
+    const a = 1 - Math.exp(-h / 0.15);
+    for (let i = 0; i < BANDS; i++) {
+      const v = (spec[Math.max(0, i - 1)] + 2 * spec[i] + spec[Math.min(BANDS - 1, i + 1)]) / 4;
+      smooth[i] += (v - smooth[i]) * a;
+    }
+    const mid = (cols - 1) / 2;
+    for (let x = 0; x < cols; x++) {
+      const f = Math.abs(x - mid) / mid * (BANDS - 1), i = Math.floor(f), k = f - i;
+      const v = smooth[i] * (1 - k) + smooth[Math.min(BANDS - 1, i + 1)] * k;
+      feed[x] = Math.round(TOP * clamp(0.72 + 0.28 * v, 0, 1));
+    }
+    // how high it burns: a tenth of the window when quiet, about a fifth with the song loud,
+    // a little more on the kick, so the code above stays readable; on a flare, up to twice that
+    const reach = (0.1 + 0.1 * loud + 0.06 * lift) * (1 + flare);
+    step(feed, clamp(TOP / (rows * reach), 0.05, 1), st);
+  });
 
   // The grid sized to the window, a cell every CELL pixels (made again when the window changes).
   const size = () => {
@@ -58,10 +114,10 @@ export function createFire(canvas) {
   // 1 with chance `cool` (how often sets how high the flames reach, about 36 / cool rows). Only from
   // just above the flames' top down (the rows over it are cold, and stay so), and its dice from a
   // table read from a new place each step (Math.random twice a pixel was most of its cost).
-  const step = (feed, cool) => {
+  const step = (feed, cool, st) => {
     const base = (rows - 1) * cols, c8 = Math.round(cool * 256);
     for (let x = 0; x < cols; x++) heat[base + x] = feed[x];
-    let k = (Math.random() * DICE.length) | 0, hot = rows - 1;
+    let k = (mulberry32(Math.round(st * 60) + 31)() * DICE.length) | 0, hot = rows - 1;
     for (let y = Math.max(1, top - 1); y < rows; y++) {
       for (let x = 0; x < cols; x++) {
         const src = y * cols + x, h = heat[src];
@@ -77,9 +133,9 @@ export function createFire(canvas) {
   const feed = new Uint8Array(4096);
   return {
     // the kick lifts the flames (softer with fewer flashes on): the lift eases in and back out
-    kick(s, calm) { kickLift = Math.max(kickLift, (calm ? 0.5 : 1) * (0.6 + 0.4 * s)); },
+    kick(s, calm) { events.push({ t: clock.now(), lift: (calm ? 0.5 : 1) * (0.6 + 0.4 * s) }); if (events.length > 64) events.shift(); },
     // a drop: the fire flares
-    drop() { flare = 1; kickLift = Math.max(kickLift, 1); },
+    drop() { events.push({ t: clock.now(), drop: true }); if (events.length > 64) events.shift(); },
     clear() { canvas.width = canvas.height = 0; cols = rows = 0; heat = null; shown = false; },
     draw(t, eng, col) {
       if (!innerWidth || !innerHeight) return; // (a window with no size yet: nothing to burn)
@@ -87,48 +143,8 @@ export function createFire(canvas) {
       const W = Math.round(innerWidth * 0.75), H = Math.round(innerHeight * 0.75);
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
       if (!shown) { shown = true; flare = 1; } // switched on: it flares up from nothing
-      const dt = clamp(t - last, 0, 0.1);
-      last = t;
-      flare *= Math.exp(-dt / FLARE);
-      // the kick's lift: quick up (~60 ms), slow down (~400 ms)
-      kickLift *= Math.exp(-dt * 2.5);
-      lift += (kickLift - lift) * (1 - Math.exp(-dt / (kickLift > lift ? 0.06 : 0.4)));
-      const loud = clamp((eng.level || 0) * 6, 0, 1);
-
-      // now and then a hat spits a spark, low down in the flames
-      for (const o of eng.onsets) {
-        if (o.t <= seen) continue;
-        if (o.id === 'hh' && Math.random() < 0.35) {
-          const x = (Math.random() * cols) | 0, y = rows - 2 - ((Math.random() * rows * 0.15) | 0);
-          heat[y * cols + x] = TOP;
-          top = Math.min(top, y); // (stepped from there on)
-        }
-      }
-      if (eng.onsets.length) seen = Math.max(seen, eng.onsets[eng.onsets.length - 1].t);
-
-      // the bottom row: near full heat all along, as the original's, a little lower where the
-      // spectrum is quiet (smoothed over ~150 ms and across neighbouring bands, so it breathes
-      // rather than flickers)
-      if (eng.fastDb) bands(eng, spec);
-      else spec.fill(0);
-      const a = 1 - Math.exp(-dt / 0.15);
-      for (let i = 0; i < BANDS; i++) {
-        const v = (spec[Math.max(0, i - 1)] + 2 * spec[i] + spec[Math.min(BANDS - 1, i + 1)]) / 4;
-        smooth[i] += (v - smooth[i]) * a;
-      }
-      const mid = (cols - 1) / 2;
-      for (let x = 0; x < cols; x++) {
-        const f = Math.abs(x - mid) / mid * (BANDS - 1), i = Math.floor(f), k = f - i;
-        const v = smooth[i] * (1 - k) + smooth[Math.min(BANDS - 1, i + 1)] * k;
-        feed[x] = Math.round(TOP * clamp(0.72 + 0.28 * v, 0, 1));
-      }
-      // how high it burns: a tenth of the window when quiet, about a fifth with the song loud,
-      // a little more on the kick, so the code above stays readable; on a flare, up to twice that
-      const reach = (0.1 + 0.1 * loud + 0.06 * lift) * (1 + flare);
-      const cool = clamp(TOP / (rows * reach), 0.05, 1);
-
-      acc = Math.min(acc + dt, TICK * 3);
-      while (acc >= TICK) { step(feed, cool); acc -= TICK; }
+      listening = eng;
+      sim.advance(t);
 
       // (the pixels from the flames' top down: over it they're clear, and stay so; the rows the fire
       // has just left drawn once more, cleared)

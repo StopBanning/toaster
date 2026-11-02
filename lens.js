@@ -13,6 +13,7 @@
 // wrinkles) lies on the card, in perspective. Drawn with WebGL. After agustinawaigel_'s and
 // mishu.ksv's hand portals and autterp0p's hand-frame edit.
 import { RAMP } from './visuals.js';
+import { clock } from './clock.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -441,7 +442,7 @@ export function createLens(canvas) {
     // colours at most every 2 seconds)
     kick(s, calm = false) {
       pulse = Math.max(pulse, calm ? 0.25 + 0.2 * Math.min(1, s) : 0.6 + 0.4 * Math.min(1, s));
-      const now = performance.now();
+      const now = clock.now() * 1000;
       if (now - keyAt > (calm ? 2000 : KEY_GAP)) { keyset++; keyAt = now; }
     },
     // is the window open (or opening, or closing)?

@@ -4,6 +4,18 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.30', items: [
+    { act: 'visual', text: "a new background, the Earth: NASA's footage from the space station, five views (aurora, northern lights, city lights, dawn and day) that A moves through, with the code on panes of glass over it" },
+    { act: 'dropfx', text: "a new drop effect, the y2k bug: the clock rolls over to 1900 on the drop, the code crashes in consoles, a debugger and a memory dump, and the PC freezes into a blue screen" },
+    { key: 'G', text: "the library has a spotify tab: paste a Spotify link to play it in the Spotify app, or connect your own account for your playlists, saved albums and liked songs (it takes a free developer app of your own and Spotify Premium)" },
+    { key: 'G', text: "the library's covers come two ways: full ascii, all in characters, or half ascii, the cover itself framed with its characters around it and the tracks written as code (Shift+C)" },
+    { act: 'look', text: "four glass looks: ripples, rain on glass, prism and heat shimmer" },
+    { act: 'theme', text: "a seventh theme, softclub: slate ink on an icy blue-grey haze" },
+    { key: 'kick', text: "a new kick detector: the kick line is right more often, four on the floor is written the bar it's found, and it mutes sooner when the kick stops" },
+    { key: 'key', text: "the key line no longer mixes up a key and its relative major or minor" },
+    { act: 'visual', text: "the sharks are made of letters again and the sea flares on the drop, and every scene got a polish pass" },
+    { act: 'blocks', text: "the handheld stands above the player bar instead of under it" },
+  ] },
   { version: '0.4.29', items: [
     { key: 'T', text: "the dynamic theme takes more of the cover's colours: an accent for the highlights (the lit steps, the card, the player bar), and the scenes and the spectrogram in the theme's colours (A) take its whole palette" },
     { key: 'G', text: "the library, a panel over the visuals: your music from a folder you pick (its albums with their covers drawn in characters, the ones played lately on a shelf, Ctrl+F to find any song as you type, Shift+R and Shift+S for repeat and shuffle, and where you left off kept over a restart), the radio's stations, and scenes you save, rename and apply" },

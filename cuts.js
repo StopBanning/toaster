@@ -18,6 +18,8 @@
 // limit for seizures).
 import { bands, RAMP } from './visuals.js';
 import { NOTES } from './engine.js';
+import { clock, simulate } from './clock.js';
+import { hash32, mulberry32 as rng } from './random.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const rgba = ([r, g, b], a) => `rgba(${r},${g},${b},${clamp(a, 0, 1).toFixed(3)})`;
@@ -29,18 +31,6 @@ function fit(canvas) {
   const w = Math.round(innerWidth), h = Math.round(innerHeight);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   return [w, h];
-}
-
-// A repeatable run of random numbers from a seed (mulberry32): a cut's layout stays put through
-// its frames.
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 // each part's word in the code, and its line
@@ -229,8 +219,9 @@ const PARTS = ['sd', 'bd', 'hho', 'bass', 'hhc'];
 export function createCuts(canvas) {
   const ctx = canvas.getContext('2d');
   const band = new Float32Array(8);
-  const salt = Math.floor(Math.random() * 1e6);
-  let last = 0, prev = null, cut = null, n = 0, lift = 0;
+  // (a cut's layout, and which scene each part has, are rolled from the song's seed: the same song, the same cuts)
+  let salt = hash32(clock.seed, 'cuts');
+  let prev = null, cut = null, n = 0, lift = 0;
   let calm = false, before = null; // fewer flashes on; the scene fading out under a new one
   const taken = new WeakSet(); // the hits already used, before the beat is found
   // what some scenes show: the spectrum's last rows (fall), the last few waveforms (wave), and a
@@ -238,11 +229,12 @@ export function createCuts(canvas) {
   const hist = { cols: 72, n: 64, at: 0, rows: [] };
   const traces = [];
   const art = { img: null, lum: null, w: 64, h: 64 };
-  let lastRow = 0;
+  let rowStep = 0;
 
   // which scene each part has in the 8 bars a bar falls in
   const castFor = new Map();
   function cast(section) {
+    if (salt !== hash32(clock.seed, 'cuts')) { salt = hash32(clock.seed, 'cuts'); castFor.clear(); } // (a new song)
     if (!castFor.has(section)) {
       const r = rng(section * 7919 + salt), list = NAMES.slice();
       for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
@@ -268,13 +260,14 @@ export function createCuts(canvas) {
   // kick on every beat would otherwise show the clap's scene alone.
   const shownAt = {};
   function partAt(eng, s, t) {
-    const drums = eng.present('bd', t) || eng.present('sd', t);
+    const L = eng.learnedAt(t); // (the patterns as they were at t)
+    const drums = eng.presentAt('bd', t) || eng.presentAt('sd', t);
     let best = null;
     for (const id of PARTS) {
       if ((id === 'bass' || id === 'hhc') && s % 2) continue;
       let hits = false;
-      if (id === 'bass') hits = !drums && eng.v.bass?.shown?.[s] && eng.playing(eng.bassSeen, t);
-      else if (eng.v[id]?.shown?.[s] && eng.present(id, t)) {
+      if (id === 'bass') hits = !drums && L.shown.bass?.[s] && eng.playingAt('bass', t);
+      else if (L.shown[id]?.[s] && eng.presentAt(id, t)) {
         if (id === 'hhc' && drums) { lift = 1; continue; }
         hits = true;
       }
@@ -284,19 +277,19 @@ export function createCuts(canvas) {
   }
   // a kick or clap in the learned patterns within the time a cut has to last
   function drumSoon(eng, s, t) {
-    const ahead = Math.ceil((calm ? 4 * (eng.tempo.P || 0.5) : 0.34) / ((eng.tempo.P || 0.5) / 4));
+    const ahead = Math.ceil((calm ? 4 * (eng.tempo.P || 0.5) : 0.34) / ((eng.tempo.P || 0.5) / 4)), L = eng.learnedAt(t);
     for (let k = 1; k <= ahead; k++) {
       const i = (((s + k) % 16) + 16) % 16;
-      for (const id of ['sd', 'bd']) if (eng.v[id]?.shown?.[i] && eng.present(id, t)) return true;
+      for (const id of ['sd', 'bd']) if (L.shown[id]?.[i] && eng.presentAt(id, t)) return true;
     }
     return false;
   }
 
-  // the spectrum, 72 bands from 40 Hz to 14 kHz on a log scale, a row about 30 times a second
+  // the spectrum, 72 bands from 40 Hz to 14 kHz on a log scale, a row 30 times a second (every other step), as the
+  // engine heard it at the step's time; and the waveform of every step, the last four kept
   function listen(eng, t) {
-    if (t - lastRow >= 1 / 30) {
-      lastRow = t;
-      const db = eng.fastDb, hz = eng.hzFast, row = new Float32Array(hist.cols);
+    if (rowStep++ % 2 === 0) {
+      const db = eng.dbAt(t), hz = eng.hzFast, row = new Float32Array(hist.cols);
       for (let i = 0; i < hist.cols; i++) {
         const f0 = 40 * (14000 / 40) ** (i / hist.cols), f1 = 40 * (14000 / 40) ** ((i + 1) / hist.cols);
         let mx = -160;
@@ -306,7 +299,7 @@ export function createCuts(canvas) {
       hist.rows[hist.at] = row;
       hist.at = (hist.at + 1) % hist.n;
     }
-    const time = eng.time;
+    const time = eng.timeAt(t);
     if (time && time.length) {
       // a window starting where the wave crosses zero going up, so it stands still on a steady note
       let s0 = 0;
@@ -343,10 +336,47 @@ export function createCuts(canvas) {
     return { lum: art.lum, w: art.w, h: art.h };
   }
 
+  // The cuts are found in steps of a 60th of a second on the clock's own grid (clock.js simulate): each step looks at
+  // what crossed the beat grid since the one before (or, with no beat found, at the hits as they are heard), cuts at
+  // that step's time, and the scene's own light dies away a step at a time. So a cut lands at the same time, with the
+  // same scene and the same layout, however often the screen was drawn.
+  let cur = null;
+  const sim = simulate(60, (st, h) => {
+    const { eng, offset } = cur;
+    lift *= Math.exp(-h * 18);
+    listen(eng, st);
+    const step = eng.stepAt(st + offset, st);
+    if (step !== null) {
+      // every step crossed since the last frame (none after a jump: new bar lines, a new tempo)
+      if (prev !== null && step > prev && step - prev < 3) {
+        for (let s = Math.floor(prev) + 1; s <= Math.floor(step); s++) {
+          const part = partAt(eng, ((s % 16) + 16) % 16, st);
+          // the open hat, the bass and the closed hats give way to a kick or clap coming within
+          // the time a cut has to last: otherwise, landing between them (house's open hats),
+          // they took every cut and the kick's and clap's scenes never showed
+          if (part && part !== 'sd' && part !== 'bd' && drumSoon(eng, s, st)) { lift = 1; continue; }
+          if (part) cutTo(part, st, eng);
+        }
+      }
+      prev = step;
+    } else {
+      // no beat yet: the hits as they're heard (the hats only without drums). Each is taken
+      // once, by itself rather than by its time: a kick is filed up to 90 ms late (once it's
+      // been told from a bass note) with the time it began, after hats that came later.
+      prev = null;
+      const fresh = eng.onsets.filter((o) => (o.known ?? o.t) <= st && st - o.t < 0.3 && !taken.has(o));
+      for (const o of fresh) taken.add(o);
+      const ids = new Set(fresh.map((o) => (o.id === 'hh' ? 'hhc' : o.id)));
+      const drums = eng.onsets.some((o) => (o.id === 'bd' || o.id === 'sd') && (o.known ?? o.t) <= st && st - o.t < 2);
+      const part = PARTS.find((id) => ids.has(id) && !(id === 'hhc' && drums));
+      if (part) cutTo(part, st, eng);
+    }
+  });
+
   return {
     clear() { canvas.width = canvas.height = 0; prev = cut = before = null; },
     // one scene by name, as if its part had just hit (for looking at them one by one)
-    show(scene, part = 'bd', t = performance.now() / 1000) { if (SCENES[scene]) cut = { scene, part, at: t, seed: ++n * 2654435761 + salt }; },
+    show(scene, part = 'bd', t = clock.now()) { if (SCENES[scene]) cut = { scene, part, at: t, seed: ++n * 2654435761 + salt }; },
     get scenes() { return NAMES; },
     // offset (seconds): how far ahead to cut, so it lands as you hear the hit (see syncOffset);
     // fewer: fewer flashes (a scene change at most once a bar, faded across, never bright);
@@ -354,37 +384,9 @@ export function createCuts(canvas) {
     draw(t, eng, col, offset = 0, fewer = false, extra = {}) {
       calm = fewer;
       const [W, H] = fit(canvas);
-      const dt = clamp(t - last, 0, 0.1);
-      last = t;
-      lift *= Math.exp(-dt * 18);
-      listen(eng, t);
-      const step = eng.stepAt(t + offset);
-      if (step !== null) {
-        // every step crossed since the last frame (none after a jump: new bar lines, a new tempo)
-        if (prev !== null && step > prev && step - prev < 3) {
-          for (let s = Math.floor(prev) + 1; s <= Math.floor(step); s++) {
-            const part = partAt(eng, ((s % 16) + 16) % 16, t);
-            // the open hat, the bass and the closed hats give way to a kick or clap coming within
-            // the time a cut has to last: otherwise, landing between them (house's open hats),
-            // they took every cut and the kick's and clap's scenes never showed
-            if (part && part !== 'sd' && part !== 'bd' && drumSoon(eng, s, t)) { lift = 1; continue; }
-            if (part) cutTo(part, t, eng);
-          }
-        }
-        prev = step;
-      } else {
-        // no beat yet: the hits as they're heard (the hats only without drums). Each is taken
-        // once, by itself rather than by its time: a kick is filed up to 90 ms late (once it's
-        // been told from a bass note) with the time it began, after hats that came later.
-        prev = null;
-        const fresh = eng.onsets.filter((o) => t - o.t < 0.3 && !taken.has(o));
-        for (const o of fresh) taken.add(o);
-        const ids = new Set(fresh.map((o) => (o.id === 'hh' ? 'hhc' : o.id)));
-        const drums = eng.onsets.some((o) => (o.id === 'bd' || o.id === 'sd') && t - o.t < 2);
-        const part = PARTS.find((id) => ids.has(id) && !(id === 'hhc' && drums));
-        if (part) cutTo(part, t, eng);
-      }
-
+      cur = { eng, offset };
+      sim.advance(t);
+      const step = eng.stepAt(t + offset, t);
       ctx.clearRect(0, 0, W, H);
       const where = { W, H, cx: W / 2, cy: H / 2, m: Math.min(W, H), fg: col.fg, ink: col.ink || col.fg };
       // how bright the scene is: full on the hit, down to a half through the beat, then fading

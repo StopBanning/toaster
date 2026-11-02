@@ -52,6 +52,7 @@ function roll(n) {
       cols.push({ k, col, strip, pitch });
     }
   }
+  // (the star count rolling up on the button is a one-shot of the page's own UI, on the browser's own time, not a frame of the picture: its clock, its frames and the spray's dice are the page's)
   const T = 1500, t0 = performance.now();
   const step = (now) => {
     const u = Math.min(1, (now - t0) / T), e = 1 - (1 - u) ** 3, v = n * e;
