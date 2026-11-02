@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {rolledSceneSource} from '../renderer/scenery-source.js';
+import {mulberry32} from '../renderer/random.js';
 
 test('rolled loops preserve their starts, comparisons, increments, and early exits', () => {
   const source='precision highp int;\nfor (int i = 0; i < 4; i++) {}\nfor (int j = -1; j <= 2; j++) {}\nfor (int k = 1; k < 3 && !hit; k++) {}';
@@ -22,7 +23,7 @@ test('only the measured scenes compile with rolled bounds; other sources retain 
     .replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'');
   const selection=text.match(/const source = LIB \+ \(MAINS\[name\] \|\| MAINS\.lake\);\s*return \(scenes\[name\] = makeProgram\((.*?)\)\);/s);
   assert.ok(selection,'test must cover the production source-selection expression');
-  const context={rolledSceneSource,captured};
+  const context={rolledSceneSource,captured,mulberry32}; // (mulberry32: the sea's dice, a let at the top of the file)
   vm.runInNewContext(constants+`;for(const name of Object.keys(MAINS)){const source=LIB+MAINS[name];const made=${selection[1]};captured.push({name,source,made});}`,context);
   for(const {name,source,made} of captured){
     if(['sharks','garden','koi','halloween'].includes(name)){

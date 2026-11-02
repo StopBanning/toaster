@@ -72,7 +72,7 @@ const log = (...a) => console.log(...a);
 // ---------------------------------------------------------------- what the page should show
 
 const css = fs.readFileSync(path.join(root, 'renderer', 'style.css'), 'utf8');
-const NAMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic'];
+const NAMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub'];
 const norm = (v) => (/^#[0-9a-f]{3}$/i.test(v) ? '#' + [...v.slice(1)].map((c) => c + c).join('') : v.replace(/\s+/g, '')).toLowerCase();
 const fixed = Object.fromEntries(NAMES.slice(0, 5).map((name) => {
   const block = name === 'bluescreen' ? css.match(/:root \{([^}]*)\}/)[1] : css.match(new RegExp(`:root\\[data-theme="${name}"\\] \\{([^}]*)\\}`))[1];
@@ -171,7 +171,7 @@ try {
   await shot('theme-6-dynamic-no-cover');
   results.themes.push('dynamic');
   const entries = await ev('__nc.paletteEntries().map((e) => e.name)');
-  assert.deepEqual(entries.filter((n) => n.startsWith('theme: ')), NAMES.map((n) => 'theme: ' + n), 'Ctrl+K lists every theme, dynamic last');
+  assert.deepEqual(entries.filter((n) => n.startsWith('theme: ')), NAMES.map((n) => 'theme: ' + n), 'Ctrl+K lists every theme, softclub last');
   assert.match(await ev("document.querySelector('#help tr[data-act=\"theme\"]').textContent"), /theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic \(the colours of the song's cover/, 'the help lists it');
   log('ok  T round: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (bluescreen\'s colours with no cover)');
   // (the ID card, to show the cover's dots in the theme's colours: N goes off, on, big, off, so round to on and not big)

@@ -220,9 +220,12 @@ async function mp4(blob) {
   // the length: the movie header's duration in its own time scale (a 64-bit one in version 1)
   const mvhd = await child(blob, moov.start, moov.end, 'mvhd');
   if (mvhd) {
-    const h = await read(blob, mvhd.start, mvhd.start + 32);
-    const [scale, long] = h[0] === 1 ? [be32(h, 20), be32(h, 24) * 2 ** 32 + be32(h, 28)] : [be32(h, 12), be32(h, 16)];
-    if (scale && long && long < 2 ** 52) out.duration = long / scale;
+    const h = await read(blob, mvhd.start, mvhd.start + 32), wide = h[0] === 1;
+    const [scale, long] = wide ? [be32(h, 20), be32(h, 24) * 2 ** 32 + be32(h, 28)] : [be32(h, 12), be32(h, 16)];
+    // (a length of all ones, 32 bits of them in version 0 and 64 in version 1, is how the header says it is not known: a stream that was
+    // written as it played, say; it is no length, and not one of 1193 hours)
+    const unknown = wide ? be32(h, 24) === 0xffffffff && be32(h, 28) === 0xffffffff : long === 0xffffffff;
+    if (scale && long && !unknown && long < 2 ** 52) out.duration = long / scale;
   }
   let atom = moov;
   for (const name of ['udta', 'meta']) {

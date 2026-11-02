@@ -278,9 +278,9 @@ test('the folder: the one chosen, else the music folder, and a copy run from sou
   const profile = path.join(base, 'profile');
   const noneYet = make(base, { music: path.join(base, 'Songs') });
   fs.mkdirSync(path.join(base, 'Songs'));
-  assert.deepEqual(noneYet.folder(), { path: path.join(base, 'Songs'), label: '~/Songs', chosen: false }, 'the music folder, till one is chosen');
-  assert.equal(make(base, { music: path.join(base, 'Songs'), testCopy: true }).folder(), null, 'a test copy has none');
-  assert.equal(make(base, { music: path.join(base, 'not there') }).folder(), null, 'a Music folder that is not there');
+  assert.deepEqual((await noneYet.folder()), { path: path.join(base, 'Songs'), label: '~/Songs', chosen: false }, 'the music folder, till one is chosen');
+  assert.equal((await make(base, { music: path.join(base, 'Songs'), testCopy: true }).folder()), null, 'a test copy has none');
+  assert.equal((await make(base, { music: path.join(base, 'not there') }).folder()), null, 'a Music folder that is not there');
   // chosen through the dialog it gives: kept (so a restart has it), and it is the real path
   let asked;
   const dialog = { pick: async (from) => { asked = from; return path.join(base, 'music-link'); } };
@@ -291,25 +291,57 @@ test('the folder: the one chosen, else the music folder, and a copy run from sou
   assert.deepEqual(picked, { path: real, label: `~/${linking ? 'music' : 'music-link'}`, chosen: true });
   assert.equal(asked, path.join(base, 'Songs'), 'the dialog starts in the folder it has');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(profile, 'library.json'), 'utf8')), { folder: real });
-  assert.deepEqual(make(base, { music: path.join(base, 'Songs'), testCopy: true }).folder(), { path: real, label: picked.label, chosen: true }, 'a restart');
+  assert.deepEqual((await make(base, { music: path.join(base, 'Songs'), testCopy: true }).folder()), { path: real, label: picked.label, chosen: true }, 'a restart');
   // the dialog cancelled, a pick that is not a folder, no dialog to ask (a window nobody sees): nothing changes
   assert.equal(await make(base, { dialog: { pick: async () => null } }).choose(), null);
   assert.equal(await make(base, { dialog: { pick: async () => path.join(music, 'notes.txt') } }).choose(), null);
   assert.equal(await make(base, { hidden: true, dialog }).choose(), null);
   assert.equal(await make(base).choose(), null);
-  // a chosen folder that has gone: back to the music folder (and none for a test copy)
-  fs.rmSync(music, { recursive: true });
-  assert.deepEqual(make(base, { music: path.join(base, 'Songs') }).folder(), { path: path.join(base, 'Songs'), label: '~/Songs', chosen: false });
-  assert.equal(make(base, { music: path.join(base, 'Songs'), testCopy: true }).folder(), null);
+  // a chosen folder that has gone (a drive unplugged, a network folder down) is still the one, missing, not the music folder (whose
+  // scan would take the place of the list kept for it); a test copy the same. The one chosen is real: where there are no links, the
+  // copy, so taking away music would leave it there
+  fs.rmSync(real, { recursive: true });
+  const gone = { path: real, label: picked.label, chosen: true, missing: true };
+  assert.deepEqual((await make(base, { music: path.join(base, 'Songs') }).folder()), gone);
+  assert.deepEqual((await make(base, { music: path.join(base, 'Songs'), testCopy: true }).folder()), gone);
+});
+
+test('a chosen folder that is not there: its kept list still shows; its scan and its files say it is not there, and keep that list; it is back when it is', async () => {
+  const { base, music } = build('lgone');
+  const l = make(base, { forced: music, testCopy: true });
+  await l.choose(); // (kept as the one chosen, as any is)
+  const first = await l.scan();
+  assert.equal(first.tracks.length, 6);
+  const away = path.join(base, 'music-away');
+  fs.renameSync(music, away); // (the drive unplugged)
+  const off = make(base, { music: path.join(base, 'Songs'), testCopy: true }); // (a restart, without --library-folder: the one chosen)
+  assert.deepEqual((await off.cached()).tracks, first.tracks, 'the list kept for it');
+  await assert.rejects(off.scan(), /~\/music isn't there right now \(is its drive connected\?\)/);
+  await assert.rejects(off.read('loose.WAV'), (e) => e.code === 'REFUSED' && /isn't there right now/.test(e.message));
+  assert.deepEqual((await off.cached()).tracks, first.tracks, 'and kept still');
+  fs.renameSync(away, music); // (plugged back in)
+  assert.equal((await off.scan()).stats.read, 0, 'its list was kept: nothing to read again');
+  assert.equal((await off.read('loose.WAV')).name, 'loose.WAV');
+});
+
+test('a cover is decoded in main only if its picture says a size a cover has', () => {
+  const png = (w, h) => { const b = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0); b.writeUInt32BE(13, 8); b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
+  const jpeg = (w, h) => Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, ...Array(14).fill(0), 0xff, 0xc0, 0x00, 0x11, 0x08, h >> 8, h & 255, w >> 8, w & 255, 0x03, ...Array(9).fill(0)]);
+  assert.deepEqual(lib.coverSize(png(600, 400)), { width: 600, height: 400 });
+  assert.deepEqual(lib.coverSize(jpeg(1400, 1400)), { width: 1400, height: 1400 });
+  assert.equal(lib.coverFits(jpeg(3000, 3000)), true);
+  assert.equal(lib.coverFits(png(20000, 20000)), false, 'hundreds of MB once decoded');
+  assert.equal(lib.coverFits(jpeg(6001, 10)), false);
+  assert.equal(lib.coverFits(Buffer.from('not a picture at all, just bytes')), false, 'no size it says: not decoded');
 });
 
 test('a folder a copy run from source is told to take is the one chosen, with no dialog; and it is kept like any other', async () => {
   const { base, music } = build('forced');
   const l = make(base, { forced: music, hidden: true, testCopy: true, dialog: { pick: async () => { throw new Error('a dialog'); } } });
-  assert.deepEqual(l.folder(), { path: music, label: '~/music', chosen: true });
+  assert.deepEqual((await l.folder()), { path: music, label: '~/music', chosen: true });
   assert.deepEqual(await l.choose(), { path: music, label: '~/music', chosen: true });
-  assert.equal(make(base, { testCopy: true }).folder().path, music, 'and a restart without it has it');
-  assert.equal(make(base, { forced: path.join(base, 'nope'), testCopy: true }).folder().path, music, 'one that is not there is no folder');
+  assert.equal((await make(base, { testCopy: true }).folder()).path, music, 'and a restart without it has it');
+  assert.equal((await make(base, { forced: path.join(base, 'nope'), testCopy: true }).folder()).path, music, 'one that is not there is no folder');
 });
 
 test('read: only through the folder in force, with the refusals of readAudio', async () => {
@@ -324,7 +356,7 @@ test('read: only through the folder in force, with the refusals of readAudio', a
 test('scan, in a worker: every track with its names, the covers as small pictures, kept so that the next scan reads nothing, and a change reads that file', async () => {
   const { base, music } = build('lscan');
   const l = make(base, { forced: music, testCopy: true });
-  assert.equal(l.cached().tracks.length, 0, 'nothing kept yet');
+  assert.equal((await l.cached()).tracks.length, 0, 'nothing kept yet');
   const progress = [];
   const first = await l.scan((p) => progress.push(p));
   assert.equal(first.folder, '~/music');
@@ -340,7 +372,7 @@ test('scan, in a worker: every track with its names, the covers as small picture
   assert.equal(Buffer.from(first.covers[plague.cover], 'base64').length, 12);
   assert.ok(progress.length >= 1 && progress.at(-1).files === 6, JSON.stringify(progress.at(-1)));
   // kept: the next is nothing to read, and what was kept is what it gave
-  assert.deepEqual(l.cached(), { folder: '~/music', tracks: first.tracks, covers: first.covers });
+  assert.deepEqual((await l.cached()), { folder: '~/music', tracks: first.tracks, covers: first.covers });
   const second = await l.scan();
   assert.equal(second.stats.read, 0);
   assert.deepEqual(second.tracks, first.tracks);
@@ -371,7 +403,42 @@ test('a scan asked for while one is running is that one; another folder is anoth
   put(path.join(other, 'one.mp3'), tagged('Only', 'Only', 1));
   const l2 = make(base, { forced: other, testCopy: true });
   assert.deepEqual((await l2.scan()).tracks.map((t) => t.path), ['one.mp3']);
-  assert.equal(l.cached().tracks.length, 0, 'the cache is the one folder\'s: the first folder\'s was replaced by this one\'s');
+  assert.equal((await l.cached()).tracks.length, 0, 'the cache is the one folder\'s: the first folder\'s was replaced by this one\'s');
+});
+
+test('a scan whose list cannot be kept still ends: it gives what it found, leaves no temporary file, and the next scan runs', async () => {
+  const { base, music } = build('lwrite');
+  const profile = path.join(base, 'profile'), cache = path.join(profile, 'library-cache.json');
+  const l = make(base, { forced: music, testCopy: true });
+  const tmps = () => fs.readdirSync(profile).filter((f) => f.endsWith('.tmp'));
+  // (a scan that never ends is a failure here, not a test that never finishes)
+  const ends = (scan) => { let timer; return Promise.race([scan, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('the scan did not end')), 15000); })]).finally(() => clearTimeout(timer)); };
+  // the move into place is refused (a folder where the list goes, as Windows refuses it, EPERM, while something holds the file)
+  fs.mkdirSync(cache, { recursive: true });
+  const first = l.scan();
+  assert.deepEqual((await ends(first)).tracks.map((t) => t.path), LISTED, 'what it found is still the page\'s');
+  assert.deepEqual(tmps(), [], 'the list written to be moved into place is not left');
+  assert.equal((await l.cached()).tracks.length, 0, 'and nothing was kept');
+  // it is over: a scan asked for now is a new one, and it ends the same way
+  const second = l.scan();
+  assert.notEqual(second, first);
+  assert.equal((await ends(second)).stats.read, 6, 'it has nothing to go on');
+  fs.rmSync(cache, { recursive: true });
+  // the write stops halfway (a full disk, ENOSPC), with part of the list on the disk
+  const write = fs.writeFileSync;
+  fs.writeFileSync = (file, data, ...rest) => {
+    if (!String(file).endsWith('.tmp')) return write(file, data, ...rest);
+    write(file, String(data).slice(0, 20), ...rest);
+    throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' });
+  };
+  try {
+    assert.deepEqual((await ends(l.scan())).tracks.map((t) => t.path), LISTED);
+    assert.deepEqual(tmps(), [], 'the part of it is not left');
+  } finally { fs.writeFileSync = write; }
+  // and once it can be kept it is: this scan reads it all, the next reads nothing
+  assert.equal((await ends(l.scan())).stats.read, 6);
+  assert.equal((await l.cached()).tracks.length, 6);
+  assert.equal((await ends(l.scan())).stats.read, 0);
 });
 
 // ---------------------------------------------------------------- main.js and preload.js

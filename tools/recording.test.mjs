@@ -89,7 +89,7 @@ test('main rejects old tokens for both write and stop, and preload carries them'
     path: { join: (...s) => s.join('/') }, app: { getPath: () => 'test' }, freeBase: (s) => s, stamp: () => 'test', Buffer,
     win: { setProgressBar() {}, setTitle() {} } };
   const part = src.slice(src.indexOf("  ipcMain.handle('rec:start'"), src.indexOf("  ipcMain.handle('win:close'"));
-  vm.runInNewContext('let recording=null,recordingId=0; function endRecording(){recording=null;}\n' + part, ctx);
+  vm.runInNewContext('let recording=null,recordingId=0; function endRecording(){recording=null;} const videosDir=()=>path.join(app.getPath("videos"),"Toaster");\n' + part, ctx);
   const first = handlers['rec:start']({}, 'mp4'), second = handlers['rec:start']({}, 'mp4');
   assert.equal(await handlers['rec:chunk']({}, first.token, [22]), false);
   assert.equal(handlers['rec:stop']({}, first.token), null);

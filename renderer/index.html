@@ -15,9 +15,11 @@
 <canvas id="worldwords" aria-hidden="true"></canvas>
 <canvas id="chrome" aria-hidden="true"></canvas>
 <canvas id="spaghetti" aria-hidden="true"></canvas>
+<canvas id="earth" aria-hidden="true"></canvas>
 <canvas id="spectro" aria-hidden="true"></canvas>
 <canvas id="spectrobox" aria-hidden="true"></canvas>
 <canvas id="scenery" aria-hidden="true"></canvas>
+<canvas id="lanes" aria-hidden="true" hidden></canvas>
 <canvas id="wait" aria-hidden="true" hidden></canvas>
 <canvas id="vis"></canvas>
 <canvas id="warp" aria-hidden="true"></canvas>
@@ -25,6 +27,7 @@
 <canvas id="asciicam" aria-hidden="true"></canvas>
 <canvas id="orb" aria-hidden="true"></canvas>
 <canvas id="punch"></canvas>
+<canvas id="post" aria-hidden="true" hidden></canvas>
 <button id="w-back" title="Back to Toaster (Esc)" aria-label="Back to Toaster">✕</button>
 <div id="desk-back" aria-hidden="true"><div class="big"></div><div class="icons"></div></div>
 
@@ -70,7 +73,7 @@
 <pre id="sys" class="panel" hidden></pre>
 <div id="card" hidden aria-label="Now-playing ID card"></div>
 
-<div id="desk-front" aria-hidden="true"><div class="wins"></div></div>
+<div id="desk-front" aria-hidden="true"><div class="wins"></div><div class="taskbar"><div class="start"><i class="flag"></i>toast</div><div class="tasks"></div><div class="tray"><i class="vol"></i><span class="clock"></span><div class="balloon" hidden><b>Found New Music</b><span></span></div></div></div></div>
 <canvas id="storm" aria-hidden="true" hidden></canvas>
 <div id="library" hidden></div>
 <div id="alerts"></div>
@@ -88,8 +91,8 @@
 <div id="bsod" aria-hidden="true">
   <div class="face">:(</div>
   <p>Your PC ran into a drop and needs to dance. We're just collecting some bass, and then we'll restart for you.</p>
-  <p>100% complete</p>
-  <small>For more information about this issue, keep listening.<br />Stop code: BASS_DROP_DETECTED</small>
+  <p><span class="pct">0</span>% complete</p>
+  <div class="foot"><svg class="qr" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><path fill="currentColor" d="M2 2h7v1h-7zM10 2h2v1h-2zM16 2h3v1h-3zM20 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM12 3h3v1h-3zM20 3h1v1h-1zM26 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM13 4h2v1h-2zM16 4h2v1h-2zM20 4h1v1h-1zM22 4h3v1h-3zM26 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM10 5h4v1h-4zM15 5h2v1h-2zM18 5h1v1h-1zM20 5h1v1h-1zM22 5h3v1h-3zM26 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h2v1h-2zM15 6h4v1h-4zM20 6h1v1h-1zM22 6h3v1h-3zM26 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM10 7h1v1h-1zM12 7h2v1h-2zM16 7h1v1h-1zM20 7h1v1h-1zM26 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h7v1h-7zM10 9h1v1h-1zM16 9h1v1h-1zM2 10h1v1h-1zM6 10h1v1h-1zM8 10h3v1h-3zM12 10h1v1h-1zM14 10h1v1h-1zM17 10h1v1h-1zM19 10h5v1h-5zM26 10h1v1h-1zM6 11h2v1h-2zM9 11h1v1h-1zM11 11h1v1h-1zM14 11h2v1h-2zM17 11h1v1h-1zM22 11h2v1h-2zM25 11h1v1h-1zM3 12h3v1h-3zM7 12h4v1h-4zM12 12h3v1h-3zM16 12h3v1h-3zM20 12h1v1h-1zM23 12h2v1h-2zM3 13h1v1h-1zM6 13h2v1h-2zM9 13h1v1h-1zM11 13h2v1h-2zM14 13h1v1h-1zM16 13h1v1h-1zM18 13h1v1h-1zM20 13h2v1h-2zM24 13h2v1h-2zM2 14h1v1h-1zM4 14h1v1h-1zM6 14h5v1h-5zM12 14h3v1h-3zM18 14h3v1h-3zM23 14h4v1h-4zM2 15h2v1h-2zM6 15h1v1h-1zM12 15h1v1h-1zM14 15h2v1h-2zM17 15h2v1h-2zM22 15h1v1h-1zM25 15h1v1h-1zM4 16h1v1h-1zM6 16h5v1h-5zM12 16h2v1h-2zM15 16h1v1h-1zM17 16h1v1h-1zM19 16h1v1h-1zM21 16h4v1h-4zM5 17h2v1h-2zM9 17h1v1h-1zM12 17h3v1h-3zM16 17h2v1h-2zM21 17h2v1h-2zM24 17h2v1h-2zM2 18h4v1h-4zM8 18h1v1h-1zM10 18h1v1h-1zM12 18h3v1h-3zM18 18h7v1h-7zM10 19h1v1h-1zM12 19h2v1h-2zM15 19h1v1h-1zM18 19h1v1h-1zM22 19h1v1h-1zM2 20h7v1h-7zM10 20h2v1h-2zM13 20h2v1h-2zM16 20h1v1h-1zM18 20h1v1h-1zM20 20h1v1h-1zM22 20h1v1h-1zM2 21h1v1h-1zM8 21h1v1h-1zM11 21h2v1h-2zM14 21h1v1h-1zM18 21h1v1h-1zM22 21h5v1h-5zM2 22h1v1h-1zM4 22h3v1h-3zM8 22h1v1h-1zM10 22h1v1h-1zM12 22h3v1h-3zM16 22h1v1h-1zM18 22h7v1h-7zM2 23h1v1h-1zM4 23h3v1h-3zM8 23h1v1h-1zM12 23h2v1h-2zM16 23h1v1h-1zM19 23h3v1h-3zM24 23h3v1h-3zM2 24h1v1h-1zM4 24h3v1h-3zM8 24h1v1h-1zM13 24h1v1h-1zM15 24h2v1h-2zM18 24h1v1h-1zM20 24h1v1h-1zM23 24h1v1h-1zM25 24h1v1h-1zM2 25h1v1h-1zM8 25h1v1h-1zM13 25h2v1h-2zM19 25h1v1h-1zM21 25h5v1h-5zM2 26h7v1h-7zM10 26h5v1h-5zM17 26h1v1h-1zM19 26h1v1h-1zM24 26h3v1h-3z"/></svg><small>For more information about this issue and possible fixes, keep listening.<br /><br />If you call a support person, give them this info:<br />Stop code: BASS_DROP_DETECTED</small></div>
 </div>
 
 <div id="menu" hidden>
@@ -116,7 +119,7 @@
 </dialog>
 
 <dialog id="help">
-  <p class="help-tools"><button type="button" id="search-commands">search: <span class="os-win">Ctrl+K</span><span class="os-mac">⌘K</span></button><button type="button" id="report-bug">report a bug</button></p>
+  <p class="help-tools"><button type="button" id="search-commands">search: <span class="os-win">Ctrl+K</span><span class="os-mac">⌘K</span></button><button type="button" id="report-bug">report a bug</button><button type="button" id="report-misread">report a misread</button></p>
   <h2>how it works <small class="ver"></small></h2>
   <p>Toaster listens to whatever your <span class="os-win">PC</span><span class="os-mac">Mac</span> plays and writes it out as Strudel code, live: the drums on a 16-step grid, the tempo, bass, chords, key and lead line. A new song starts a fresh page. It's a reconstruction for show, not an exact transcription; steady beats work best.</p>
   <p>When the kick comes back after a break, the backgrounds answer the drop, and the drop effect, if you've picked one with <kbd data-k="dropfx">B</kbd>, takes over the screen. The camera features run on this <span class="os-win">PC</span><span class="os-mac">Mac</span>; nothing is uploaded. Your picks are remembered, except the camera, which always starts off.</p>
@@ -127,10 +130,11 @@
   <label class="calm"><input type="checkbox" id="playerrec" /><span><b>Player bar in recordings</b>: off, a recording leaves the bar out, as it does the header and footer; on, it's in the video.</span></label>
   <table>
     <tr class="sec"><th colspan="2">look</th></tr>
-    <tr data-act="visual"><td>V</td><td>background, best first: scenes (a new one each song), worlds, chrome, spaghetti, spectrogram, cuts, fire, the code rain, off</td></tr>
-    <tr data-act="strength"><td>A</td><td>the next one of whatever's showing: the scene (auto, a new one each song; the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween, the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye; then auto in the theme's colours); the worlds' look (auto, night, film, ASCII, thermal, cells); the chrome's collage on or off; the spaghetti's noodles, snakes (a card each time round, a few of its noodles dancing) or endless (the cover stuck on top, the machine never stopping); the spectrogram in rainbow or the theme's colours; with the handheld on, its screens (Toaster's own, neon, LCD, the Japan edition: Toaster's own in Japanese, on a Famicom-style handheld). The footer says which</td></tr>
-    <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (the colours of the song's cover, from your music app, the radio or the file's own, easing over to the next song's; bluescreen's while there is none)</td></tr>
+    <tr data-act="visual"><td>V</td><td>background, best first: scenes (a new one each song), the Earth (from the space station, NASA's footage: the aurora, the northern lights, city lights, dawn, the day side; each view comes down the first time you pick it), worlds, chrome, spaghetti, spectrogram, lanes (the song's patterns flying at you down a tunnel, each part a lane, each step a tile that flashes as it plays), cuts, fire, the code rain, off</td></tr>
+    <tr data-act="strength"><td>A</td><td>the next one of whatever's showing: the scene (auto, a new one each song; the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, halloween, the sharks, the festival, the koi pond (click the water to feed the koi), space, the eye; then auto in the theme's colours); the worlds' look (auto, night, film, ASCII, thermal, cells); the Earth's view (the aurora, the northern lights, city lights, dawn, the day side); the chrome's collage on or off; the spaghetti's noodles, snakes (a card each time round, a few of its noodles dancing) or endless (the cover stuck on top, the machine never stopping); the spectrogram in rainbow or the theme's colours; with the handheld on, its screens (Toaster's own, neon, LCD, the Japan edition: Toaster's own in Japanese, on a Famicom-style handheld). The footer says which</td></tr>
+    <tr data-act="theme"><td>T</td><td>theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (the colours of the song's cover, from your music app, the radio or the file's own, easing over to the next song's; bluescreen's while there is none), softclub (the late-90s soft club look: slate on an icy haze, a soft glow)</td></tr>
     <tr data-act="crt"><td>Y</td><td>CRT: an old TV over everything, on any theme: it comes on from a white line and goes off into a dot; scanlines, phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop, and each background (V) is a channel, its number on screen</td></tr>
+    <tr data-act="look"><td>U</td><td>look, over any background and under the code, in turn: trails (each frame's echo rushing forward on the kick), dots (a 1-bit dot screen in the theme's two colours), LED (a wall of lamps breathing with the beat), halftone (a two-ink print, off register on the kick), VHS (an old tape: a tracking band rolling down once a bar, the head noise jumping on the kick), line art (the picture's edges), ripples (a ring from each kick and clap running out over the picture, bending it), rain on glass (a misted window with drops sliding down it, the picture clear and bent through each drop), prism (faceted glass splitting the colours at its folds, bending harder on the kick), heat shimmer (the picture wavering like air over hot ground, more with the bass), chroma kick (the colours parting on the kick), any you add (Ctrl+K looks folder: screen shaders in Hyprland's format, see docs/looks-from-shaders.md), off. With a look on, each drop glitches the picture for a moment, and the code's lit parts glow on the kick</td></tr>
         <tr data-act="blocks"><td>P</td><td>the code look: dominoes, then the handheld game (the song played on a little two-screen handheld), then the punchcard, then none</td></tr>
         <tr data-act="orb"><td>R</td><td>the orb: a cloud of dots in 3D shapes over any background (a sphere, a crystal, orbit paths, a galaxy and more), flowing into the next every 8 bars; again to turn it off</td></tr>
         <tr data-act="card"><td>N</td><td>ID card: the song, tempo, key and a 1-bit picture; again for big, again to hide</td></tr>
@@ -150,7 +154,7 @@
     <tr class="sec"><th colspan="2">window</th></tr>
     <tr data-act="layout"><td>L</td><td>vertical layout</td></tr>
     <tr data-act="mini"><td>W</td><td>mini player, over your other windows; with the handheld on, the handheld on its own on your desktop (no window round it: drag it anywhere, Esc brings Toaster back)</td></tr>
-    <tr data-act="code"><td>Z</td><td>hide the code: just the visuals, for Toaster as a visualizer. Again for the code without its beat (the drum lines and their grid), for music with no pulse, and again for all of it. It's still written underneath</td></tr>
+    <tr data-act="code"><td>Z</td><td>hide the code: just the visuals, for Toaster as a visualizer. Again for the code without its beat (the drum lines and their grid), for music with no pulse, and again for all of it. It's still written underneath. The code sits on liquid glass (each line and panel on a pane that mists and tints the picture under it and bends it at its edge); Ctrl+K code on glass puts it back on its flat plates, or on glass again</td></tr>
     <tr data-act="hide,full"><td>H / F</td><td>hide the header and footer / fullscreen</td></tr>
     <tr data-act="machine"><td>I</td><td>machine readout</td></tr>
     <tr class="sec"><th colspan="2">setup</th></tr>

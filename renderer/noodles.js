@@ -36,6 +36,7 @@
 //   (s, 0.5); when the kick, snare, closed and open hats and bass last hit (s; -10); the bass
 //   note's pitch (Hz, 60); when the last drop was (s; -99); how loud (0-1); and whether it's
 //   silent (true), the kick's on every beat (false), the calm look (false).
+import { mulberry32 } from './random.js';
 
 // The pasta's noodles: strands of beads, each held to its length and loosely to its shape (Verlet,
 // the constraints projected in turn: a soft rope that coils but won't kink), falling under a low
@@ -140,7 +141,8 @@ export class Noodles {
   }
 
   // dt seconds on, in steps of a 180th (Verlet's speeds are only right with every step the same;
-  // a frame's time isn't), the beads touching each other worked out once a frame
+  // a frame's time isn't), the beads touching each other worked out once a call (the spaghetti calls it
+  // for each 180th now, so at each step: 180 times a second)
   step(dt) {
     const { y, w, beads, alive, next } = this;
     this.lastH = H;
@@ -153,7 +155,7 @@ export class Noodles {
       this.integrate(H);
       this.steer();
       this.chains(); this.chains(); this.chains();
-      if (n === 0) { this.touch(); this.chains(); } // (once a frame: in a heap it's most of the work)
+      if (n === 0) { this.touch(); this.chains(); } // (once a call: in a heap it's most of the work)
       this.world(H);
     }
     // a join next to a strand hanging off the slab's edge snaps, so an endless noodle drips off a
@@ -525,7 +527,7 @@ export class Dancers {
       }
       if (still) { if (r > best) { best = r; found = []; } found.push(s); }
     }
-    return found.length ? found[Math.floor(Math.random() * found.length)] : null;
+    return found.length ? found[Math.floor(dice() * found.length)] : null;
   }
 
   // the ring's soloist hands over to the next: the two trade places, the rest stay put
@@ -543,13 +545,13 @@ export class Dancers {
 
   // now and then one turns to someone else, to the eye, or just a little, and may shift a step
   fidget(d) {
-    const roll = Math.random(), others = this.dancers.filter((o) => o !== d);
+    const roll = dice(), others = this.dancers.filter((o) => o !== d);
     if (roll < 0.45 && others.length) {
-      const o = others[Math.floor(Math.random() * others.length)];
+      const o = others[Math.floor(dice() * others.length)];
       d.faceA = Math.atan2(o.spot.z - d.spot.z, o.spot.x - d.spot.x) + rnd(-0.3, 0.3);
     } else if (roll < 0.7) d.faceA = Math.PI / 4 + rnd(-0.8, 0.8); else d.faceA += rnd(-0.9, 0.9);
     d.faceA = Dancers.aside(d.faceA);
-    if (Math.random() < 0.35) { d.spot.x += rnd(-2.5, 2.5); d.spot.z += rnd(-2.5, 2.5); }
+    if (dice() < 0.35) { d.spot.x += rnd(-2.5, 2.5); d.spot.z += rnd(-2.5, 2.5); }
   }
 
   // Where on the floor in front of the table there's most room (the fewest noodles lying within
@@ -590,7 +592,7 @@ export class Dancers {
       for (let c = 0; c < count; c++) {
         let best = place(a, b), bestGap = -1;
         for (let t = 0; t < 24; t++) {
-          const ang = rnd(0, 2 * Math.PI), d = r * Math.sqrt(Math.random()), p = place(a + d * Math.cos(ang), b + d * Math.sin(ang));
+          const ang = rnd(0, 2 * Math.PI), d = r * Math.sqrt(dice()), p = place(a + d * Math.cos(ang), b + d * Math.sin(ang));
           let near = Infinity;
           for (const q of out) near = Math.min(near, Math.hypot(q.x - p.x, q.z - p.z));
           if (near > bestGap) { best = p; bestGap = near; }
@@ -656,7 +658,7 @@ export class Dancers {
       const d = free.splice(at, 1)[0];
       d.spot = p;
       d.big = shape === 'cypher' ? (k === 0 ? 1.4 : 0.85) : 1;
-      const roll = Math.random();
+      const roll = dice();
       switch (shape) {
         case 'crowd': d.faceA = roll < 0.4 ? toward(p, mid, 0.6) : roll < 0.75 ? eye + rnd(-0.8, 0.8) : toward(p, spots[(k + 1) % n], 0.4); break;
         case 'burst': d.faceA = toward(mid, p, 0.6); break; // (outward)
@@ -697,7 +699,7 @@ class Dancer {
     this.style = rnd(0, 1); this.pump = rnd(0, 0.25); this.sway = oneOf([2, 4, 4, 8]);
     const rides = irnd(0, 2), w = [0, 1, 2].map((k) => (k === rides ? 1 : rnd(0.2, 0.55)));
     this.ear = { kick: w[0], snare: w[1], bass: w[2] };
-    this.back = rnd(2.45, 2.6); this.low = rnd(0.36, 0.42); this.droop = rnd(0.15, 0.3); this.curl = rnd(-0.35, 0.35); this.flip = Math.random() < 0.5;
+    this.back = rnd(2.45, 2.6); this.low = rnd(0.36, 0.42); this.droop = rnd(0.15, 0.3); this.curl = rnd(-0.35, 0.35); this.flip = dice() < 0.5;
     this.drift = [0, 1, 2, 3, 4, 5].map(() => rnd(0, 2 * Math.PI));
     // the trail (x, z), from where the neck rises back, L apart
     const b = s * n.beads;
@@ -714,7 +716,7 @@ class Dancer {
     // strides it waits before setting off, and whether its strides start on the beats between (so
     // they don't all go at once)
     this.wait = 0;
-    this.half = Math.random() < 0.5;
+    this.half = dice() < 0.5;
     // its body's sideways bends crawling (dead straight it looked stiff): the last stride's and this
     // one's, each a big soft one and a smaller ripple (how much, how many, where along it), random
     this.bendWas = someBends(); this.bendIs = someBends();
@@ -894,8 +896,8 @@ class Dancer {
 }
 
 function someBends() {
-  return [(Math.random() < 0.5 ? 1 : -1) * rnd(0.15, 0.4), rnd(0.7, 1.4), rnd(0, 2 * Math.PI),
-    (Math.random() < 0.5 ? 1 : -1) * rnd(0.05, 0.18), rnd(2, 3.5), rnd(0, 2 * Math.PI)];
+  return [(dice() < 0.5 ? 1 : -1) * rnd(0.15, 0.4), rnd(0.7, 1.4), rnd(0, 2 * Math.PI),
+    (dice() < 0.5 ? 1 : -1) * rnd(0.05, 0.18), rnd(2, 3.5), rnd(0, 2 * Math.PI)];
 }
 
 // The inchworm's body seen side on (along, up) at each of count beads from its tail's end, L apart:
@@ -940,6 +942,10 @@ const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 // 0-1 from a seed (a snare pose's own, the same for the same dancer and hit)
 const hash01 = (seed, k) => (Math.imul(seed + k * 7919, 2654435761) >>> 16) / 65536;
-const rnd = (a, b) => a + Math.random() * (b - a);
-const irnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1)); // a to b, both ends
-const oneOf = (list) => list[Math.floor(Math.random() * list.length)];
+// The dancers' and the strands' dice: one stream, started again from the song's seed whenever a kitchen is made
+// (seedNoodles), so the same song's dancers make the same choices.
+let dice = mulberry32(1);
+export const seedNoodles = (seed) => { dice = mulberry32(seed); };
+const rnd = (a, b) => a + dice() * (b - a);
+const irnd = (a, b) => a + Math.floor(dice() * (b - a + 1)); // a to b, both ends
+const oneOf = (list) => list[Math.floor(dice() * list.length)];

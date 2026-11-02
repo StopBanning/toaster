@@ -161,6 +161,40 @@ async function scanFolder({ root, known = {}, knownCovers = [], readTags, readCo
   post({ type: 'done', files: listing.length, read, removed });
 }
 
+// A cover picture's size from its first bytes (PNG, JPEG, GIF or WebP), or null for one it can't tell: looked at before main decodes a
+// cover, which is whatever a file carries (up to 16 MB of it), in a process with no sandbox. A picture the size of a cover is let
+// through; one of thousands of pixels a side (hundreds of MB once decoded) or of no size it says is not decoded.
+function coverSize(b) {
+  const n = b.length, u16 = (i) => (b[i] << 8) | b[i + 1], u32 = (i) => ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
+  if (n >= 24 && u32(0) === 0x89504e47) return { width: u32(16), height: u32(20) };
+  if (n >= 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return { width: b[6] | (b[7] << 8), height: b[8] | (b[9] << 8) };
+  if (n >= 30 && u32(0) === 0x52494646 && u32(8) === 0x57454250) { // (RIFF, then WEBP)
+    const kind = String.fromCharCode(b[12], b[13], b[14], b[15]);
+    if (kind === 'VP8X') return { width: 1 + (b[24] | (b[25] << 8) | (b[26] << 16)), height: 1 + (b[27] | (b[28] << 8) | (b[29] << 16)) };
+    if (kind === 'VP8 ') return { width: (b[26] | (b[27] << 8)) & 0x3fff, height: (b[28] | (b[29] << 8)) & 0x3fff };
+    if (kind === 'VP8L') { const v = (b[21] | (b[22] << 8) | (b[23] << 16) | (b[24] << 24)) >>> 0; return { width: (v & 0x3fff) + 1, height: ((v >>> 14) & 0x3fff) + 1 }; }
+    return null;
+  }
+  if (n >= 4 && b[0] === 0xff && b[1] === 0xd8) {
+    for (let i = 2; i + 8 < n;) {
+      if (b[i] !== 0xff) return null;
+      const m = b[i + 1];
+      if (m === 0xff) { i++; continue; } // (a fill byte)
+      if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { i += 2; continue; } // (the markers that have no length)
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { width: u16(i + 7), height: u16(i + 5) }; // (a frame's start)
+      const len = u16(i + 2);
+      if (len < 2) return null;
+      i += 2 + len;
+    }
+  }
+  return null;
+}
+const MAX_COVER_SIDE = 6000, MAX_COVER_PIXELS = 36e6;
+function coverFits(bytes) {
+  const s = coverSize(bytes);
+  return !!s && s.width > 0 && s.height > 0 && s.width <= MAX_COVER_SIDE && s.height <= MAX_COVER_SIDE && s.width * s.height <= MAX_COVER_PIXELS;
+}
+
 // ---------------------------------------------------------------- the cache
 
 // What a track is to the page: its path, its names (as the file has them, nothing made up), its length in ms, and its cover.
@@ -178,8 +212,13 @@ function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8'))
 function writeJson(file, value) {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(tmp, JSON.stringify(value));
-  fs.renameSync(tmp, file); // (whole or not at all: a scan cut short never leaves half a cache)
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(value));
+    fs.renameSync(tmp, file); // (whole or not at all: a scan cut short never leaves half a cache)
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* it was never made */ } // (a write that fails, a full disk or a file held, leaves no piece of itself)
+    throw err;
+  }
 }
 
 // The cache as it was kept for this folder, or an empty one (another folder, another version, or damaged: start over).
@@ -207,25 +246,36 @@ function resultOf(cache) {
 // a picture it can't read; rendererDir and workerFile are where the worker and the readers it loads are.
 function createLibrary({ dir, music = null, testCopy = false, forced = '', hidden = false, dialog = null, thumbnail = () => null, rendererDir = '', workerFile = path.join(__dirname, 'library-worker.cjs'), home = '' } = {}) {
   const chosenFile = path.join(dir, 'library.json'), cacheFile = path.join(dir, 'library-cache.json');
-  let running = null, worker = null;
-  const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+  let running = null, worker = null, scans = 0; // (scans: counted up by stop(), so a scan still finding its folder when it's stopped stops too)
   const label = (p) => (home && (p === home || p.startsWith(home + path.sep)) ? `~${p.slice(home.length).split(path.sep).join('/')}` : p);
+  // Whether p is a folder, without holding main up: a network folder that is down, or a drive gone to sleep, answers in its own time
+  // (up to a minute on Windows), so it's asked off main's thread, once at a time for each folder, and given a few seconds.
+  const asking = new Map();
+  function isDir(p, wait = 4000) {
+    if (!asking.has(p)) asking.set(p, fs.promises.stat(p).then((s) => s.isDirectory(), () => false).finally(() => asking.delete(p)));
+    return Promise.race([asking.get(p), new Promise((resolve) => setTimeout(resolve, wait, false).unref?.())]);
+  }
 
-  // The folder in force: the one chosen, else (on a copy not run from source with its own settings) the Music folder.
-  function folder() {
-    const chosen = forced && isDir(forced) ? forced : readJson(chosenFile)?.folder;
-    if (typeof chosen === 'string' && isDir(chosen)) return { path: chosen, label: label(chosen), chosen: true };
-    if (music && !testCopy && isDir(music)) return { path: music, label: label(music), chosen: false };
+  // The folder in force: the one chosen, else, if none was ever chosen, the Music folder (not on a copy run from source with its own
+  // settings). One chosen that isn't there now (a drive unplugged, a network folder down) is still the one: missing, its kept list
+  // still shows, and its scan and its files say it isn't there, till it's back or another is chosen. (Going over to the Music folder
+  // instead scanned that, and its list took the place of the one kept for the folder chosen.)
+  async function folder() {
+    const told = forced && (await isDir(forced)) ? forced : '';
+    const chosen = told || readJson(chosenFile)?.folder;
+    if (typeof chosen === 'string' && chosen) return told || (await isDir(chosen)) ? { path: chosen, label: label(chosen), chosen: true } : { path: chosen, label: label(chosen), chosen: true, missing: true };
+    if (music && !testCopy && (await isDir(music))) return { path: music, label: label(music), chosen: false };
     return null;
   }
+  const notThere = (f) => `${f.label} isn't there right now (is its drive connected?)`;
 
   async function choose() {
     let picked = forced || null;
     if (!picked) {
       if (hidden || !dialog) return null;
-      picked = await dialog.pick(folder()?.path || music || undefined);
+      picked = await dialog.pick((await folder())?.path || music || undefined);
     }
-    if (!picked || !isDir(picked)) return null;
+    if (!picked || !(await isDir(picked))) return null;
     const real = await fs.promises.realpath(picked);
     stop();
     fs.mkdirSync(dir, { recursive: true });
@@ -233,15 +283,16 @@ function createLibrary({ dir, music = null, testCopy = false, forced = '', hidde
     return { path: real, label: label(real), chosen: true };
   }
 
-  const state = () => { const f = folder(); return f && { f, cache: loadCache(cacheFile, f.path) }; };
+  const state = async () => { const f = await folder(); return f && { f, cache: loadCache(cacheFile, f.path) }; };
 
-  // what was kept of the last scan, at once
-  function cached() {
-    const s = state();
+  // what was kept of the last scan, at once (a missing folder's too)
+  async function cached() {
+    const s = await state();
     return s ? { folder: s.f.label, ...resultOf(s.cache) } : null;
   }
 
   function stop() {
+    scans++;
     worker?.terminate();
     worker = null;
     running = null;
@@ -251,12 +302,22 @@ function createLibrary({ dir, music = null, testCopy = false, forced = '', hidde
   // as it goes). A scan asked for while one runs is that one.
   function scan(progress = () => {}) {
     if (running) return running;
-    const s = state();
-    if (!s) return Promise.reject(new Error('no folder to scan'));
-    const { f, cache } = s;
+    const mine = scans;
+    const done = state().then((s) => {
+      if (mine !== scans) throw new Error('the scan stopped');
+      if (!s) throw new Error('no folder to scan');
+      if (s.f.missing) throw new Error(notThere(s.f));
+      return scanIn(s, progress);
+    });
+    running = done;
+    const clear = () => { if (running === done) running = null; };
+    done.then(clear, clear);
+    return done;
+  }
+  function scanIn({ f, cache }, progress) {
     const known = Object.fromEntries(Object.entries(cache.files).map(([rel, e]) => [rel, { size: e.size, mtimeMs: e.mtimeMs }]));
     const t0 = Date.now();
-    const done = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const w = worker = new Worker(workerFile.replace('app.asar', 'app.asar.unpacked'), { workerData: { root: f.path, known, knownCovers: Object.keys(cache.covers), rendererDir } });
       let plan = { files: 0, read: 0 }, got = 0, last = 0, finished = false;
       const fail = (err) => { if (finished) return; finished = true; if (worker === w) worker = null; w.terminate(); reject(err); };
@@ -272,35 +333,34 @@ function createLibrary({ dir, music = null, testCopy = false, forced = '', hidde
           }
           if (m.type === 'records') for (const r of m.list) cache.files[r.rel] = { size: r.size, mtimeMs: r.mtimeMs, tags: r.tags, cover: r.cover };
           else if (m.type === 'cover') {
-            const jpeg = thumbnail(m.bytes);
+            const jpeg = coverFits(m.bytes) ? thumbnail(m.bytes) : null; // (a picture too big, or of no size it says, is not decoded in main)
             cache.covers[m.id] = jpeg ? Buffer.from(jpeg).toString('base64') : null;
           } else if (m.type === 'done') {
-            finished = true;
             for (const rel of m.removed) delete cache.files[rel];
             const used = new Set(Object.values(cache.files).map((e) => e.cover));
             for (const id of Object.keys(cache.covers)) if (!used.has(id)) delete cache.covers[id];
-            writeJson(cacheFile, cache);
+            // (the cache only saves the next scan some reading: if it can't be kept the tracks are still the page's, and that scan reads them again)
+            try { writeJson(cacheFile, cache); } catch { /* not kept */ }
+            const result = { folder: f.label, ...resultOf(cache), stats: { files: m.files, read: m.read, removed: m.removed.length, ms: Date.now() - t0 } };
+            finished = true; // (after everything that can throw: fail() says nothing once it's set, and then nothing would ever end the scan)
             if (worker === w) worker = null;
             w.terminate();
-            resolve({ folder: f.label, ...resultOf(cache), stats: { files: m.files, read: m.read, removed: m.removed.length, ms: Date.now() - t0 } });
+            resolve(result);
           } else if (m.type === 'error') fail(new Error(m.message));
         } catch (err) { fail(err); }
       });
     });
-    running = done;
-    const clear = () => { if (running === done) running = null; };
-    done.then(clear, clear);
-    return done;
   }
 
   // one audio file of the folder in force: { name, bytes }
   async function read(rel) {
-    const f = folder();
+    const f = await folder();
     if (!f) throw refuse('no folder');
+    if (f.missing) throw refuse(notThere(f));
     return readAudio(f.path, rel);
   }
 
   return { folder, choose, cached, scan, read, stop };
 }
 
-module.exports = { AUDIO_EXTENSIONS, isAudioName, MAX_READ, THUMB, inside, resolveInside, readAudio, walk, fileBlob, scanFolder, coverId, loadCache, resultOf, createLibrary };
+module.exports = { AUDIO_EXTENSIONS, isAudioName, MAX_READ, THUMB, inside, resolveInside, readAudio, walk, fileBlob, scanFolder, coverId, coverSize, coverFits, loadCache, resultOf, createLibrary };

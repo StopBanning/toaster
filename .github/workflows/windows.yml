@@ -1,4 +1,7 @@
 # Pushes only keep artifacts. Published releases also receive the checked zip.
+# Two jobs, so that nothing which runs a dependency's code can write to the repository: the build (npm ci, the test-only Strudel
+# install, the tests) can only read it, and keeps no token in its checkout; the job that puts the zip on the release has the write
+# permission, and runs none of the repository's code or its dependencies, only GitHub's own CLI on the zip it takes from the artifact.
 name: Windows build
 on:
   release:
@@ -6,7 +9,7 @@ on:
   push:
     branches: [windows-build]
 permissions:
-  contents: write
+  contents: read
 jobs:
   windows:
     runs-on: windows-latest
@@ -14,8 +17,12 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    outputs:
+      sha: ${{ steps.zip.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -27,13 +34,14 @@ jobs:
       - name: Install test-only Strudel
         run: |
           $scratch = Join-Path $env:RUNNER_TEMP 'strudel-test-mods'
-          npm install --prefix $scratch --no-audit --no-fund @strudel/core@1.2.6 @strudel/mini@1.2.6 @strudel/tonal@1.2.6 @strudel/transpiler@1.2.6
+          npm install --prefix $scratch --no-audit --no-fund --ignore-scripts @strudel/core@1.2.6 @strudel/mini@1.2.6 @strudel/tonal@1.2.6 @strudel/transpiler@1.2.6
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "STRUDEL_TEST_MODULES=$(Join-Path $scratch 'node_modules')" >> $env:GITHUB_ENV
       - name: Tests on Windows
         run: node --test tools/*.test.mjs
       - run: npm run package:win
       - name: Check and zip it
+        id: zip
         run: |
           $version = node -p "require('./package.json').version"
           if ($env:RELEASE_TAG -and $env:RELEASE_TAG -cne "v$version") { throw 'Release tag and package version differ' }
@@ -44,6 +52,7 @@ jobs:
           $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           if ((Get-Content "$zip.sha256") -cne "$sha  $zip") { throw 'Checksum file differs' }
           "SHA=$sha" >> $env:GITHUB_ENV
+          "sha=$sha" >> $env:GITHUB_OUTPUT
           $elapsed = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - [long]$env:BUILD_STARTED
           "Zip ready after $elapsed seconds of build time (excludes queue and checkout)." >> $env:GITHUB_STEP_SUMMARY
         env:
@@ -79,6 +88,28 @@ jobs:
             ${{ env.ZIP }}.sha256
             shot.png
           if-no-files-found: warn
+  release:
+    needs: windows
+    if: github.event_name == 'release'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: toaster-windows
+      - name: Which zip
+        run: |
+          # (the name is the release's own, not the build's say: the build refused any tag but v and the version)
+          $zip = "Toaster-$($env:RELEASE_TAG.Substring(1))-win-x64.zip"
+          if (-not (Test-Path -LiteralPath $zip)) { throw "$zip is not in the build's artifact" }
+          "ZIP=$zip" >> $env:GITHUB_ENV
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Onto the release, then verify GitHub's digest
         if: github.event_name == 'release'
         run: |
@@ -92,4 +123,6 @@ jobs:
           "Verified $env:ZIP sha256:$env:SHA; publication-to-verification gap: $gap seconds." >> $env:GITHUB_STEP_SUMMARY
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          SHA: ${{ needs.windows.outputs.sha }}

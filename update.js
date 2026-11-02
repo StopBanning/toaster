@@ -1,17 +1,23 @@
 // Updates from GitHub (main process). When Toaster starts, the page asks (unless you turned it
 // off in the help): the latest release of the repo is looked up, and a newer version is offered
-// to the page, which asks you. With your yes, on Windows, in a copy unzipped somewhere it can
-// write to: the release's zip is downloaded, checked against the SHA-256 GitHub lists for it,
+// to the page, which asks you. With your yes, in a copy it can replace where it stands: the
+// release's zip for this system is downloaded, checked against the SHA-256 GitHub lists for it,
 // and unpacked beside the app; then the window closes (a recording finishes first) and a small
-// PowerShell script waits for Toaster to exit, moves the old copy aside, moves the new one in,
-// starts it, and removes the old copy (or, when another program holds a file open so the folder
-// can't move, writes the new files over the old ones in place). Anything amiss, and nothing is
-// swapped: the page offers the release's page instead, and an update that didn't go through says
-// why rather than offering itself again. On a Mac (no download yet) it only offers the page. The
-// request to GitHub carries nothing about you or what's playing.
+// script waits for Toaster to exit, swaps the new copy in and starts it.
+//   Windows: a PowerShell script moves the old copy aside, moves the new one in, starts it, and
+//   removes the old copy (or, when another program holds a file open so the folder can't move,
+//   writes the new files over the old ones in place).
+//   Mac (helpers/mac-update.cjs): the Mac zip, unpacked by ditto; a shell script renames the old
+//   Toaster.app aside, renames the new one into its place, starts it, and puts the old one in the
+//   Trash. A copy run from Downloads or a disk image is run by the Mac from a read-only place
+//   that can't replace itself: the page says to move it into Applications.
+// Anything amiss, and nothing is swapped: the page offers the release's page instead, and an
+// update that didn't go through says why rather than offering itself again. The request to GitHub
+// carries nothing about you or what's playing.
 const { app, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
@@ -56,7 +62,8 @@ function lastTry(version) {
   } catch { return null; }
 }
 
-// A newer release than this copy, or null: { version, current, page, canInstall, failed }.
+// A newer release than this copy, or null: { version, current, page, canInstall, failed, why }. why (on a Mac, where a
+// download is there to be had but this copy can't replace itself where it is) says so in words, with what to do.
 async function check() {
   if (!app.isPackaged && !process.env.TOASTER_UPDATE_FEED) return null; // (run from source: git pull)
   const res = await net.fetch(FEED, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Toaster/${app.getVersion()}` } });
@@ -64,13 +71,22 @@ async function check() {
   const rel = await res.json();
   const version = String(rel.tag_name || '').replace(/^v/, ''), current = app.getVersion();
   if (rel.draft || rel.prerelease || !/^\d+(\.\d+)*$/.test(version) || !newer(version, current)) return null;
-  const zip = (rel.assets || []).find((a) => a.name === `Toaster-${version}-win-x64.zip`);
+  const mac = process.platform === 'darwin';
+  const zip = (rel.assets || []).find((a) => a.name === `Toaster-${version}-${mac ? 'mac-universal' : 'win-x64'}.zip`);
   const sha = /^sha256:([0-9a-f]{64})$/.exec(zip?.digest || '')?.[1];
   const appDir = path.dirname(process.execPath);
   found = { version, page: String(rel.html_url || `https://github.com/${REPO}/releases/latest`), zip: zip?.browser_download_url, size: zip?.size, sha, appDir };
-  const canInstall = process.platform === 'win32' && !!zip && !!sha && isDownloadURL(found.zip) && writable(path.dirname(appDir));
+  let canInstall, why = null;
+  if (mac) {
+    canInstall = !!zip && !!sha && isDownloadURL(found.zip);
+    if (canInstall) {
+      // (if where this copy is can't be worked out, the page's offer stays, rather than no offer at all)
+      try { why = require('./helpers/mac-update.cjs').where(app.getPath('exe')).problem; } catch { why = null; canInstall = false; }
+      canInstall = canInstall && !why;
+    }
+  } else canInstall = process.platform === 'win32' && !!zip && !!sha && isDownloadURL(found.zip) && writable(path.dirname(appDir));
   const failed = canInstall ? lastTry(version) : null;
-  return { version, current, page: found.page, canInstall: canInstall && !failed, failed };
+  return { version, current, page: found.page, canInstall: canInstall && !failed, failed, why };
 }
 
 // can a folder be made beside the app (where the new copy is unpacked, so the swap is a rename)?
@@ -88,22 +104,14 @@ function unpack(file, stage) {
   });
 }
 
-// Downloads, checks and unpacks the release found, then hands over to the swap script; resolves
-// once the script is waiting (the caller then closes the window), or throws with why not.
-// progress(fraction) as the zip arrives.
-async function install(progress) {
-  const f = found;
-  if (!f?.zip || !f.sha || process.platform !== 'win32') throw new Error('no download for this system');
-  if (!isDownloadURL(f.zip)) throw new Error('the update download is not on GitHub');
-  const parent = path.dirname(f.appDir), stage = path.join(parent, `Toaster-update-${f.version}`);
-  fs.rmSync(stage, { recursive: true, force: true }); // (a stage left by an update that didn't finish)
-  fs.mkdirSync(stage, { recursive: true });
-  try {
-  const file = path.join(stage, `Toaster-${f.version}-win-x64.zip`);
+// The release's zip, fetched into file and checked as it arrives (the same on both systems): resolves once all of it is on
+// disk and its SHA-256 is the one GitHub lists for it, or throws with why (the file is removed). progress(fraction) as the
+// zip arrives.
+async function fetchZip(f, file, progress) {
   const download = new AbortController(), hash = crypto.createHash('sha256');
   // A server that stops sending (before the headers or mid-body) would otherwise leave the download
   // waiting forever: with nothing for STALL_MS, it's given up.
-  let stalled = false, watchdog;
+  let stalled = false, watchdog, got = 0;
   const alive = () => { clearTimeout(watchdog); watchdog = setTimeout(() => { stalled = true; download.abort(); }, STALL_MS); };
   try {
     alive();
@@ -111,7 +119,6 @@ async function install(progress) {
     // redirect throws in Electron, so only the release's own URL is checked, above)
     const res = await net.fetch(f.zip, { signal: download.signal, headers: { 'User-Agent': `Toaster/${app.getVersion()}` } });
     if (!res.ok || !res.body) throw new Error(`download failed (${res.status})`);
-    let got = 0;
     const meter = new Transform({ transform(chunk, encoding, done) {
       alive();
       hash.update(chunk);
@@ -125,11 +132,46 @@ async function install(progress) {
   } catch (err) {
     download.abort();
     await fs.promises.rm(file, { force: true }).catch(() => {});
-    throw stalled ? new Error('the download stalled') : err;
+    throw stalled ? new Error('the download stalled') : saving(dropped(err, got));
   } finally {
     clearTimeout(watchdog);
   }
-  if (hash.digest('hex') !== f.sha) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error("the download didn't match GitHub's checksum"); }
+  // (a connection that closes early without saying so only shows by the size, when GitHub lists one; the checksum catches the rest)
+  const short = !!f.size && got < f.size;
+  if (short || hash.digest('hex') !== f.sha) {
+    fs.rmSync(file, { force: true });
+    throw new Error(short ? 'the download was cut short' : "the download didn't match GitHub's checksum");
+  }
+}
+
+// What the runtime says when a connection drops is cryptic ("terminated" from Node's fetch, "net::ERR_..." from Electron's):
+// said plainly instead, with the original kept as the cause. Any other error is as it came.
+function dropped(err, got) {
+  const code = String(err?.cause?.code || err?.code || '');
+  if (!/^(UND_ERR|ECONN|EPIPE|ETIMEDOUT|ENOTFOUND|EAI_)/.test(code) && !/^(terminated|fetch failed|Failed to fetch|net::)/i.test(err?.message || '')) return err;
+  return new Error(got ? 'the connection dropped partway through the download' : "the download couldn't be started (GitHub couldn't be reached)", { cause: err });
+}
+
+// A file system's failure (a full disk, a folder that can't be written) in words: the code says which.
+const saving = (err) => (err?.syscall && /^E[A-Z]+$/.test(err.code || '') ? new Error(`the update couldn't be saved (${err.code})`, { cause: err }) : err);
+
+// Downloads, checks and unpacks the release found, then hands over to the swap script; resolves
+// once the script is waiting (the caller then closes the window), or throws with why not.
+// progress(fraction) as the zip arrives.
+function install(progress) {
+  return process.platform === 'darwin' ? installMac(progress) : installWindows(progress);
+}
+
+async function installWindows(progress) {
+  const f = found;
+  if (!f?.zip || !f.sha || process.platform !== 'win32') throw new Error('no download for this system');
+  if (!isDownloadURL(f.zip)) throw new Error('the update download is not on GitHub');
+  const parent = path.dirname(f.appDir), stage = path.join(parent, `Toaster-update-${f.version}`);
+  fs.rmSync(stage, { recursive: true, force: true }); // (a stage left by an update that didn't finish)
+  fs.mkdirSync(stage, { recursive: true });
+  try {
+  const file = path.join(stage, `Toaster-${f.version}-win-x64.zip`);
+  await fetchZip(f, file, progress);
   // unpacked with Windows' own tar (in Windows 10 and 11), then checked: one folder, with the app
   await unpack(file, stage);
   fs.rmSync(file, { force: true });
@@ -152,6 +194,41 @@ async function install(progress) {
     // Only the stage is ours to remove: the installed app hasn't been touched at this point.
     await fs.promises.rm(stage, { recursive: true, force: true }).catch(() => {});
     throw err;
+  }
+}
+
+// The Mac's install: the same fetch and checks, the zip unpacked by ditto beside the app, then the swap script of
+// helpers/mac-update.cjs (its header has the order of things). Before that script starts, everything made is in a folder of ours
+// (a temp folder, and a hidden stage beside the app): the installed app is touched only after Toaster has closed, so whatever
+// throws here leaves it as it was, working, and says why.
+async function installMac(progress) {
+  const f = found;
+  if (!f?.zip || !f.sha) throw new Error('no download for this system');
+  if (!isDownloadURL(f.zip)) throw new Error('the update download is not on GitHub');
+  const mac = require('./helpers/mac-update.cjs'), exe = app.getPath('exe');
+  // (looked at again, not taken from the offer: since then Toaster may have been moved, or its folder changed)
+  const { bundle, problem } = mac.where(exe);
+  if (problem) throw new Error(problem);
+  const stage = mac.stageOf(bundle, f.version);
+  let temp;
+  try {
+    temp = fs.mkdtempSync(path.join(app.getPath('temp'), 'toaster-update-'));
+    mac.clearStages(bundle); // (a stage left by an update that didn't finish)
+    const file = path.join(temp, mac.zipName(f.version));
+    await fetchZip(f, file, progress);
+    fs.mkdirSync(stage);
+    await mac.unpack(file, stage);
+    const fresh = await mac.unpackedBundle(stage, f.version, exe);
+    await mac.startSwap({
+      pid: process.pid, app: bundle, fresh, stage, aside: mac.asideOf(bundle, process.pid), trash: path.join(os.homedir(), '.Trash'),
+      keep: `Toaster ${app.getVersion()}`, version: f.version, log: path.join(app.getPath('temp'), 'toaster-update.log'),
+    });
+  } catch (err) {
+    // Only the stage is ours to remove: the installed app hasn't been touched at this point.
+    await fs.promises.rm(stage, { recursive: true, force: true }).catch(() => {});
+    throw saving(err);
+  } finally {
+    if (temp) await fs.promises.rm(temp, { recursive: true, force: true }).catch(() => {});
   }
 }
 

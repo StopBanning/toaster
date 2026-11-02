@@ -92,7 +92,9 @@ test('the queue: the track\'s attach takes it, so the buttons and the names hold
   assert.match(app, /const liveQueue = \(\) => \(queue && state\.source === 'file' && state\.el && state\.el === queue\.el \? queue : null\);/);
   const play = body('playQueue');
   assert.ok(play.indexOf('const mine = pendingQueue = { name: file.name, q }') > 0 && play.indexOf('pendingQueue = {') < play.indexOf('await useFile(file)'), 'set before the file starts');
-  assert.match(play, /const el = await useFile\(file\);\s*if \(pendingQueue === mine\) pendingQueue = null;[^\n]*\n\s*if \(ticket !== queuing \|\| !el \|\| state\.el !== el\) return;\s*if \(liveQueue\(\)\?\.el !== el\) \{ queue = \{ \.\.\.q, el \}; el\.loop = false; \}/);
+  assert.match(play, /try \{ el = await useFile\(file\); \} finally \{ if \(pendingQueue === mine\) pendingQueue = null; \}[^\n]*\n\s*\} catch \(err\) \{\s*if \(ticket === queuing\) skipTrack\(q, err, failed \+ 1\);[^\n]*\n\s*return;\s*\}\s*if \(ticket !== queuing \|\| !el \|\| state\.el !== el\) return;\s*if \(liveQueue\(\)\?\.el !== el\) \{ queue = \{ \.\.\.q, el \}; el\.loop = false; \}/);
+  // a track that can't be read or played is skipped (tools/queue-skip.test.mjs runs it), also one that breaks part-way through
+  assert.match(play, /el\.onerror = \(\) => \{ if \(liveQueue\(\)\?\.el === el\) skipTrack\(queue, el\.error, 1\); \};/);
   // a track that ends goes on as repeat says (one: that track again); next, pressed, goes on whatever repeat says; all needs the library's albums
   assert.match(play, /el\.onended = \(\) => \{ if \(liveQueue\(\)\?\.el === el\) playQueue\(queueNext\(queue, queueSteps\(true\)\)\)\.catch\(showError\); \};/);
   assert.match(app, /const queueSteps = \(ended\) => \(\{ repeat: state\.queueRepeat, ended, nextAlbum: albumAfter \}\);/);
@@ -123,9 +125,14 @@ test('the page keeps its security policy, and the library has its place in it: o
 test('the CSS uses the theme\'s colours and no others, and its wide window is the panel\'s', () => {
   assert.ok(libraryCss.length > 5000, 'its own block');
   const rules = libraryCss.replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.doesNotMatch(rules, /#[0-9a-fA-F]{3,8}\b(?![\w-])/, 'no colour of its own');
-  assert.doesNotMatch(rules, /\brgba?\(|\bhsla?\(|(?<![-\w])(white|black|red|green|blue|gray|grey)(?![-\w])/);
-  for (const color of rules.match(/color-mix\([^)]*\)/g) || []) assert.match(color, /var\(--(bg|fg)\)/, color);
+  // (one exception, and it is Spotify's: its guidelines have its logo white or black, never the theme's colour, so two rules say which, by the
+  // background, and nothing else in the block has a colour that isn't the theme's)
+  const logoRule = /#library(?:\[data-tone="light"\])? \.lib-logo \{[^}]*\}/g;
+  assert.deepEqual(rules.match(logoRule), ['#library .lib-logo { display: block; width: 100%; height: 100%; fill: #fff; }', '#library[data-tone="light"] .lib-logo { fill: #000; }'], 'Spotify\'s logo: white, and black on a light background');
+  const themed = rules.replace(logoRule, '');
+  assert.doesNotMatch(themed, /#[0-9a-fA-F]{3,8}\b(?![\w-])/, 'no colour of its own');
+  assert.doesNotMatch(themed, /\brgba?\(|\bhsla?\(|(?<![-\w])(white|black|red|green|blue|gray|grey)(?![-\w])/);
+  for (const color of themed.match(/color-mix\([^)]*\)/g) || []) assert.match(color, /var\(--(bg|fg)\)/, color);
   assert.match(rules, /--lib-line: color-mix\(in srgb, var\(--bg\) 62%, transparent\);/, 'the theme\'s line background');
   assert.match(rules, /#library \.lib-glyphs \{[^}]*background: var\(--fg\);/);
   assert.match(rules, /#library \.lib-cover b \{[^}]*background: var\(--fg\);/);
@@ -162,7 +169,7 @@ test('the panel takes the keys it lists and leaves the rest to the page; typing 
 });
 
 test('the news: one line for the library in the 0.4.29 block, lowercase, with its key; 0.4.28 shipped without it', () => {
-  const head = news.slice(news.indexOf('export const NEWS = ['), news.indexOf("version: '0.4.28'"));
+  const head = news.slice(news.indexOf("version: '0.4.29'"), news.indexOf("version: '0.4.28'")); // (its own block: newer versions come above it)
   assert.match(head, /version: '0\.4\.29'/);
   const lines = [...head.matchAll(/\{ key: 'G', text: "([^"]+)" \}/g)];
   assert.equal(lines.length, 1);
@@ -180,4 +187,9 @@ test("the panel's empty row escapes main's error message, which can carry a fold
   const empty = panel.slice(panel.indexOf('function emptyRow('), panel.indexOf('\n  }\n', panel.indexOf('function emptyRow(')));
   assert.match(empty, /S\.error \? esc\(S\.error\)/);
   assert.ok(!/S\.error \? S\.error/.test(panel));
+});
+
+test('the radio\'s covers: each song\'s is put last in line as its title comes, so the cache holds the last fifty songs\' and not the session\'s', () => {
+  assert.match(app, /import \{[^}]*\bnoteRadioCover\b[^}]*\} from '\.\/library-core\.js';/);
+  assert.match(body('radioTitle'), /noteRadioCover\(radioCovers, key, radioCovers\.get\(key\)\);\s*\/\/[^\n]*\n\s*radioCovers\.get\(key\)\.then\(/, 'noted before it is read, for a song asked for now and for one heard before');
 });

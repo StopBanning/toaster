@@ -14,6 +14,7 @@
 // with WebGL: the dots move on the graphics card (the forms that move by themselves are worked out a
 // frame at a time and handed over). Timed off the beat clock like the blocks.
 import { createGlitch } from './glitchorb.js';
+import { clock as master, simulate } from './clock.js'; // (the page's; the orb's own `clock` below runs with the tempo)
 
 const N = 2200;
 const TAU = Math.PI * 2;
@@ -121,7 +122,9 @@ const FORMS = {
 // ---------------------------------------------------------------- the forms that move by themselves
 // Each is made fresh when it comes round and worked out a frame at a time: step(t, dt, m) puts every
 // dot's place in pos and how lit it is (0 to 1: bigger and brighter) in lit. t is the orb's own
-// clock (it runs with the tempo), m what the music is doing (see draw).
+// clock (it runs with the tempo), m what the music is doing (see draw). step runs once a frame, at the
+// frame's last step of the orb's grid (only that one is drawn), unless the form says everyStep;
+// settle(t, dt, m), if a form has one, is what it keeps from step to step, and runs at every step.
 const DYN = {
   // working: eleven orbit paths round the middle, each dot running round its path, every fortieth a
   // bright particle. The paths face evenly spread ways (their axes spread over half a sphere, as
@@ -163,10 +166,10 @@ const DYN = {
     const ball = Array.from({ length: HEAD }, (_, k) => fibDir(k, HEAD));
     let heard = null, slot = 0;
     return {
-      pos, lit,
+      pos, lit, everyStep: true, // (its dots ease to their places a step at a time, and a note lands at the step that heard it)
       step(t, dt, m) {
         const b = m.bass;
-        if (b && b.t !== heard) {
+        if (b && (b.known ?? b.t) <= m.now && b.t !== heard) { // (a note the engine has not filed at this step's time waits for it)
           if (heard !== null && b.f0 > 0) {
             const midi = 69 + 12 * Math.log2(b.f0 / 440), at = clamp(Math.round(((midi - 33) * 8) / 24), 0, 8);
             notes[slot] = { a: m.yaw + Math.PI / 2, y: -0.36 + at * 0.09, at: m.now };
@@ -306,10 +309,12 @@ const DYN = {
     let loud = 0.5;
     return {
       pos, lit,
-      step(t, dt, m) {
+      settle(t, dt, m) {
         let sum = 0;
         for (let b = 0; b < 16; b++) sum += m.bands[b];
         loud += (sum / 16 - loud) * Math.min(1, dt * 2);
+      },
+      step(t, dt, m) {
         const amp = 0.55 + 0.9 * clamp(loud, 0, 1), cy = Math.cos(m.yaw), sy = Math.sin(m.yaw), cp = Math.cos(m.pitch), sp = Math.sin(m.pitch);
         for (let i = 0; i < N; i++) {
           const w = i % LANES, lane = w - (LANES - 1) / 2, a = (Math.floor(i / LANES) / SEGS) * TAU + t * 0.24;
@@ -465,7 +470,7 @@ void main() {
 export function createOrb(canvas) {
   let gl = null, prog = null, parallel = null, ready = false, broken = false, loc = {}, buf = {};
   const bands = new Float32Array(16), raw = new Float32Array(16); // the spectrum, smoothed (raw: this frame's)
-  let form = null, from = null, mixAt = -9, changedAt = -9, flowFor = null, which = 0, last = 0, lastStep = null, heard = {}, phraseOf = null, since = 0, clock = 0;
+  let form = null, from = null, mixAt = -9, changedAt = -9, flowFor = null, which = 0, lastStep = null, heard = {}, phraseOf = null, since = 0, clock = 0;
   let kick = 0, kickAt = -9, clapAt = -9, hatTo = 0, hat = 0, yaw = 0, spin = 0, spinNow = 0, bass = 0, drawn = false;
   // the breath: a spring damped just enough not to overshoot, each kick a push outward (out in an
   // eighth of a second, back over half a second; kicks close together carry on from each other)
@@ -535,19 +540,29 @@ export function createOrb(canvas) {
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.aLit);
     gl.bufferData(gl.ARRAY_BUFFER, form.lit, gl.DYNAMIC_DRAW);
   }
-  // a form that moves by itself: this frame's places, in the order every form keeps
+  // a form that moves by itself, at a step of the grid: what it keeps from step to step, and its places at the frame's last
+  // step (placeDyn, from draw: 2200 dots worked out at every 240th of a second were three in four never drawn at 60 frames a
+  // second), or now if it says everyStep
   function stepDyn(dt) {
+    form.dyn.settle?.(clock, dt, music);
+    if (form.dyn.everyStep) placeDyn(dt);
+    else form.due = dt;
+  }
+  // its places now, in the order every form keeps
+  function placeDyn(dt) {
     form.dyn.step(clock, dt, music);
     if (!form.order) form.order = alignOrder(form.dyn.pos);
     reorder(form.order, form.dyn.pos, form.dyn.lit, form.pos, form.lit);
+    form.due = null;
   }
   function next(t, name = null) {
     name = name || ORDER[which++ % ORDER.length];
     const mix = clamp((t - mixAt) / MORPH, 0, 1);
+    if (form?.due != null) placeDyn(form.due); // (its places as of the step before this one, as they'd be at every step)
     from = form ? { pos: current(mix), wavy: mix < 0.5 && from ? from.wavy : form.wavy } : null;
     if (DYN[name]) {
-      form = { name, pos: new Float32Array(N * 3), lit: new Float32Array(N), wavy: 0, dyn: DYN[name](), order: null };
-      stepDyn(0);
+      form = { name, pos: new Float32Array(N * 3), lit: new Float32Array(N), wavy: 0, dyn: DYN[name](), order: null, due: null };
+      placeDyn(0);
     } else {
       form = { name, pos: (() => { const p = FORMS[name](); const out = new Float32Array(N * 3); reorder(alignOrder(p), p, null, out, new Float32Array(N)); return out; })(), lit: new Float32Array(N), wavy: WAVY[name] || 0 };
     }
@@ -558,13 +573,96 @@ export function createOrb(canvas) {
     upload();
   }
 
+  // The orb moves in steps of a 240th of a second on the clock's own grid (clock.js simulate): the hits that kick it,
+  // spin it and send the hats round, its breathing, its turning, the spectrum's ripples through it, the forms that move
+  // by themselves, the phrase that brings the next form. Each step reads the beat grid and the spectrum as the engine had
+  // them at its time (eng.stepAt(t, asOf), the bands at that time), and each hit has the time of its step, so the orb at
+  // a time is the same however often it was drawn.
+  const pitchAt = (t) => 0.42 + 0.12 * Math.sin(t * 0.13);
+  let cur = null;
+  const sim = simulate(240, (st, h) => {
+    const { eng, offset, bandsOf } = cur;
+    const bpm = eng.bpmAt(st) || 110;
+    // the hits: due by now on the beat grid, or (no beat yet) as they're heard. A beat read wrong
+    // (a slap bass taken for kicks, guitar chops for claps) crowds them together: a run of them on
+    // neighbouring 16ths counts as one, and claps don't wind the spin up, so the orb stays smooth
+    // and the hits that are right still land.
+    const close = 22.5 / bpm; // a 16th and a half
+    // (at: the 16th it's due on, on the beat grid)
+    const fire = (id, at) => {
+      if (id === 'bd') { if (st - kickHeard > close) { kick = 1; kickAt = st; breathV += BREATH_W * Math.E; glitch?.kick(at === undefined ? undefined : Math.floor(at / 16)); } kickHeard = st; }
+      else if (id === 'sd') { if (st - clapHeard > close) { spin = Math.max(spin, 1.1); clapAt = st; } clapHeard = st; }
+      else { hatTo += TAU / 12; hats.push({ n: hatN++, at: st }); }
+    };
+    const step = eng.bpmAt(st) ? eng.stepAt(st + offset, st) : null;
+    if (step !== null) {
+      // The phrase count only goes up: a beat grid corrected just as it crosses a phrase can take
+      // it back and over again, which changed the form twice (skipping one); a jump of more than a
+      // phrase or two (a new beat) only starts the count again.
+      // The dots set off for the next form a flow's length before the phrase's end, so they land
+      // on its one, with the kick.
+      const per = 16 * PHRASE, phrase = Math.floor(step / per), lead = MORPH / (60 / bpm / 4);
+      if (phraseOf === null || phrase < phraseOf - 2 || phrase > phraseOf + 2) { phraseOf = phrase; flowFor = phrase; }
+      if (flowFor !== phraseOf + 1 && step >= (phraseOf + 1) * per - lead && st - changedAt > 2) { next(st); flowFor = phraseOf + 1; }
+      if (phrase > phraseOf) phraseOf = phrase;
+      if (lastStep === null || step < lastStep || step - lastStep > 8) lastStep = step;
+      for (let g = Math.floor(lastStep) + 1; g <= step; g++) {
+        const s16 = ((g % 16) + 16) % 16;
+        for (const id of ['bd', 'sd', 'hhc', 'hho']) if (eng.learnedAt(st).shown[id]?.[s16] && eng.presentAt(id, st)) fire(id, g);
+      }
+      lastStep = step;
+    } else {
+      lastStep = phraseOf = flowFor = null;
+      since += h;
+      if (since > 16) next(st);
+      for (const id of ['bd', 'sd', 'hhc']) {
+        const hit = id === 'hhc' ? eng.hhHit : eng.v[id].lastHit;
+        if ((hit.known ?? hit.t) > st) continue; // (not yet, at this step's time: the engine has not filed it)
+        if (hit.t > (heard[id] ?? Infinity)) fire(id);
+        heard[id] = hit.t;
+      }
+    }
+    while (hats.length && st - hats[0].at > 0.6) hats.shift();
+    kick *= Math.exp(-h / 0.16);
+    breathV += (-BREATH_W * BREATH_W * breath - 2 * BREATH_W * breathV) * h;
+    breath = clamp(breath + breathV * h, -0.3, 1.5);
+    hat += (hatTo - hat) * (1 - Math.exp(-h * 10));
+    spin *= Math.exp(-h * 2.2);
+    // the clap's spin comes on over a tenth of a second rather than all at once: a whip round on
+    // every clap read as the orb spazzing out (Oct 15, on a 147 bpm song)
+    spinNow += (spin - spinNow) * (1 - Math.exp(-h * 10));
+    yaw += h * (0.16 * (bpm / 120) + spinNow);
+    clock += h * (bpm / 120);
+    // The waves ride the spectrum: rising within about a tenth of a second and settling over a
+    // quarter, not jumping with every 20 ms reading (the field of waves flapped about)
+    bandsOf(raw, st);
+    for (let i = 0; i < 16; i++) bands[i] += (raw[i] - bands[i]) * (1 - Math.exp(-h * (raw[i] > bands[i] ? 12 : 4)));
+    // the bass swells the dots quickly and lets them go slowly, so a busy bass line (a slap bass,
+    // 16ths) breathes instead of flickering with every note
+    const low = (bands[0] + bands[1] + bands[2]) / 3;
+    bass += (low - bass) * (1 - Math.exp(-h * (low > bass ? 12 : 3)));
+    // the forms that move by themselves: this step's places
+    if (form.dyn) {
+      music.now = st; music.beats = step !== null ? step / 4 : clock * 2; music.bars = music.beats / 4; music.yaw = yaw; music.pitch = pitchAt(st); music.bass = eng.lastBassHit || null;
+      stepDyn(h);
+    }
+    // the glitch ball comes in as the dots settle into the sphere, and goes again quickly as they set off
+    const mix = clamp((st - mixAt) / MORPH, 0, 1);
+    const gTo = form.name === 'glitch' ? smoothE(clamp((mix - 0.55) / 0.45, 0, 1)) : 0;
+    glitchA = gTo > glitchA ? Math.min(gTo, glitchA + h / 0.3) : Math.max(gTo, glitchA - h / 0.45);
+    // its surface steps 120 times a second while it's on show (every other step of this grid). A step draws with blending
+    // off, and only the ball's own draw puts it back, which a frame that stepped it as it faded out never gets to: the dots
+    // would be drawn unblended. So it goes back on here, beside the dots' program.
+    if (glitchA > 0 && glitch?.ready && Math.round(st * 240) % 2 === 0) { glitch.step(); gl.useProgram(prog); gl.enable(gl.BLEND); }
+  });
+
   return {
     get form() { return form?.name; },
     get broken() { return broken; },
     get forms() { return ORDER.slice(); },
     // on to the next form now, or to one by name (for checking them)
-    nextForm() { if (form) next(performance.now() / 1000); },
-    show(name) { if (!FORMS[name] && !DYN[name]) return; next(performance.now() / 1000, name); which = ORDER.indexOf(name) + 1; },
+    nextForm() { if (form) next(master.now()); },
+    show(name) { if (!FORMS[name] && !DYN[name]) return; next(master.now(), name); which = ORDER.indexOf(name) + 1; },
     // how many bars a form holds (shorter, to see them all)
     set phrase(bars) { PHRASE = Math.max(1, Math.round(bars)); },
     clear() {
@@ -583,76 +681,13 @@ export function createOrb(canvas) {
           if (broken || !init()) return;
         } catch (err) { if (!gl?.isContextLost()) { broken = true; console.error('orb:', err); } return; }
       }
-      const dt = clamp(t - last, 0, 0.1);
-      last = t;
       if (!form) next(t);
-      const bpm = eng.tempo.locked ? eng.tempo.bpm : 110;
-      // the hits: due by now on the beat grid, or (no beat yet) as they're heard. A beat read wrong
-      // (a slap bass taken for kicks, guitar chops for claps) crowds them together: a run of them on
-      // neighbouring 16ths counts as one, and claps don't wind the spin up, so the orb stays smooth
-      // and the hits that are right still land.
-      const close = 22.5 / bpm; // a 16th and a half
-      // (at: the 16th it's due on, on the beat grid)
-      const fire = (id, at) => {
-        if (id === 'bd') { if (t - kickHeard > close) { kick = 1; kickAt = t; breathV += BREATH_W * Math.E; glitch?.kick(at === undefined ? undefined : Math.floor(at / 16)); } kickHeard = t; }
-        else if (id === 'sd') { if (t - clapHeard > close) { spin = Math.max(spin, 1.1); clapAt = t; } clapHeard = t; }
-        else { hatTo += TAU / 12; hats.push({ n: hatN++, at: t }); }
-      };
-      const step = eng.stepAt(t + offset);
-      if (step !== null) {
-        // The phrase count only goes up: a beat grid corrected just as it crosses a phrase can take
-        // it back and over again, which changed the form twice (skipping one); a jump of more than a
-        // phrase or two (a new beat) only starts the count again.
-        // The dots set off for the next form a flow's length before the phrase's end, so they land
-        // on its one, with the kick.
-        const per = 16 * PHRASE, phrase = Math.floor(step / per), lead = MORPH / (60 / bpm / 4);
-        if (phraseOf === null || phrase < phraseOf - 2 || phrase > phraseOf + 2) { phraseOf = phrase; flowFor = phrase; }
-        if (flowFor !== phraseOf + 1 && step >= (phraseOf + 1) * per - lead && t - changedAt > 2) { next(t); flowFor = phraseOf + 1; }
-        if (phrase > phraseOf) phraseOf = phrase;
-        if (lastStep === null || step < lastStep || step - lastStep > 8) lastStep = step;
-        for (let g = Math.floor(lastStep) + 1; g <= step; g++) {
-          const s16 = ((g % 16) + 16) % 16;
-          for (const id of ['bd', 'sd', 'hhc', 'hho']) if (eng.v[id].shown?.[s16] && eng.present(id, t)) fire(id, g);
-        }
-        lastStep = step;
-      } else {
-        lastStep = phraseOf = flowFor = null;
-        since += dt;
-        if (since > 16) next(t);
-        for (const id of ['bd', 'sd', 'hhc']) {
-          const h = id === 'hhc' ? eng.hhHit : eng.v[id].lastHit;
-          if (h.t > (heard[id] ?? Infinity)) fire(id);
-          heard[id] = h.t;
-        }
-      }
-      while (hats.length && t - hats[0].at > 0.6) hats.shift();
-      kick *= Math.exp(-dt / 0.16);
-      // (in steps of at most a 120th of a second, so a slow frame can't make it ring)
-      for (let n = Math.ceil(dt * 120), k = 0; k < n; k++) {
-        const h = dt / n;
-        breathV += (-BREATH_W * BREATH_W * breath - 2 * BREATH_W * breathV) * h;
-        breath = clamp(breath + breathV * h, -0.3, 1.5);
-      }
-      hat += (hatTo - hat) * Math.min(1, dt * 10);
-      spin *= Math.exp(-dt * 2.2);
-      // the clap's spin comes on over a tenth of a second rather than all at once: a whip round on
-      // every clap read as the orb spazzing out (Oct 15, on a 147 bpm song)
-      spinNow += (spin - spinNow) * Math.min(1, dt * 10);
-      yaw += dt * (0.16 * (bpm / 120) + spinNow);
-      clock += dt * (bpm / 120);
-      // The waves ride the spectrum: rising within about a tenth of a second and settling over a
-      // quarter, not jumping with every 20 ms reading (the field of waves flapped about)
-      bandsOf(raw);
-      for (let i = 0; i < 16; i++) bands[i] += (raw[i] - bands[i]) * Math.min(1, dt * (raw[i] > bands[i] ? 12 : 4));
-      // the bass swells the dots quickly and lets them go slowly, so a busy bass line (a slap bass,
-      // 16ths) breathes instead of flickering with every note
-      const low = (bands[0] + bands[1] + bands[2]) / 3;
-      bass += (low - bass) * Math.min(1, dt * (low > bass ? 12 : 3));
-      const pitch = 0.42 + 0.12 * Math.sin(t * 0.13);
-      // the forms that move by themselves: this frame's places
+      // everything that moves the orb goes a step on at each step of the clock's grid (see the sim above)
+      cur = { eng, offset, bandsOf };
+      sim.advance(t);
+      if (form.dyn && form.due != null) placeDyn(form.due);
+      const pitch = pitchAt(t);
       if (form.dyn) {
-        music.now = t; music.beats = step !== null ? step / 4 : clock * 2; music.bars = music.beats / 4; music.yaw = yaw; music.pitch = pitch; music.bass = eng.lastBassHit || null;
-        stepDyn(dt);
         gl.bindBuffer(gl.ARRAY_BUFFER, buf.aTo);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, form.pos);
         gl.bindBuffer(gl.ARRAY_BUFFER, buf.aLit);
@@ -671,12 +706,10 @@ export function createOrb(canvas) {
       // The glitch ball, under the dots: it comes in as they settle into the sphere (and they fade
       // out), and goes again quickly as they set off for the next form. It's the dots' sphere as the
       // eye sees it (its outline, in perspective, a little wider than the sphere) and breathes with it.
-      const gTo = form.name === 'glitch' ? smoothE(clamp((mix - 0.55) / 0.45, 0, 1)) : 0;
-      glitchA = gTo > glitchA ? Math.min(gTo, glitchA + dt / 0.3) : Math.max(gTo, glitchA - dt / 0.45);
       const fade = glitchA > 0 && glitch?.ready ? smoothE(glitchA) : 0;
       if (fade > 0) {
         const R = 1 + 0.08 * breath, ink = lum(col.bg) > lum(col.fg) || !col.ink ? [0, 0, 0] : col.ink.map((c) => c / 255);
-        glitch.draw(dt, w, h, {
+        glitch.draw(w, h, {
           cx: (rect ? rect.x + rect.w / 2 : W / 2) * dpr, cy: (rect ? H - rect.y - rect.h / 2 : H / 2) * dpr,
           radius: ((R * 3.2) / Math.sqrt(3.2 * 3.2 - R * R)) * span * dpr, spin: -yaw / TAU, time: t % 1000, alpha: 0.95 * fade, ink,
         });

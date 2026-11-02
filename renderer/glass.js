@@ -7,6 +7,8 @@
 // The blob is a few round drops melted together that drift and turn, swell on the kick and spin
 // faster as the music gets louder.
 import { bands } from './visuals.js';
+import { clock, simulate } from './clock.js';
+import { createPulses } from './pulse.js';
 
 const DROPS = 7;
 
@@ -125,17 +127,30 @@ export function createGlass(canvas, code) {
   // lines in the middle of a flash (and the code in a glitch) are drawn every frame till it ends; a
   // line retyped mid-flash takes its old text away without a word, so those are let go
   const animating = new Map(); // element -> when its animation started
-  const prune = () => { for (const [el, since] of animating) if (!el.isConnected || performance.now() - since > 1500) animating.delete(el); };
+  const prune = () => { for (const [el, since] of animating) if (!el.isConnected || clock.now() * 1000 - since > 1500) animating.delete(el); };
   code.addEventListener('animationstart', (e) => {
     if (e.target.classList.contains('caret')) return;
-    animating.set(e.target, performance.now());
+    animating.set(e.target, clock.now() * 1000);
     if (animating.size > 40) prune();
   });
   for (const end of ['animationend', 'animationcancel']) code.addEventListener(end, (e) => { animating.delete(e.target); touched(e.target); });
   const drops = new Float32Array(DROPS * 3), band = new Float32Array(8);
   let gl = null, prog = null, parallel = null, ready = false, broken = false, loc = {};
   let font = { size: 0, family: '', cw: 0 };
-  let pulse = 0, spin = 0, last = 0, low = 0, mid = 0, high = 0;
+  let spin = 0, low = 0, mid = 0, high = 0, now = null;
+  const kicks = createPulses(0.2); // the middle drop swells on a kick and lets go over a fifth of a second
+  // What moves the drops (the three bands' levels easing, the turning, the glide of the area they drift over) goes a step
+  // on at each step of the clock's grid, 240 a second (clock.js simulate), from the spectrum as the engine heard it then.
+  const sim = simulate(240, (st, h) => {
+    const { eng, target } = now;
+    bands(eng, band, 40, 14000, st);
+    const ease = (v, x, rate) => v + (x - v) * (1 - Math.exp(-h * rate));
+    low = ease(low, (band[0] + band[1]) / 2, 6);
+    mid = ease(mid, (band[2] + band[3] + band[4]) / 3, 6);
+    high = ease(high, (band[5] + band[6] + band[7]) / 3, 8);
+    spin += h * (0.25 + 0.9 * mid);
+    for (const k of ['x0', 'x1', 'y0', 'y1']) area[k] = ease(area[k], target[k], 0.5);
+  });
   // where the code is on screen (it drifts over that), measured as it's drawn
   let area = null;
   const seen = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
@@ -194,20 +209,12 @@ export function createGlass(canvas, code) {
   // Where the drops are this frame. The middle one drifts slowly about over the code; the others
   // circle it at their own speeds, closer and further, so they keep melting in and pulling away.
   function move(t, eng, W, H) {
-    const dt = Math.min(0.1, Math.max(0, t - last));
-    last = t;
-    bands(eng, band);
-    const ease = (v, x, rate) => v + (x - v) * Math.min(1, dt * rate);
-    low = ease(low, (band[0] + band[1]) / 2, 6);
-    mid = ease(mid, (band[2] + band[3] + band[4]) / 3, 6);
-    high = ease(high, (band[5] + band[6] + band[7]) / 3, 8);
-    pulse *= Math.exp(-dt * 5);
-    spin += dt * (0.25 + 0.9 * mid);
-    const R = 0.18 * Math.min(W, H);
+    const pulse = kicks.at(t), R = 0.18 * Math.min(W, H);
     // (over the code; with it hidden (Z) or none yet, about the middle of the window)
     const code = seen.x1 > seen.x0 && !hidden ? seen : { x0: W * 0.2, x1: W * 0.8, y0: H * 0.2, y1: H * 0.8 };
     if (!area) area = { ...code };
-    for (const k of ['x0', 'x1', 'y0', 'y1']) area[k] = ease(area[k], code[k], 0.5);
+    now = { eng, target: code };
+    sim.advance(t);
     const cx = (area.x0 + area.x1) / 2 + (area.x1 - area.x0) * 0.3 * Math.sin(t * 0.09) * Math.cos(t * 0.05);
     const cy = (area.y0 + area.y1) / 2 + (area.y1 - area.y0) * 0.22 * Math.sin(t * 0.07 + 0.6);
     const set = (i, x, y, r) => { drops[i * 3] = x; drops[i * 3 + 1] = y; drops[i * 3 + 2] = r; };
@@ -388,7 +395,7 @@ export function createGlass(canvas, code) {
     // the pictures under the glass, for checking what it bends: the background, and the code
     get scene() { return scene; },
     get words() { return words; },
-    kick(s) { pulse = Math.max(pulse, Math.min(1, s)); },
+    kick(s) { kicks.hit(Math.min(1, s)); },
     // layers: the background canvases, bottom first.
     draw(t, eng, col, layers) {
       if (canvas.hidden || broken || gl?.isContextLost()) return; // (lost: wait for it to come back, then build again)

@@ -6,6 +6,7 @@
 // footer says whether the beat has been found.
 import { NOTES } from './engine.js';
 import { bands } from './visuals.js';
+import { clock } from './clock.js';
 
 const W = 40, H = 50, FPS = 10; // the photo, in dots (each drawn 3x3)
 // A song's cover gets twice the dots each way (each drawn 1.5 x 1.5): a picture made to be looked
@@ -20,7 +21,7 @@ const hash = (s) => { let h = 2166136261; for (const c of String(s)) h = Math.im
 // right; a few of its characters glitch on each new bar. Till then the signal line cycles through
 // its errors.
 const GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
-const scramble = (s, keep) => [...s].map((c, i) => (c === '-' || c === '.' || keep(i) ? c : GLYPHS[Math.floor(Math.random() * GLYPHS.length)])).join('');
+const scramble = (s, keep, dice) => [...s].map((c, i) => (c === '-' || c === '.' || keep(i) ? c : GLYPHS[Math.floor(dice() * GLYPHS.length)])).join('');
 const LOST = ['UNIDENTIFIED SIGNAL', 'SIGNAL_LOST', 'TRACE_X', 'ENTITY_404', 'NULL_存在', 'SYS_FAIL', 'DATA 破損'];
 
 export function createCard(el) {
@@ -56,8 +57,11 @@ export function createCard(el) {
   const lum = coarse.lum, sorted = coarse.sorted, spec = new Float32Array(64);
   const shown = new Map(); // element -> text on screen; the page is only touched on a change
   const set = (sel, text) => { const e = q(sel); if (shown.get(e) !== text) { shown.set(e, text); e.textContent = text; } };
-  let lastPhoto = 0, lastHex = 0, lastBeat = null, pulse = 0, glitch = 0, visible = false;
-  let rows = null, lastEq = 0, idAt = 0, lockedAt = null, lastBar = null, burstUntil = 0;
+  // (what it does at its own rates, 15 a second for the code, 10 for the photo and the equalizer, is done once to a slot of
+  // the clock's grid, not once a draw, and its dice are the slot's)
+  let lastPhoto = -1, lastHex = 0, lastSlot = -1, lastBeat = null, pulse = 0, glitch = 0, visible = false, photoDice = null;
+  let rows = null, lastEq = -1, idAt = -1, lockedAt = null, lastBar = null, burstUntil = 0;
+  const kicks = []; // the kicks not yet taken in: { at, pulse, glitch }
 
   // The camera frame, cropped to the photo's shape (head and shoulders, when a face was found) and
   // averaged down to one value a dot.
@@ -152,9 +156,9 @@ export function createCard(el) {
 
   // No camera: the sound as an eye. A ring whose edge the spectrum pushes out (mirrored left to
   // right), a dim iris, and a core that swells on each kick.
-  function fromSound(eng) {
+  function fromSound(eng, at) {
     coarse.holes = false;
-    bands(eng, spec);
+    bands(eng, spec, 40, 14000, at);
     const cx = W / 2, cy = H * 0.47, r0 = W * 0.24, core = W * (0.07 + 0.06 * pulse);
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
@@ -200,16 +204,16 @@ export function createCard(el) {
     } else pctx.putImageData(img, 0, 0);
     if (glitch > 0.3) {
       for (let n = 0; n < 3; n++) {
-        const y = Math.floor(Math.random() * h), rows = Math.round((1 + Math.floor(Math.random() * 4)) * k);
-        pctx.drawImage(photo, 0, y, w, rows, Math.round((Math.random() - 0.5) * 6 * glitch * k), y, w, rows);
+        const y = Math.floor(photoDice() * h), rows = Math.round((1 + Math.floor(photoDice() * 4)) * k);
+        pctx.drawImage(photo, 0, y, w, rows, Math.round((photoDice() - 0.5) * 6 * glitch * k), y, w, rows);
       }
     }
   }
 
   // 64 bytes of spectrum as 4 rows of hex (8 groups each), salted per song so two songs don't read
   // alike.
-  function hex(eng, salt) {
-    bands(eng, spec);
+  function hex(eng, salt, at) {
+    bands(eng, spec, 40, 14000, at);
     const out = [];
     for (let r = 0; r < 4; r++) {
       const groups = [];
@@ -224,8 +228,8 @@ export function createCard(el) {
   }
   // The rows as a text equalizer: each as long as its quarter of the spectrum is loud, from the
   // lows at the top.
-  function eq(eng) {
-    bands(eng, spec);
+  function eq(eng, at) {
+    bands(eng, spec, 40, 14000, at);
     return rows.map((row, r) => {
       let s = 0;
       for (let i = r * 16; i < r * 16 + 16; i++) s += spec[i];
@@ -236,7 +240,12 @@ export function createCard(el) {
   return {
     get shown() { return visible; },
     show(on) { visible = on; el.hidden = !on; },
-    kick(s) { pulse = Math.max(pulse, 0.5 + 0.5 * s); glitch = Math.max(glitch, 0.4 + 0.6 * s); },
+    // a kick, at the clock's time of it (taken in by draw in the order things happened: see the photo, below)
+    kick(s) {
+      if (!visible) return;
+      kicks.push({ at: clock.now(), pulse: 0.5 + 0.5 * s, glitch: 0.4 + 0.6 * s });
+      if (kicks.length > 64) kicks.shift();
+    },
     // info: { song, source, frame (the camera's, or null), face (where it is in the frame, or null),
     // art (the song's cover, a loaded image, or null) }
     draw(t, eng, info, col) {
@@ -248,6 +257,9 @@ export function createCard(el) {
       if (cell.style.width !== bat) cell.style.width = bat;
       set('.c-sig', locked ? 'REGISTERED SIGNAL' : LOST[Math.floor(t / 0.7) % LOST.length]);
       set('.c-bar', locked ? `BAR ${String(eng.bar + 1).padStart(3, '0')}.${Math.floor(eng.step / 4) + 1}` : 'BAR ---.-');
+      // the arc round the border: once a bar while the beat's found, else drifting slowly
+      const st = locked && typeof eng.stepAt === 'function' ? eng.stepAt(t, t) : null;
+      el.style.setProperty('--turn', `${(st == null ? (t * 24) % 360 : (((st / 16) % 1) + 1) % 1 * 360).toFixed(1)}deg`);
       const key = eng.key ? NOTES[eng.key.root] + (eng.key.mode === 'minor' ? 'm' : '') : '?';
       const id = `${tag(song?.artist || song?.app || info.source)}-${locked ? T.shown : '???'}.${key}`;
       if (!locked) lockedAt = null;
@@ -255,10 +267,10 @@ export function createCard(el) {
         lockedAt ??= t;
         if (eng.bar !== lastBar) { if (lastBar !== null) burstUntil = t + 0.12; lastBar = eng.bar; }
       }
-      if (t - idAt > 1 / 15) {
-        idAt = t;
-        const settled = locked ? ((t - lockedAt) / 0.6) * id.length : -1;
-        set('.c-id', scramble(id, (i) => i < settled && (t > burstUntil || Math.random() > 0.35)));
+      if (Math.floor(t * 15) !== idAt) {
+        idAt = Math.floor(t * 15);
+        const at = idAt / 15, settled = locked ? ((at - lockedAt) / 0.6) * id.length : -1, dice = clock.rng('card-id', idAt); // (as it is at the slot's time)
+        set('.c-id', scramble(id, (i) => i < settled && (at > burstUntil || dice() > 0.35), dice));
       }
       set('.c-src', clean(song?.app || info.source || 'NONE').toUpperCase().slice(0, 18));
       set('.c-bpm', locked ? `${T.shown} BPM` : '--- BPM');
@@ -267,20 +279,43 @@ export function createCard(el) {
       set('.c-foot', eng.silent ? '// NO SIGNAL //' : locked ? '// TRACK IDENTIFIED //' : '// IDENTITY NOT FOUND //');
       // the auth string: rewritten on every beat once locked, a few times a second before; its
       // rows' lengths follow the sound ten times a second
-      if ((locked && eng.beat !== lastBeat) || (!locked && t - lastHex > 0.4) || lastHex === 0) {
-        lastBeat = eng.beat;
-        lastHex = t;
-        rows = hex(eng, hash(song?.title || info.source || ''));
+      // (worked out in slots of a 20th of a second, from the engine's spectrum and beat grid as they were at the slot's time)
+      const slot = Math.floor(t * 20) / 20;
+      if (slot !== lastSlot) {
+        lastSlot = slot;
+        const stp = eng.stepAt(slot, slot), beat = stp === null ? null : Math.floor(stp / 4);
+        if ((locked && beat !== lastBeat) || (!locked && slot - lastHex > 0.4) || lastHex === 0) {
+          lastBeat = beat;
+          lastHex = slot;
+          rows = hex(eng, hash(song?.title || info.source || ''), slot);
+        }
       }
-      if (t - lastEq > 0.1) { lastEq = t; set('.c-hex', eq(eng)); }
-      // the photo, at a choppy 10 frames a second (snapping to a kick right away)
-      if (t - lastPhoto >= 1 / FPS || glitch > 0.9) {
-        lastPhoto = t;
-        if (info.frame) { fromCamera(info.frame, info.face); dither(col, coarse); show(coarse); }
-        else if (info.art) showArt(info.art, col);
-        else { fromSound(eng); dither(col, coarse); show(coarse); }
+      if (Math.floor(t * 10) !== lastEq) { lastEq = Math.floor(t * 10); set('.c-hex', eq(eng, lastEq / 10)); }
+      // The photo, at a choppy 10 frames a second (snapping to a kick right away). Its redraws are events at times of the clock's:
+      // the start of each tenth of a second, and a hard kick's own time. They are taken in in order, each kick lifting the pulse
+      // and the glitch and each redraw letting them fall, and the last of them is drawn: so how far a kick has fallen by a
+      // time is the same however many frames came between.
+      const nowSlot = Math.floor(t * FPS), events = [];
+      if (lastPhoto < 0 || nowSlot - lastPhoto > FPS) events.push({ at: t });
+      else for (let slot = lastPhoto + 1; slot <= nowSlot; slot++) events.push({ at: slot / FPS });
+      for (const k of kicks.splice(0)) events.push({ at: k.at, kick: k });
+      events.sort((a, b) => a.at - b.at);
+      let drawn = null;
+      for (const e of events) {
+        if (e.kick) { pulse = Math.max(pulse, e.kick.pulse); glitch = Math.max(glitch, e.kick.glitch); if (glitch <= 0.9) continue; }
+        drawn = { slot: Math.floor(e.at * FPS + 1e-6), pulse, glitch };
         pulse *= 0.6;
         glitch *= 0.5;
+      }
+      lastPhoto = nowSlot;
+      if (drawn) {
+        const after = { pulse, glitch };
+        ({ pulse, glitch } = drawn);
+        photoDice = clock.rng('card-photo', drawn.slot);
+        if (info.frame) { fromCamera(info.frame, info.face); dither(col, coarse); show(coarse); }
+        else if (info.art) showArt(info.art, col);
+        else { fromSound(eng, drawn.slot / FPS); dither(col, coarse); show(coarse); }
+        ({ pulse, glitch } = after);
       }
     },
   };

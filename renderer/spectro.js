@@ -12,6 +12,7 @@
 // Drawn with WebGL (the levels, a column a frame, into a ring that raises a grid) on one canvas,
 // and the marks and pins on another over it.
 import { NOTES } from './engine.js';
+import { simulate } from './clock.js';
 
 const ROWS = 256, F_LO = 32, F_HI = 15000, FPS = 60, COLS = 512, NX = 224, NZ = 140;
 const uOf = (f) => Math.log(f / F_LO) / Math.log(F_HI / F_LO);
@@ -30,6 +31,7 @@ const MAPS = {
   terminal: ['#000000', '#00300f', '#0f8a2e', '#3dff76', '#e8ffee'],
   pink: ['#000000', '#3a0026', '#a3156b', '#ff5cbf', '#fff0f8'],
   whitescreen: ['#ffffff', '#c9d4ff', '#5a7dff', '#1c2a8a', '#000000'],
+  softclub: ['#dde6ee', '#b4cbdd', '#6f9cc0', '#2f5f86', '#16283a'],
 };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
 const css = (c, a) => `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
@@ -116,7 +118,7 @@ const project = (m, p, W, H) => {
 export function createSpectro(canvas, boxCanvas) {
   const og = boxCanvas.getContext('2d');
   let gl = null, par = null, job = null, prog = null, vao = null, tex = null, count = 0, U = null, broken = false;
-  let lastCol = null, last = 0, peak = -30, floor = NaN, avg = null, blank = null;
+  let lastCol = null, peak = -30, floor = NaN, avg = null, blank = null, cur = null;
   let heard = {}, bassAt = -1, chordWas = null;
   const pins = [], chords = [];
   const column = new Float32Array(ROWS), quiet = new Float32Array(ROWS), raw = new Float32Array(ROWS), tmp = new Float32Array(ROWS), sorted = new Float32Array(ROWS);
@@ -135,6 +137,7 @@ export function createSpectro(canvas, boxCanvas) {
     gl.attachShader(pr, vs);
     gl.attachShader(pr, fs);
     gl.linkProgram(pr);
+    // (performance.now() here and in finish: how long its program took to compile and settle, real time, for the driver)
     job = { pr, vs, fs, at: performance.now(), done: 0 };
     const grid = new Float32Array(NX * NZ * 2);
     for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) grid.set([i / (NX - 1), j / (NZ - 1)], (j * NX + i) * 2);
@@ -183,8 +186,9 @@ export function createSpectro(canvas, boxCanvas) {
   // usual level taken off; then against the floor (where FLOOR_AT of the rows are) and a peak that
   // follows the music (up at once; down slowly, faster the further above it is: the analysers'
   // zeros before any sound would hold it up for half a minute), 0-1; eased in time.
-  function makeColumn(eng, dt) {
-    const hzMid = eng.sr / (eng.midDb.length * 2), hzFast = eng.hzFast;
+  function makeColumn(eng, t, dt) {
+    const midDb = eng.midAt(t), fastDb = eng.dbAt(t);
+    const hzMid = eng.sr / (midDb.length * 2), hzFast = eng.hzFast;
     const at = (db, hz, f) => { const b = f / hz, i = Math.floor(b), k = b - i, a = db[Math.min(db.length - 1, i)], c = db[Math.min(db.length - 1, i + 1)]; return a + (c - a) * k; };
     const over = (db, hz, f0, f1) => {
       const i0 = Math.max(0, Math.floor(f0 / hz)), i1 = Math.min(db.length - 1, Math.ceil(f1 / hz));
@@ -195,7 +199,7 @@ export function createSpectro(canvas, boxCanvas) {
     };
     for (let r = 0; r < ROWS; r++) {
       const f = freqOf(r + 0.5);
-      raw[r] = (f < 1500 ? at(eng.midDb, hzMid, f) : over(eng.fastDb, hzFast, freqOf(r), freqOf(r + 1))) + (f > 1000 ? 3 * Math.log2(f / 1000) : 0);
+      raw[r] = (f < 1500 ? at(midDb, hzMid, f) : over(fastDb, hzFast, freqOf(r), freqOf(r + 1))) + (f > 1000 ? 3 * Math.log2(f / 1000) : 0);
       if (!(raw[r] > -200) || raw[r] >= 0) raw[r] = -200; // (nothing there, or the analysers' zeros before any sound)
     }
     for (let p = 0; p < 2; p++) {
@@ -223,16 +227,16 @@ export function createSpectro(canvas, boxCanvas) {
   function read(t, eng) {
     for (const id of ['bd', 'sd', 'hhc', 'hho']) {
       const h = eng.v[id].lastHit;
-      if (h.t > (heard[id] ?? -1) && t - h.t < 0.5) {
+      if (h.t > (heard[id] ?? -1) && (h.known ?? h.t) <= t && t - h.t < 0.5) {
         heard[id] = h.t;
-        if (eng.present(id, t)) pins.push({ kind: id, t: h.t, f: PINS[id][0], label: PINS[id][1], born: t });
+        if (eng.presentAt(id, t)) pins.push({ kind: id, t: h.t, f: PINS[id][0], label: PINS[id][1], born: h.t });
       }
     }
     // a bass note, while the code's bassline plays: labelled with the note the code wrote for its
     // bar (the bar's slot, as the bassline line shows it), at that pitch; the pitch heard, if the
     // bar has no note yet
     const b = eng.lastBassHit;
-    if (b && b.t > bassAt && b.f0 > 25 && eng.playing(eng.bassSeen, t)) {
+    if (b && b.t > bassAt && (b.known ?? b.t) <= t && b.f0 > 25 && eng.playingAt('bass', t)) {
       bassAt = b.t;
       const st = eng.stepAt(b.t), slot = st === null ? null : eng.slots[((Math.floor(st / 16) % 4) + 4) % 4];
       const coded = slot?.bass && /^([a-g](?:#|b)?)(-?\d+)$/.exec(slot.bass);
@@ -245,11 +249,11 @@ export function createSpectro(canvas, boxCanvas) {
         const midi = Math.round(69 + 12 * Math.log2(b.f0 / 440));
         label = NOTES[((midi % 12) + 12) % 12].toLowerCase() + (Math.floor(midi / 12) - 1);
       }
-      pins.push({ kind: 'bass', t: b.t, f, label, born: t });
+      pins.push({ kind: 'bass', t: b.t, f, label, born: b.t });
     }
     // (a change of chord by its name: the engine hands over a new chord every bar, the same one too)
     const ch = eng.lastChord;
-    if (ch && ch.name !== chordWas?.name) { chordWas = ch; chords.push({ t, label: NOTES[ch.root] + (ch.third === 3 ? 'm' : '') }); }
+    if (ch && eng.chordSeen <= t && ch.name !== chordWas?.name) { chordWas = ch; chords.push({ t: eng.chordSeen, label: NOTES[ch.root] + (ch.third === 3 ? 'm' : '') }); }
   }
 
   // Over it: the frequencies marked along the back, the chords named at the far end of their lines,
@@ -305,6 +309,18 @@ export function createSpectro(canvas, boxCanvas) {
     }
   }
 
+  // A column of the landscape for each 60th of a second on the clock's own grid (clock.js simulate): made from what the
+  // engine heard at that time (its mid and fast spectra, as they were then), the smoothing that follows the music
+  // going a step on with it, and written into its own slot of the texture; what was recognised (the pins, the chords)
+  // is taken in at the same steps, each at the time it happened. So the landscape at a time is the same however often it
+  // was drawn.
+  const sim = simulate(FPS, (st, h) => {
+    makeColumn(cur, st, h);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, ((Math.round(st * FPS) % COLS) + COLS) % COLS, 0, 1, ROWS, gl.RED, gl.FLOAT, column);
+    read(st, cur);
+  });
+
   return {
     get broken() { return broken; },
     // (compiling: its program started and not yet done)
@@ -332,22 +348,20 @@ export function createSpectro(canvas, boxCanvas) {
           if (broken || !finish()) return;
         } catch (err) { broken = true; job = null; console.error('spectrogram:', err); return; }
       }
-      const dt = Math.min(0.1, Math.max(0.001, t - last));
-      last = t;
       const dpr = Math.min(1.5, devicePixelRatio || 1), W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
       for (const c of [canvas, boxCanvas]) if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
       const bpm = eng.tempo.locked ? eng.tempo.bpm : 120, spanS = (4 * 60) / bpm;
-      // the columns: one each 1/60 s; the ones since the last frame filled in (with this one, or
-      // the bare floor after a long gap, the window hidden: nothing was heard into them)
-      const col = Math.floor(t * FPS);
-      makeColumn(eng, dt);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
+      // the columns: one each 1/60 s, made in steps (see the sim above); after a long gap (the window hidden: nothing
+      // was heard into the time between) the bare floor in the slots the steps don't reach
+      const col = Math.floor(t * FPS + 1e-6), reach = FPS / 4;
       const gap = lastCol === null ? 1 : col - lastCol;
-      for (let c = col - Math.min(gap, Math.ceil(spanS * FPS) + 2) + 1; c <= col; c++) {
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, ((c % COLS) + COLS) % COLS, 0, 1, ROWS, gl.RED, gl.FLOAT, gap > 8 && c < col ? quiet : column);
+      if (gap > reach) {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        for (let c = col - Math.min(gap, Math.ceil(spanS * FPS) + 2) + 1; c <= col - reach; c++) gl.texSubImage2D(gl.TEXTURE_2D, 0, ((c % COLS) + COLS) % COLS, 0, 1, ROWS, gl.RED, gl.FLOAT, quiet);
       }
+      cur = eng;
+      sim.advance(t);
       lastCol = col;
-      read(t, eng);
       while (pins.length && t - pins[0].t > spanS + 0.5) pins.shift();
       while (chords.length > 4 || (chords.length && t - chords[0].t > spanS + 0.5)) chords.shift();
 

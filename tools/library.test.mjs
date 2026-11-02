@@ -37,6 +37,15 @@ test('times: 3:12, an hour and over as 1:14:12, nothing where it is not known', 
 
 // ---------------------------------------------------------------- albums
 
+test('the folder on the meta line: all of it when short, else its last folders, cut at its own separator (a Windows folder too)', () => {
+  assert.equal(L.folderLabel('~/Music'), '~/Music');
+  assert.equal(L.folderLabel('D:\\Music'), 'D:\\Music');
+  assert.equal(L.folderLabel('~/work/scratch/golden-library-test/library'), '…/golden-library-test/library');
+  assert.equal(L.folderLabel('D:\\work\\scratch\\golden-library-test\\library'), '…\\golden-library-test\\library');
+  assert.equal(L.folderLabel('\\\\nas\\share\\Music\\Lossless Albums\\2026'), '…\\Music\\Lossless Albums\\2026');
+  assert.equal(L.folderLabel(''), '');
+});
+
 test('albums are grouped by album artist (else artist) and album, whatever folders the files are in; a disc to a folder is one album, in disc order', () => {
   const a = albumsOf([
     { path: 'Band/Double/CD2/01 c.mp3', title: 'c', artist: 'Band', albumArtist: 'Band', album: 'Double', track: 1, disc: 2 },
@@ -133,6 +142,22 @@ test('previous: past the first seconds, or on the first track, it starts this tr
   const first = L.queueOf(album, 0);
   assert.deepEqual(L.queuePrevious(first, 0), { restart: true, queue: first }, 'nothing before the first');
   assert.equal(L.queuePrevious(q).restart, false, 'no time given: the one before');
+});
+
+test('skip: a track that could not be played is left out and the queue goes on as next does, until every track of the album has failed in a row', () => {
+  const q = L.queueOf(album, 4);
+  assert.equal(L.queueSkip(q, 1).index, 5, 'the next track');
+  assert.equal(L.queueSkip(L.queueOf(album, 11), 1).index, 0, 'after the last, the album plays again, as it does when a track ends');
+  assert.equal(L.queueSkip(q, 1, { repeat: 'one' }).index, 5, 'repeat one does not keep it on the track that failed');
+  assert.equal(L.queueSkip(q, 11).index, 5, 'eleven of the twelve have failed: the twelfth is still to try');
+  assert.equal(L.queueSkip(q, 12), null, 'all twelve have: nothing to play');
+  assert.equal(L.queueSkip(L.queueOf({ id: 'x', tracks: [album.tracks[0]] }, 0), 1), null, 'an album of one that fails is all of it');
+  const s = L.queueOf(album, 4, { shuffle: true, random: seeded(0.5, 0.1, 0.9, 0.3) });
+  assert.equal(L.queueSkip(s, 1).index, s.order[1], 'shuffled, by the order');
+  const albums = albumsOf(['A/One/01 a.mp3', 'A/One/02 b.mp3', 'B/Two/01 c.mp3', 'B/Two/02 d.mp3']);
+  const nextAlbum = (id) => albums[(albums.findIndex((a) => a.id === id) + 1) % albums.length];
+  assert.equal(L.queueSkip(L.queueOf(albums[0], 1), 1, { repeat: 'all', nextAlbum }).id, albums[1].id, 'repeat all: past the last, the next album');
+  assert.equal(L.queueSkip(L.queueOf(albums[0], 1), 2, { repeat: 'all', nextAlbum }), null, 'but an album that all failed is the end of it, not a reason to go on to the next');
 });
 
 test('the line of what is near is the one in the kept still: the track before, this one with a mark, the next two', () => {
@@ -308,6 +333,28 @@ test('a station played now goes first, once; the list holds thirty', () => {
   assert.equal(list[0].url, 'https://s39/');
 });
 
+test('the radio\'s covers are kept for the last fifty songs: a song noted goes last, one heard again moves to the end, the longest unheard goes', () => {
+  const covers = new Map();
+  for (let i = 0; i < 80; i++) assert.equal(L.noteRadioCover(covers, `Artist song ${i}`, `cover ${i}`), `cover ${i}`, 'gives the cover back');
+  assert.equal(covers.size, 50, 'a session of eighty songs keeps fifty covers');
+  assert.deepEqual([...covers.keys()].slice(0, 2), ['Artist song 30', 'Artist song 31'], 'the thirty before them are gone');
+  assert.equal([...covers.keys()].pop(), 'Artist song 79');
+  assert.equal(covers.get('Artist song 79'), 'cover 79', 'what was noted is kept as given (a promise, in the page)');
+  // the oldest song heard again moves to the end, so the next is the oldest now, and goes first when another song comes
+  L.noteRadioCover(covers, 'Artist song 30', covers.get('Artist song 30'));
+  assert.equal(covers.size, 50, 'a song heard again is not a second one');
+  assert.deepEqual([[...covers.keys()][0], [...covers.keys()].pop()], ['Artist song 31', 'Artist song 30']);
+  L.noteRadioCover(covers, 'Artist song 80', 'cover 80');
+  assert.deepEqual([covers.has('Artist song 31'), covers.has('Artist song 30'), covers.size], [false, true, 50], 'the song heard again outlived the one that was not');
+  // a cap of its own, and fewer songs than the cap fill nothing
+  const few = new Map();
+  for (const key of ['a b', 'c d', 'e f']) L.noteRadioCover(few, key, key, 2);
+  assert.deepEqual([...few.keys()], ['c d', 'e f']);
+  const one = new Map();
+  L.noteRadioCover(one, 'a b', 1);
+  assert.deepEqual([...one.keys()], ['a b']);
+});
+
 test('a station by its host and path, and when it was played', () => {
   assert.deepEqual(L.stationParts('https://stream.radioparadise.com/aac-128'), { host: 'stream.radioparadise.com', path: '/aac-128' });
   assert.deepEqual(L.stationParts('http://www.wfmu.org:8000/'), { host: 'wfmu.org:8000', path: '' });
@@ -423,8 +470,8 @@ test('after a scan the cursor stays on its row if that is still there, and is ke
   assert.equal(L.keepCursor(rows[2], [], 2), 0);
 });
 
-test('the sections go round: your music, radio, scenes, and back', () => {
-  assert.deepEqual(L.SECTIONS, [['music', 'your music'], ['radio', 'radio'], ['scenes', 'scenes']]);
-  assert.deepEqual(['music', 'radio', 'scenes', 'music'].map((s) => L.nextSection(s)), ['radio', 'scenes', 'music', 'radio']);
-  assert.deepEqual(['music', 'radio', 'scenes'].map((s) => L.nextSection(s, -1)), ['scenes', 'music', 'radio']);
+test('the sections go round: your music, spotify, radio, scenes, and back', () => {
+  assert.deepEqual(L.SECTIONS, [['music', 'your music'], ['spotify', 'spotify'], ['radio', 'radio'], ['scenes', 'scenes']]);
+  assert.deepEqual(['music', 'spotify', 'radio', 'scenes', 'music'].map((s) => L.nextSection(s)), ['spotify', 'radio', 'scenes', 'music', 'spotify']);
+  assert.deepEqual(['music', 'spotify', 'radio', 'scenes'].map((s) => L.nextSection(s, -1)), ['scenes', 'music', 'spotify', 'radio']);
 });

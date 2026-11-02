@@ -125,6 +125,15 @@ test('M4A: the ilst items, the track and disc numbers, the compilation flag, and
   assert.deepEqual(await tags(m4a({ tags: { track: [3] } , seconds: 1 })), { track: 3, duration: 1 });
 });
 
+test('an M4A whose movie header says its length is not known (all ones, in either version) has no length: not one of 1193 hours', async () => {
+  for (const version of [0, 1]) for (const timescale of [1000, 44100]) {
+    assert.deepEqual(await tags(m4a({ tags: { title: 'Live', artist: 'Stream' }, unknownLength: true, version, timescale })), { title: 'Live', artist: 'Stream' }, JSON.stringify({ version, timescale }));
+    assert.deepEqual(await tags(m4a({ unknownLength: true, version, timescale })), {}, `bare ${JSON.stringify({ version, timescale })}`);
+  }
+  // (a length that is known is still read, beside it)
+  near((await tags(m4a({ seconds: 3600 * 5, timescale: 1000 }))).duration, 18000, 0.001);
+});
+
 test('a big M4A costs a few small reads: the atoms\' headers, the movie header, the text items', async () => {
   const file = counting(m4a({ tags: { title: 'T', artist: 'A', album: 'B', track: [1, 9] }, pictures: [[fakeJpeg(900000), 13]], moovFirst: false }));
   const got = await readTags(file);

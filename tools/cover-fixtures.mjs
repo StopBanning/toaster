@@ -34,10 +34,11 @@ export function png(rgba, size = SIZE) {
   return join([0x89, ...ascii('PNG'), 13, 10, 26, 10], chunk('IHDR', join(u32(size), u32(size), [8, 6, 0, 0, 0])), chunk('IDAT', zlib.deflateSync(Uint8Array.from(rows))), chunk('IEND', []));
 }
 
-// A picture that only looks like a JPEG to the reader (its first bytes), full of the 0xFF sequences a tag has to escape (0xFF
-// then 0x00, 0xE0 up, or 0xFF), for what the reader has to hand back whole, whatever is in it.
+// A picture that only looks like a JPEG to the reader (its first bytes: the start, a JFIF header and a frame of 600 x 600, which main
+// reads a cover's size from before it decodes one), full of the 0xFF sequences a tag has to escape (0xFF then 0x00, 0xE0 up, or
+// 0xFF), for what the reader has to hand back whole, whatever is in it.
 export const fakeJpeg = (n = 600) => {
-  const out = [0xff, 0xd8, 0xff, 0xe0, 0, 16, ...ascii('JFIF'), 0];
+  const out = [0xff, 0xd8, 0xff, 0xe0, 0, 16, ...ascii('JFIF'), 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xc0, 0, 17, 8, 2, 0x58, 2, 0x58, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1];
   while (out.length < n) out.push(0xff, [0, 0xe0, 0xff, 0xfb, 0x12][out.length % 5], out.length & 255);
   return Uint8Array.from([...out, 0xff, 0xd9]);
 };

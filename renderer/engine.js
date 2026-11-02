@@ -8,7 +8,19 @@ export const VOICES = ['bd', 'sd', 'hhc', 'hho', 'vox'];
 // note starts on; the notes themselves are per bar, in slots).
 const PARTS = [...VOICES, 'bass'];
 export const ROLL_COLS = 48;
-export const nowSec = () => performance.now() / 1000;
+// Hits are filed some time after they began (a kick is told from a bass note 90 ms later), so each has two times: t, when
+// it sounded, and known, when the engine filed it. A picture that steps at times of its own must not know of a hit at a
+// step before it was filed, or the step it first sees it at depends on how often it was drawn: it gates on known, not t.
+// (This list stamps each hit as it is pushed.)
+function filed() {
+  const list = [];
+  list.push = function push(...hits) { const known = nowSec(); for (const h of hits) h.known = known; return Array.prototype.push.apply(this, hits); };
+  return list;
+}
+// The time the engine and the page share: the one clock's (clock.js), on the audio clock while a song plays. Read from
+// the global, so this file stands alone (tests and tools load it as plain text, with no imports to follow); the page's
+// first module, app.js, imports the clock before this is used. Without one, the performance clock.
+export const nowSec = () => globalThis.clock?.now() ?? performance.now() / 1000;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 // v1 side record. No PCM, no quantization, no detector feedback. Chunks are evicted as a
@@ -202,6 +214,21 @@ export function chordModeEvidence(hist, root) {
   return strong(minor, major) ? 'minor' : strong(major, minor) ? 'major' : null;
 }
 
+// Of key k and its relative (A minor and C major: the same notes, so how well the notes fit can't
+// tell them apart, and the major key often fits a minor song a little better), the one whose tonic
+// the music keeps coming back to, or null when that isn't clear. home is how much each key's tonic
+// has been heard (index root * 2, + 1 for minor: see keyHome), its chord and its note in the bass. A
+// side wins as a mode does in chordModeEvidence (3 votes or more, over 1.25 times the other's), and by
+// more than one bar's worth (a chord and its bass, 2), so a loop that plays both tonic chords (Am F C
+// G, heard from anywhere in it) is never clear either way, whichever came round last.
+export function tonicOf(home, k) {
+  if (!k) return null;
+  const m = k.mode === 'minor' ? k.root : (k.root + 9) % 12, M = (m + 3) % 12;
+  const minor = home[m * 2 + 1], major = home[M * 2];
+  const clear = (a, b) => a >= 3 && a > 1.25 * b + 2;
+  return clear(minor, major) ? { root: m, mode: 'minor' } : clear(major, minor) ? { root: M, mode: 'major' } : null;
+}
+
 // After the first eight bars, a key on another root takes over from the one shown only with a clear
 // lead (margin) in how well the notes fit: small wins back and forth are a close call, not a key change.
 export function preferCurrentKey(fits, candidate, current, bars, margin = 0.1) {
@@ -300,6 +327,42 @@ function lowStrike(buf, sr, c, dec, ago) {
   return { jump: rms(first.slice(0, Math.round(0.015 * fs))) / Math.max(1e-9, before), f0: lowPitch(first, fs).f };
 }
 
+// The kick detector (kickFrame): a kick is a broadband burst whose energy sweeps down through the low end, 190 Hz to 23 Hz in
+// ~8 frames, one band after another; a bass note rises a little everywhere at once and stays. The mid analyser (4096 points,
+// 11.7 Hz bins at 48 kHz) shows that sweep; the fast one's 47 Hz bins can't. 8 bands of its bins (at 48 kHz: 23-35, 47-59,
+// 70-82, 94-117, 129-176, 188-270, 281-410, 422-645 Hz), and a logistic score on 40 numbers read from them around a frame: how
+// far each band rose 2 and 5 frames after it over the level 2 before, how far that level sat under the band's highest of the
+// last 2 s, and the band against the whole low end before and after. Fit on drum-stem kicks of 34 songs (htdemucs), checked
+// cross-validated by song and on 21 songs it never saw: 76-80% of the kicks found at 90% precision, against 53% and 60% for
+// lowDecide's kicks (backlog/research/kick-detector-nov1.md; bench/kd_*.py has the fit). Decided 6 frames (90 ms) after
+// its frame, as lowDecide decides 90 ms after its onset.
+const KICK_BANDS = [[2, 3], [4, 5], [6, 7], [8, 10], [11, 15], [16, 23], [24, 35], [36, 55]]; // (in 48 kHz bins of the mid analyser)
+const KD = {
+  W2: [-0.03120, -0.08438, -0.01860, 0.06210, 0.18013, 0.10050, 0.04530, 0.00182], // per band, low to high: the rise from c-2 to c+2 (dB)
+  W5: [0.10228, 0.02597, 0.08845, -0.01542, -0.04323, -0.02561, -0.01206, -0.00969], // ... from c-2 to c+5
+  WH: [0.08978, -0.09320, 0.08212, -0.01823, 0.05588, 0.04141, 0.05197, 0.03619], // the level at c-2 against its highest over c-132 .. c-3
+  WP: [-0.06796, 0.06258, -0.01144, 0.06885, 0.07442, 0.04477, -0.00267, -0.00959], // the level at c-2 against the 8 bands' total then
+  WQ: [-0.01002, 0.06818, 0.05542, 0.02938, -0.01430, -0.03840, -0.05535, -0.05056], // the level at c+5 against the total then
+  bias: -0.69082,
+  D: 5, // frames looked at after the candidate frame c
+  theta: 0.6, // a kick when the score is at least this
+  gap: 0.06, // seconds: no kick within this of the last one
+  lag: 0.012, // a frame's time minus this is its kick's
+  // A kick with no click, a sine swept down (an 808, the test songs' kick), scores twice, ~55 ms early and on time: the early
+  // one on the frames after it alone, before the kick has reached the analyser (no band up this many dB from c-2 to c+2) or
+  // the kick band's onset has come (none within KD.snap). Such a one waits this many frames, and goes if another comes
+  // meanwhile. (A real kick of that kind, about 1 in 20 under 8 dB, and those the kick band's onsets missed, is filed late.)
+  arrive: 8,
+  wait: 6,
+  // Its kick's time is the kick band's own onset (the fast analyser's, detectOnset's) when one is this near: that one is timed
+  // to the attack, and the beat's grid is read from those onsets. Two of its kicks at one onset are one kick.
+  snap: 0.055,
+  ring: 160,
+};
+const newKickDet = () => ({ n: 0, L: Array.from({ length: KD.ring }, () => new Float32Array(8)), T: new Float32Array(KD.ring),
+  tm: new Float64Array(KD.ring), s: new Float32Array(KD.ring), r2: new Float32Array(KD.ring), last: -10, held: null,
+  onsets: [], snapped: -10 });
+
 // Pitch (28-300 Hz; 0 if there's no clear one) and loudness of x, sampled at fs. (Down to 28: a
 // riddim sub sits as low as C#1, 34.6 Hz, and below 35 there was no pitch to find, so a held sub
 // note counted as a kick.)
@@ -370,8 +433,26 @@ function makeVoice(id) {
     // (the hats' fallback: each step's hits over the last several bars, the last 4 bars' counts, and
     // whether what's shown is that steady subdivision rather than the steps learned)
     long: new Float32Array(16), counts: [], approx: false,
-    lastHit: { t: -10, step: -1 }, last: -10, prev: -10, busyN: 0, calmN: 0, tooBusy: false, here: false,
+    four: false, // (the kick: written as four on the floor, see newBar)
+    turned: 0, // (how far relabel has turned the steps in all, for codegen's calm)
+    lastHit: { t: -10, step: -1 }, last: -10, prev: -10, lastKnown: -10, prevKnown: -10, busyN: 0, calmN: 0, tooBusy: false, here: false,
   };
+}
+
+// The spacing of a steady run of hits (on: the 16 steps): the 16ths', the 8ths' or the quarters' (1, 2 or 4 steps),
+// whichever most of its hits have a neighbour at (the shorter on a tie, and 3 at least), or 0 for no run. Off-beat
+// 8ths (2, 6, 10, 14) are a run a quarter apart. inRun: is step s inside it, with a hit that far on both sides?
+function runOf(on) {
+  let d = 0, most = 2;
+  for (const k of [1, 2, 4]) {
+    let n = 0;
+    for (let x = 0; x < 16; x++) if (on[x] && on[(x + k) % 16]) n++;
+    if (n > most) { most = n; d = k; }
+  }
+  return d;
+}
+function inRun(on, s, d = runOf(on)) {
+  return d > 0 && on[(s + 16 - d) % 16] && on[(s + d) % 16];
 }
 
 // Listening for a song's first chord (see listenOpening). armed: the music about to start is a
@@ -459,6 +540,26 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
   const midBand = (lo, hi) => [Math.round(lo / hzMid), Math.round(hi / hzMid)];
   const chromaLo = Math.ceil(100 / hzSlow), chromaHi = Math.floor(4000 / hzSlow);
 
+  // What each of the last HIST ticks heard (the time, the level and the fast analyser's spectrum), as a ring, so a
+  // picture that moves by steps of its own (clock.js simulate) can ask for the spectrum and the level as they were at
+  // the time of its step, not as they are now: see dbAt and levelAt.
+  const HIST = 256, histT = new Float64Array(HIST).fill(-Infinity), histLevel = new Float32Array(HIST), histDb = new Float32Array(HIST * fast.frequencyBinCount), histWave = new Float32Array(HIST * fast.fftSize), histMid = new Float32Array(HIST * mid.frequencyBinCount), histChroma = new Float32Array(HIST * 12), histSilent = new Uint8Array(HIST), histTempo = new Float64Array(HIST * 7), histSeen = new Float64Array(HIST * 2), histHere = new Uint8Array(HIST), histHits = new Float64Array(HIST * 7); // (tempo: locked, bpm, P, t0, n0, down, renumber; seen: when the bass and the chords were last found; here: a bit a part, present(); hits: when the last kick, snare, closed hat, open hat and bass note were, the bass note's pitch, when the last drop was)
+  let histN = 0; // how many have been written: the newest is (histN - 1) % HIST
+  // The learned structures (each part's pattern, whether it is too busy to be one, the bar's chords and bass notes) change at
+  // events: a bar line, a pattern learned. A picture stepping at its own times must see them as they were at each step, not as
+  // they are now, so each change is logged, stamped with the tick that saw it (logLearned, learnedAt).
+  const learnedLog = [];
+  const histAt = (t) => {
+    // the newest tick at or before t (the oldest kept, for a time before them all)
+    let i = histN - 1, found = -1;
+    for (let k = 0; k < Math.min(histN, HIST); k++, i--) {
+      const at = ((i % HIST) + HIST) % HIST;
+      if (histT[at] <= t) { found = at; break; }
+      found = at; // (so far, the oldest seen)
+    }
+    return found;
+  };
+
   const eng = {
     sr, hzFast, hzSlow, ledger,
     lag: slow.fftSize / 2 / sr, // the note analysis hears each moment about half a window late
@@ -484,6 +585,12 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // the beat it missed stays missing; a song with one kick on the bar (dubstep) isn't filled in.
     // Off with the rest of kickFix.
     kickFix: { demoteJump: 1.9, demoteS: 1.1, demoteF: 75, placeHeld: true },
+    // The kicks of the kick line, the drop and the pump from the kick detector (kickFrame), at 44.1 and 48 kHz (its bands are
+    // the mid analyser's bins; other rates keep lowDecide's). lowDecide still sorts what the kick band struck into bass notes
+    // and hits for the timing, as before, so the tempo and the bar hear what they always heard. false: lowDecide's kicks.
+    kickDet: sr >= 44000 && sr <= 48000,
+    // (the detector's 8 bands in this rate's bins)
+    kickBands: KICK_BANDS.map(([a, b]) => [Math.round((a * 48000) / sr), Math.round((b * 48000) / sr)]),
     // The first lock against the 4:3 misreading: a syncopated riff's dotted 8ths read as the beat of
     // a tempo a third faster (Gypsy Woman's intro at 160 for its 120, Sunset Lover at 121 for its 91,
     // Starships at 165 for its 125, Starboy at 124 for its 93), and the lock held it for 15 s to the
@@ -495,6 +602,11 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // of the drums' last 12 readings) changes it, as 3:2 does at 1.5. null turns it all off.
     timingBank: true,
     tempoFix: { margin: 0.1, tie: 0.02, wait: 6, fit43: 1.25 },
+    // Four on the floor, for the kick line (newBar): written once the three strongest beats each have at least `beat`
+    // of the busiest step's weight, and more than `over` times any step between the beats, with the fourth beat at
+    // `fourth` or more ([to start it, to keep it]). A step between the beats then goes in only at `between` of the
+    // busiest step (and out again under the second number). null turns it off.
+    fourFloor: { beat: [0.5, 0.3], fourth: [0.15, 0.05], over: [1, 0.8], between: [0.9, 0.7] },
     lg: new Float32Array(fast.frequencyBinCount),
     prevLg: new Float32Array(fast.frequencyBinCount),
     prevDb: new Float32Array(fast.frequencyBinCount),
@@ -513,6 +625,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // top: what comes next is a song from its start (a file, the demo, a new song from Windows),
     // so its first chord is worth listening for (see listenOpening)
     reset({ top = false } = {}) {
+      learnedLog.length = 0; // (a new song: what was learned of the last is no longer a thing to look back at)
       this.det = {
         bd: makeDetector(1.5, 0.12, 0.3, true), // bass notes get sorted out afterwards (lowDecide)
         sd: makeDetector(1.9, 0.09, 0.35, true),
@@ -520,7 +633,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         lead: makeDetector(2.5, 0.1, 0.3, true),
       };
       this.v = Object.fromEntries(PARTS.map((id) => [id, makeVoice(id)]));
-      this.onsets = [];
+      this.onsets = filed();
       this.taps = [];
       this.firstTap = null;
       this.tape?.reset(this.tempo?.down); // (the bar's start in the song that's ending)
@@ -534,8 +647,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // last few seconds ({ t, bpm, ok }) (fluxUpdate). drumRun: the drums' readings lately, running
       // at one tempo ({ t, bpm, conf, fit }), clear or not; agreeN, agreeBpm: how many times running
       // the two readings have agreed, and on what (fluxUpdate). better: the drums' last 12 readings
-      // since the lock, the tempo of each that a 3:2 tempo fits better, else 0 (tempoUpdate)
-      this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, half: null, halfCand: 0, halfN: 0, halfOff: 0, halfSeen: false, halved: false, ringTop: -Infinity, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [] };
+      // since the lock, the tempo of each that a 3:2 tempo fits better, else 0; drift: how far the drums' sure readings
+      // running sit off the tempo held, as shares (tempoUpdate)
+      this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, half: null, halfCand: 0, halfN: 0, halfOff: 0, halfSeen: false, halved: false, ringTop: -Infinity, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [], drift: [], heard: [] };
       this.tonalTiming = []; this.timingTemps = []; this.hypotheses = [];
       this.repAt = -1;
       this.repCache = new Map();
@@ -566,39 +680,35 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       this.barChroma = new Float32Array(12);
       this.barBass = new Float32Array(12);
       this.bassMidi = new Float32Array(128);
+      this.tune = { c: 0, s: 0, est: 0 }; // (see tuning)
       this.barFrames = this.bassFrames = 0;
       this.bassSeen = this.chordSeen = -10;
-      this.longChroma = new Float32Array(12);
       this.stepChroma = new Float32Array(12);
       this.stepN = 0;
       this.lastCol = 0;
       this.rollCols = [];
       this.slots = [null, null, null, null];
       this.lastChord = null;
-      this.key = null;
-      this.keyChords = new Float64Array(24);
-      this.keyCand = null;
-      this.keyCandN = 0;
-      this.keyBars = 0; // bars with a chord since the reset
-      this.keyShown = 0; // and since the key shown last changed
+      this.keyReset();
       this.opening = newOpening(top);
       this.resetAt = nowSec();
       this.level = 0;
+      this.loud ??= 0; this.quiet = null; this.levelT = null; // (the level heard lately, for what counts as sound: see frame)
       this.lastSound = nowSec();
       this.lastSilentAt = -1;
       this.silent = false;
-      this.lastKick = -10;
+      this.lastKick = this.lastKickKnown = -10;
       this.lowPending = this.bassCheck = null;
       this.lastBassHit = null;
       this.bt = newBassTrack();
       this.bassBeats = [null, null, null, null]; // each slot's bass note by the beat (harmonyBar)
       this.lowE = 0;
-      this.lastDrop = -99;
+      this.lastDrop = this.lastDropKnown = -99;
       this.nextTempo = 0;
       this.hhE = 0;
       this.hhPending = null;
       this.hhDurs = [];
-      this.hhHit = { t: -10, step: -1 };
+      this.hhHit = { t: -10, step: -1, known: -10 };
       this.knobAcc = { bass: 0, chords: 0, hh: 0, n: 0 };
       this.knobs = { bassLpf: 600, chordLpf: 2400, hhGain: 0.5, hhMax: 1e-9 };
       // the bass's sound (bassBright, wobbleCheck): its brightness a moment at a time for the last
@@ -619,6 +729,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       this.bodyV = [];
       this.pumpKicks = [];
       this.pumpDips = [];
+      this.kd = newKickDet(); // (the kick detector's last 160 frames of the low end's bands)
       this.pump = 0;
       this.ducking = false;
       this.duckDepth = 0.5;
@@ -632,17 +743,42 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       this.bar = this.step = this.beat = null;
       this.hBar = this.hStep = this.hBeat = null;
     },
+    // The same song played on after a pause (a file paused and played again): the beat's grid and the hits it was found
+    // from go on by the gap together, and the beats and bars are counted afresh. (The grid moved alone left the last 20 s
+    // of hits off it by the gap, and with the lock under 10 s old they outvoted the new ones: the beat went a 16th or half
+    // a beat wrong for 3 to 20 s. The counts, which only go forward, stalled till they caught up with where they had run on
+    // into the pause.)
+    resume(gap) {
+      if (!this.tempo.locked) return;
+      this.tempo.t0 += gap;
+      for (const o of this.onsets) o.t += gap;
+      this.resetClocks();
+    },
 
     frame(t, audioT) {
       this.ledger?.cover(t, audioT);
       fast.getFloatFrequencyData(this.fastDb);
       fast.getFloatTimeDomainData(this.time);
+      if (this.kickDet) mid.getFloatFrequencyData(this.midDb); // (every frame for the kick detector; else lead() reads it every other)
+      const fresh = audioT === undefined || audioT !== this.lastAudioT; // (sound that arrived since the last frame: see below)
       let ss = 0;
       for (const s of this.time) ss += s * s;
       const rms = Math.sqrt(ss / this.time.length);
       this.level = Math.max(rms, this.level * 0.9);
+      { const at = histN++ % HIST; histT[at] = t; histLevel[at] = this.level; histDb.set(this.fastDb, at * this.fastDb.length); histWave.set(this.time, at * this.time.length); histMid.set(this.midDb, at * this.midDb.length); histChroma.set(this.frameChroma, at * 12); histSilent[at] = this.silent ? 1 : 0; const T = this.tempo, k = at * 7; histTempo[k] = T.locked ? 1 : 0; histTempo[k + 1] = T.bpm; histTempo[k + 2] = T.P; histTempo[k + 3] = T.t0; histTempo[k + 4] = T.n0; histTempo[k + 5] = T.down; histTempo[k + 6] = T.renumber; histSeen[at * 2] = this.bassSeen; histSeen[at * 2 + 1] = this.chordSeen; let here = 0; if (this.v) for (let i = 0; i < PARTS.length; i++) if (this.present(PARTS[i], t)) here |= 1 << i; histHere[at] = here; if (this.v) { const h = at * 7; histHits[h] = this.lastKick; histHits[h + 1] = this.v.sd.lastHit.t; histHits[h + 2] = this.v.hhc.lastHit.t; histHits[h + 3] = this.v.hho.lastHit.t; histHits[h + 4] = this.lastBassHit?.t ?? -10; histHits[h + 5] = this.lastBassHit?.f0 ?? 60; histHits[h + 6] = this.lastDrop; } else histHits.fill(-10, at * 7, at * 7 + 7); }
       this.beatE += rms * rms; this.beatEn++;
-      if (rms > 0.004) this.lastSound = t;
+      // What counts as sound follows the level heard: 15% of the loudest lately (a peak halving in 7 s), but never under
+      // twice the quietest (a floor rising 3 dB a second, so a room's hiss through a microphone is silence still) nor
+      // -60 dBFS, and never over the old fixed line, 0.004 (-48 dBFS), so a song at an ordinary level is heard exactly as
+      // before. A source 40 dB down (a microphone across a room, an app turned right down) was silence most of the time,
+      // and its beat was lost. (5% and -70 dBFS let quiet talk between songs through a microphone count as sound: no
+      // silence reset, and a drop on the next song's first kick.) The peak carries over a reset: a new song is the same
+      // source at the same level.
+      const dt = this.levelT === null ? 0 : Math.min(0.5, Math.max(0, t - this.levelT));
+      this.levelT = t;
+      this.loud = Math.max(rms, this.loud * 0.5 ** (dt / 7));
+      this.quiet = Math.min(rms, Math.max(1e-6, this.quiet ?? rms) * 10 ** ((3 * dt) / 20));
+      if (rms > Math.min(0.004, Math.max(0.001, 0.15 * this.loud, 2 * this.quiet))) this.lastSound = t;
       const wasSilent = this.silent;
       this.silent = t - this.lastSound > 1.2;
       // A long gap usually means a new song: start learning from scratch. (Unless Windows says the
@@ -655,11 +791,12 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         this.on.newSong();
         return;
       }
-      if (this.silent) { this.tempo.provisional=null; this.lastSilentAt = t; this.recordTiming(t); return; }
+      if (this.silent) { this.tempo.provisional=null; this.lastSilentAt = t; this.recordTiming(t); this.logLearned(t); return; }
       if (wasSilent) {
         this.prevLg.fill(0);
         this.prevDb.set(this.fastDb);
         this.prevMidMag.fill(0);
+        this.kd = newKickDet(); // (its 2 s of the bands' highest levels would be the last song's)
         // music starting after a silence: likely a song from its start (unless its first chord
         // was already heard)
         if (!this.opening.chord) this.opening = newOpening(true);
@@ -740,15 +877,15 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       if (sBd) {
         this.on.kick(sBd);
         this.lowPending = { t, s: sBd, punch: thump > 10 || click > 6 };
+        if (this.kickDet) { const o = this.kd.onsets; o.push(t); while (o[0] < t - 0.5) o.shift(); } // (for kickFile's time)
       }
+      // (a frame with no new sound would read the same bands again, and the detector counts in frames)
+      if (this.kickDet && fresh) this.kickFrame(t);
       // And a clap or snare is a burst of noise, so it lifts the top end with it: a guitar chop, a
       // keyboard stab or a sung note rises in this band alone (sdVsHh 10 and up), and lifts fewer of
       // its bins at once (measured on songs: claps 0.8 to 0.9 of them, those 0.65 to 0.75).
       const sSd = detectOnset(D.sd, fSd, t, this.sdCover > 0.72 && this.sdVsHh > 0.9 && this.sdVsHh < 10);
-      // (in half-time the clap is the snare on beat 3: one heard anywhere else, the kick's click
-      // on 1 or the bass's growl through a drop, only the timing hears)
-      if (sSd && this.tempo.locked && this.tempo.half !== null && this.halfRole(t) !== 'snare') this.onsets.push({ t, id: 'sd', s: sSd });
-      else if (sSd) this.onset('sd', t, sSd);
+      if (sSd) this.clap(t, sSd, fSd / D.sd.max);
       const sHh = detectOnset(D.hh, fHh, t, true);
       if (sHh) this.hhOnset(t, sHh);
       this.hhTrack(t);
@@ -769,6 +906,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         this.fluxUpdate(t);
       }
       this.recordTiming(t);
+      this.logLearned(t);
     },
 
     // Snapshot only changed timing decisions, after all phase/downbeat corrections this frame.
@@ -790,21 +928,23 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     },
 
     // Records a hit for a voice in the 16-step grid of the bar it falls in.
-    place(id, t, s, tok = null) {
+    place(id, t, s, tok = null, w = Math.min(1, 2 * s)) {
       this.ledger?.event(t, { parts: [{ part: id, confidence: null }], strength: s,
         pitchClass: tok === null ? null : +tok, midi: null, cents: null,
         acousticConfidence: null, timingConfidence: null, status: 'observed', kind: 'onset' });
       const v = this.v[id];
       v.prev = v.last;
+      v.prevKnown = v.lastKnown;
       v.last = t;
+      v.lastKnown = nowSec(); // (when it was filed: see lastHitAt)
       const p = this.placeAt(t);
-      if (!p || Math.abs(p.off) > 0.38) { v.lastHit = { t, step: -1 }; return; }
+      if (!p || Math.abs(p.off) > 0.38) { v.lastHit = { t, step: -1, known: nowSec() }; return; }
       // A clear hit counts in full however loud it was, so a part's quieter hits still make the
-      // pattern; weak strays count for less.
-      v.grid[p.step] += Math.min(1, 2 * s);
+      // pattern; weak strays count for less (w: what it counts for, when its caller knows better).
+      v.grid[p.step] += w;
       v.hitBar[p.step] = p.bar;
       if (tok !== null) v.tok[p.step] = tok;
-      v.lastHit = { t, step: p.step };
+      v.lastHit = { t, step: p.step, known: nowSec() };
       if (window.NC_DEBUG) this.trace('hit', { id, s: +s.toFixed(2), bar: p.bar, step: p.step, tok });
     },
 
@@ -855,7 +995,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           const at = this.placeAt(p.t);
           const quartersOn = [0, 4, 8, 12].filter((s) => this.v.bd.on[s]).length;
           const onBeat = !!(fix && fix.placeHeld && at && Math.abs(at.off) <= 0.38 && at.step % 4 === 0 && (this.v.bd.on[at.step] || quartersOn >= 2));
-          if (role === 'kick' || (role !== 'snare' && (p.punch || onBeat))) this.onset('bd', p.t, p.s);
+          if (role === 'kick' || (role !== 'snare' && (p.punch || onBeat))) this.lowKick(p);
           else this.onsets.push({ t: p.t, id: 'bd', s: p.s });
           return;
         }
@@ -871,7 +1011,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         this.bassHit(p.t, p.s, strike.f0, false);
         this.onsets.push({ t: p.t, id: 'bd', s: p.s });
         return;
-      } else this.onset('bd', p.t, p.s);
+      } else this.lowKick(p);
       // what the low end was doing just before this kick (130-30 ms before), for bassUnderKick
       const ago = t - p.t + 0.014;
       slow.getFloatTimeDomainData(this.slowTime);
@@ -903,11 +1043,15 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // rest). A note counts once it has held 4 readings running (60 ms: a kick's thump, a pluck's
     // attack and a slide between notes don't), each reading in the beat it fell in. Notes are named
     // in the recording's own tuning: one whose instruments sit 40 cents sharp read half its notes a
-    // semitone up (Ramalama). Against the bass lines tracked from the files (18 test songs, a minute
-    // each from 0:40: YIN every 10 ms, held notes, the tuning found), on the 16ths with a bass note:
-    // the bar's one note as the note analysis heard it was right 52% of the time; this tracker's
-    // notes by the beat (harmonyBar), 83% (16 of the 18 songs better); the best any one note a bar
-    // could do is 72%.
+    // semitone up (Ramalama). The bass's own tuning, as an 808 can sit apart from the rest of the
+    // song (Starboy's, 40 cents flat of it); but near half a semitone off, where half sharp and half
+    // flat name every note a semitone apart, the one of the two nearer the song's (see tuning): the
+    // bass's own wavered between them, and Starboy's line came out ab1 under its A minor chords,
+    // half of Treehouse's d2 as eb2. Against the bass lines tracked from the files (18 test songs, a
+    // minute each from 0:40: YIN every 10 ms, held notes, the tuning found), on the 16ths with a bass
+    // note: the bar's one note as the note analysis heard it was right 52% of the time; this
+    // tracker's notes by the beat (harmonyBar), 83% (16 of the 18 songs better); the best any one
+    // note a bar could do is 72%.
     bassTrack(t) {
       const B = this.bt, T = this.tempo;
       slow.getFloatTimeDomainData(this.slowTime);
@@ -920,7 +1064,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         const mf = 69 + 12 * Math.log2(f / 440), off = mf - Math.round(mf);
         B.c = B.c * 0.995 + Math.cos(2 * Math.PI * off);
         B.s = B.s * 0.995 + Math.sin(2 * Math.PI * off);
-        m = Math.round(mf - Math.atan2(B.s, B.c) / (2 * Math.PI));
+        // (the bass's own tuning, on the side nearer the song's: see above)
+        const tb = Math.atan2(B.s, B.c) / (2 * Math.PI);
+        m = Math.round(mf - tb - Math.round(this.tune.est - tb));
       }
       // This is a reading, not an invented note boundary or a certified rest. Keep it pre-grid.
       const readAt = t - (x.length - w / 2) / fs + 0.014;
@@ -960,27 +1106,121 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // a kick, which is already counted) it helps find the tempo.
     bassHit(t, s, f0, forTempo = true) {
       if (forTempo) this.onsets.push({ t, id: 'bass', s });
-      this.lastBassHit = { t, f0 };
+      this.lastBassHit = { t, f0, known: nowSec() };
       this.place('bass', t, s);
+    },
+
+    // A clap or snare (frame()). The timing hears every one; the clap part not one right on a beat
+    // where the snare's ring says the backbeat is on the other two (backbeat): that's the kick's
+    // click, mostly. (On the reference songs a kick's click was taken for a clap on 1 and 3 of most
+    // four-on-the-floor songs, so their clap line read cp cp cp cp, and with claps on every beat
+    // the bar line had no backbeat to go by: Around the World's fell on the claps.)
+    clap(t, s, rel) {
+      const T = this.tempo, back = this.backbeat();
+      this.onsets.push({ t, id: 'sd', s });
+      if (back !== null && T.half === null) {
+        const f = T.n0 + (t - T.t0) / T.P, b = Math.round(f);
+        if (Math.abs(f - b) <= 0.15 && (((b % 4) + 4) % 4) % 2 !== back) return;
+      }
+      // (in half-time the clap is the snare on beat 3: one heard anywhere else, the kick's click
+      // on 1 or the bass's growl through a drop, only the timing hears)
+      if (!(T.locked && T.half !== null && this.halfRole(t) !== 'snare')) this.hit('sd', t, s, Math.min(1, 2 * rel));
+    },
+    // The backbeat, by the snare's ring (snareRing): two opposite beats of the four (2 and 4, however
+    // the bars are counted) ringing out 2 dB over the other two, the kick's, with every beat measured
+    // 8 times. Their first beat, 0 or 1 (counted as ringB is), or null.
+    backbeat() {
+      const R = this.ringB;
+      if (!this.tempo.locked || Math.min(...this.ringN) < 8) return null;
+      for (const x of [0, 1]) if (Math.min(R[x], R[x + 2]) - Math.max(R[x + 1], R[(x + 3) % 4]) >= 2) return x;
+      return null;
     },
 
     onset(id, t, s) {
       this.onsets.push({ t, id, s }); // (the last 20 seconds are kept: frame() trims them)
+      this.hit(id, t, s);
+    },
+    // A kick lowDecide heard: for the timing only when the kick detector gives the kicks (the onsets list is what the tempo, the
+    // beat's place and the bar read, as before), else a kick
+    lowKick(p) {
+      if (this.kickDet) this.onsets.push({ t: p.t, id: 'bd', s: p.s });
+      else this.onset('bd', p.t, p.s);
+    },
+    // The kick detector, once a frame with new sound in it (see KD): this frame's 8 band levels into the ring, the score of the
+    // frame KD.D back, and the frame before that confirmed a kick if its score is a peak over KD.theta. Its kicks go to the kick
+    // line, the drop and the pump (hit), not to the timing's onsets (lowKick).
+    kickFrame(t) {
+      const K = this.kd, R = KD.ring, db = this.midDb, i0 = K.n % R, bands = this.kickBands;
+      let tot = 0;
+      for (let i = 0; i < 8; i++) {
+        let p = 0;
+        for (let k = bands[i][0]; k <= bands[i][1]; k++) p += 10 ** (db[k] / 10);
+        K.L[i0][i] = 10 * Math.log10(p + 1e-20);
+        tot += p;
+      }
+      K.T[i0] = 10 * Math.log10(tot + 1e-20); K.tm[i0] = t; K.n++;
+      // (frames before the first count as the first)
+      const c = K.n - 1 - KD.D;
+      if (c < 0) return;
+      const at = (k) => K.L[Math.max(k, 0) % R], tt = (k) => K.T[Math.max(k, 0) % R];
+      const pre = at(c - 2), a2 = at(c + 2), a5 = at(c + 5), tPre = tt(c - 2), tPost = tt(c + 5);
+      let z = KD.bias, r2 = -Infinity;
+      for (let i = 0; i < 8; i++) {
+        let mx = -Infinity;
+        for (let k = c - 132; k <= c - 3; k++) mx = Math.max(mx, at(k)[i]);
+        z += KD.W2[i] * (a2[i] - pre[i]) + KD.W5[i] * (a5[i] - pre[i]) + KD.WH[i] * (pre[i] - mx)
+          + KD.WP[i] * (pre[i] - tPre) + KD.WQ[i] * (a5[i] - tPost);
+        r2 = Math.max(r2, a2[i] - pre[i]);
+      }
+      K.s[c % R] = 1 / (1 + Math.exp(-z));
+      K.r2[c % R] = r2;
+      // the frame before c: a kick if over theta, higher than the two before it, not lower than c, and not within KD.gap of the last
+      const p = c - 1;
+      if (p < 2) return;
+      // (one waiting with nothing after it in KD.wait frames: a kick after all)
+      if (K.held && p - K.held.p > KD.wait) { this.kickFile(K.held.t, K.held.s); K.held = null; }
+      const sp = K.s[p % R];
+      if (sp < KD.theta || sp <= K.s[(p - 1) % R] || sp <= K.s[(p - 2) % R] || sp < K.s[c % R]) return;
+      const tp = K.tm[p % R];
+      if (tp - K.last < KD.gap) return;
+      K.last = tp;
+      K.held = null; // (one waiting goes: this came within KD.wait of it, so that one was this, early)
+      const tk = tp - KD.lag;
+      if (K.r2[p % R] < KD.arrive || !K.onsets.some((o) => Math.abs(o - tk) <= KD.snap)) { K.held = { t: tk, s: sp, p }; return; }
+      this.kickFile(tk, sp);
+    },
+    kickFile(t, s) {
+      const K = this.kd;
+      let at = null;
+      for (const o of K.onsets) if (Math.abs(o - t) <= KD.snap && (at === null || Math.abs(o - t) < Math.abs(at - t))) at = o;
+      if (at !== null) {
+        if (at === K.snapped) return; // (this onset's kick is filed already)
+        K.snapped = t = at;
+      }
+      // (in half-time the snare's beat has no kick: that's its body, as lowDecide has it)
+      if (this.halfRole(t) === 'snare') return;
+      this.hit('bd', t, s);
+    },
+    // A hit filed: a kick's drop and pump, the beat it fell on, and its place on the voice's line (w: what it counts for there,
+    // see place)
+    hit(id, t, s, w) {
       if (id === 'bd') {
         this.pumpKicks.push(t);
         // A drop: the kick comes back hard after 3+ seconds away while the music kept playing.
         if (this.lastKick > 0 && t - this.lastKick > 3 && this.lastSilentAt < this.lastKick && s >= 0.8 && t - this.lastDrop > 12) {
           this.lastDrop = t;
+          this.lastDropKnown = nowSec();
           this.on.drop();
         }
         this.lastKick = t;
+        this.lastKickKnown = nowSec();
       }
       const p = this.placeAt(t);
       if (p && Math.abs(p.beatF - Math.round(p.beatF)) < 0.15) {
         const i = ((Math.round(p.beatF) % 4) + 4) % 4;
         (id === 'bd' ? this.kickB : this.snareB)[i] += s;
       }
-      this.place(id, t, s);
+      this.place(id, t, s, null, w);
     },
 
     // Hi-hats: decide closed or open by how long each one rings, then place it.
@@ -990,7 +1230,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // A hat on top of a clap can't be timed: the clap's tail rings on. Call those closed.
       this.hhPending = { t, s, peak: this.hhE, masked: t - this.det.sd.last < 0.03 };
       const p = this.placeAt(t);
-      this.hhHit = { t, step: p && Math.abs(p.off) <= 0.38 ? p.step : -1 };
+      this.hhHit = { t, step: p && Math.abs(p.off) <= 0.38 ? p.step : -1, known: nowSec() };
     },
     hhTrack(t) {
       // The hat band's background level: follows the quietest moments, creeping up slowly.
@@ -1007,7 +1247,14 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     },
     hhFinish(p, ring) {
       this.hhPending = null;
-      if (p.masked) { this.place('hhc', p.t, p.s); return; }
+      // (one at a clap's moment is called closed, but once the hats play a steady run, only inside it:
+      // 8ths carrying on through the backbeat. Anywhere else it's the clap's noise in the hat band,
+      // the reggaeton snare's off the 8ths or a house clap between its open hats, and it isn't one.)
+      if (p.masked) {
+        const at = this.placeAt(p.t), on = this.v.hhc.on.map((x, s) => x || this.v.hho.on[s]), d = runOf(on);
+        if (at && Math.abs(at.off) <= 0.38 && (!d || inRun(on, at.step, d))) this.place('hhc', p.t, p.s);
+        return;
+      }
       const xs = this.hhDurs;
       xs.push(Math.log(Math.max(0.005, ring)));
       if (xs.length > 40) xs.shift();
@@ -1037,7 +1284,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // only how much they rose since the last frame, so drums and held chords barely register.
     // The "slice" written in the code is the new note's pitch class.
     lead(t) {
-      mid.getFloatFrequencyData(this.midDb);
+      if (!this.kickDet) mid.getFloatFrequencyData(this.midDb); // (with the kick detector on, frame() read it this frame)
       this.bassBright(t, this.midDb);
       const db = this.midDb, prev = this.prevMidMag, [a, b] = this.leadBand;
       let flux = 0, best = 0, bestK = -1;
@@ -1119,6 +1366,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // Notes come from tonal peaks only (like Essentia's HPCP): a bin counts if it is a local
       // maximum standing 8 dB above its neighbourhood. Drums and noise rarely do.
       const o = chromaLo - 8, pre = this.prefix;
+      let tc = 0, ts = 0;
       pre[0] = 0;
       for (let k = o; k <= chromaHi + 8; k++) pre[k - o + 1] = pre[k - o] + Math.max(-140, db[k]);
       for (let k = chromaLo; k <= chromaHi; k++) {
@@ -1128,9 +1376,12 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         if (v - localMean < 8) continue;
         const p = db[k - 1], q = db[k + 1], den = p - 2 * v + q;
         const f = (k + (den < 0 ? (0.5 * (p - q)) / den : 0)) * hzSlow;
-        const m = 69 + 12 * Math.log2(f / 440), r = Math.round(m);
-        c[((r % 12) + 12) % 12] += Math.cos(Math.PI * (m - r)) ** 2 * 10 ** (v / 20);
+        const a = 10 ** (v / 20), m = 69 + 12 * Math.log2(f / 440), r = Math.round(m);
+        c[((r % 12) + 12) % 12] += Math.cos(Math.PI * (m - r)) ** 2 * a;
+        tc += a * Math.cos(2 * Math.PI * m);
+        ts += a * Math.sin(2 * Math.PI * m);
       }
+      this.tuning(tc, ts);
       if (this.timingBank) {
         const norm = a => { const n=Math.hypot(...a); return Array.from(a,x=>n?x/n:0); };
         this.tonalTiming.push({t:t-this.lag,c:norm(c),b:norm(b),e:this.level*this.level});
@@ -1167,11 +1418,15 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           this.barBass[i] += (w * b[i]) / bx;
           this.beatBass[i] += (w * b[i]) / bx;
         }
-        // (and the lowest strong peak's note a full vote more: see above)
-        if (lowI >= 0) { this.barBass[bm.pc[lowI]] += w; this.beatBass[bm.pc[lowI]] += w; }
-        this.bassMidi[peakMidi] += w;
+        // (and the lowest strong peak's note a full vote more: see above. Without one, a sub under the map's 35 Hz say, the
+        // frame says nothing of the octave or the note now: it voted for MIDI 0, which as a C's octave lost the bar its
+        // bass note, and lead() took every melody note over 400 Hz for an overtone of 8 Hz, half the time in Not Like Us)
+        if (lowI >= 0) {
+          this.barBass[bm.pc[lowI]] += w; this.beatBass[bm.pc[lowI]] += w;
+          this.bassMidi[peakMidi] += w;
+          this.bassF0 = 440 * 2 ** ((peakMidi - 69) / 12);
+        }
         this.bassFrames++;
-        this.bassF0 = 440 * 2 ** ((peakMidi - 69) / 12);
       }
       if (mx > 1e-7) this.listenOpening(t, c, b);
 
@@ -1188,6 +1443,23 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       this.knobAcc.chords += centroid(200, 6000);
       this.knobAcc.hh += this.hhE;
       this.knobAcc.n++;
+    },
+
+    // The recording's tuning (est): how far its notes sit off A440's semitones (Ramalama's 0.45 of a
+    // semitone sharp, Treehouse's half), as a running circular mean of the note analysis's tonal
+    // peaks, each weighted by its loudness and fading over some seconds (c, s: one reading's peaks'
+    // sums). On 27 of 33 test songs it reads within 10 cents of their separated bass's tuning; most
+    // of the rest are 808s, which can sit apart (Starboy's, 40 cents flat of the song). Half a
+    // semitone sharp is half flat with every note named one up, so a tuning wavering about there
+    // stays on the side it's on, up to 0.6; never further, or one that wandered while there was
+    // little to hear could end up a semitone off.
+    tuning(c, s) {
+      const u = this.tune;
+      if (!Number.isFinite(c) || !Number.isFinite(s)) return; // (one NaN would stay in the sums for good, and the bass tracker with it)
+      u.c = u.c * 0.995 + c;
+      u.s = u.s * 0.995 + s;
+      const d = Math.atan2(u.s, u.c) / (2 * Math.PI), other = d - Math.sign(d);
+      u.est = Math.abs(d - u.est) > 0.5 && Math.abs(other) <= 0.6 ? other : d;
     },
 
     clock(t) {
@@ -1437,6 +1709,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         }
         v.sig = v.on.join();
         v.hitBar.fill(-999);
+        if (shift % 4) v.four = false; // (the beats it was on are steps between beats now)
+        v.turned += shift;
       }
       // (the bass line by the beat starts over: its beats aren't the same beats now)
       this.bt.bars.clear();
@@ -1540,10 +1814,35 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         const v = this.v[id], g = v.grid;
         let mx = 0;
         for (const x of g) mx = Math.max(mx, x);
+        // The kick on every beat (four on the floor) is the commonest kick there is, and the detector hears it patchily:
+        // a beat's kick under a held bass note goes as the bass, an off-beat bass note comes in as a kick. With each beat
+        // caught some bars and the bass's notes others, the steps came and went, or a bass note took a step for good
+        // (Von Dutch, Murder on the Dancefloor, Harder Better Faster Stronger: not one bar written right). So once the
+        // beats clearly lead (see fourFloor) the line is the four beats, and a step between them needs to be nearly as
+        // steady as the busiest step. A pattern that isn't four on the floor (a kick on 1 and 3, a dubstep or breakbeat
+        // kick) leaves two beats with too little, or a step between them stronger, and is learned as before. On the
+        // detection bench: kick lines exactly right 18% -> 26% of the bars of 33 whole songs (changing 15% less often),
+        // 12% -> 22% on 57 drum-stem references, the test songs no worse.
+        const F = id === 'bd' && this.fourFloor, wasFour = v.four;
+        if (F && mx > 0) {
+          const k = v.four ? 1 : 0, beats = [g[0], g[4], g[8], g[12]].sort((a, b) => b - a);
+          let between = 0;
+          for (let s = 0; s < 16; s++) if (s % 4) between = Math.max(between, g[s]);
+          // (and the beats a hit's weight that any step needs, 0.5 to start and 0.3 to keep: weighed only against the busiest
+          // step, it held all four through a breakdown with the grid long empty, and lowDecide, which reads the line, took the
+          // bass notes on its beats for kicks: the kick line back mid-breakdown, and the drop early)
+          v.four = beats[2] >= Math.max(F.beat[k] * mx, k ? 0.3 : 0.5) && beats[2] > F.over[k] * between && beats[3] >= F.fourth[k] * mx;
+        } else v.four = false;
         for (let s = 0; s < 16; s++) {
-          if (!v.on[s] && g[s] >= Math.max(v.onAt * mx, 0.5)) v.on[s] = true;
-          else if (v.on[s] && g[s] < Math.max(v.offAt * mx, 0.3)) v.on[s] = false;
+          if (v.four && s % 4 === 0) { v.on[s] = true; continue; }
+          const onAt = v.four ? F.between[0] : v.onAt, offAt = v.four ? F.between[1] : v.offAt;
+          if (!v.on[s] && g[s] >= Math.max(onAt * mx, 0.5)) v.on[s] = true;
+          else if (v.on[s] && g[s] < Math.max(offAt * mx, 0.3)) v.on[s] = false;
         }
+        // An open hat in a gap of the closed hats' run (8ths with an oh on the and of 4) is the run
+        // carrying on under it, as a live coder writes it: hh*8, and the oh on its own line. (One
+        // hat is heard there, the open one; the closed line had a hole in it every bar.)
+        if (id === 'hhc' && !this.v.hho.tooBusy) for (let s = 0; s < 16; s++) if (!v.on[s] && this.v.hho.on[s] && inRun(v.on, s)) v.on[s] = true;
         // A clap part is a few hits a bar: the backbeat, some ghost notes, a roll for a bar or two.
         // Two bars running of more than 6 is something else heard as claps (a tambourine, a
         // keyboard playing 8ths): no clap is shown (present) until it has been thinner for four
@@ -1560,10 +1859,14 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         // Show a pattern only once its rhythm has held steady, so early guesses don't flash by.
         // (For vox only the rhythm counts; its notes may change from bar to bar.) An empty
         // pattern never replaces a real one: a part that stops fades out via present() instead.
+        // Four on the floor is shown the bar it's found: it's no early guess, it's taken from the
+        // grid's last several bars, and waiting a bar more for it to repeat left the line before it
+        // written a bar longer (on the bench, kick lines exactly right 0.28 -> 0.29 of the whole
+        // songs' bars, 0.23 -> 0.25 on the drum-stem references, 22 songs better, none worse).
         const sig = v.on.join();
         v.sigN = sig === v.sig ? v.sigN + 1 : 0;
         v.sig = sig;
-        if (v.sigN >= v.holdBars && v.on.some(Boolean)) { v.shown = v.on.slice(); v.approx = false; }
+        if ((v.sigN >= v.holdBars || (v.four && !wasFour)) && v.on.some(Boolean)) { v.shown = v.on.slice(); v.approx = false; }
         // The closed hats, plainly playing (3 or more a bar for 4 bars, on 7 of the 8 eighths over
         // the last several bars) but never holding still long enough to be learned (distorted or
         // buried hats, caught about half the time, a different half each bar): the steady
@@ -1617,8 +1920,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         const chord = bestChord(sum, bassPc);
         if (chord && chord.score > 0.75) {
           o.chord = chord;
-          o.key = { root: chord.root, mode: chord.q === 'm' ? 'minor' : 'major' };
-          for (let i = 0; i < 12; i++) this.longChroma[i] += 0.1 * (chord.tones[i] + (i === chord.root ? 0.3 : 0));
+          this.keyOpening(chord, bassPc);
           this.note(`first chord ${chord.name}`);
           return;
         }
@@ -1680,54 +1982,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       if (chord) {
         this.chordSeen = t;
         this.lastChord = chord;
-        // The key comes from the chords and bass notes found so far, not raw spectra: each chord's
-        // own three notes (not its overtones, which add notes the song doesn't have).
-        for (let i = 0; i < 12; i++) this.longChroma[i] = this.longChroma[i] * 0.9 + 0.1 * (chord.tones[i] + (i === bassPc ? 0.3 : 0));
-        const same = (a, b) => a && b && a.root === b.root && a.mode === b.mode;
-        const relative = (a, b) => a && b && a.mode !== b.mode && (a.mode === 'major' ? (a.root + 9) % 12 === b.root : (b.root + 9) % 12 === a.root);
-        const parallel = (a, b) => a && b && a.root === b.root && a.mode !== b.mode;
-        // next door on the circle of fifths, one note apart (C major and G major, A minor and G
-        // major): the major keys with the same notes a fifth apart
-        const majorOf = (k) => (k.mode === 'major' ? k.root : (k.root + 3) % 12);
-        const nextDoor = (a, b) => a && b && [5, 7].includes((majorOf(a) - majorOf(b) + 12) % 12);
-        // each chord a vote for the key's mode, fading by 1% a chord
-        for (let i = 0; i < 24; i++) this.keyChords[i] *= 0.99;
-        this.keyChords[chord.root * 2 + (chord.q === 'm' ? 1 : 0)]++;
-        const fits = keyFits(this.longChroma);
-        let k = bestKey(fits);
-        // D minor or D major? Where the chords say clearly, they settle it (Oct 28: a song of Dm, Gm,
-        // Bb and A read as D major from its first chord, on and off for minutes).
-        const mode = k && chordModeEvidence(this.keyChords, k.root);
-        if (mode) k = fits.find((f) => f.root === k.root && f.mode === mode);
-        // A minor or C major? The same notes, and the major key often fits a little better (on
-        // the test songs in minor keys, by up to 0.2, once 0.34), so the song's first chord
-        // settles it, unless the notes clearly say otherwise.
-        const home = this.opening.key;
-        if (relative(k, home)) {
-          const h = fits.find((f) => same(f, home));
-          if (k.score - h.score < 0.3) k = h;
-        }
-        // (keyRootMargin: set by tools/key-root-study.mjs to try other margins)
-        k = preferCurrentKey(fits, k, this.key, this.keyBars, this.keyRootMargin ?? 0.1);
-        // Change the displayed key only after the new one wins two bars running. After the first
-        // eight bars, a relative or parallel key (A minor for C major, or C minor) needs eight: the
-        // same notes, or the same home note with a different third, so which one wins is often a
-        // close call, and the two would trade places. A key next door needs four (on a recording
-        // the key went Bb major, D minor, Bb major, D minor in 25 seconds; real key changes, often
-        // to a key next door, come a few bars later). Once a key has been shown for 16 bars it's
-        // the song's, and a change takes twice as long (16, 12, and 8 bars for any other key): on
-        // whole songs from a recording (Oct 15) the key still went A major, F# minor, A major, F#
-        // minor in one; with this, half the changes, and the test songs' keys found as before. The
-        // other mode on the same home note, when the chords vouch for it, needs only two: the notes
-        // had the mode wrong.
-        this.keyBars++;
-        const settled = this.keyShown >= 16;
-        const need = mode && parallel(k, this.key) ? 2 : this.keyBars <= 8 ? 2 : relative(k, this.key) || parallel(k, this.key) ? (settled ? 16 : 8) : nextDoor(k, this.key) ? (settled ? 12 : 4) : settled ? 8 : 2;
-        if (!this.key || same(k, this.key)) { this.key = k || this.key; this.keyCand = null; this.keyCandN = 0; }
-        else if (same(k, this.keyCand)) {
-          if (++this.keyCandN >= need) { this.key = k; this.keyCand = null; this.keyCandN = 0; this.keyShown = 0; }
-        } else { this.keyCand = k; this.keyCandN = 1; }
-        this.keyShown++;
+        this.keyBar(chord, bassPc, beats);
       }
       this.updateKnobs();
       if (window.NC_DEBUG) {
@@ -1740,6 +1995,99 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       this.barBass.fill(0);
       this.bassMidi.fill(0);
       this.barFrames = this.bassFrames = 0;
+    },
+
+    // The key line starts over (reset).
+    keyReset() {
+      this.longChroma = new Float32Array(12);
+      this.key = null;
+      this.keyChords = new Float64Array(24);
+      this.keyHome = new Float64Array(24); // how much each key's tonic has been heard (keyTonic)
+      this.keyCand = null;
+      this.keyCandN = 0;
+      this.keyBars = 0; // bars with a chord since the reset
+      this.keyShown = 0; // and since the key shown last changed
+    },
+
+    // The song's first chord (listenOpening) names its home key, and counts as a bar of its tonic
+    // heard (bassPc: its bass note, -1 for none).
+    keyOpening(chord, bassPc = -1) {
+      this.opening.key = { root: chord.root, mode: chord.q === 'm' ? 'minor' : 'major' };
+      for (let i = 0; i < 12; i++) this.longChroma[i] += 0.1 * (chord.tones[i] + (i === chord.root ? 0.3 : 0));
+      this.keyTonic(chord, bassPc, null);
+    },
+
+    // The tonic heard, a bar at a time, fading by 1% a bar (tonicOf): the bar's chord is a vote for
+    // the key on its root in its mode, its bass a vote for the two keys on the bass note. The bass
+    // goes by the bass tracker's notes, a quarter a beat, where it has them (beats: MIDI, or null):
+    // they're right more often than the note analysis's (see harmonyBar), and where the bass moves
+    // in a bar (two chords to a bar, as in Better Off Alone's intro) each note gets its beats, not the
+    // whole bar. Else the bar's one bass note (bassPc).
+    keyTonic(chord, bassPc, beats) {
+      for (let i = 0; i < 24; i++) this.keyHome[i] *= 0.99;
+      this.keyHome[chord.root * 2 + (chord.q === 'm' ? 1 : 0)]++;
+      const bass = beats?.some((m) => m !== null) ? beats.filter((m) => m !== null).map((m) => [m % 12, 0.25]) : bassPc >= 0 ? [[bassPc, 1]] : [];
+      for (const [pc, w] of bass) { this.keyHome[pc * 2] += w; this.keyHome[pc * 2 + 1] += w; }
+    },
+
+    // The key shown, after a bar whose chord was found (bassPc: the bar's bass note, -1 for none;
+    // beats: the bass tracker's notes by the beat, or null).
+    keyBar(chord, bassPc, beats = null) {
+      // The key comes from the chords and bass notes found so far, not raw spectra: each chord's
+      // own three notes (not its overtones, which add notes the song doesn't have).
+      for (let i = 0; i < 12; i++) this.longChroma[i] = this.longChroma[i] * 0.9 + 0.1 * (chord.tones[i] + (i === bassPc ? 0.3 : 0));
+      const same = (a, b) => a && b && a.root === b.root && a.mode === b.mode;
+      const relative = (a, b) => a && b && a.mode !== b.mode && (a.mode === 'major' ? (a.root + 9) % 12 === b.root : (b.root + 9) % 12 === a.root);
+      const parallel = (a, b) => a && b && a.root === b.root && a.mode !== b.mode;
+      // next door on the circle of fifths, one note apart (C major and G major, A minor and G
+      // major): the major keys with the same notes a fifth apart
+      const majorOf = (k) => (k.mode === 'major' ? k.root : (k.root + 3) % 12);
+      const nextDoor = (a, b) => a && b && [5, 7].includes((majorOf(a) - majorOf(b) + 12) % 12);
+      // each chord a vote for the key's mode, fading by 1% a chord
+      for (let i = 0; i < 24; i++) this.keyChords[i] *= 0.99;
+      this.keyChords[chord.root * 2 + (chord.q === 'm' ? 1 : 0)]++;
+      this.keyTonic(chord, bassPc, beats);
+      const fits = keyFits(this.longChroma);
+      let k = bestKey(fits);
+      // D minor or D major? Where the chords say clearly, they settle it (Oct 28: a song of Dm, Gm,
+      // Bb and A read as D major from its first chord, on and off for minutes).
+      const mode = k && chordModeEvidence(this.keyChords, k.root);
+      if (mode) k = fits.find((f) => f.root === k.root && f.mode === mode);
+      // A minor or C major? The same notes, and the major key often fits a little better (on
+      // the test songs in minor keys, by up to 0.2, once 0.34). Where the tonic heard clearly says
+      // which (tonicOf), it settles it; else the song's first chord does, unless the notes clearly
+      // say otherwise. (The first chord alone was wrong where it wasn't the song's tonic: Starboy's
+      // C and Thriller's E, each the relative major, which the notes' fit then kept for most of the
+      // song; and where it was neither of the two (Better Off Alone's E), the intro's blended bars
+      // could make it the relative major for good, in half the runs.)
+      const home = this.opening.key;
+      if (relative(k, home) && !tonicOf(this.keyHome, k)) {
+        const h = fits.find((f) => same(f, home));
+        if (k.score - h.score < 0.3) k = h;
+      }
+      // (keyRootMargin: set by tools/key-root-study.mjs to try other margins)
+      k = preferCurrentKey(fits, k, this.key, this.keyBars, this.keyRootMargin ?? 0.1);
+      const tonic = tonicOf(this.keyHome, k);
+      if (tonic && !same(tonic, k)) k = fits.find((f) => same(f, tonic));
+      // Change the displayed key only after the new one wins two bars running. After the first
+      // eight bars, a relative or parallel key (A minor for C major, or C minor) needs eight: the
+      // same notes, or the same home note with a different third, so which one wins is often a
+      // close call, and the two would trade places. A key next door needs four (on a recording
+      // the key went Bb major, D minor, Bb major, D minor in 25 seconds; real key changes, often
+      // to a key next door, come a few bars later). Once a key has been shown for 16 bars it's
+      // the song's, and a change takes twice as long (16, 12, and 8 bars for any other key): on
+      // whole songs from a recording (Oct 15) the key still went A major, F# minor, A major, F#
+      // minor in one; with this, half the changes, and the test songs' keys found as before. The
+      // other mode on the same home note, when the chords vouch for it, needs only two: the notes
+      // had the mode wrong. So does the relative key when the tonic heard vouches for it.
+      this.keyBars++;
+      const settled = this.keyShown >= 16;
+      const need = (mode && parallel(k, this.key)) || (tonic && relative(k, this.key)) ? 2 : this.keyBars <= 8 ? 2 : relative(k, this.key) || parallel(k, this.key) ? (settled ? 16 : 8) : nextDoor(k, this.key) ? (settled ? 12 : 4) : settled ? 8 : 2;
+      if (!this.key || same(k, this.key)) { this.key = k || this.key; this.keyCand = null; this.keyCandN = 0; }
+      else if (same(k, this.keyCand)) {
+        if (++this.keyCandN >= need) { this.key = k; this.keyCand = null; this.keyCandN = 0; this.keyShown = 0; }
+      } else { this.keyCand = k; this.keyCandN = 1; }
+      this.keyShown++;
     },
 
     // Sidechain pumping, for .duck(): the chords and pads dipping under each kick and swelling
@@ -1924,6 +2272,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // up, a livestream's talk and game sounds mostly under 0.25).
       const dense = this.dense(t, bpm), clear = conf >= 0.82 && fit >= 0.25 && dense;
       if (clear) T.clearAt = t;
+      // what the drums have read since the lock, fairly sure (the last minute of it: see repeatsThere)
+      if (T.locked && fit > 0 && conf >= 0.6) { T.heard.push(bpm); if (T.heard.length > 120) T.heard.shift(); }
       if (this.timingBank && !T.locked) {
         // Provisional pulse is display only. Repetition and density guards still apply.
         const stable = T.previewBpm && near(bpm,T.previewBpm);
@@ -2005,6 +2355,24 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         const mean = same.length >= 6 ? same.reduce((a, b) => a + b, 0) / same.length : 0;
         if (mean && this.repeatsThere(t, mean)) this.lockTo(t, mean, `tempo change ${T.bpm.toFixed(1)} -> ${mean.toFixed(1)} (the hits fit it better)`);
       }
+      // The drums reading the same beat 1.5 to 3.5% off the tempo held, reading after reading: that's the tempo. A reading
+      // that near counts as the same beat, left to updatePhase's fit, but that fit counts the hits on the grid it has, so a
+      // grid 3% off fits itself and stays (and it won't move over 2% anyway): Gotye locked at 133 for its 129 and kept it
+      // 76 s, Dance (heard from 1:00) 116 for its 113 all through, Storm 133 for its 137, the drums reading the right tempo
+      // every half second all along. So 6 sure readings running (conf 0.75 and fit 0.18, as the drums need to lock), all
+      // off by 1.5% or more on the same side, move the tempo to their middle one. (Not a tapped tempo, nor one from the
+      // whole sound, which follows its own readings: fluxUpdate.)
+      if (T.locked && !T.tapped && !T.byFlux) {
+        const off = bpm / T.bpm - 1, D = T.drift;
+        if (conf >= 0.75 && fit >= 0.18 && Math.abs(off) < 0.035) D.push(off); else D.length = 0;
+        if (D.length > 6) D.shift();
+        if (D.length === 6 && D.every((o) => Math.sign(o) === Math.sign(off) && Math.abs(o) >= 0.015)) {
+          const to = T.bpm * (1 + D.slice().sort((a, b) => a - b)[3]);
+          this.note(`tempo ${T.bpm.toFixed(1)} -> ${to.toFixed(1)} (the drums read it, 6 times running)`);
+          this.setPeriod(t, to, false);
+          D.length = 0;
+        }
+      }
       if (T.locked) this.updatePhase(t);
     },
 
@@ -2057,11 +2425,31 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // corrections of a wrong lock come early (Gypsy Woman 160 -> 120 at 0.444 against 0.417, 19 s
     // after its lock; I Must Apologise 105 -> 157 at 0.742 against 0.730, after 23 s), while the
     // dubstep remix's breakdown went from 140, held 83 s, to 105 at 0.718 against 0.692, for 40 s.
+    // They have to repeat as music does, too (0.35, as for a lock): where neither tempo's bars
+    // repeat, a little more at the new one proves nothing. On the detection bench (Nov 1) a right
+    // tempo went to 3:4, 2:3 or 4:3 of itself that way six times (five songs), for 12 to 52 s, the new
+    // one repeating 0.11 to 0.25 (once the two tied at 0.11); the wrong locks that came right, 0.49 and up.
+    // And the drums must have read the new tempo, since the lock, at least as often as the one held
+    // (or its double or half). A song's tempo stays put while its sections change: a stretch of
+    // Crave You reads as 105 for 7 s, its bars repeating better there (0.61) than at its 140 (0.40),
+    // after the drums had read 140 for 80 s. Asked only of a tempo they have read 40 times (about
+    // 20 s of readings) since the lock: one read less has nothing to hold with (I'm Not Alone,
+    // locked at 87 on the whole sound before its drums came in at 131: 15 readings of 87 then, and
+    // at 44.1 kHz waiting for 15 of 131 held the wrong tempo 4.6 s longer). Unless the held tempo's
+    // bars don't repeat at all any more (under 0.1): then the song changed under it (the test song
+    // going from 128 to 85).
     repeatsThere(t, bpm) {
       const T = this.tempo;
       const related = T.locked && [1.5, 2 / 3, 4 / 3, 3 / 4].some((r) => Math.abs(bpm / T.bpm - r) / r < 0.06);
-      const margin = t - (T.lockedAt ?? t) >= 45 ? 0.1 : 0;
-      return !related || this.repeats(t, bpm) >= this.repeats(t, T.bpm) + margin;
+      if (!related) return true;
+      const margin = t - (T.lockedAt ?? t) >= 45 ? 0.1 : 0, there = this.repeats(t, bpm), here = this.repeats(t, T.bpm);
+      // (the floor only where there are drums to repeat: repeats() is 0 without them, and a song with none, locked from the
+      // whole sound at 3:2 or 4:3 of its tempo, would have no way back)
+      const drums = this.onsets.filter((o) => o.t > t - 8 && (o.id === 'bd' || o.id === 'sd' || o.id === 'hh')).length >= 4;
+      if ((drums && there < 0.35) || there < here + margin) return false;
+      const near = (x, y) => Math.abs(x - y) / y < 0.035;
+      const held = T.heard.filter((x) => [1, 2, 0.5].some((k) => near(x, T.bpm * k))).length;
+      return held < 40 || here < 0.1 || T.heard.filter((x) => near(x, bpm)).length >= held;
     },
 
     dense(t, bpm) {
@@ -2143,12 +2531,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         this.keyShown = 0;
       }
       T.candN = T.frun = 0;
-      T.better = [];
+      T.better = []; T.drift = [];
+      T.heard = [];
       // Start learning again, but keep showing the old patterns until new ones settle.
       for (const id of PARTS) {
         const v = this.v[id];
         v.grid.fill(0); v.on.fill(false); v.hitBar.fill(-999);
-        v.sig = null; v.sigN = 0;
+        v.sig = null; v.sigN = 0; v.four = false;
         v.long.fill(0); v.counts.length = 0; // (the hats' fallback memory too: a new grid)
       }
       this.bt.bars.clear();
@@ -2429,6 +2818,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         this.kickB.fill(0);
         this.snareB.fill(0);
         this.changeB.fill(0); this.sectionB.fill(0); this.beatDb.length = 0;
+        if (shift === 2) this.ringN.fill(0); // (the snare's ring was read around beats now half a beat off: the beats between)
         this.note(`beat moved ${shift > 0 ? 'later' : 'earlier'} by ${Math.abs(shift)}/16`);
         this.relabel(shift);
       }
@@ -2448,21 +2838,162 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     },
 
     // Where time t falls on the step grid (16 per bar, counted from the start), or null.
-    stepAt(t) {
+    // (with asOf, the beat grid as the tick at or before that time knew it: for a picture stepping at its own time)
+    stepAt(t, asOf) {
+      if (asOf !== undefined && histN) {
+        const k = histAt(asOf) * 7;
+        return histTempo[k] ? ((histTempo[k + 4] + (t - histTempo[k + 3]) / histTempo[k + 2] - histTempo[k + 5]) / 4) * 16 : null;
+      }
       const T = this.tempo;
       return T.locked ? ((T.n0 + (t - T.t0) / T.P - T.down) / 4) * 16 : null;
+    },
+    // the tempo (bpm, 0 while it isn't locked) as the tick at or before t knew it
+    bpmAt(t) {
+      if (!histN) return this.tempo.locked ? this.tempo.bpm : 0;
+      const k = histAt(t) * 7;
+      return histTempo[k] ? histTempo[k + 1] : 0;
+    },
+    // how far the steps' numbers had been moved in all (tempo.renumber) at the tick at or before t
+    renumberAt(t) {
+      return histN ? histTempo[histAt(t) * 7 + 6] : this.tempo.renumber;
+    },
+
+    // The fast analyser's spectrum (dB, as fastDb) and the level, as the tick at or before time t heard them: what a
+    // picture steps on at its own time. Before any tick, the present ones. (dbAt is a window on the history: read it
+    // now, don't keep it.)
+    dbAt(t) {
+      const at = histN ? histAt(t) : -1;
+      return at < 0 ? this.fastDb : histDb.subarray(at * this.fastDb.length, (at + 1) * this.fastDb.length);
+    },
+    levelAt(t) {
+      const at = histN ? histAt(t) : -1;
+      return at < 0 ? this.level : histLevel[at];
+    },
+    // the notes sounding (as frameChroma: 12 pitch classes) and whether the engine called it silence, as the tick at or
+    // before t had them
+    chromaAt(t) {
+      const at = histN ? histAt(t) : -1;
+      return at < 0 ? this.frameChroma : histChroma.subarray(at * 12, at * 12 + 12);
+    },
+    silentAt(t) {
+      const at = histN ? histAt(t) : -1;
+      return at < 0 ? this.silent : histSilent[at] === 1;
+    },
+    // the mid analyser's spectrum (as midDb: the 4096-point one, refreshed every other tick) as the tick at or before t had it
+    midAt(t) {
+      const at = histN ? histAt(t) : -1;
+      return at < 0 ? this.midDb : histMid.subarray(at * this.midDb.length, (at + 1) * this.midDb.length);
+    },
+    // the waveform (the last fftSize samples, as eng.time) of the tick at or before t
+    timeAt(t) {
+      const at = histN ? histAt(t) : -1;
+      return at < 0 ? this.time : histWave.subarray(at * this.time.length, (at + 1) * this.time.length);
+    },
+
+    // For a picture stepping at its own time st (not "now"): when a part's last hit was, counting only the hits the engine had
+    // filed by st (a hit is filed up to ~0.19 s after it sounded: before that, it is not yet heard); and whether present() said
+    // the part was there, and the bass and the chords were playing, as the tick at or before st had them.
+    lastHitAt(id, st) {
+      const v = this.v[id];
+      return v.lastKnown <= st ? v.last : v.prevKnown <= st ? v.prev : -10;
+    },
+    presentAt(id, st) {
+      const bit = PARTS.indexOf(id), at = histN && bit >= 0 ? histAt(st) : -1;
+      return at < 0 ? this.present(id, st) : ((histHere[at] >> bit) & 1) === 1;
+    },
+    // The learned structures as they stood at time st: { shown, on, tooBusy (each by part), slots, bassBeats }, the entry of the
+    // last change the engine had seen by then. (Read them, don't change them.)
+    learnedAt(st) {
+      for (let i = learnedLog.length - 1; i >= 0; i--) if (learnedLog[i].known <= st) return learnedLog[i];
+      return learnedLog[0] ?? this.learnedNow();
+    },
+    learnedNow() {
+      const copy = (a) => (a ? a.slice() : a), entry = { known: -Infinity, shown: {}, on: {}, tooBusy: {}, slots: (this.slots || []).slice(), bassBeats: (this.bassBeats || []).slice() };
+      if (this.v) for (const id of PARTS) { const v = this.v[id]; entry.shown[id] = v.shown ? copy(v.shown) : null; entry.on[id] = copy(v.on); entry.tooBusy[id] = !!v.tooBusy; }
+      return entry;
+    },
+    logLearned(t) {
+      // (compared with the last entry in place, a tick at a time, with nothing made: it is what the engine does 66 times a second)
+      const last = learnedLog.length ? learnedLog[learnedLog.length - 1] : null;
+      if (last && (!this.v || this.sameLearned(last))) return;
+      const entry = this.learnedNow();
+      entry.known = t;
+      entry.slots = (this.slots || []).map((sl) => (sl ? { ...sl } : sl));
+      entry.bassBeats = (this.bassBeats || []).map((b) => (b ? b.slice() : b));
+      learnedLog.push(entry);
+      if (learnedLog.length > 48) learnedLog.shift();
+    },
+    sameLearned(e) {
+      const same = (a, b) => {
+        if (!a || !b) return !a && !b;
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) if (!!a[i] !== !!b[i]) return false;
+        return true;
+      };
+      for (const id of PARTS) {
+        const v = this.v[id];
+        if (!same(v.shown, e.shown[id]) || !same(v.on, e.on[id]) || !!v.tooBusy !== e.tooBusy[id]) return false;
+      }
+      const slots = this.slots || [], beats = this.bassBeats || [];
+      if (slots.length !== e.slots.length || beats.length !== e.bassBeats.length) return false;
+      for (let i = 0; i < slots.length; i++) {
+        const a = slots[i], b = e.slots[i];
+        if (!a || !b) { if (!!a !== !!b) return false; continue; }
+        if ((a.bass || '') !== (b.bass || '') || (a.chord?.root ?? null) !== (b.chord?.root ?? null) || (a.chord?.third ?? null) !== (b.chord?.third ?? null) || (a.chord?.name ?? '') !== (b.chord?.name ?? '')) return false;
+      }
+      for (let i = 0; i < beats.length; i++) {
+        const a = beats[i], b = e.bassBeats[i];
+        if (!a || !b) { if (!!a !== !!b) return false; continue; }
+        if (a.length !== b.length) return false;
+        for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return false;
+      }
+      return true;
+    },
+
+    // when each kind of hit last was, as the tick at or before st had it (what the dancers hear): an object that is reused, so
+    // read it now: { kick, snare, hat, openHat, bass, bassF0, drop }
+    hitsAt(st) {
+      const out = (this._hits ||= { kick: -10, snare: -10, hat: -10, openHat: -10, bass: -10, bassF0: 60, drop: -99 });
+      const at = histN ? histAt(st) : -1;
+      if (at < 0 || !this.v) {
+        out.kick = this.lastKick; out.snare = this.v?.sd.lastHit.t ?? -10; out.hat = this.v?.hhc.lastHit.t ?? -10; out.openHat = this.v?.hho.lastHit.t ?? -10;
+        out.bass = this.lastBassHit?.t ?? -10; out.bassF0 = this.lastBassHit?.f0 ?? 60; out.drop = this.lastDrop;
+      } else {
+        const h = at * 7;
+        out.kick = histHits[h]; out.snare = histHits[h + 1]; out.hat = histHits[h + 2]; out.openHat = histHits[h + 3]; out.bass = histHits[h + 4]; out.bassF0 = histHits[h + 5]; out.drop = histHits[h + 6];
+      }
+      return out;
+    },
+    // the beat's length in seconds as the tick at or before st knew it (0.5 while there is no beat)
+    periodAt(st) {
+      if (!histN) return this.tempo.locked && this.tempo.P > 0 ? this.tempo.P : 0.5;
+      const k = histAt(st) * 7;
+      return histTempo[k] === 1 && histTempo[k + 2] > 0 ? histTempo[k + 2] : 0.5;
+    },
+    seenAt(which, st) { // (which: 'bass' or 'chords'; as bassSeen and chordSeen)
+      const at = histN ? histAt(st) : -1;
+      return at < 0 ? (which === 'bass' ? this.bassSeen : this.chordSeen) : histSeen[at * 2 + (which === 'bass' ? 0 : 1)];
+    },
+    playingAt(which, st) {
+      const at = histN ? histAt(st) : -1;
+      if (at < 0) return this.playing(which === 'bass' ? this.bassSeen : this.chordSeen, st);
+      const k = at * 7;
+      return histTempo[k] === 1 && histSilent[at] !== 1 && st - histSeen[at * 2 + (which === 'bass' ? 0 : 1)] < 10 * histTempo[k + 2];
     },
 
     // A part starts playing once it has been heard twice in 3 bars, and stops after 3 bars without
     // it. So a stray hit doesn't bring a part back, and a patchy one (hits missed, a sparse
     // pattern) doesn't come and go: each would mute and unmute it (a _ typed and deleted) every few
-    // seconds.
+    // seconds. The kick in 2: two bars without one is a breakdown (the code says so on the tempo's
+    // line), and its line written on into one was a bar wrong every time. (On the detection bench
+    // the whole songs' kick lines were exactly right in 0.26 -> 0.28 of the bars, 13 songs better and
+    // none worse; the line is muted about once in 90 seconds of a song, from once in 3 minutes.)
     present(id, t) {
       const v = this.v[id], P = this.tempo.P;
       // (and nothing plays in silence: the music has stopped, whatever was learned stays for when
       // it comes back)
       if (!this.tempo.locked || this.silent || !v.shown?.some(Boolean) || v.tooBusy) return (v.here = false);
-      const within = Math.max(4.5, P * 12);
+      const within = id === 'bd' ? P * 8.5 : Math.max(4.5, P * 12); // (8.5: a kick every two bars still plays)
       v.here = v.here ? t - v.last < within : t - v.last < within && t - v.prev < within;
       return v.here;
     },

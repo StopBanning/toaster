@@ -19,6 +19,7 @@ export function createHandLog(nc = window.nc) {
       if (!nc?.handLogStart) return null;
       const file = await nc.handLogStart();
       on = true; t0 = t; sentAt = t; lines = []; last = null; had = 0; was = {};
+      // (new Date(): the log's header, when it was started)
       put(t, { started: new Date().toISOString(), screen: [innerWidth, innerHeight], dpr: devicePixelRatio });
       return file;
     },

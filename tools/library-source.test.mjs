@@ -70,6 +70,38 @@ test('a file that cannot be read is listed by its name; the depth and the limit 
   assert.deepEqual((await scanHandle(dir('empty', {}), { thumbnail, hash, frame: async () => {} })).tracks, []);
 });
 
+test('a folder in it that cannot be read is left out and the rest is read; the folder picked has to be read', async () => {
+  const locked = { kind: 'directory', name: 'Locked', async *entries() { throw new DOMException('denied', 'NotAllowedError'); } };
+  const root = { kind: 'directory', name: 'x', async *entries() { yield ['Locked', locked]; yield ['ok.mp3', file('ok.mp3', track('Fine', 'Alb', 1))]; } };
+  assert.deepEqual((await scanHandle(root, { thumbnail, hash, frame: async () => {} })).tracks.map((t) => t.path), ['ok.mp3']);
+  await assert.rejects(scanHandle(locked, { thumbnail, hash, frame: async () => {} }), /could not read the folder/);
+});
+
+test('a scan that is told to stop stops at the next file and gives nothing: told before it begins, in the middle, or at the last file', async () => {
+  const signal = { aborted: false };
+  let reads = 0, stopAt = 0;
+  // four tracks whose reads are counted, the stop given as the stopAt-th is read
+  const four = { kind: 'directory', name: 'x', async *entries() {
+    for (const n of ['a.mp3', 'b.mp3', 'c.mp3', 'd.mp3']) yield [n, { kind: 'file', name: n, getFile: async () => { if (++reads === stopAt) signal.aborted = true; return new File([track(n, 'A', 1)], n); } }];
+  } };
+  const scan = () => scanHandle(four, { thumbnail, hash, frame: async () => {}, signal });
+  stopAt = 2;
+  await assert.rejects(scan(), /stopped/);
+  assert.equal(reads, 2, 'no file is read after the one it was told in');
+  signal.aborted = true;
+  reads = 0;
+  await assert.rejects(scan(), /stopped/);
+  assert.equal(reads, 0, 'told before it begins, it reads nothing');
+  signal.aborted = false;
+  reads = 0;
+  stopAt = 4;
+  await assert.rejects(scan(), /stopped/, 'told while the last file is read: there is no next file to stop at, and still nothing is given');
+  signal.aborted = false;
+  reads = 0;
+  stopAt = 0;
+  assert.equal((await scan()).tracks.length, 4, 'not told, it reads them all');
+});
+
 test('a cover the page cannot draw is no cover: the album has none, and the scan goes on', async () => {
   const root = dir('x', { 'a.mp3': track('A', 'Alb', 1, COVER), 'b.mp3': track('B', 'Alb', 2, COVER) });
   const got = await scanHandle(root, { thumbnail: async () => null, hash, frame: async () => {} });
@@ -104,6 +136,50 @@ test('a browser\'s source: the picker\'s folder, scanned, its files handed back 
   assert.equal(await cancel.choose(), null);
   await assert.rejects(webSource({ ...win, showDirectoryPicker: async () => { throw Object.assign(new Error('blocked'), { name: 'SecurityError' }); } }).choose(), /blocked/);
   assert.equal(webSource({}).supported, false, 'a browser with no picker');
+});
+
+// a browser's folder whose files wait on the test: `inside` comes once the first read is in it, and release() lets the reads go on
+function held(name, names) {
+  let release, reached;
+  const wait = new Promise((resolve) => { release = resolve; }), inside = new Promise((resolve) => { reached = resolve; });
+  const handle = { kind: 'directory', name, async *entries() {
+    for (const n of names) yield [n, { kind: 'file', name: n, getFile: async () => { reached(); await wait; return new File([track(n, name, 1)], n); } }];
+  } };
+  return { handle, release, inside };
+}
+const aBrowser = (picker) => ({ showDirectoryPicker: picker, crypto: { subtle: { digest: async () => new Uint8Array(20) } }, requestAnimationFrame: (f) => setTimeout(f, 0) });
+
+test('a folder picked while another is being read stops that read, which gives nothing under any name; the new folder is read as itself', async () => {
+  const first = held('First', ['a.mp3', 'b.mp3']), second = dir('Second', { 'c.mp3': track('C', 'Two', 1) });
+  const picks = [first.handle, second];
+  const src = webSource(aBrowser(async () => picks.shift()));
+  assert.equal(await src.choose(), 'First');
+  const reading = src.scan(() => {});
+  const stopped = assert.rejects(reading, /stopped/);
+  await first.inside;
+  assert.equal(await src.choose(), 'Second'); // (picked in the middle of the first's read)
+  first.release();
+  await stopped;
+  assert.equal(await src.cached(), null, 'the first folder\'s tracks are not kept as the second\'s');
+  assert.equal(src.folder, 'Second');
+  const got = await src.scan(() => {});
+  assert.deepEqual([got.folder, got.tracks.map((t) => t.path)], ['Second', ['c.mp3']]);
+  assert.deepEqual(await src.cached(), got);
+});
+
+test('a picker that is cancelled while a folder is being read changes nothing: the read goes on to the end, under its own name', async () => {
+  const first = held('First', ['a.mp3']);
+  let answer = async () => first.handle;
+  const src = webSource(aBrowser(() => answer()));
+  assert.equal(await src.choose(), 'First');
+  const reading = src.scan(() => {});
+  await first.inside;
+  answer = async () => { throw Object.assign(new Error('x'), { name: 'AbortError' }); };
+  assert.equal(await src.choose(), null);
+  first.release();
+  const got = await reading;
+  assert.deepEqual([got.folder, got.tracks.map((t) => t.path)], ['First', ['a.mp3']]);
+  assert.deepEqual(await src.cached(), got);
 });
 
 test('the app\'s source: what main keeps, a scan with its progress, the bytes as a File of the right type', async () => {

@@ -19,6 +19,8 @@
 // with WebGL. After cure.visual's TouchDesigner portals (and ttyproj's "Transparent Distortion" for
 // the glass, design4me__'s x-ray hover for the skull).
 import { FILTERS, KEYS, LOOK_GLSL, isPinch } from './lens.js';
+import { createPinches } from './pinches.js';
+import { clock } from './clock.js';
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -504,8 +506,9 @@ export function createPortal(canvas) {
   // picture (going on out past it: see OUT_WIDE)
   let shutDone = -9, pairAt = -9, spread = [], lastPair = null, outward = false;
   // the look, since when, the next one spreading out (and the one asked for meanwhile, to spread
-  // out next), the pinches being held, the hands followed for swipes (and the tracker's last look)
-  let which = -1, lookAt = 0, wipe = null, queued = null, pinches = [], lastBar = null, cutNow = 0;
+  // out next), the hands followed for swipes (and the tracker's last look)
+  let which = -1, lookAt = 0, wipe = null, queued = null, lastBar = null, cutNow = 0;
+  const pinchLooks = createPinches();
   let swipes = createSwipes(), lastHands = null;
   let pulse = 0, keyset = 0, keyAt = -1e9, last = 0, drawn = false, shown = { R: 0, C: [0, 0] };
 
@@ -819,12 +822,12 @@ export function createPortal(canvas) {
     get state() { return { phase, look: LOOKS[pick(which)], next: wipe ? LOOKS[pick(wipe.to)] : null, from: wipe?.p ?? null, queued: !!queued, c: shown.C, r: shown.R, cut: cutNow, skull: fit && skullA > 0.004 ? { at: fit.at, px: fit.px, shows: skullA } : null }; },
     // for previews: a look at once, without spreading out
     jump(name) { const i = LOOKS.indexOf(name); if (i >= 0) { which = i; wipe = queued = null; lookAt = last; } },
-    clear() { blank(); dropHist(); dropPlate(); phase = 'shut'; since = lastDia = freeSince = wideSince = wipe = queued = from = lastHands = lastPair = fit = null; diaAt = shutDone = pairAt = -9; needFree = outward = false; spread = []; pinches = []; swipes = createSwipes(); r = cutNow = skullA = 0; shown = { R: 0, C: [0, 0] }; },
+    clear() { blank(); dropHist(); dropPlate(); phase = 'shut'; since = lastDia = freeSince = wideSince = wipe = queued = from = lastHands = lastPair = fit = null; diaAt = shutDone = pairAt = -9; needFree = outward = false; spread = []; pinchLooks.reset(); swipes = createSwipes(); r = cutNow = skullA = 0; shown = { R: 0, C: [0, 0] }; },
     // a kick: the outline swells and the x-ray's edges flare, for a moment, and the keyframes
     // jump to their next colours (calm: gentler, and new colours at most every 2 seconds)
     kick(s, calm = false) {
       pulse = Math.max(pulse, calm ? 0.25 + 0.2 * Math.min(1, s) : 0.6 + 0.4 * Math.min(1, s));
-      const now = performance.now();
+      const now = clock.now() * 1000;
       if (now - keyAt > (calm ? 2000 : 450)) { keyset++; keyAt = now; }
     },
     // hands: from the tracker; place(x, y): a camera point (0-1, not mirrored) on screen; rect:
@@ -907,26 +910,14 @@ export function createPortal(canvas) {
         r += (wantR - r) * k;
       }
 
-      // a new pinch: the next look spreads out from it (one made while a look is still spreading:
-      // the one after, as soon as that's done). A pinch is new once the one held there has been
-      // let go (thumb and index well apart, not just past the line), or not seen for 0.3 s (the
-      // tracker losing a hand for a frame or three isn't letting go). With both hands seen, a hand
-      // letting go forgets only its own pinch: with the hands close (a window just opened), the
-      // other one's open fingers are within a hand of the pinch, and forgetting it there made one
-      // pinch bring two looks.
+      // a pinch held a moment: the next look spreads out from it (see createPinches; one made while a look is still
+      // spreading: the one after, as soon as that's done)
       if ((phase === 'held' || phase === 'full') && !dia) {
-        const now = [];
-        (two || seen.slice(0, 1)).forEach((hd, k) => {
-          const p = mid(hd.P[4], hd.P[8]), s = size(hd.P), who = two ? k : -1;
-          if (!isPinch(hd.views)) {
-            if (dist(hd.P[4], hd.P[8]) > 0.45 * s) pinches = pinches.filter((q) => (q.who >= 0 && who >= 0 && q.who !== who) || dist(q.p, p) > s);
-            return;
-          }
-          if (!pinches.some((q) => dist(q.p, p) < s)) askWipe(t, p);
-          now.push({ p, t, who });
-        });
-        pinches = [...pinches.filter((q) => t - q.t < 0.3 && !now.some((n) => dist(n.p, q.p) < 1)), ...now];
-      } else pinches = [];
+        const at = pinchLooks.update(t, (two || seen.slice(0, 1)).map((hd, k) => ({
+          p: mid(hd.P[4], hd.P[8]), s: size(hd.P), pinched: isPinch(hd.views), open: dist(hd.P[4], hd.P[8]) / size(hd.P), who: two ? k : -1,
+        })));
+        if (at) askWipe(t, at);
+      } else pinchLooks.reset();
       // a swipe, once the window fills the picture (and not while the hands come round into the
       // circle): the look slides in after the hand, its edge a circle so big it's all but straight,
       // from the side the hand came from (swiped left, the next; right, the one before)

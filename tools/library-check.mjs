@@ -1,13 +1,17 @@
 // The library (G) on a real copy of the app, over the DevTools protocol: its keys and clicks, the queue and the player bar's buttons,
-// the radio, the scenes, the dynamic theme over it, what main refuses to read, and pictures of it at phone and desktop size in each theme.
-// It never starts or stops anything: start the copy yourself, hidden and muted, with its own profile, with --player-dry-run, and with
-// --library-folder, a folder under ~/work/scratch built by tools/library-fixture.mjs (it refuses to go on with any other: nobody's own
-// music is ever read). A copy with no such folder is no copy for it. Pick a port nobody uses (9333-9338, 9341 and 9342 belong to others):
+// the radio, the scenes, the spotify section against a fake Spotify, the dynamic theme over it, what main refuses to read, and pictures of it
+// at phone and desktop size in each theme.
+// It never starts or stops anything: start the copy yourself, hidden and muted, with its own profile, with --player-dry-run (a link played in
+// the Spotify app is only recorded, as the AppleScript it would send), with --spotify-fake (a Spotify on 127.0.0.1 that this check starts, so
+// that the sign-in, the lists, the covers and the plays are the fake's: the check will not touch the spotify section unless the copy's command
+// line says so) and with --library-folder, a folder under ~/work/scratch built by tools/library-fixture.mjs (it refuses to go on with any
+// other: nobody's own music is ever read). A copy with no such folder is no copy for it. Pick a port nobody uses (9333-9338, 9341 and 9342
+// belong to others):
 //   node tools/library-fixture.mjs
 //   open -n -j node_modules/electron/dist/Electron.app --args "$PWD" --hidden --mute-audio --player-dry-run \
 //     --user-data-dir="$HOME/work/scratch/golden-library-profile" --remote-debugging-port=9343 \
-//     --library-folder="$HOME/work/scratch/golden-library-test/library"
-//   node tools/library-check.mjs [--port 9343] [--out _checks/golden-library] [--phase main|restarted|big|bigopen|web] [--only pictures] [--silent-sink]
+//     --library-folder="$HOME/work/scratch/golden-library-test/library" --spotify-fake=http://127.0.0.1:9351
+//   node tools/library-check.mjs [--port 9343] [--fake-port 9351] [--out _checks/golden-library] [--phase main|restarted|big|bigopen|web] [--only pictures] [--silent-sink]
 // main (the default) does everything on a copy with a fresh profile and leaves what a restart is to keep; restarted, on that same
 // profile with the copy started again without --library-folder, checks that the folder, the scenes and the stations came back and that an
 // older profile loads; big, on a copy started with --library-folder at the 5,000-file folder (library-fixture's big/), measures the scan:
@@ -27,10 +31,13 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { scratch } from './paths.mjs';
+import { embeddedCover } from '../renderer/embedded-cover.js';
+import { ALBUMS, LIKED, PLAYLISTS, startFakeSpotify } from './spotify-fake.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, fallback) => { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : fallback; };
 const port = Number(arg('port', process.env.NC_PORT || 9343));
+const fakePort = Number(arg('fake-port', 9351));
 const phase = arg('phase', 'main');
 const out = path.resolve(root, arg('out', '_checks/golden-library'));
 if ([9333, 9334, 9335, 9336, 9337, 9338, 9341, 9342].includes(port)) throw new Error(`port ${port} belongs to somebody else's copy of the app`);
@@ -145,6 +152,62 @@ const cursorIndex = () => ev('__nc.library.state.cursor[__nc.library.section]');
 const playing = () => ev('({ source: __nc.state.source, label: __nc.state.label, index: __nc.queue ? __nc.queue.index : null, song: __nc.state.source ? (__nc.eng && null) : null })');
 const bar = () => ev(`(() => { const q = (s) => document.querySelector('#player ' + s); const shown = (s) => !!q(s) && !q(s).hidden && getComputedStyle(q(s)).display !== 'none'; return { prev: shown('.pl-prev'), play: shown('.pl-play'), next: shown('.pl-next'), prevLabel: q('.pl-prev').getAttribute('aria-label'), near: shown('.pl-near') ? q('.pl-near').textContent : '', title: q('.pl-title').textContent, artist: q('.pl-artist').textContent }; })()`);
 
+// ---- the spotify section: the copy it may be driven on, the fake it talks to, and what it shows
+// What a person puts away by hand: the source menu, where an error from a source ends up (a copy that may not hear the Mac's sound says so there
+// when a play takes the system's sound for its source), which would take the library's keys. Says whether it was up.
+const clearMenu = () => ev(`(() => { const menu = document.getElementById('menu'); const up = !menu.hidden; if (up) { menu.hidden = true; document.getElementById('alerts').innerHTML = ''; } return up; })()`);
+const spRowTexts = () => ev(`[...document.querySelectorAll('#library .lib-row')].map((r) => ({ i: +r.dataset.i, cls: r.className, text: r.innerText.replace(/\\s+/g, ' ').trim(), field: r.querySelector('input')?.dataset.field || null, value: r.querySelector('input')?.value ?? null }))`);
+const spLabels = () => ev(`[...document.querySelectorAll('#library .lib-label')].map((n) => n.textContent.trim())`);
+const spError = () => ev(`document.querySelector('#library .lib-err')?.textContent.trim() || ''`);
+// the AppleScript lines a copy with --player-dry-run was asked to send to tell the Spotify app to play something (it sends none of them)
+const spSent = () => ev(`window.nc.playerSent().then((sent) => sent.filter((c) => c.some((a) => String(a).includes('play track'))).map((c) => c[c.length - 1]))`);
+const playScript = (uri) => `tell application "Spotify" to play track "${uri}"`;
+// the cursor on the first row that this (a function of a row, as source) says is the one
+async function spGoto(where) {
+  const i = await ev(`__nc.library.rows().findIndex(${where})`);
+  if (i < 0) throw new Error(`no such row: ${where}`);
+  await key('Home');
+  for (let n = 0; n < i; n++) await key('ArrowDown');
+  return i;
+}
+// text typed into the field of the row the cursor is on: Enter to go into it (which selects what it holds), the text, Enter
+async function spType(text) {
+  await key('Enter');
+  await sleep(80);
+  await send('Input.insertText', { text });
+  await key('Enter');
+}
+let fake = null, copy = null;
+// The covers the fake serves are those of the library fixture's albums (the same pictures as the kept stills, the real ones in its MP3s)
+async function fixtureCovers() {
+  const from = { '(III)': 'Crystal Castles/(III)', 'TRON: Legacy': 'Tame Impala/Lonerism', Homework: 'Fred again.. & LATIN MAFIA/9 months & 50 hours', Lonerism: 'Various Artists/Summer Mix', Homogenic: 'Björk/Homogenic', 'april mixtape 3': 'Snow Strippers/April Mixtape 3' };
+  const images = {};
+  for (const [key, rel] of Object.entries(from)) {
+    const dir = path.join(where.path, ...rel.split('/'));
+    for (const f of fs.readdirSync(dir).sort()) {
+      const found = await embeddedCover(await fs.openAsBlob(path.join(dir, f)));
+      if (found) { images[key] = { type: found.type, bytes: Buffer.from(found.bytes) }; break; }
+    }
+    if (!images[key]) throw new Error(`no cover in ${dir}: build the fixture again (node tools/library-fixture.mjs)`);
+  }
+  return images;
+}
+// The spotify section is only driven on a copy whose command line says it talks to the fake this check starts (the page can't say so, and a copy
+// that did not would open the real Spotify sign-in in the system's browser), is hidden, muted, dry-run, and keeps its settings under scratch.
+async function spotifyReady() {
+  if (fake) return fake;
+  const pid = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' }).stdout.split('\n')[0].trim();
+  const cmd = pid ? spawnSync('ps', ['-ww', '-o', 'command=', '-p', pid], { encoding: 'utf8' }).stdout.trim() : '';
+  const profile = /--user-data-dir=(\S+)/.exec(cmd)?.[1] || '';
+  const bad = [[`--spotify-fake=http://127.0.0.1:${fakePort}`, cmd.includes(`--spotify-fake=http://127.0.0.1:${fakePort}`)], ['--player-dry-run', cmd.includes('--player-dry-run')], ['--hidden', cmd.includes('--hidden')], ['--mute-audio', cmd.includes('--mute-audio')],
+    ['a --user-data-dir under scratch', profile.startsWith(scratch() + path.sep)]].filter(([, ok]) => !ok).map(([what]) => what);
+  if (bad.length) throw new Error(`this copy (pid ${pid || '?'}) was not started with ${bad.join(', ')}: refusing to touch the spotify section (see the top of this file for how to start it)`);
+  copy = { pid, cmd, profile };
+  fake = await startFakeSpotify({ port: fakePort, images: await fixtureCovers() });
+  facts.spotify = { fake: fake.base, profile };
+  return fake;
+}
+
 // the copy must be one it is safe to drive: dry-run (it sends nothing to a player), and a library folder under scratch; the web phase's
 // page is a window of this hidden copy showing a build served here, with no bridge
 let where = null;
@@ -216,7 +279,7 @@ if (phase === 'main') {
     expect('Ctrl+K "scene: save this setup" before the library was ever open saves the scene and fetches nothing', (await ev('__nc.state.userScenes.length')) === 1 && (await none()), await libraryModules());
     await key('g');
     expect('and G then opens the library, with that scene in its scenes', await until('!!(__nc.library && __nc.library.isOpen)'));
-    await key('Tab'); await key('Tab');
+    await key('Tab'); await key('Tab'); await key('Tab'); // (your music, spotify, radio, scenes)
     await sleep(500);
     expect('(its scenes section lists it)', (await ev(`[...document.querySelectorAll('#library .lib-card')].some((r) => /^my scene 1/.test(r.innerText.replace(/\\s+/g, ' ').trim()))`)), await ev('__nc.state.userScenes.map((s) => s.name)'));
     await ev(`(() => { __nc.state.userScenes = []; const s = JSON.parse(localStorage.getItem('now-coding') || '{}'); s.userScenes = []; localStorage.setItem('now-coding', JSON.stringify(s)); return true; })()`); // (the scene was for this step only)
@@ -315,7 +378,9 @@ if (phase === 'main') {
     await key('Enter');
     expect('Enter on a folded album plays it from its first track and opens it', await until(`__nc.state.label === '01 Hunter.mp3'`, 8000) && (await head()).name === 'Homogenic');
     await key('Tab');
-    expect('Tab goes to the radio', (await ev('__nc.library.section')) === 'radio' && (await ev('document.querySelector("#library .lib-tabs .on").textContent')) === 'radio');
+    expect('Tab goes to spotify, which comes after your music', (await ev('__nc.library.section')) === 'spotify' && (await ev('document.querySelector("#library .lib-tabs .on").textContent')) === 'spotify');
+    await key('Tab');
+    expect('then to the radio', (await ev('__nc.library.section')) === 'radio' && (await ev('document.querySelector("#library .lib-tabs .on").textContent')) === 'radio');
     await key('Tab'); await key('Tab');
     expect('round to your music', (await ev('__nc.library.section')) === 'music');
     await key('Tab', { shift: true });
@@ -445,7 +510,7 @@ if (phase === 'main') {
   });
 
   await step('the radio: a station pasted in, played, first in the list with a ▶; the latest first; the stop square', async () => {
-    await key('Home'); await key('Tab');
+    await openLibrary('radio'); await key('Home');
     expect('the radio section, with only the address row', (await ev('__nc.library.section')) === 'radio' && (await rowTexts()).length === 1);
     await key('Enter');
     expect('Enter on that row puts the cursor in its field', (await ev('document.activeElement && document.activeElement.className')) === 'lib-address');
@@ -544,6 +609,534 @@ if (phase === 'main') {
     await key('Enter');
     await ev(`__nc.presetSetters.theme('bluescreen'); true`);
     expect('a scene for a restart to find', await ev(`JSON.parse(localStorage.getItem('now-coding')).userScenes.map((s) => s.name).join() === 'kept over a restart'`));
+  });
+
+  // ================================================================ spotify: both tiers, against a fake Spotify
+  // (the copy was started with --spotify-fake: its sign-in, token service, Web API and covers are the fake of tools/spotify-fake.mjs, started
+  // here, and every play a link asks of the Spotify app is only recorded, as the AppleScript it would send)
+
+  await step('spotify, the first tier: a tab after your music, a field for a link; Enter plays it in the Spotify app (recorded here), the links kept, named by the song that shows next', async () => {
+    await spotifyReady();
+    // (a copy that has run this before is still signed in to the fake, with links pasted: start from nothing, as a fresh profile does)
+    await ev(`window.nc.spotifyDisconnect()`);
+    await ev(`(() => { const s = JSON.parse(localStorage.getItem('now-coding') || '{}'); s.spotifyLinks = []; localStorage.setItem('now-coding', JSON.stringify(s)); return true; })()`);
+    await reload();
+    await size(540, 960, 2);
+    await openLibrary('spotify');
+    await sleep(700);
+    const tabs = await ev(`[...document.querySelectorAll('#library .lib-tabs [data-section]')].map((b) => b.textContent)`);
+    expect('four tabs, spotify after your music', JSON.stringify(tabs) === '["your music","spotify","radio","scenes"]', tabs);
+    expect('the spotify tab is the one on', (await ev(`document.querySelector('#library .lib-tabs .on').textContent`)) === 'spotify');
+    const h = await head();
+    expect('the head: its name under its logo, and how it stands', h.name === 'spotify' && /^(not connected|connected)$/.test(h.sub), h);
+    const logo = await ev(`(() => { const l = document.querySelector('#library .lib-head .lib-logo'), r = l.getBoundingClientRect(); return { w: Math.round(r.width), fill: getComputedStyle(l).fill, tone: document.getElementById('library').dataset.tone, path: l.querySelector('path').getAttribute('d').slice(0, 24) }; })()`);
+    expect('Spotify\'s logo in the head, at least 21 px, white on this blue', logo.w >= 21 && logo.fill === 'rgb(255, 255, 255)' && logo.tone === 'dark' && logo.path === 'M12 0C5.4 0 0 5.4 0 12s5', logo);
+    expect('the one line of what it needs', /plays in your Spotify app/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)));
+    let rows = await spRowTexts();
+    expect('the field for a link is the first row, and the only one until a link is pasted (the field for a Client ID comes after the links)', rows[0].field === 'link' && rows.filter((r) => r.field).map((r) => r.field).join() === 'link,client', rows);
+    expect('the keys say what they do here', /←→ open/.test(await ev(`document.querySelector('#library .lib-keys').innerText`)) && !/shift\+R/.test(await ev(`document.querySelector('#library .lib-keys').innerText`)));
+    // a line that is no link
+    await key('Home'); await key('Enter');
+    expect('Enter on that row puts the cursor in its field', (await ev('document.activeElement && document.activeElement.dataset.field')) === 'link');
+    const before = (await spSent()).length;
+    await send('Input.insertText', { text: 'play something by Crystal Castles' });
+    await key('Enter');
+    await sleep(500);
+    expect('a line that is no link is refused in words, over the list, and nothing goes to the Spotify app', /^That isn't a Spotify link to a song, an album or a playlist/.test(await spError()) && (await spSent()).length === before, await spError());
+    rows = await spRowTexts();
+    expect('and it stays in the field, to put right', rows[0].value === 'play something by Crystal Castles', rows[0]);
+    // a link: an album's, as Spotify's Share gives it
+    const album = ALBUMS[0];
+    await spType(`https://open.spotify.com/album/${album.id}?si=1f2e3d4c5b6a7988`);
+    expect('the Spotify app is told to play that album: the AppleScript, with the address built from its kind and id (the ?si= is gone)', await until(`window.nc.playerSent().then((s) => s.some((c) => c[c.length - 1] === ${JSON.stringify(playScript(`spotify:album:${album.id}`))}))`, 8000));
+    const sent = await spSent();
+    expect('exactly one line was sent for it, to osascript', sent.length === before + 1 && (await ev(`window.nc.playerSent().then((s) => s.filter((c) => String(c[c.length - 1]).includes('play track')).every((c) => c[0] === '/usr/bin/osascript' && c[1] === '-e'))`)), sent);
+    await sleep(500);
+    facts.menuAfterPlay = await clearMenu();
+    rows = await spRowTexts();
+    expect('the error is gone and the field is empty again; the link is the first of the pasted links, 01, an album, just now', !(await spError()) && rows[0].value === '' && /^01 album [A-Za-z0-9]{22} just now$/.test(rows[1].text) && rows[1].text.includes(album.id), rows.map((r) => r.text));
+    expect('over a line of words', (await spLabels()).includes('pasted links, the latest first'), await spLabels());
+    expect('and kept with the settings', await ev(`JSON.parse(localStorage.getItem('now-coding')).spotifyLinks[0].uri === 'spotify:album:${album.id}'`));
+    // named by the first song Spotify's player shows after it (only Spotify's: the system says which app)
+    await ev(`__nc.nowPlaying({ title: 'A video', artist: '', app: 'Google Chrome', playing: true, art: '' }); __nc.library.update(); true`);
+    await sleep(300);
+    expect('a song from another app does not name it', /^01 album /.test((await spRowTexts())[1].text));
+    await ev(`__nc.nowPlaying({ title: 'Plague', artist: 'Crystal Castles', app: 'Spotify', playing: true, art: '' }); __nc.library.update(); true`);
+    await sleep(300);
+    rows = await spRowTexts();
+    expect('the first song Spotify shows names it: the song, who by, what it is and when', /^01 Plague · Crystal Castles album · just now$/.test(rows[1].text), rows[1]);
+    // a second link, a track's, in the spotify: form; it goes first
+    const track = album.tracks[1];
+    await key('Home');
+    await spType(`spotify:track:${track.id}`);
+    await until(`window.nc.playerSent().then((s) => s.some((c) => c[c.length - 1] === ${JSON.stringify(playScript(`spotify:track:${track.id}`))}))`, 8000);
+    await sleep(400);
+    await clearMenu();
+    rows = await spRowTexts();
+    expect('it is first, the album second, each numbered', /^01 track [A-Za-z0-9]{22} just now$/.test(rows[1].text) && /^02 Plague · Crystal Castles album · just now$/.test(rows[2].text), rows.map((r) => r.text));
+    await ev(`__nc.nowPlaying({ title: 'Kerosene', artist: 'Crystal Castles', app: 'Spotify', playing: true, art: '' }); __nc.library.update(); true`);
+    await sleep(300);
+    expect('and named by the next song, as the first was', /^01 Kerosene · Crystal Castles track · just now$/.test((await spRowTexts())[1].text), (await spRowTexts())[1]);
+    // Enter on a link of the list plays it again, and it goes first
+    const count = (await spSent()).length;
+    await spGoto(`(r) => r.kind === 'saved' && r.link.uri === 'spotify:album:${album.id}'`);
+    await key('Enter');
+    await until(`window.nc.playerSent().then((s) => s.filter((c) => String(c[c.length - 1]).includes('play track')).length > ${count})`, 8000);
+    await sleep(500);
+    await clearMenu();
+    rows = await spRowTexts();
+    expect('Enter on a pasted link plays it again (the same address), and it moves to the top with its name', (await spSent()).at(-1) === playScript(`spotify:album:${album.id}`) && /^01 Plague · Crystal Castles album/.test(rows[1].text) && /^02 Kerosene/.test(rows[2].text), rows.map((r) => r.text));
+    // nothing but a link is ever played: whatever is pasted, the bad ones leave the count as it was
+    const settled = (await spSent()).length;
+    for (const bad of [`https://open.spotify.com/artist/${track.id}`, `https://open.spotify.com.evil.example/track/${track.id}`, `spotify:track:${track.id}x`, 'javascript:alert(1)']) {
+      await key('Home'); await spType(bad); await sleep(350);
+      expect(`${bad} is refused`, /isn't a Spotify link/.test(await spError()), await spError());
+    }
+    expect('and none of them reached the player', (await spSent()).length === settled);
+    // kept: after a reload the links are back, named
+    await reload();
+    await openLibrary('spotify');
+    await sleep(600);
+    rows = await spRowTexts();
+    expect('after a reload the links are back, with their names', /^01 Plague · Crystal Castles album/.test(rows[1].text) && /^02 Kerosene · Crystal Castles track/.test(rows[2].text), rows.map((r) => r.text));
+    await ev('__nc.library.close()');
+  });
+
+  await step('spotify, your own library: the five steps and the field for a Client ID; a bad ID in words; the sign-in (PKCE) against the fake; the lists with their covers; the page never has a token', async () => {
+    const f = await spotifyReady();
+    await reload();
+    await size(540, 960, 2);
+    await openLibrary('spotify');
+    await sleep(700);
+    expect('not connected: the way in is the five steps and a field for a Client ID', (await spLabels()).includes('connect your Spotify') && (await ev(`document.querySelectorAll('#library .lib-step').length`)) === 5, await spLabels());
+    const steps = await ev(`[...document.querySelectorAll('#library .lib-step')].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
+    expect('the steps: the dashboard, Web API, the redirect (exactly), the Client ID, the field', /developer\.spotify\.com\/dashboard/.test(steps[0]) && /Web API/.test(steps[1]) && steps[2].includes('http://127.0.0.1:43821/callback') && /Client ID/.test(steps[3]) && /paste it below/.test(steps[4]), steps);
+    expect('the redirect is marked, with a button to copy it', (await ev(`document.querySelector('#library .lib-step b').textContent`)) === 'http://127.0.0.1:43821/callback' && (await ev(`!!document.querySelector('#library .lib-step .lib-copy')`)));
+    await clickOn('#library .lib-step .lib-copy');
+    await sleep(400);
+    expect('the copy button says it copied (or why it could not)', /^copied$|^could not copy/.test(await ev(`document.getElementById('status').textContent`)), await ev(`document.getElementById('status').textContent`));
+    const h = await head();
+    expect('the head says it is not connected', h.name === 'spotify' && h.sub === 'not connected', h);
+    // a bad Client ID: said in main's words, nothing asked of Spotify
+    const asked = f.seen.length;
+    await clickOn('#library input[data-field="client"]');
+    await send('Input.insertText', { text: 'not-a-client-id' });
+    await key('Enter');
+    await sleep(500);
+    expect('a Client ID that is none is refused in words, and the fake was not asked', /^That isn't a Client ID: it's 32 letters and digits/.test(await spError()) && f.seen.length === asked, await spError());
+    expect('and stays in its field', (await spRowTexts()).find((r) => r.field === 'client').value === 'not-a-client-id');
+    // the real one: main opens Spotify's page (the fake's, which agrees at once), the listener's browser comes back to 127.0.0.1:43821/callback, the code is swapped
+    const CLIENT = '0123456789abcdef0123456789abcdef';
+    await key('Enter'); await sleep(80);
+    await send('Input.insertText', { text: CLIENT });
+    await key('Enter');
+    expect('signed in: the lists come, with playlists, saved albums and the liked songs', await until(`__nc.library.rows().some((r) => r.kind === 'coll' && r.group === 'albums')`, 15000) && await until(`__nc.library.rows().some((r) => r.group === 'liked')`, 5000));
+    const authorize = f.seen.find((r) => r.path === '/authorize'), token = f.seen.find((r) => r.path === '/api/token');
+    expect('the sign-in page was asked with the Client ID, a code challenge (S256), a state and the redirect to 127.0.0.1:43821/callback', authorize && authorize.query.client_id === CLIENT && authorize.query.code_challenge_method === 'S256' && authorize.query.response_type === 'code' && authorize.query.redirect_uri === 'http://127.0.0.1:43821/callback' && authorize.query.state.length >= 16 && /playlist-read-private/.test(authorize.query.scope) && !/modify-(public|private)|library-modify/.test(authorize.query.scope), authorize && authorize.query);
+    expect('the code was swapped with its verifier, and no secret', token && token.form.grant_type === 'authorization_code' && token.form.code === 'fake-code' && token.form.code_verifier.length >= 43 && !('client_secret' in token.form), token && token.form);
+    expect('every Web API call carried the token main holds', f.seen.filter((r) => r.path.startsWith('/v1/')).length >= 3 && f.seen.filter((r) => r.path.startsWith('/v1/')).every((r) => r.auth === 'Bearer fake-access-1'), f.seen.filter((r) => r.path.startsWith('/v1/')).map((r) => r.auth));
+    expect('and the listener\'s browser would have gone nowhere else: only the fake was asked', f.seen.every((r) => ['/authorize', '/api/token'].includes(r.path) || r.path.startsWith('/v1/') || r.path.startsWith('/image/')), f.seen.map((r) => r.path));
+    await sleep(900);
+    // what the section shows
+    expect('the labels: the links, the playlists, the albums (the liked songs\' row says what it is)', JSON.stringify(await spLabels()) === JSON.stringify(['pasted links, the latest first', 'your playlists', 'saved albums']), await spLabels());
+    const rows = await spRowTexts();
+    const coll = rows.filter((r) => /\balbum\b/.test(r.cls));
+    expect('four playlists, six saved albums and the liked songs, as rows with their counts', coll.length === PLAYLISTS.length + ALBUMS.length + 1 && coll.some((r) => r.text === 'late night drive · colin 7') && coll.some((r) => r.text === '(III) · Crystal Castles 12') && coll.some((r) => r.text === '♥ liked songs 12') && coll.some((r) => /^TRON: Legacy \(Original Motion Picture Soundtrack\) · Daft Punk 22$/.test(r.text)), coll.map((r) => r.text));
+    expect('the last row is the one that disconnects', /^– disconnect: forget this connection$/.test(rows.at(-1).text), rows.at(-1));
+    expect('the head says connected', (await head()).sub === 'connected', await head());
+    expect('the section says where it is going on', !/waiting/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)));
+    // covers: Spotify's pictures, through main, as data: images in the rows, unaltered by anything but size
+    expect('the covers of the rows in view come: data: images, drawn', await until(`(() => { const imgs = [...document.querySelectorAll('#library .lib-row .lib-cover.real img')]; return imgs.length >= 8 && imgs.every((i) => i.complete && i.naturalWidth > 0); })()`, 15000));
+    const pics = await ev(`[...document.querySelectorAll('#library .lib-row .lib-cover.real img')].map((i) => ({ src: i.src.slice(0, 22), w: i.naturalWidth, h: i.naturalHeight, radius: getComputedStyle(i.parentElement).borderTopLeftRadius, filter: getComputedStyle(i).filter, opacity: getComputedStyle(i).opacity, fit: getComputedStyle(i).objectFit }))`);
+    facts.covers = pics.length;
+    expect('each a data: image, with rounded corners (4 px) and nothing done to it', pics.every((p) => /^data:image\/(jpeg|png)/.test(p.src) && p.radius === '4px' && p.filter === 'none' && p.opacity === '1' && p.fit === 'cover'), pics.slice(0, 3));
+    expect('main fetched each cover from "i.scdn.co", which the fake served: one request per picture, not one per row', f.seen.filter((r) => r.path.startsWith('/image/')).length >= 6 && f.seen.filter((r) => r.path.startsWith('/image/')).length <= 12, f.seen.filter((r) => r.path.startsWith('/image/')).length);
+    // the page never has a token
+    const status = await ev(`window.nc.spotifyStatus().then((s) => JSON.stringify(s))`);
+    expect('the status: connected and the Client ID; no token', /"connected":true/.test(status) && status.includes(CLIENT) && !/fake-access|fake-refresh|access_token|refresh_token/.test(status), status);
+    expect('no token anywhere on the page: not in its DOM, its storage, or what its calls return', await ev(`(async () => { const all = document.documentElement.outerHTML + JSON.stringify({ ...localStorage }) + JSON.stringify(await window.nc.spotifyList({ list: 'playlists' })); return !/fake-access|fake-refresh/.test(all); })()`));
+    const calls = await ev(`Object.keys(window.nc).filter((k) => /spotify/i.test(k)).sort().join()`);
+    expect('the page has the seven calls and no more', calls === 'spotifyConnect,spotifyCover,spotifyDisconnect,spotifyList,spotifyOpen,spotifyPlay,spotifyStatus', calls);
+    const file = path.join(copy.profile, 'spotify.bin');
+    expect('main kept the sign-in in the settings folder, as safeStorage gave it (here the fake\'s scrambling), not in the clear', fs.existsSync(file) && !/fake-access|fake-refresh|access/.test(fs.readFileSync(file).toString('latin1')));
+    // and main refuses what it was not made for, whatever the page asks
+    const refused = {};
+    for (const [name, call] of [['an unknown list', `window.nc.spotifyList({ list: 'me' })`], ['a path as a list', `window.nc.spotifyList({ list: '../v1/me/player' })`], ['a bad id', `window.nc.spotifyList({ list: 'album', id: '../../me' })`], ['no request', `window.nc.spotifyList(null)`],
+      ['a bad play', `window.nc.spotifyPlay({ context: 'spotify:artist:${ALBUMS[0].id}' })`], ['a bad play (none)', `window.nc.spotifyPlay(7)`], ['a cover from elsewhere', `window.nc.spotifyCover('https://example.com/image/abc')`], ['a cover over http', `window.nc.spotifyCover('http://i.scdn.co/image/abc')`],
+      ['a cover that is not a cover', `window.nc.spotifyCover(7)`]]) {
+      refused[name] = await ev(`${call}.then(() => 'went through', (e) => String(e.message).replace(/^Error invoking remote method '[^']*': (Error: )?/, ''))`);
+      expect(`main refuses ${name}`, refused[name] !== 'went through' && !/Error invoking/.test(refused[name]), refused[name]);
+    }
+    expect('in words: what it asks Spotify for, and for covers only Spotify\'s own picture server', /nothing else/.test(refused['an unknown list']) && /only from Spotify's own picture server/.test(refused['a cover from elsewhere']) && /isn't a Spotify album or playlist/.test(refused['a bad play']), refused);
+    expect('none of those reached the fake', f.seen.every((r) => !/\/v1\/me\/player\/play|\.\.|example/.test(r.path)), f.seen.slice(-3).map((r) => r.path));
+    facts.spotifyRefused = Object.keys(refused).length;
+    await ev('__nc.library.close()');
+  });
+
+  await step('spotify, keys on the lists: → opens an album and the cursor goes to its first song; Enter plays from a song (by its address), from an album, from a playlist, from the liked songs; ← folds; the song playing is marked', async () => {
+    const f = await spotifyReady();
+    await openLibrary('spotify');
+    await sleep(500);
+    const puts = () => f.seen.filter((r) => r.method === 'PUT');
+    const album = ALBUMS[0];
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.name === '(III)'`);
+    await key('ArrowRight');
+    expect('→ opens the album: its songs, and the head is the album\'s, with its cover', await until(`__nc.library.rows().filter((r) => r.kind === 'strack').length === 12`, 8000) && (await head()).name === '(III)' && /^Crystal Castles · 12 tracks$/.test((await head()).sub), await head());
+    let rows = await spRowTexts();
+    const tracks = rows.filter((r) => /\btrack\b/.test(r.cls));
+    expect('twelve songs, numbered, with their times, at the top of the list as an open album\'s are; the album\'s own row is the head, not in the list again', tracks.length === 12 && rows.slice(0, 12).every((r) => /\btrack\b/.test(r.cls)) && tracks[0].text === '01 Plague 4:56' && tracks[1].text === '02 Kerosene 3:12' && tracks[11].text === '12 Child I Will Hurt You 3:33' && !rows.some((r) => /\balbum\b/.test(r.cls) && /^\(III\)/.test(r.text)), rows.slice(0, 3));
+    expect('the cursor went to the first song', (await ev(`__nc.library.rows()[__nc.library.state.cursor.spotify].kind + ':' + __nc.library.rows()[__nc.library.state.cursor.spotify].index`)) === 'strack:0');
+    expect('the head\'s cover is the album\'s own, a data: image, and "on Spotify" is there, to play it', await until(`(() => { const i = document.querySelector('#library .lib-head .lib-cover.real img'); return !!i && i.complete && i.naturalWidth > 0 && /^data:image/.test(i.src); })()`, 8000) && (await ev(`document.querySelector('#library .lib-head .lib-onspot').innerText.trim()`)) === 'play on Spotify');
+    expect('an album\'s songs were asked for by the album\'s id, one request', f.seen.filter((r) => r.path === `/v1/albums/${album.id}/tracks`).length === 1);
+    // Enter on the second song: from that song, by its address, in its album
+    await key('ArrowDown'); await key('Enter');
+    await sleep(900);
+    expect('Enter on a song asks Spotify to play it in its album, from that song, on the device the player has open', puts().length === 1, puts().length);
+    const p1 = puts()[0];
+    expect('the album as the context and that song\'s address as where to start, on the active device, with the token', p1 && p1.body.context_uri === `spotify:album:${album.id}` && p1.body.offset.uri === `spotify:track:${album.tracks[1].id}` && p1.query.device_id === 'fake-device-1' && p1.auth === 'Bearer fake-access-1', p1 && p1.body);
+    expect('the page says where it plays', /^on Spotify, on Colin's MacBook$/.test(await ev(`document.getElementById('status').textContent`)), await ev(`document.getElementById('status').textContent`));
+    await sleep(300);
+    facts.menuAfterSongs = await clearMenu();
+    // the song the system is playing is marked
+    await ev(`__nc.nowPlaying({ title: 'Kerosene', artist: 'Crystal Castles', app: 'Spotify', playing: true, art: '' }); __nc.library.update(); true`);
+    await sleep(400);
+    rows = await spRowTexts();
+    expect('the song that is playing is the inverted row, with a ▶ for its number', rows.some((r) => /\bon\b/.test(r.cls) && /^▶ Kerosene 3:12$/.test(r.text)), rows.filter((r) => /\bon\b/.test(r.cls)).map((r) => r.text));
+    // "on Spotify" over the open album: the link back to Spotify, which plays it in the Spotify app as a pasted link does (recorded here)
+    const told = (await spSent()).length;
+    await clickOn('#library .lib-head .lib-onspot');
+    await until(`window.nc.playerSent().then((s) => s.filter((c) => String(c[c.length - 1]).includes('play track')).length > ${told})`, 8000);
+    expect('"on Spotify" tells the Spotify app to play the album (the AppleScript, recorded)', (await spSent()).at(-1) === playScript(`spotify:album:${album.id}`), (await spSent()).at(-1));
+    await sleep(400);
+    await clearMenu();
+    // ← on a song folds its album: the songs go, the album\'s row is back among the others with the cursor on it, the head back to spotify
+    await key('ArrowLeft');
+    await sleep(300);
+    rows = await spRowTexts();
+    expect('← folds it: no songs, the cursor on the album\'s row, the head back to spotify', rows.filter((r) => /\btrack\b/.test(r.cls)).length === 0 && (await head()).name === 'spotify' && /^\(III\)/.test(rows[await cursorIndex()].text), await head());
+    // Enter on the album itself: from its start
+    await key('Enter');
+    await sleep(800);
+    expect('Enter on the album plays it from its start', puts().length === 2 && puts()[1].body.context_uri === `spotify:album:${album.id}` && puts()[1].body.offset.position === 0 && !('uri' in puts()[1].body.offset), puts()[1] && puts()[1].body);
+    // a playlist: its songs with who they are by; Enter on the third, from that song, in the playlist
+    const pl = PLAYLISTS[0];
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.name === 'late night drive'`);
+    await key('ArrowRight');
+    await until(`__nc.library.rows().filter((r) => r.kind === 'strack').length === ${pl.tracks.length}`, 8000);
+    rows = await spRowTexts();
+    expect('a playlist\'s songs say who they are by (the first is the one playing, marked)', rows.some((r) => r.text === '▶ Kerosene · Crystal Castles 3:12' || r.text === '01 Kerosene · Crystal Castles 3:12') && rows.some((r) => r.text === '02 Hunter · Björk 4:12'), rows.filter((r) => /\btrack\b/.test(r.cls)).slice(0, 3).map((r) => r.text));
+    await key('ArrowDown'); await key('ArrowDown'); await key('Enter');
+    await sleep(800);
+    expect('Enter on the third plays it from that song in the playlist', puts().length === 3 && puts()[2].body.context_uri === `spotify:playlist:${pl.id}` && puts()[2].body.offset.uri === `spotify:track:${pl.tracks[2].id}`, puts()[2] && puts()[2].body);
+    await key('ArrowLeft');
+    // the liked songs: no playlist behind them, so a list of songs from the one picked
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.kind === 'liked'`);
+    await key('ArrowRight');
+    await until(`__nc.library.rows().filter((r) => r.kind === 'strack').length === ${LIKED.length}`, 8000);
+    expect('the liked songs open to their songs, the head says how many', /^12 songs$/.test((await head()).sub) && (await head()).name === 'liked songs', await head());
+    for (let n = 0; n < 5; n++) await key('ArrowDown');
+    await key('Enter');
+    await sleep(800);
+    expect('Enter on the sixth plays it and the songs after it, as a list, from its start', puts().length === 4 && JSON.stringify(puts()[3].body) === JSON.stringify({ uris: LIKED.slice(5).map((t) => `spotify:track:${t.id}`), offset: { position: 0 } }), puts()[3] && puts()[3].body);
+    await key('ArrowLeft'); await sleep(300);
+    expect('every play went to the active device with the same token', puts().every((r) => r.query.device_id === 'fake-device-1' && r.auth === 'Bearer fake-access-1'));
+    await clearMenu();
+    await ev('__nc.library.close()');
+  });
+
+  await step('spotify, what goes wrong is said as main says it: no Premium, no open player, a slow-down, a token that lapsed early (one fresh try), a connection that is gone (the field comes back, and signing in again works)', async () => {
+    const f = await spotifyReady();
+    await openLibrary('spotify');
+    await sleep(400);
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.name === 'gym'`);
+    const play = async () => { await key('Enter'); await sleep(900); };
+    f.state.playFails = { status: 403, reason: 'PREMIUM_REQUIRED', message: 'Player command failed: Premium required' };
+    await play();
+    expect('no Premium: said so, over the list', await spError() === 'Spotify says starting songs from Toaster needs Premium.', await spError());
+    f.state.playFails = null; f.state.devices = [];
+    await play();
+    expect('no open player: what to do', await spError() === 'Open Spotify on this computer and play anything once, then try again.', await spError());
+    f.state.devices = [{ id: 'fake-device-1', name: 'Colin\'s MacBook', is_active: true, is_restricted: false, type: 'Computer' }];
+    f.state.limit = 1;
+    await play();
+    expect('a slow-down: when to try again', await spError() === 'Spotify asks Toaster to slow down: try again in 7 s.', await spError());
+    await play();
+    expect('and the next try, with nothing wrong, clears it', (await spError()) === '' && f.seen.filter((r) => r.method === 'PUT').length >= 5);
+    // an expired token: refreshed once, the same request again, nothing said
+    const refreshes = () => f.seen.filter((r) => r.form && r.form.grant_type === 'refresh_token').length;
+    const refreshed = refreshes();
+    f.state.expire401 = 1;
+    await play();
+    expect('a token that lapsed early: one refresh (the refresh token, no secret), then the same play, and nothing to say', refreshes() === refreshed + 1 && (await spError()) === '' && f.seen.at(-1).auth === `Bearer fake-access-${f.state.tokens}`, { refreshes: refreshes(), last: f.seen.at(-1) });
+    // a sign-in Spotify no longer takes: the refresh is refused, the kept sign-in goes, and the way back is shown
+    // a network that is gone: the connection is cut, and it is said so in Toaster's words, not as the browser's "fetch failed"
+    f.state.drop = 1;
+    await play();
+    expect('a connection that is cut: said in words, with what to do', /^Toaster could not reach Spotify \(.+\)\. Check the connection and try again\.$/.test(await spError()), await spError());
+    await play();
+    expect('and the next try, with the network back, clears it', (await spError()) === '', await spError());
+    f.state.refreshFails = true; f.state.expire401 = 1;
+    await play();
+    expect('a connection that is gone: Spotify wants a new sign-in, said so, with the lists gone and the field for a Client ID back', (await spError()) === 'Spotify wants you to connect again.' && (await spRowTexts()).some((r) => r.field === 'client') && !(await spRowTexts()).some((r) => /\balbum\b/.test(r.cls)), await spError());
+    expect('main forgot it: nothing kept in the settings folder', !fs.existsSync(path.join(copy.profile, 'spotify.bin')));
+    expect('and the page asks again with the same ID', (await ev(`window.nc.spotifyStatus().then((s) => s.connected)`)) === false);
+    f.state.refreshFails = false;
+    await clickOn('#library input[data-field="client"]');
+    await send('Input.insertText', { text: '0123456789abcdef0123456789abcdef' });
+    await key('Enter');
+    expect('signing in again works: the lists are back', await until(`__nc.library.rows().some((r) => r.kind === 'coll' && r.group === 'albums')`, 15000));
+    expect('and the error is gone', (await spError()) === '');
+    await clearMenu();
+    await ev('__nc.library.close()');
+  });
+
+  await step('spotify, the sign-in takes the listener\'s time: a note and "waiting for Spotify…" while the page is open in their browser, a stray address is turned away, Enter again starts it over, their yes finishes it', async () => {
+    const f = await spotifyReady();
+    await ev(`window.nc.spotifyDisconnect()`);
+    await reload();
+    await size(540, 960, 2);
+    await openLibrary('spotify');
+    await sleep(500);
+    f.state.hold = true;
+    const CLIENT = '0123456789abcdef0123456789abcdef';
+    await clickOn('#library input[data-field="client"]');
+    await send('Input.insertText', { text: CLIENT });
+    await key('Enter');
+    expect('the page in the browser is asked for, and the section says it is waiting for them', await until(`!!document.querySelector('#library .lib-wait')`, 8000) && f.state.lastAuthorize !== null, f.state.lastAuthorize);
+    expect('the note says what to do and for how long; the line says "waiting for Spotify…"; the ID stays in its field', /waiting for you: Spotify's page is open in your browser and asks you to agree \(it waits five minutes\)/.test(await ev(`document.querySelector('#library .lib-wait').textContent`)) && /waiting for Spotify…/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)) && (await spRowTexts()).find((r) => r.field === 'client').value === CLIENT);
+    const first = f.state.lastAuthorize;
+    // the listener on 127.0.0.1:43821 turns a stray address away and goes on waiting
+    const stray = await fetch(`http://127.0.0.1:43821/callback?code=fake-code&state=not-the-one`).then(async (r) => ({ status: r.status, text: await r.text() }));
+    expect('an address that is not from this sign-in is turned away with a 400 and a page that says so, and the wait goes on', stray.status === 400 && /not from the sign-in Toaster started/.test(stray.text) && !!(await ev(`!!document.querySelector('#library .lib-wait')`)), stray);
+    expect('and nothing else is served there', (await fetch('http://127.0.0.1:43821/other').then((r) => r.status)) === 404);
+    // Enter again: the first sign-in is stopped (said nothing of), a new one is started with a state of its own, on the same port
+    await key('Enter'); await sleep(100);
+    await key('Enter');
+    expect('Enter again starts it over: a second page is asked for, with another state', await (async () => { for (let t = 0; t < 80; t++) { if (f.state.lastAuthorize && f.state.lastAuthorize.state !== first.state) return true; await sleep(100); } return false; })(), [first, f.state.lastAuthorize]);
+    expect('and the section is still waiting, with no error (the first one\'s stop was not shown)', !!(await ev(`!!document.querySelector('#library .lib-wait')`)) && !(await spError()), await spError());
+    const old = await fetch(`${first.redirect}?code=fake-code&state=${encodeURIComponent(first.state)}`).then((r) => r.status);
+    expect('the first one\'s state is no longer any use', old === 400, old);
+    // the listener says yes: the browser comes back to the redirect with the second sign-in's state
+    f.state.hold = false;
+    const back = await fetch(`${f.state.lastAuthorize.redirect}?code=fake-code&state=${encodeURIComponent(f.state.lastAuthorize.state)}`).then(async (r) => ({ status: r.status, text: await r.text() }));
+    expect('their yes: the browser is shown a page that says Toaster is connected', back.status === 200 && /Toaster is connected to Spotify/.test(back.text), back);
+    expect('and the section is signed in: the lists, no note, no error', await until(`__nc.library.rows().some((r) => r.kind === 'coll' && r.group === 'albums')`, 15000) && !(await ev(`!!document.querySelector('#library .lib-wait')`)) && !(await spError()));
+    expect('the listener on that port is gone once it was used', await fetch('http://127.0.0.1:43821/callback').then(() => false, () => true));
+    await clearMenu();
+    await ev('__nc.library.close()');
+  });
+
+  await step('spotify, a list that goes on: a "more" row after the first 50, Enter on it adds the rest; disconnecting asks twice, and forgets', async () => {
+    const f = await spotifyReady();
+    f.state.extra = 70;
+    await reload();
+    await openLibrary('spotify');
+    expect('the first 50 playlists, then a row for more', await until(`__nc.library.rows().filter((r) => r.kind === 'coll' && r.group === 'playlists').length === 50`, 15000) && await until(`__nc.library.rows().some((r) => r.kind === 'more')`, 3000));
+    await sleep(400);
+    expect('it says how far it has got', /^\+ more 50 of 74$/.test((await spRowTexts()).find((r) => /^\+ more/.test(r.text)).text), (await spRowTexts()).find((r) => /^\+ more/.test(r.text)));
+    await spGoto(`(r) => r.kind === 'more'`);
+    await key('Enter');
+    expect('Enter on it adds the next page: 74 playlists, and the row is gone', await until(`__nc.library.rows().filter((r) => r.kind === 'coll' && r.group === 'playlists').length === 74`, 8000) && !(await ev(`__nc.library.rows().some((r) => r.kind === 'more')`)));
+    expect('the second page was asked from 50', f.seen.some((r) => r.path === '/v1/me/playlists' && r.query.offset === '50'));
+    f.state.extra = 0;
+    // disconnecting: the last row, twice
+    await key('End');
+    await key('Enter');
+    await sleep(300);
+    expect('Enter on the last row asks first', /^– sure\? enter again to disconnect$/.test((await spRowTexts()).at(-1).text) && fs.existsSync(path.join(copy.profile, 'spotify.bin')));
+    await sleep(3300);
+    expect('and takes it back after a moment', /^– disconnect: forget this connection$/.test((await spRowTexts()).at(-1).text));
+    await key('Enter'); await key('Enter');
+    expect('twice disconnects: the field for a Client ID is back, the lists are gone, the settings folder keeps nothing', await until(`__nc.library.rows().some((r) => r.kind === 'client')`, 8000) && !(await ev(`__nc.library.rows().some((r) => r.kind === 'coll')`)) && !fs.existsSync(path.join(copy.profile, 'spotify.bin')));
+    const calls = f.seen.length;
+    await sleep(600);
+    expect('and it asks Spotify for nothing more', f.seen.length === calls);
+    await ev('__nc.library.close()');
+  });
+
+  await step('spotify in a browser (a second panel on this page, given a host with no way to sign in, as a browser\'s is): the link alone, said in words when it is no link, handed on with what the page read of it', async () => {
+    await reload();
+    await ev(`(async () => {
+      const { createLibraryPanel } = await import('./library-panel.js');
+      const root = document.createElement('div');
+      root.id = 'library-browser';
+      root.hidden = true;
+      document.body.append(root);
+      const opened = [], links = [];
+      const host = { key: () => 'G', titleBar: () => false, live: () => false, blocked: () => false, playing: () => ({ id: '', track: null, radio: '', title: '', artist: '', ms: 0, stoppable: false }),
+        play() {}, repeat: () => 'album', setRepeat: () => '', shuffle: () => false, setShuffle: () => '', stop() {}, stations: () => [], playStation() {}, addStation() {}, scenes: () => ({ presets: [], user: [] }), sceneOn: () => false,
+        applyScene() {}, saveScene() {}, renameScene() {}, deleteScene() {}, say() {}, fail() {},
+        spotify: { app: false, links: () => links, open: async (text, link) => { opened.push([text, link]); links.unshift({ uri: link.uri, at: Date.now() }); return link; } } };
+      const source = { kind: 'web', folder: '', supported: false, async start() { return false; }, async cached() { return null; }, async scan() { throw new Error('no folder'); }, async choose() { return null; } };
+      const panel = createLibraryPanel({ document, window, root, source, host });
+      window.__browserPanel = { panel, root, opened, links };
+      panel.open('spotify');
+      return true;
+    })()`);
+    await sleep(500);
+    const dom = (expr) => ev(`(() => { const root = window.__browserPanel.root; return ${expr}; })()`);
+    expect('the tabs are the four, spotify the one on', JSON.stringify(await dom(`[...root.querySelectorAll('.lib-tabs [data-section]')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : ''))`)) === '["your music","spotify*","radio","scenes"]');
+    expect('the head says it opens the web player; the line says in a new tab', (await dom(`root.querySelector('.lib-sub').textContent`)) === 'web player' && /opens in Spotify's web player, in a new tab/.test(await dom(`root.querySelector('.lib-meta').textContent`)));
+    expect('the one row is the field for a link: no steps, no Client ID, nothing to sign in to', JSON.stringify(await dom(`[...root.querySelectorAll('.lib-row')].map((r) => r.querySelector('input')?.dataset.field || r.textContent)`)) === '["link"]' && (await dom(`root.querySelectorAll('.lib-step').length`)) === 0);
+    await key('Home'); await key('Enter');
+    expect('Enter goes into the field', (await ev('document.activeElement && document.activeElement.dataset.field')) === 'link');
+    await send('Input.insertText', { text: 'https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb' });
+    await key('Enter');
+    await sleep(300);
+    expect('an artist\'s link is no link, said in words with nothing handed on', /^That isn't a Spotify link to a song, an album or a playlist/.test(await dom(`root.querySelector('.lib-err')?.textContent || ''`)) && (await dom(`window.__browserPanel.opened.length`)) === 0);
+    const album = ALBUMS[0];
+    await key('Enter'); await sleep(80);
+    await send('Input.insertText', { text: `https://open.spotify.com/album/${album.id}?si=ab12` });
+    await key('Enter');
+    await sleep(400);
+    const handed = await dom(`JSON.stringify(window.__browserPanel.opened)`);
+    expect('a link is handed on with the text and what the page read of it (the app\'s page opens Spotify\'s web player on that)', handed === JSON.stringify([[`https://open.spotify.com/album/${album.id}?si=ab12`, { kind: 'album', id: album.id, uri: `spotify:album:${album.id}` }]]), handed);
+    // (this panel has no stylesheet of its own to lay the rows out in, so their text is read as it is in the markup)
+    expect('and the link is in the list, as it is in the app', /^01album [A-Za-z0-9]{22}just now$/.test(await dom(`[...root.querySelectorAll('.lib-row')].map((r) => r.textContent)[1]`)));
+    await ev(`(() => { const b = window.__browserPanel; b.panel.close(); b.root.remove(); delete window.__browserPanel; return true; })()`);
+    expect('and it left the page as it found it: the library closed, no header hidden', !(await body('library-open')));
+  });
+
+  await step('spotify pictures: phone (9:16) and desktop in bluescreen, not connected (the steps, the field, the links) and connected (the lists with their covers, an album open with its song playing), and the logo in whitescreen', async () => {
+    const f = await spotifyReady();
+    const coversIn = () => until(`(() => { const c = [...document.querySelectorAll('#library .lib-cover.real[data-sp]')].filter((e) => { const r = e.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; }); return c.length > 0 && c.every((e) => e.querySelector('img') && e.querySelector('img').complete && e.querySelector('img').naturalWidth > 0); })()`, 15000);
+    await theme('bluescreen');
+    await ev(`__nc.library && __nc.library.close()`);
+    // not connected: the steps, the field for the Client ID, the links pasted (an album's and a track's, named by the songs Spotify's player showed)
+    await size(540, 960, 2);
+    await openLibrary('spotify'); await sleep(900); await key('Home');
+    await shot('spotify-phone-connect');
+    await size(1280, 800, 2); await sleep(500);
+    await shot('spotify-desktop-connect');
+    // connect: the field for the Client ID, Enter (the fake agrees)
+    await clickOn('#library input[data-field="client"]');
+    await send('Input.insertText', { text: '0123456789abcdef0123456789abcdef' });
+    await key('Enter');
+    expect('connected for the pictures: the lists are there', await until(`__nc.library.rows().some((r) => r.kind === 'coll' && r.group === 'albums')`, 15000));
+    await key('Home');
+    expect('and their covers', await coversIn());
+    await sleep(500);
+    await shot('spotify-desktop-library');
+    // an album open, a song of it played (Enter), the system's player showing it
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.name === '(III)'`);
+    await key('ArrowRight');
+    await until(`__nc.library.rows().filter((r) => r.kind === 'strack').length === 12`, 8000);
+    await key('ArrowDown'); await key('Enter');
+    await sleep(800);
+    await clearMenu();
+    await ev(`__nc.nowPlaying({ title: 'Kerosene', artist: 'Crystal Castles', app: 'Spotify', playing: true, art: '' }); __nc.library.update(); true`);
+    expect('and the head\'s cover', await coversIn());
+    await sleep(900);
+    // at the right of a wide window, the open album\'s own cover, big, as Spotify gave it; and none of another album\'s characters on this tab
+    const big = await ev(`(() => { const i = document.querySelector('#library .lib-bigcover img'); if (!i) return null; const r = i.getBoundingClientRect(), p = document.querySelector('#library .lib-panel').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), left: Math.round(r.left), panelRight: Math.round(p.right), src: i.src.slice(0, 22), radius: getComputedStyle(i).borderTopLeftRadius, filter: getComputedStyle(i).filter, glyphs: document.querySelectorAll('#library .lib-glyphs').length, natural: i.naturalWidth }; })()`);
+    expect('the open album\'s cover is big at the right of the panel: a data: image, square, 640 px at most, 8 px corners, nothing done to it, and no glyph art on this tab', big && /^data:image/.test(big.src) && big.w === big.h && big.w >= 240 && big.w <= 640 && big.left > big.panelRight && big.radius === '8px' && big.filter === 'none' && big.glyphs === 0 && big.natural > 0, big);
+    await shot('spotify-desktop-album');
+    // the logo is black on a light background
+    await theme('whitescreen'); await sleep(1300);
+    const tone = await ev(`({ tone: document.getElementById('library').dataset.tone, fill: getComputedStyle(document.querySelector('#library .lib-head .lib-logo')).fill })`);
+    expect('in whitescreen the logo is black (its guidelines have it white or black, by the background)', tone.tone === 'light' && tone.fill === 'rgb(0, 0, 0)', tone);
+    await shot('spotify-desktop-album-whitescreen');
+    await theme('bluescreen'); await sleep(1300);
+    expect('and white again in bluescreen', (await ev(`getComputedStyle(document.querySelector('#library .lib-head .lib-logo')).fill`)) === 'rgb(255, 255, 255)');
+    // the characters are your music\'s: back on that tab they are there again, and the big cover is gone
+    await clickOn('#library .lib-tabs button[data-section="music"]');
+    expect('back on your music the cover in characters is there again, and the big cover is gone', await until(`document.querySelectorAll('#library .lib-glyphs.in').length === 1 && !document.querySelector('#library .lib-bigcover img')`, 8000));
+    await clickOn('#library .lib-tabs button[data-section="spotify"]');
+    expect('and on spotify the characters go (and the open album\'s cover is back)', await until(`document.querySelectorAll('#library .lib-glyphs').length === 0 && !!document.querySelector('#library .lib-bigcover img')`, 8000));
+    // the phone
+    await size(540, 960, 2); await sleep(500);
+    await shot('spotify-phone-album');
+    await key('ArrowLeft'); await sleep(400);
+    await key('Home');
+    expect('the phone\'s covers', await coversIn());
+    await sleep(400);
+    await shot('spotify-phone-library');
+    // the other lists at the bottom: scrolled to the liked songs and the way to disconnect
+    await key('End'); await sleep(400);
+    await shot('spotify-phone-library-end');
+    expect('no token or error was left on the page by any of it', !(await spError()) && f.seen.every((r) => r.path !== '/v1/me/player/play' || r.auth.startsWith('Bearer fake-access-')));
+    await ev('__nc.library.close()');
+    await clearMenu();
+  });
+
+  await step('spotify states pictures: what main says stands under the line, in view however far the list is scrolled (no Premium, no open player, slow down, connect again), and the open album in the other themes', async () => {
+    const f = await spotifyReady();
+    const CLIENT = '0123456789abcdef0123456789abcdef';
+    const connect = async () => {
+      await clickOn('#library input[data-field="client"]');
+      await send('Input.insertText', { text: CLIENT });
+      await key('Enter');
+      return until(`__nc.library.rows().some((r) => r.kind === 'coll' && r.group === 'albums')`, 15000);
+    };
+    // where the error is: shown, under the line, inside the window, and not in the list
+    const errBox = () => ev(`(() => { const e = document.querySelector('#library .lib-err'), m = document.querySelector('#library .lib-meta'), l = document.querySelector('#library .lib-list'); if (!e) return null; const r = e.getBoundingClientRect(); return { text: e.textContent.trim(), hidden: e.hidden, top: Math.round(r.top), bottom: Math.round(r.bottom), below: Math.round(r.top - m.getBoundingClientRect().bottom), inList: !!l.querySelector('.lib-err'), scrolled: Math.round(l.scrollTop), vh: innerHeight }; })()`);
+    const inView = (b) => b && !b.hidden && !b.inList && b.top >= 0 && b.bottom <= b.vh && b.below >= 0;
+    await theme('bluescreen');
+    await ev(`__nc.library && __nc.library.close()`);
+    await size(540, 960, 2);
+    await openLibrary('spotify'); await sleep(900);
+    // a long list (thirty more playlists), so that the liked songs at its bottom are far below its top: connected afresh with them
+    f.state.extra = 30;
+    if (await ev(`__nc.library.rows().some((r) => r.kind === 'disconnect')`)) { await spGoto(`(r) => r.kind === 'disconnect'`); await key('Enter'); await key('Enter'); }
+    expect('connected for the states, with the long list', await connect() && await until(`__nc.library.rows().filter((r) => r.kind === 'coll' && r.group === 'playlists').length >= 30`, 15000));
+    // no Premium: Enter on the liked songs, at the bottom of a list scrolled down to them
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.kind === 'liked'`);
+    f.state.playFails = { status: 403, reason: 'PREMIUM_REQUIRED', message: 'Player command failed: Premium required' };
+    await key('Enter');
+    expect('no Premium is said in words', await until(`/needs Premium/.test(document.querySelector('#library .lib-err')?.textContent || '')`, 8000));
+    let b = await errBox();
+    expect('under the line, in view, with the list scrolled down to the row that was played (where the top of the list is out of sight)', inView(b) && b.scrolled > 0, b);
+    await sleep(300);
+    await shot('spotify-phone-error-premium');
+    // no open player: the same Enter with no device Spotify says is active
+    f.state.playFails = null;
+    const devices = f.state.devices;
+    f.state.devices = [];
+    await key('Enter');
+    expect('no open player is said in words', await until(`/Open Spotify on this computer/.test(document.querySelector('#library .lib-err')?.textContent || '')`, 8000));
+    b = await errBox();
+    expect('and in view', inView(b), b);
+    await size(1280, 800, 2); await sleep(500);
+    await shot('spotify-desktop-error-device');
+    f.state.devices = devices;
+    // slow down: a list asked for while Spotify says too many (an album opened whose songs aren't in yet)
+    f.state.limit = 1;
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.name === 'Homogenic'`);
+    await key('ArrowRight');
+    expect('slow down is said, with the wait', await until(`/slow down: try again in 7 s/.test(document.querySelector('#library .lib-err')?.textContent || '')`, 8000), await spError());
+    await sleep(300);
+    await shot('spotify-desktop-error-slow');
+    // the album that could not open folds back, the cursor on its row (open, it would have no row and no songs to fold from); → asks again,
+    // and the error goes when that goes through
+    expect('the album that could not open folds back, the cursor on its row, in view', await until(`(() => { const r = __nc.library.rows()[__nc.library.state.cursor.spotify]; const el = document.querySelector('#library .lib-row.cursor'), box = document.querySelector('#library .lib-list').getBoundingClientRect(), at = el?.getBoundingClientRect(); return r?.kind === 'coll' && r.coll.name === 'Homogenic' && !!at && at.top >= box.top - 1 && at.bottom <= box.bottom + 1; })()`, 4000));
+    await key('ArrowRight');
+    expect('and goes when the next thing asked goes through', await until(`!document.querySelector('#library .lib-err')?.textContent && __nc.library.rows().filter((r) => r.kind === 'strack').length === 10`, 8000), await spError());
+    // the open album in each of the other themes (its big cover in the box your music's characters have), and the dynamic theme from that cover
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.name === '(III)'`);
+    await key('ArrowRight');
+    await until(`__nc.library.rows().filter((r) => r.kind === 'strack').length === 12`, 8000);
+    expect('the big cover is the picture Spotify gives 640 wide (its own address asked for)', await until(`!!document.querySelector('#library .lib-bigcover img')`, 8000) && f.seen.some((r) => r.path.startsWith('/image/ab67616d0000b273')), f.seen.filter((r) => r.path.startsWith('/image/')).map((r) => r.path.slice(0, 26)));
+    const art = await ev(`document.querySelector('#library .lib-bigcover img').src`);
+    await ev(`__nc.nowPlaying({ title: 'Kerosene', artist: 'Crystal Castles', app: 'Spotify', playing: true, art: ${JSON.stringify(art)} }); __nc.library.update(); true`);
+    for (const t of ['blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic']) {
+      await theme(t); await sleep(t === 'dynamic' ? 2600 : 600);
+      await shot(`spotify-desktop-album-${t}`);
+    }
+    await theme('bluescreen');
+    // connect again: the sign-in gone (the refresh refused), said, the lists away and the Client ID field back; then connected again for what comes after
+    f.state.refreshFails = true; f.state.expire401 = 1;
+    await key('Home'); await key('ArrowDown'); await key('Enter');
+    expect('a sign-in that is gone says connect again, and the field for a Client ID is back', await until(`/connect again/.test(document.querySelector('#library .lib-err')?.textContent || '') && !!document.querySelector('#library input[data-field="client"]')`, 8000), await spError());
+    b = await errBox();
+    expect('in view', inView(b), b);
+    await key('Home'); await sleep(300);
+    await shot('spotify-desktop-error-connect-again');
+    f.state.refreshFails = false;
+    f.state.extra = 0;
+    expect('connected again', await connect());
+    expect('and the error is gone', !(await spError()), await spError());
+    await ev(`__nc.nowPlaying({ title: '', artist: '', app: '', playing: false, art: '' }); __nc.library.close(); true`);
+    await clearMenu();
   });
 
   await step('main refuses what is not an audio file inside the folder, whatever the page asks', async () => {
@@ -733,7 +1326,7 @@ if (phase === 'main') {
 
   await step('Ctrl+K and the help know the library', async () => {
     const names = await ev('__nc.paletteEntries().map((e) => e.name)');
-    for (const n of ['library', 'library: choose a folder', 'library: scan again', 'library: find', 'library: repeat', 'library: shuffle', 'scene: save this setup']) expect(`Ctrl+K has "${n}"`, names.includes(n), names.filter((x) => /librar|scene/.test(x)));
+    for (const n of ['library', 'library: choose a folder', 'library: scan again', 'library: find', 'library: spotify', 'library: repeat', 'library: shuffle', 'scene: save this setup']) expect(`Ctrl+K has "${n}"`, names.includes(n), names.filter((x) => /librar|scene/.test(x)));
     const keyOfLibrary = await ev('__nc.paletteEntries().find((e) => e.name === "library").key');
     expect('"library" says G', keyOfLibrary === 'G', keyOfLibrary);
     await ev('document.getElementById("help").showModal()');
@@ -824,6 +1417,19 @@ if (phase === 'restarted') {
     await ev('__nc.library.close()');
     await reload();
   });
+
+  await step('spotify after a restart: the pasted links are back, named; main kept the sign-in (no new one is asked for) and the lists load, through a refresh of the kept token', async () => {
+    const f = await spotifyReady();
+    await reload();
+    await size(540, 960, 2);
+    await openLibrary('spotify');
+    expect('the two links pasted are back, with their names', await until(`__nc.library.rows().filter((r) => r.kind === 'saved').length === 2`, 5000) && /^01 Plague · Crystal Castles album/.test((await spRowTexts())[1].text) && /^02 Kerosene · Crystal Castles track/.test((await spRowTexts())[2].text), (await spRowTexts()).map((r) => r.text));
+    const status = await ev('window.nc.spotifyStatus()');
+    expect('main still has the sign-in: connected, with the Client ID, in the settings folder', status.connected && status.clientId === '0123456789abcdef0123456789abcdef' && fs.existsSync(path.join(copy.profile, 'spotify.bin')), status);
+    expect('the lists come with no new sign-in', await until(`__nc.library.rows().some((r) => r.kind === 'coll' && r.group === 'albums')`, 15000) && !f.seen.some((r) => r.path === '/authorize'));
+    expect('(this fake never gave the token that was kept, so it was refused once and a new one was asked for with the kept refresh token, as a lapsed one is)', f.seen.filter((r) => r.form && r.form.grant_type === 'refresh_token').length === 1 && f.seen.some((r) => r.path === '/v1/me/playlists' && r.auth === 'Bearer fake-access-1'), f.seen.map((r) => r.path));
+    await ev('__nc.library.close()');
+  });
 }
 
 if (phase === 'big') {
@@ -831,7 +1437,7 @@ if (phase === 'big') {
   await reload();
   await size(1280, 800, 1);
   const files = await ev('window.nc.libraryFolder().then((f) => f.path)');
-  expect('this copy was told to take the 5,000-file folder', /\/big$/.test(files), files);
+  expect('this copy was told to take the 5,000-file folder', /[\\/]big$/.test(files), files);
   // what the page is doing while it's measured: the scenery, with a song
   await ev(`__nc.useDemo()`);
   await sleep(3000);
@@ -938,7 +1544,7 @@ if (phase === 'web') {
   });
 
   await step('the radio and the scenes work in a browser too', async () => {
-    await key('Tab');
+    await openLibrary('radio');
     await key('Enter');
     await send('Input.insertText', { text: st.url });
     await key('Enter');
@@ -958,7 +1564,31 @@ if (phase === 'web') {
     await shot('web-phone');
   });
 
-  await step('a browser with no folder picker says so, in the list and when asked, and still has all three sections', async () => {
+  await step('spotify in a browser: the link alone; a link opens Spotify\'s web player in a new tab and asks for that tab\'s sound, and says what to pick when it cannot', async () => {
+    await ev(`(() => { window.__opened = []; window.open = (...a) => { window.__opened.push(a); return null; }; navigator.mediaDevices.getDisplayMedia = () => Promise.reject(new DOMException('no picker in this window', 'NotAllowedError')); return true; })()`);
+    await openLibrary('spotify');
+    await sleep(600);
+    expect('the bridge has no Spotify call: a browser can not sign in, and says so by having no field for it', (await ev(`typeof window.nc.spotifyList + typeof window.nc.spotifyOpen`)) === 'undefinedundefined');
+    const rows = await spRowTexts();
+    expect('the section is the field for a link and nothing else, with no steps', rows.length === 1 && rows[0].field === 'link' && (await ev(`document.querySelectorAll('#library .lib-step').length`)) === 0, rows);
+    const h = await head();
+    expect('the head says it is the web player, the line says in a new tab', h.name === 'spotify' && h.sub === 'web player' && /opens in Spotify's web player, in a new tab/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)), h);
+    await key('Home'); await spType('open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb');
+    await sleep(300);
+    expect('no link is no tab: it is said in words, and nothing was opened', /^That isn't a Spotify link/.test(await spError()) && (await ev('window.__opened.length')) === 0, await spError());
+    const album = ALBUMS[0];
+    await key('Enter'); await sleep(80);
+    await send('Input.insertText', { text: `https://open.spotify.com/intl-de/album/${album.id}?si=ff00ee` });
+    await key('Enter');
+    await sleep(600);
+    const opened = await ev('JSON.stringify(window.__opened)');
+    expect('a link opens the web player on that album in a new tab it keeps no hold of (the address built from its kind and id)', opened === JSON.stringify([[`https://open.spotify.com/album/${album.id}`, '_blank', 'noopener']]), opened);
+    expect('and asks for that tab\'s sound, and says what to pick when it can not be asked', /^Spotify is open in a new tab: pick source system audio and that tab to let Toaster hear it$/.test(await ev(`document.getElementById('status').textContent`)), await ev(`document.getElementById('status').textContent`));
+    expect('the link is kept in the list, as in the app, with the other settings', /^01 album /.test((await spRowTexts())[1].text) && await ev(`JSON.parse(localStorage.getItem('now-coding')).spotifyLinks[0].uri === 'spotify:album:${album.id}'`));
+    await ev('__nc.library.close()');
+  });
+
+  await step('a browser with no folder picker says so, in the list and when asked, and still has all the sections', async () => {
     await ev('__nc.library.close()');
     // (as a page that never had it: the API is gone before the page's own scripts run)
     const { identifier } = await send('Page.addScriptToEvaluateOnNewDocument', { source: 'Object.defineProperty(window, "showDirectoryPicker", { value: undefined, configurable: true });' });
@@ -970,11 +1600,11 @@ if (phase === 'web') {
     await sleep(400);
     expect('the source knows it can not', (await ev('__nc.librarySrc.supported')) === false);
     const rows = await rowTexts();
-    expect('the row says what to do instead', rows.length === 1 && /this browser can not open a folder: try Chrome or Edge, or drop audio files on the window/.test(rows[0].text), rows);
+    expect('the row says what to do instead', rows.length === 1 && /this browser can't open a folder: try Chrome or Edge, or drop audio files on the window/.test(rows[0].text), rows);
     await key('Enter');
     await sleep(300);
-    expect('Enter says so too', /can not open a folder/.test(await ev('document.getElementById("status").textContent')));
-    expect('the sections are all there', (await ev('document.querySelectorAll("#library .lib-tabs [data-section]").length')) === 3);
+    expect('Enter says so too', /can't open a folder/.test(await ev('document.getElementById("status").textContent')));
+    expect('the sections are all there', (await ev('document.querySelectorAll("#library .lib-tabs [data-section]").length')) === 4);
     await ev('__nc.library.close()');
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier });
   });
@@ -985,7 +1615,7 @@ if (phase === 'bigopen') {
   await reload();
   await size(1280, 800, 1);
   const files = await ev('window.nc.libraryFolder().then((f) => f.path)');
-  expect('this copy was told to take the 5,000-file folder', /\/big$/.test(files), files);
+  expect('this copy was told to take the 5,000-file folder', /[\\/]big$/.test(files), files);
   await ev(`__nc.useDemo()`);
   await sleep(3000);
   const sampler = (name) => ev(`(() => { window.__gaps = { name: ${JSON.stringify(name)}, last: performance.now(), gaps: [], on: true };
@@ -1031,6 +1661,7 @@ facts.problems = problems;
 expect('no exception or console error on the page', problems.length === 0, problems.slice(0, 4));
 fs.writeFileSync(path.join(out, `report-${phase}.json`), JSON.stringify({ phase, port, ok: failures.length === 0, failures, facts }, null, 1));
 station.then((s) => s.server.close()).catch(() => {});
+await fake?.close();
 console.log(failures.length ? `\n${failures.length} things were not as they should be:\n- ${failures.join('\n- ')}` : '\nall as it should be');
 await send('Emulation.clearDeviceMetricsOverride').catch(() => {});
 ws.close();

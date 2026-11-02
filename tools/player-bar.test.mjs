@@ -673,7 +673,10 @@ test('a click leaves no focus on the bar, which would keep it up in Z\'s mode; a
 // ---------------------------------------------------------------- the page: where it sits and when it shows
 
 test('app.js hands the bar what is playing at the footer\'s pace, and the roll keeps clear of it', () => {
-  assert.match(app, /if \(t - footerAt > 0\.125\) \{ footerAt = t; renderFooter\(\); updatePlayer\(t\); \}/);
+  // (the footer's words are refreshed on the engine's ticks, so a render has them the same at any frame rate: see clock.js; the bar
+  // is handed what is playing at the same 8 a second, on the frames)
+  assert.match(app, /if \(t - footerAt > 0\.125 \|\| t < footerAt\) \{ footerAt = t; renderFooter\(\); \}/);
+  assert.match(app, /if \(t - playerAt > 0\.125 \|\| t < playerAt\) \{ playerAt = t; updatePlayer\(t\); \}/);
   assert.match(app, /roll\.classList\.toggle\('cut', r\.height > 0 && r\.bottom > innerHeight - playerBar\.reserved\(\) \+ 1\);/);
   const update = app.slice(app.indexOf('function updatePlayer(t) {'), app.indexOf('function updatePlayer(t) {') + 700);
   assert.match(update, /if \(!state\.playerBar \|\| WIDGET\) return;/);
@@ -743,10 +746,13 @@ test('H puts it away with the footer; Z\'s visualizer mode shows it only at the 
 
 test('narrow windows get two rows, then lose the status line; a touch screen gets targets of 44 px', () => {
   assert.match(css, /@media \(max-width: 899px\) \{\s*body\.player-bar #player \{ display: grid; height: 62px;/);
-  assert.match(css, /grid-template-areas: "id id status" "transport progress progress"/);
-  assert.match(css, /@media \(max-width: 559px\) \{\s*body\.player-bar #player \{ grid-template-areas: "id id id" "transport progress progress"; \}\s*#player \.pl-status \{ display: none; \}/);
+  assert.match(css, /grid-template-areas: "id id status flag" "transport progress progress progress"/);
+  assert.match(css, /@media \(max-width: 559px\) \{\s*body\.player-bar #player \{ grid-template-areas: "id id id flag" "transport progress progress progress"; \}\s*#player \.pl-status \{ display: none; \}/);
   // the 9:16 layout has no status line, and the song has the first row, whatever the width
-  assert.match(css, /body\.vertical\.player-bar #player \{ grid-template-areas: "id id id" "transport progress progress"; \}\s*body\.vertical #player \.pl-status \{ display: none; \}/);
+  assert.match(css, /body\.vertical\.player-bar #player \{ grid-template-areas: "id id id flag" "transport progress progress progress"; \}\s*body\.vertical #player \.pl-status \{ display: none; \}/);
+  // (the misread flag, at the right end of the first row, is in its own column in each)
+  assert.match(css, /grid-template-columns: auto minmax\(0, 1fr\) auto auto;/);
+  assert.match(css, /#player \.pl-misread \{ grid-area: flag; align-self: center; \}/);
   const touch = css.slice(css.indexOf('/* a touch screen: buttons and track a finger can hit'));
   const px = (sel, prop) => Number(touch.match(new RegExp(sel.replace(/[.#]/g, '\\$&') + ' \\{[^}]*?' + prop + ': (\\d+)px'))?.[1]);
   assert.ok(px('#player .pl-btn', 'width') >= 44, 'buttons');
@@ -766,7 +772,7 @@ test('main asks the helper, loaded when first needed, and only a source copy wit
   const fn = main.slice(main.indexOf('function player() {'), main.indexOf("const mac = process.platform === 'darwin';"));
   assert.match(fn, /require\('\.\/helpers\/player\.cjs'\)/);
   assert.match(fn, /if \(!app\.isPackaged && process\.argv\.includes\('--player-dry-run'\)\)/);
-  assert.match(fn, /createPlayerControl\(\{ run: dry\.run \}\)/);
+  assert.match(fn, /createPlayerControl\(\{ run: dry\.run, open: dry\.open \}\)/);
   assert.doesNotMatch(main.slice(0, main.indexOf('function player() {')), /require\('\.\/helpers\/player\.cjs'\)/, 'not at the top: a copy without helpers/ still starts');
   assert.ok(preload.includes("playerCommand: (who, action) => ipcRenderer.invoke('player:command', who, action),"));
   assert.ok(preload.includes("playerPosition: (who) => ipcRenderer.invoke('player:position', who),"));

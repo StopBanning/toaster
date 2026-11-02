@@ -65,6 +65,10 @@ const ignore = [
   '--ignore=tasks-vision/.*\\.map$',
   '--ignore=tasks-vision/.*\\.cjs$',
   '--ignore=tasks-vision/vision\\.d\\.ts$',
+  // (mp4-muxer: only its ES module is loaded; its other build and the type packages it brings are for editors)
+  '--ignore=mp4-muxer/build/mp4-muxer\\.js$',
+  '--ignore=mp4-muxer/build/.*\\.d\\.ts$',
+  '--ignore=node_modules/@types(/|$)',
 ];
 
 const args = [

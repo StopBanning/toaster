@@ -66,9 +66,10 @@ const item = (name, ...contents) => { const body = join(...contents); return joi
 const textItem = (name, s, kind = 1) => item(name, atom('data', u32(kind), u32(0), kind === 2 ? [...s].flatMap((c) => [c.charCodeAt(0) >> 8, c.charCodeAt(0) & 255]) : [...new TextEncoder().encode(s)]));
 
 // An M4A with its names in iTunes' ilst items: tags is { title, artist, albumArtist, album, track: [n, total], disc: [n, total],
-// compilation }; the movie header says how long it is (version 1: 64-bit times); moov before the audio or after it; a meta atom
-// with its version bytes or QuickTime's without; pictures [[bytes, kind]] in a covr item after the text.
-export function m4a({ tags = {}, seconds = 12.5, timescale = 44100, version = 0, moovFirst = true, quicktimeMeta = false, pictures = [], extra = [] } = {}) {
+// compilation }; the movie header says how long it is (version 1: 64-bit times), or, with unknownLength, that it is not known (all ones);
+// moov before the audio or after it; a meta atom with its version bytes or QuickTime's without; pictures [[bytes, kind]] in a covr item
+// after the text.
+export function m4a({ tags = {}, seconds = 12.5, timescale = 44100, version = 0, unknownLength = false, moovFirst = true, quicktimeMeta = false, pictures = [], extra = [] } = {}) {
   const items = [
     tags.title !== undefined ? textItem('(c)nam', tags.title) : [], tags.artist !== undefined ? textItem('(c)ART', tags.artist) : [],
     tags.albumArtist !== undefined ? textItem('aART', tags.albumArtist) : [], tags.album !== undefined ? textItem('(c)alb', tags.album, tags.albumKind) : [],
@@ -78,9 +79,9 @@ export function m4a({ tags = {}, seconds = 12.5, timescale = 44100, version = 0,
     pictures.length ? item('covr', ...pictures.map(([image, kind]) => atom('data', u32(kind), u32(0), image))) : [],
     ...extra,
   ];
-  const duration = Math.round(seconds * timescale);
-  const mvhd = atom('mvhd', version === 1 ? join([1, 0, 0, 0], u32(0), u32(0), u32(0), u32(0), u32(timescale), u32(0), u32(duration), new Uint8Array(80))
-    : join([0, 0, 0, 0], u32(0), u32(0), u32(timescale), u32(duration), new Uint8Array(80)));
+  const duration = Math.round(seconds * timescale), ones = u32(0xffffffff);
+  const mvhd = atom('mvhd', version === 1 ? join([1, 0, 0, 0], u32(0), u32(0), u32(0), u32(0), u32(timescale), unknownLength ? ones : u32(0), unknownLength ? ones : u32(duration), new Uint8Array(80))
+    : join([0, 0, 0, 0], u32(0), u32(0), u32(timescale), unknownLength ? ones : u32(duration), new Uint8Array(80)));
   const meta = atom('meta', quicktimeMeta ? [] : u32(0), atom('hdlr', new Uint8Array(24)), atom('ilst', ...items));
   const moov = atom('moov', mvhd, atom('trak', new Uint8Array(300)), atom('udta', meta));
   const mdat = atom('mdat', new Uint8Array(5000));

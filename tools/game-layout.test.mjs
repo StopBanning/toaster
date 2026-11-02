@@ -53,3 +53,15 @@ test('the mini player (W): the handheld on its own, in the window under its head
     }
   }
 });
+// The window's foot (the player bar and the keys line under it, game.js footInset): on a wide window the handheld stands
+// above it, as big as fits there, not under it (Colin, Nov 2: the bar was covering the bottom of the handheld).
+test('wide window with the player bar: both handhelds end above it, still in the right 40%', () => {
+  for (const [W, H] of WIDE) for (const bottom of [0.06 * H, 0.09 * H, 0.14 * H]) {
+    const M = layout(W, H, DEVICES.metal, false, bottom);
+    assert.ok(M.y >= -1e-6 && M.y + M.h <= H - bottom + 1e-6, `metal ${W}x${H}, foot ${bottom.toFixed(0)}: ends at ${(M.y + M.h).toFixed(1)}`);
+    assert.ok(M.x >= 0.6 * W - 1e-6, `metal ${W}x${H}: starts at ${(100 * M.x / W).toFixed(2)}%`);
+    const A = stanceLayout(W, H, ST, false, bottom);
+    assert.ok(A.y + DY0 * A.u >= -1e-6 && A.y + DY1 * A.u <= H - bottom + 1e-6, `angled ${W}x${H}, foot ${bottom.toFixed(0)}: ends at ${(A.y + DY1 * A.u).toFixed(1)}`);
+    assert.ok(A.x + DX0 * A.u >= 0.6 * W - 1e-6, `angled ${W}x${H}: starts at ${(100 * (A.x + DX0 * A.u) / W).toFixed(2)}%`);
+  }
+});

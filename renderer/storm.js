@@ -66,32 +66,43 @@ export function createStorm(canvas) {
   // The window's size, and where its middle is u of the way round the figure 8 (CSS pixels): down
   // the right of the top loop, the left of the bottom one, back up the right and over the top left
   function geometry(W, H) {
-    const w = Math.round(H > W ? W * 0.5 : W * 0.28), h = Math.round(w * 0.68);
+    const w = Math.round(H > W ? W * 0.56 : W * 0.28), h = Math.round(w * 0.68);
     return { w, h, ax: ((W - w) / 2) * 0.85, ay: ((H - h - 40) / 2) * 0.78, cx: W / 2, cy: (H - 40) / 2 + 6 };
   }
   const pathAt = (u, G) => [G.cx + G.ax * Math.sin(4 * Math.PI * u), G.cy - G.ay * Math.cos(2 * Math.PI * u)];
 
+  // the window's frame, as the pop-ups' Luna windows in style.css: XP's blue round it, the title bar's gradient with its
+  // top corners rounded, the title (cut short with "..." where it would run under the buttons) and the three buttons
+  const stops = (gr, list) => { for (const [o, c] of list) gr.addColorStop(o, c); return gr; };
+  const TITLEBAR = [[0, '#0997ff'], [0.08, '#0053ee'], [0.4, '#0050ee'], [0.88, '#0066ff'], [0.93, '#0066ff'], [0.95, '#005bff'], [0.96, '#003dd7'], [1, '#003dd7']];
+  const BLUE_BTN = [[0, '#0054e9'], [0.55, '#2263d5'], [0.7, '#4479e4'], [0.9, '#a3bbec'], [1, '#fff']];
+  const RED_BTN = [[0, '#cc4600'], [0.55, '#dc6527'], [0.7, '#cd7546'], [0.9, '#ffccb2'], [1, '#fff']];
   function frame(x, y, w, h, k, hung) {
-    const tb = Math.round(22 * k), r = 6 * k, bw = Math.max(2, Math.round(3 * k));
-    g.beginPath(); g.moveTo(x, y + h); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r); g.lineTo(x + w, y + h); g.closePath();
+    const tb = Math.round(22 * k), r = 7 * k, bw = Math.max(2, Math.round(3 * k));
+    const top = (bottom) => { g.beginPath(); g.moveTo(x, bottom); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r); g.lineTo(x + w, bottom); g.closePath(); };
+    top(y + h);
     g.lineWidth = bw; g.strokeStyle = '#0831d9'; g.stroke();
-    const gr = g.createLinearGradient(0, y, 0, y + tb);
-    gr.addColorStop(0, '#3a8cff'); gr.addColorStop(0.15, '#0a5ff0'); gr.addColorStop(0.55, '#0054e3'); gr.addColorStop(1, '#0a3fbf');
-    g.fillStyle = gr; g.fillRect(x, y, w, tb);
-    g.font = `bold ${Math.round(11 * k)}px Tahoma, "Segoe UI", sans-serif`; g.textBaseline = 'middle';
-    const text = hung ? TITLE + ' (Not Responding)' : TITLE;
-    g.fillStyle = 'rgba(0,0,40,0.6)'; g.fillText(text, x + 8 * k + 1, y + tb / 2 + 1);
-    g.fillStyle = '#fff'; g.fillText(text, x + 8 * k, y + tb / 2);
+    top(y + tb);
+    g.fillStyle = stops(g.createLinearGradient(0, y, 0, y + tb), TITLEBAR); g.fill();
     const bs = Math.round(16 * k), by = y + (tb - bs) / 2;
+    g.font = `bold ${Math.round(11 * k)}px "Trebuchet MS", Tahoma, sans-serif`; g.textBaseline = 'middle';
+    let text = hung ? TITLE + ' (Not Responding)' : TITLE;
+    const room = w - bs * 3 - 18 * k;
+    if (g.measureText(text).width > room) {
+      while (text.length > 4 && g.measureText(text + '...').width > room) text = text.slice(0, -1);
+      text = text.trimEnd() + '...';
+    }
+    g.fillStyle = '#0f1089'; g.fillText(text, x + 8 * k + Math.max(1, k * 0.8), y + tb / 2 + Math.max(1, k * 0.8));
+    g.fillStyle = '#fff'; g.fillText(text, x + 8 * k, y + tb / 2);
     const btn = (bx, red, glyph) => {
-      const bg = g.createLinearGradient(0, by, 0, by + bs);
-      bg.addColorStop(0, red ? '#f08a6c' : '#5a9cff'); bg.addColorStop(1, red ? '#c63e1c' : '#1f5ad6');
-      g.fillStyle = bg; g.fillRect(bx, by, bs, bs);
-      g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = Math.max(1, k); g.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
-      g.strokeStyle = '#fff'; g.lineWidth = Math.max(1.5, 2 * k); g.beginPath(); glyph(bx, by, bs); g.stroke();
+      const cx = bx + bs * 0.9, cy = by + bs * 0.9;
+      g.beginPath(); g.roundRect(bx, by, bs, bs, 3 * k);
+      g.fillStyle = stops(g.createRadialGradient(cx, cy, 0, cx, cy, bs * 1.27), red ? RED_BTN : BLUE_BTN); g.fill();
+      g.strokeStyle = '#fff'; g.lineWidth = Math.max(1, k * 0.8); g.stroke();
+      g.lineWidth = Math.max(1.5, 2 * k); g.lineCap = 'round'; g.beginPath(); glyph(bx, by, bs); g.stroke(); g.lineCap = 'butt';
     };
-    btn(x + w - bs * 3 - 6 * k, false, (bx, b, s) => { g.moveTo(bx + s * 0.28, b + s * 0.72); g.lineTo(bx + s * 0.62, b + s * 0.72); });
-    btn(x + w - bs * 2 - 4 * k, false, (bx, b, s) => { g.rect(bx + s * 0.28, b + s * 0.28, s * 0.44, s * 0.44); });
+    btn(x + w - bs * 3 - 6 * k, false, (bx, b, s) => { g.moveTo(bx + s * 0.28, b + s * 0.72); g.lineTo(bx + s * 0.58, b + s * 0.72); });
+    btn(x + w - bs * 2 - 4 * k, false, (bx, b, s) => { g.rect(bx + s * 0.27, b + s * 0.27, s * 0.46, s * 0.46); g.moveTo(bx + s * 0.27, b + s * 0.32); g.lineTo(bx + s * 0.73, b + s * 0.32); });
     btn(x + w - bs - 2 * k, true, (bx, b, s) => { g.moveTo(bx + s * 0.3, b + s * 0.3); g.lineTo(bx + s * 0.7, b + s * 0.7); g.moveTo(bx + s * 0.7, b + s * 0.3); g.lineTo(bx + s * 0.3, b + s * 0.7); });
     return { tb, bw };
   }
@@ -134,28 +145,43 @@ export function createStorm(canvas) {
     g.lineWidth = 1; g.strokeStyle = '#000'; g.stroke();
     g.restore();
   }
-  // the taskbar, risen rise (0-1) of its height: Start (toast), the window's button, the tray with
-  // the tempo
+  // the taskbar, risen rise (0-1) of its height, as the takeover's in style.css: the green start button (toast) with
+  // XP's four-colour flag, the window's button (pressed, its icon and title) and the tray, a speaker and the tempo
   function taskbar(W, H, k, rise, title, bpm) {
     const th = Math.round(30 * k), y = H - th * rise;
-    const gr = g.createLinearGradient(0, y, 0, y + th);
-    gr.addColorStop(0, '#3f8cf3'); gr.addColorStop(0.08, '#245edb'); gr.addColorStop(0.9, '#1941a5'); gr.addColorStop(1, '#1941a5');
-    g.fillStyle = gr; g.fillRect(0, y, W, th);
-    const sw = Math.round(96 * k), sgr = g.createLinearGradient(0, y, 0, y + th);
-    sgr.addColorStop(0, '#5eac56'); sgr.addColorStop(0.5, '#3c9a3a'); sgr.addColorStop(1, '#2f7d2d');
-    g.fillStyle = sgr; g.beginPath(); g.moveTo(0, y); g.lineTo(sw - 12 * k, y); g.quadraticCurveTo(sw, y, sw, y + th / 2); g.quadraticCurveTo(sw, y + th, sw - 12 * k, y + th); g.lineTo(0, y + th); g.closePath(); g.fill();
-    g.font = `italic bold ${Math.round(15 * k)}px Tahoma, "Segoe UI", sans-serif`; g.textBaseline = 'middle';
-    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillText('toast', 14 * k + 1, y + th / 2 + 1); g.fillStyle = '#fff'; g.fillText('toast', 14 * k, y + th / 2);
-    const tw = Math.round(118 * k), tx = W - tw, tgr = g.createLinearGradient(0, y, 0, y + th);
-    tgr.addColorStop(0, '#1290e8'); tgr.addColorStop(1, '#0c6fc9');
-    g.fillStyle = tgr; g.fillRect(tx, y, tw, th);
-    g.font = `${Math.round(11 * k)}px Tahoma, "Segoe UI", sans-serif`; g.fillStyle = '#fff';
-    g.fillText(`${Math.round(bpm)} BPM`, tx + 14 * k, y + th / 2);
-    const bx = sw + 8 * k, bwid = Math.min(Math.round(220 * k), tx - bx - 8 * k), bg = g.createLinearGradient(0, y + 3 * k, 0, y + th - 3 * k);
-    bg.addColorStop(0, '#1e52b7'); bg.addColorStop(1, '#174499');
-    g.fillStyle = bg; g.fillRect(bx, y + 3 * k, bwid, th - 6 * k);
-    g.save(); g.beginPath(); g.rect(bx, y, bwid - 4 * k, th); g.clip();
-    g.fillStyle = '#fff'; g.fillText(title, bx + 8 * k, y + th / 2);
+    g.fillStyle = stops(g.createLinearGradient(0, y, 0, y + th), [[0, '#3168d5'], [0.04, '#4993e6'], [0.09, '#2157d7'], [0.6, '#2663e0'], [1, '#1941a5']]);
+    g.fillRect(0, y, W, th);
+    const sw = Math.round(100 * k), rad = 10 * k;
+    g.fillStyle = stops(g.createRadialGradient(sw / 2, y + th * 0.2, 0, sw / 2, y + th * 0.2, Math.hypot(sw / 2, th * 0.8)), [[0, '#5eb75e'], [0.45, '#3c9a3c'], [1, '#2f852f']]);
+    g.beginPath(); g.roundRect(0, y, sw, th, [0, rad, rad, 0]); g.fill();
+    // (the flag: red, green, blue, yellow, a little gap between them, leaning a little)
+    const fs = Math.round(15 * k), fx = 9 * k, fy = y + (th - fs) / 2, half = fs / 2 - Math.max(0.5, k * 0.6);
+    g.save(); g.translate(fx, fy + fs / 2); g.transform(1, -0.1, 0, 1, 0, 0); g.translate(0, -fs / 2);
+    for (const [c, i, j] of [['#f25022', 0, 0], ['#7fba00', 1, 0], ['#00a4ef', 0, 1], ['#ffb900', 1, 1]]) { g.fillStyle = c; g.fillRect(i * (fs - half), j * (fs - half), half, half); }
+    g.restore();
+    g.font = `italic bold ${Math.round(16 * k)}px "Trebuchet MS", Tahoma, sans-serif`; g.textBaseline = 'middle';
+    g.fillStyle = '#1a4a1a'; g.fillText('toast', fx + fs + 5 * k + Math.max(1, k * 0.8), y + th / 2 + Math.max(1, k * 0.8));
+    g.fillStyle = '#fff'; g.fillText('toast', fx + fs + 5 * k, y + th / 2);
+    const tw = Math.round(104 * k), tx = W - tw;
+    g.fillStyle = stops(g.createLinearGradient(0, y, 0, y + th), [[0, '#0c59b9'], [0.06, '#139ee9'], [0.1, '#18b5f2'], [0.14, '#139beb'], [0.6, '#1290e8'], [0.76, '#0d8dea'], [1, '#0961b7']]);
+    g.fillRect(tx, y, tw, th);
+    g.fillStyle = '#092e7a'; g.fillRect(tx, y, Math.max(1, k), th);
+    g.fillStyle = '#18bbff'; g.fillRect(tx + Math.max(1, k), y, Math.max(1, k * 0.8), th);
+    // (the speaker)
+    const vx = tx + 11 * k, vy = y + th / 2;
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(vx, vy - 1.5 * k); g.lineTo(vx + 3.5 * k, vy - 1.5 * k); g.lineTo(vx + 8 * k, vy - 5 * k); g.lineTo(vx + 8 * k, vy + 5 * k); g.lineTo(vx + 3.5 * k, vy + 1.5 * k); g.lineTo(vx, vy + 1.5 * k); g.closePath(); g.fill();
+    g.font = `${Math.round(11 * k)}px Tahoma, "Segoe UI", sans-serif`;
+    g.fillText(`${Math.round(bpm)} BPM`, vx + 16 * k, y + th / 2);
+    const bx = sw + 6 * k, bwid = Math.min(Math.round(200 * k), tx - bx - 6 * k), bh = th - 7 * k, btop = y + 3.5 * k;
+    g.fillStyle = '#1e52b7'; g.beginPath(); g.roundRect(bx, btop, bwid, bh, 3 * k); g.fill();
+    g.save(); g.clip();
+    g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 2 * k; g.beginPath(); g.moveTo(bx, btop + bh); g.lineTo(bx, btop); g.lineTo(bx + bwid, btop); g.stroke();
+    // (the window's icon: a little window, its title bar blue)
+    const ix = bx + 8 * k, iy = y + th / 2 - 6 * k;
+    g.fillStyle = '#ece9d8'; g.fillRect(ix, iy, 14 * k, 12 * k);
+    g.fillStyle = '#0058ee'; g.fillRect(ix, iy, 14 * k, 3.5 * k);
+    g.beginPath(); g.rect(bx, y, bwid - 5 * k, th); g.clip();
+    g.fillStyle = '#fff'; g.fillText(title, ix + 19 * k, y + th / 2);
     g.restore();
   }
   function finish() {

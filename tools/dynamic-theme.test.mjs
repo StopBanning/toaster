@@ -13,13 +13,13 @@ const app = read('app.js'), html = read('index.html'), css = read('style.css'), 
 const THEMES = JSON.parse(app.match(/const THEMES = (\[[^\]]*\]);/)[1].replace(/'/g, '"'));
 const body = (name) => app.slice(app.indexOf(`function ${name}(`), app.indexOf('\n}\n', app.indexOf(`function ${name}(`)) + 3);
 
-test('the themes: the five it had, in their order, and dynamic after whitescreen', () => {
-  assert.deepEqual(THEMES, ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic']);
+test('the themes: the five it had, in their order, dynamic after whitescreen, and softclub last (a theme is kept by its place)', () => {
+  assert.deepEqual(THEMES, ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub']);
 });
 
 test('the help\'s T row lists the themes, all of them, in order; Ctrl+K has each as "theme: name"', () => {
   const row = html.match(/<tr data-act="theme"><td>T<\/td><td>([^<]*)<\/td><\/tr>/)[1];
-  const named = row.replace(/^theme: /, '').replace(/\s*\(.*$/, '').split(', ');
+  const named = row.replace(/^theme: /, '').replace(/\s*\([^)]*\)/g, '').split(', ');
   assert.deepEqual(named, THEMES);
   assert.match(row, /dynamic \(the colours of the song's cover/);
   // (every theme through the list, so a new one has its entry without anyone adding it)
@@ -35,8 +35,9 @@ test('it is saved with the others, by its place in the list; an older profile (0
   assert.equal(saved.filter((k) => k === 'theme').length, 1);
   assert.match(app, /if \(!\(state\.theme in THEMES\)\) state\.theme = 0;/);
   for (let saved = 0; saved <= 4; saved++) assert.ok(saved in THEMES && THEMES[saved] === ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'][saved], `profile with theme ${saved}`);
-  assert.ok(5 in THEMES);
-  for (const junk of [6, -1, 1.5, 'x', null, undefined]) assert.ok(!(junk in THEMES), `${junk} is no theme: bluescreen`);
+  assert.equal(THEMES[5], 'dynamic', 'a profile on the dynamic theme stays on it');
+  assert.ok(6 in THEMES);
+  for (const junk of [7, -1, 1.5, 'x', null, undefined]) assert.ok(!(junk in THEMES), `${junk} is no theme: bluescreen`);
   // nothing else about the dynamic theme is saved: its colours are the cover's, and the cover isn't kept
   assert.doesNotMatch(app.match(/const SAVED = \[[^\]]*\]/)[0], /dynamic|cover|palette/);
 });
@@ -44,7 +45,7 @@ test('it is saved with the others, by its place in the list; an older profile (0
 test('the fixed themes keep the stylesheet\'s colours alone: it names no dynamic theme, and each theme has the whole set', () => {
   assert.doesNotMatch(css, /data-theme="dynamic"/);
   const rules = { bluescreen: css.match(/:root \{([^}]*)\}/)[1] };
-  for (const name of THEMES.slice(1, -1)) rules[name] = css.match(new RegExp(`:root\\[data-theme="${name}"\\] \\{([^}]*)\\}`))[1];
+  for (const name of THEMES.filter((n) => n !== 'bluescreen' && n !== 'dynamic')) rules[name] = css.match(new RegExp(`:root\\[data-theme="${name}"\\] \\{([^}]*)\\}`))[1];
   for (const [name, text] of Object.entries(rules)) for (const v of THEME_VARS) assert.match(text, new RegExp(`${v}:`), `${name} sets ${v}`);
   // applyTheme: the page's own variables for the dynamic theme, cleared for every other, then the same read of them as before
   const apply = body('applyTheme');
@@ -63,7 +64,7 @@ test('the fixed themes keep the stylesheet\'s colours alone: it names no dynamic
 test('each frame: the ease steps while the theme is dynamic, applying its colours as they move, and the frame rate stays full while it eases', () => {
   assert.match(app, /showLayers\(\);\s*if \(THEMES\[state\.theme\] === 'dynamic'\) stepTheme\(t\);/);
   assert.match(body('stepTheme'), /const art = songArt\(\);\s*if \(coverTheme\.update\(art \? paletteOf\(art\) : null, t\)\) applyTheme\(t\);/);
-  assert.match(body('frameGap'), /if \(rec\.mr \|\| cam\.on \|\| takeover\.active \|\| storm\.active \|\| coverTheme\.easing\(t\)\) return 1000 \/ 61;/);
+  assert.match(body('frameGap'), /if \(rec\.mr \|\| cam\.on \|\| takeover\.active \|\| y2k\.active \|\| storm\.active \|\| coverTheme\.easing\(t\)\) return 1000 \/ 61;/);
   assert.match(app, /const NO_COVER = fullPalette\(BLUESCREEN\);[^\n]*\nconst coverTheme = createDynamicTheme\(\{ none: NO_COVER \}\);/);
   assert.match(app, /import \{ ACCENT_TEXT_VAR, ACCENT_VAR, BLUESCREEN, THEME_VARS, coverPalette, createDynamicTheme, fullPalette, heatStops, paletteVars, terrainStops \} from '\.\/cover-palette\.js';/);
   // the palette is worked out once a cover, from 48 x 48 pixels
@@ -99,8 +100,8 @@ test('the two new modules are plain functions: no page, no imports, so the web b
   assert.match(app, /scenery\.draw\(t, eng, \{ col, offset: syncOffset\(\), colours: state\.sceneryTheme \? 'theme' : 'own', palette: themeLook\?\.scene \|\| null,/);
 });
 
-test('the news: one line for 0.4.28, at the top, lowercase, under T', () => {
-  const head = news.slice(news.indexOf('export const NEWS = ['), news.indexOf("version: '0.4.27'"));
+test('the news: one line for 0.4.28, lowercase, under T', () => {
+  const head = news.slice(news.indexOf("version: '0.4.28'"), news.indexOf("version: '0.4.27'")); // (its own block: newer versions come above it)
   assert.match(head, /version: '0\.4\.28'/);
   const lines = [...head.matchAll(/\{ act: '(\w+)', text: "([^"]+)" \}/g)];
   assert.equal(lines.length, 1);

@@ -5,6 +5,8 @@
 // tokens as their notes play. A slider's number slides to a new value instead of being typed, and
 // a line too long for the window goes on over more rows.
 
+import { clock } from './clock.js';
+
 // Keys next to each key on a QWERTY keyboard, for believable typos.
 const NEAR = {
   a: 'qwsz', b: 'vghn', c: 'xdfv', d: 'serfcx', e: 'wsdr', f: 'drtgvc', g: 'ftyhbv', h: 'gyujnb', i: 'ujko',
@@ -91,6 +93,9 @@ export function createCodeView(ids) {
     spans: [], want: '', wantSince: 0,
   }]));
   const typer = { queue: [], cur: null, next: 0 };
+  // The dice of the typing (its slips, its wrong keys, how long it pauses): a stream of the song's own (clock.rng),
+  // started again with each new song (clear), so the same ticks type the same code, the same mistakes, at the same moments.
+  let dice = clock.rng('typing', 0);
   // lines typed in and waiting for the next bar line to land on, and when the first started waiting
   const landing = new Set();
   let landingSince = 0, lastBar = null;
@@ -166,8 +171,8 @@ export function createCodeView(ids) {
     // now and then a slip: the last ) (or ") of what's typed left out until the error shows (not on a line hidden
     // with the beat, Z's middle setting: its error would point at nothing)
     let slip = -1;
-    const now = performance.now() / 1000;
-    if (!slipsOff && SLIP_LINES.has(L.id) && L.el.offsetWidth && !b.startsWith('//') && !b.startsWith('_') && add.length > 6 && now - lastSlip > SLIP_GAP && Math.random() < SLIP_CHANCE) {
+    const now = clock.now();
+    if (!slipsOff && SLIP_LINES.has(L.id) && L.el.offsetWidth && !b.startsWith('//') && !b.startsWith('_') && add.length > 6 && (now - lastSlip > SLIP_GAP || now < lastSlip) && dice() < SLIP_CHANCE) {
       slip = add.lastIndexOf(')');
       if (slip < 0) slip = add.lastIndexOf('"');
       if (slip >= 0) lastSlip = now;
@@ -176,20 +181,20 @@ export function createCodeView(ids) {
       const ch = add[j];
       if (j === slip) continue;
       const near = NEAR[ch.toLowerCase()];
-      if (near && Math.random() < TYPO_CHANCE) {
-        const wrong = near[Math.floor(Math.random() * near.length)];
+      if (near && dice() < TYPO_CHANCE) {
+        const wrong = near[Math.floor(dice() * near.length)];
         ops.push({ ins: ch === ch.toLowerCase() ? wrong : wrong.toUpperCase() }, 'pause', 'del');
       }
       ops.push({ ins: ch });
     }
-    if (slip >= 0) ops.push({ error: SLIP_ERROR[add[slip]] }, { wait: 900 + Math.random() * 600 }, { caretTo: p + slip }, { ins: add[slip] }, 'unerror');
+    if (slip >= 0) ops.push({ error: SLIP_ERROR[add[slip]] }, { wait: 900 + dice() * 600 }, { caretTo: p + slip }, { ins: add[slip] }, 'unerror');
     return { id: L.id, caret: a.length - s, ops, i: 0, delay: clamp(1100 / (ops.length + 1), 9, 34) };
   }
 
   function finish(L) {
     L.parts = L.targetParts;
     render(L);
-    if (!landing.size) landingSince = performance.now() / 1000;
+    if (!landing.size) landingSince = clock.now();
     landing.add(L);
   }
   const flash = (L, cls) => { L.el.classList.remove(cls); void L.el.offsetWidth; L.el.classList.add(cls); };
@@ -208,7 +213,7 @@ export function createCodeView(ids) {
   // On the bar line: the changes land (each flashes), and the rest of the playing code with them.
   function land() {
     for (const L of Object.values(lines)) if (!landing.has(L) && L.el.textContent && !L.el.classList.contains('cm')) flash(L, 'eval');
-    for (const L of landing) { flash(L, 'flash'); L.landedAt = performance.now() / 1000; } // (when: for the handheld's copy)
+    for (const L of landing) { flash(L, 'flash'); L.landedAt = clock.now(); } // (when: for the handheld's copy)
     landing.clear();
   }
 
@@ -311,12 +316,12 @@ export function createCodeView(ids) {
         c.caret--;
         typer.next = t + (c.delay * 0.6) / 1000;
       } else if (op === 'pause') {
-        typer.next = t + 0.12 + Math.random() * 0.12;
+        typer.next = t + 0.12 + dice() * 0.12;
       } else if (op === 'unerror') {
         // fixed: the squiggle goes and the line flashes green (once: typing it again later mustn't)
         L.el.classList.remove('slipped');
         flash(L, 'fixed');
-        setTimeout(() => L.el.classList.remove('fixed'), 800);
+        clock.after(0.8, () => L.el.classList.remove('fixed')); // (on the clock: a render takes the class off at the same time)
         if (err) err.hidden = true;
         typer.next = t + 0.05;
       } else if (op.error !== undefined) {
@@ -331,7 +336,7 @@ export function createCodeView(ids) {
       } else {
         L.shown = L.shown.slice(0, c.caret) + op.ins + L.shown.slice(c.caret);
         c.caret++;
-        typer.next = t + (c.delay * (0.6 + Math.random() * 0.8)) / 1000;
+        typer.next = t + (c.delay * (0.6 + dice() * 0.8)) / 1000;
       }
       render(L);
     },
@@ -365,7 +370,7 @@ export function createCodeView(ids) {
     // to be (target), the caret on the one being typed (else -1), whether it's quiet (a comment, a muted part), its
     // tokens lit now (from, to: characters) and how long ago its last change landed (s).
     snapshot() {
-      const now = performance.now() / 1000;
+      const now = clock.now();
       return ids.map((id) => {
         const L = lines[id], lit = [];
         if (L.spans.length) {
@@ -379,8 +384,10 @@ export function createCodeView(ids) {
 
     // A fresh start for a new song: wipe the screen and type everything again.
     clear() {
+      dice = clock.rng('typing', 0);
       typer.queue.length = 0;
       typer.cur = null;
+      typer.next = 0; // (typing starts at once, on whatever time the clock is at: a render's starts from its own)
       landing.clear();
       if (err) err.hidden = true;
       for (const L of Object.values(lines)) {

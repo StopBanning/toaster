@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('nc', {
   stopFaces: () => ipcRenderer.invoke('faces:stop'),
   // Opens a https://strudel.cc/#... link in the default browser.
   openStrudel: (url) => ipcRenderer.invoke('open:strudel', url),
-  // Opens a bug report's draft (a github.com/StopBanning/toaster/issues/new link) the same way.
+  // Opens a bug report's draft, or a misread report's (a github.com/StopBanning/toaster/issues/new link), the same way.
   openBugIssue: (url) => ipcRenderer.invoke('open:bug-issue', url),
   // Recording (M): a capture id for the page itself, then the video to a file, piece by piece.
   recSource: () => ipcRenderer.invoke('rec:source'),
@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld('nc', {
   closeWindow: () => ipcRenderer.invoke('win:close'),
   // Song export (X): the song as MIDI bytes and as Strudel code, into Music\Toaster.
   saveSong: (name, midi, code) => ipcRenderer.invoke('song:save', name, midi, code),
+  // The perfect take (stream B): a take begun (its details; says its id), its sound as it comes, its end (with what changed);
+  // main draws it again beside the recording and says how far along it is, when it's done (the file) or why it couldn't be.
+  takeBegin: (meta) => ipcRenderer.invoke('take:begin', meta),
+  takeSound: (id, data) => ipcRenderer.send('take:sound', id, data),
+  takeEnd: (id, end) => ipcRenderer.invoke('take:end', id, end),
+  takeCancel: () => ipcRenderer.invoke('take:cancel'),
+  onTakeProgress: (fn) => ipcRenderer.on('take:progress', (_e, f) => fn(f)),
+  onTakeDone: (fn) => ipcRenderer.on('take:done', (_e, file) => fn(file)),
+  onTakeFailed: (fn) => ipcRenderer.on('take:failed', (_e, why) => fn(why)),
   // Drop clips (J): a finished clip, whole, into Videos\Toaster.
   saveClip: (buf, ext) => ipcRenderer.invoke('clip:save', buf, ext),
   // Updates (update.js): a newer release, or null; on your yes, fetch it and restart into it; or
@@ -46,6 +55,8 @@ contextBridge.exposeInMainWorld('nc', {
   // The header's star button: GitHub's star count (or null), and the project's page in the browser.
   stars: () => ipcRenderer.invoke('repo:stars'),
   openRepo: () => ipcRenderer.invoke('repo:open'),
+  // the station list (docs/radio-stations.md) in the browser, from the library's empty radio
+  openStations: () => ipcRenderer.invoke('stations:open'),
   // The radio's song: start reading the titles in the stream at url (null stops it), fn({ title,
   // artist } or null) for each new one; and a song's cover from the iTunes Store, as the picture's
   // bytes (null: none found).
@@ -67,7 +78,24 @@ contextBridge.exposeInMainWorld('nc', {
   libraryCached: () => ipcRenderer.invoke('library:cached'),
   libraryScan: () => ipcRenderer.invoke('library:scan'),
   libraryRead: (rel) => ipcRenderer.invoke('library:read', rel),
+  // The Earth's views (V): a clip's bytes, from the copy kept in the settings folder (downloaded the first time).
+  earthClip: (name) => ipcRenderer.invoke('earth:clip', name),
+  // Looks from outside (U): the shaders that ship and the ones in the looks folder; the folder, opened.
+  looksList: () => ipcRenderer.invoke('looks:list'),
+  looksOpen: () => ipcRenderer.invoke('looks:open'),
   onLibraryProgress: (fn) => ipcRenderer.on('library:progress', (_e, p) => fn(p)),
+  // Spotify (the library's spotify section): whether this copy is connected ({ connected, clientId }: never a token, which main keeps), connecting
+  // with the listener's own Client ID (the system browser opens Spotify's page; resolves once they've agreed) and disconnecting, a list of
+  // theirs (list: playlists, albums, liked, or playlist or album with an id) as rows, a play on the device Spotify has open, a pasted link played
+  // in the Spotify app (the link as main read it: { kind, id, uri }), and a cover (an i.scdn.co address) as a data: address. main checks each
+  // request before anything is sent; a failure comes back as an error in words.
+  spotifyStatus: () => ipcRenderer.invoke('spotify:status'),
+  spotifyConnect: (clientId) => ipcRenderer.invoke('spotify:connect', clientId),
+  spotifyDisconnect: () => ipcRenderer.invoke('spotify:disconnect'),
+  spotifyList: (request) => ipcRenderer.invoke('spotify:list', request),
+  spotifyPlay: (request) => ipcRenderer.invoke('spotify:play', request),
+  spotifyOpen: (text) => ipcRenderer.invoke('spotify:open', text),
+  spotifyCover: (url) => ipcRenderer.invoke('spotify:cover', url),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),
   handLogAdd: (text) => ipcRenderer.invoke('handlog:add', text),

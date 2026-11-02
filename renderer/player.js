@@ -1,10 +1,11 @@
 // The player bar: a slim strip along the bottom with the source and the song at its left, a transport with only the
-// buttons the source can really do, a progress bar where the position is known, and a status line from the engine
-// (tempo, key, and the bar and beat as Toaster counts them). What each source gets, the times and the status line are
-// plain functions; the bar itself is built through a few DOM calls only (createElement, append, addEventListener,
-// dataset, hidden, textContent, setAttribute, style), so tools/player-bar.test.mjs runs it on a stand-in page.
-// app.js hands it what's playing every so often (update) and what a button does where only the app can say (act);
-// it keeps no timers of its own. The system's own player is reached through window.nc (main.js, helpers/player.cjs).
+// buttons the source can really do, a progress bar where the position is known, a status line from the engine (tempo, key,
+// and the bar and beat as Toaster counts them), and at the right end a flag to report a misread (renderer/misread.js). What
+// each source gets, the times and the status line are plain functions; the bar itself is built through a few DOM calls only
+// (createElement, append, addEventListener, dataset, hidden, textContent, setAttribute, style), so tools/player-bar.test.mjs
+// runs it on a stand-in page. app.js hands it what's playing every so often (update) and what a button does where only the
+// app can say (act); it keeps no timers of its own. The system's own player is reached through window.nc (main.js,
+// helpers/player.cjs).
 
 // What the chip says for each source (SOURCE_KINDS in app.js says the same, bar the radio's "stream").
 export const CHIPS = { system: 'system', file: 'file', input: 'mic', tab: 'tab', demo: 'demo', radio: 'radio' };
@@ -84,6 +85,7 @@ const ICONS = {
   play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v12l10-6z"/></svg>',
   pause: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3.5v11H3.5zM9 2.5h3.5v11H9z"/></svg>',
   stop: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5h9v9h-9z"/></svg>',
+  flag: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h1.5v13H3zM4.5 2.5h8l-2 3 2 3h-8z"/></svg>',
 };
 const SYSTEM_ACTION = { prev: 'previous', play: 'playpause', next: 'next' };
 const POLL_EVERY = 2; // seconds between asking Music or Spotify where it is (between, the bar counts on by itself)
@@ -93,8 +95,9 @@ const SEEK_KEY = 5; // seconds an arrow key moves the position
 // root: the bar's element (#player). nc: the page's bridge to the main process (window.nc), where there is one; platform:
 // its platform ('darwin', 'win32', or 'web'). act, what only the app can do: restart() and seek(seconds) for a file,
 // stop() and start(kind) for the radio and the demo, next() and previous() where there's a queue (the library's: the app gives
-// them while one is playing, and without them previous restarts the file), fail(err) and note(text). A snapshot's `near`, the
-// queue's line of what's near ([{ text, now }]), is shown beside the song where there's room.
+// them while one is playing, and without them previous restarts the file), misread() for the report-a-misread flag, fail(err)
+// and note(text). A snapshot's `near`, the queue's line of what's near ([{ text, now }]), is shown beside the song where there's
+// room.
 export function createPlayerBar({ document: doc, root, nc = null, platform = 'web', act = {}, window: win = globalThis }) {
   const bridge = !!nc && typeof nc.playerCommand === 'function';
   const el = (tag, cls, ...kids) => {
@@ -131,7 +134,20 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
   track.setAttribute('aria-label', 'position');
   const progress = el('div', 'pl-progress', pos, track, len);
   const status = el('div', 'pl-status');
-  root.append(el('div', 'pl-id', chip, song, near), transport, progress, status);
+  // the flag at the right end: "report a misread" (act.misread: the app opens the report, renderer/misread.js). It is there with
+  // any source, or none, since the report says what it doesn't know; and not at all where the app gives no way to one
+  const misread = el('button', 'pl-btn pl-misread');
+  misread.type = 'button';
+  misread.innerHTML = ICONS.flag;
+  misread.title = 'report a misread';
+  misread.setAttribute('aria-label', 'report a misread');
+  misread.hidden = typeof act.misread !== 'function';
+  misread.addEventListener('click', (e) => {
+    // (as the transport's buttons: a click leaves no focus on it. First, here: the report would hand the focus back to it when it closes)
+    if (e.detail) misread.blur?.();
+    try { act.misread(); } catch (err) { act.fail?.(err); }
+  });
+  root.append(el('div', 'pl-id', chip, song, near), transport, progress, status, misread);
 
   let last = null; // the latest snapshot (update)
   let ctl = controlsFor({}); // and what it gets

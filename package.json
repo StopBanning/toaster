@@ -1,7 +1,7 @@
 {
   "name": "toaster",
   "productName": "Toaster",
-  "version": "0.4.29",
+  "version": "0.4.30",
   "description": "Hears whatever is playing and writes it out as live Strudel code, with visuals.",
   "author": "Colin",
   "license": "MIT",
@@ -19,6 +19,7 @@
     "electron": "44.7.0"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "0.10.35"
+    "@mediapipe/tasks-vision": "0.10.35",
+    "mp4-muxer": "5.2.2"
   }
 }

@@ -32,15 +32,34 @@
 :root[data-theme="terminal"] { --bg:#010a03; --fg:#3dff76; --ink:#000; --dim:rgba(61,255,118,.56); --faint:rgba(61,255,118,.12); --hl-bg:rgba(61,255,118,.2); --line-bg:rgba(1,10,3,.62); }
 :root[data-theme="pink"] { --bg:#16000d; --fg:#ff5cbf; --ink:#000; --dim:rgba(255,92,191,.78); --faint:rgba(255,92,191,.13); --hl-bg:rgba(255,92,191,.22); --line-bg:rgba(22,0,13,.62); }
 :root[data-theme="whitescreen"] { --bg:#fff; --fg:#000; --ink:#d8d8d8; --dim:rgba(0,0,0,.58); --faint:rgba(0,0,0,.1); --hl-bg:rgba(0,0,0,.1); --line-bg:rgba(255,255,255,.7); --field:.16; color-scheme: light; }
+/* softclub: the late-90s "Gen X soft club" look, hazy and cool: slate ink on an icy blue-grey, a cerulean for what's lit, and a
+   soft glow on the big type (9.6:1 for the text, 4.8:1 for --dim on the haze's darkest, 5:1 and 7.2:1 for the accents) */
+:root[data-theme="softclub"] { --bg:#dde6ee; --fg:#22384d; --ink:#c9d5df; --dim:rgba(34,56,77,.78); --faint:rgba(34,56,77,.12); --hl-bg:rgba(47,127,174,.16); --line-bg:rgba(221,230,238,.72); --field:.16; --accent:#24658c; --accent-text:#1b4d6c; color-scheme: light; }
+:root[data-theme="softclub"] body { background: radial-gradient(ellipse 90% 75% at 70% 25%, #eef3f7, #dde6ee 55%, #d4dee8); }
+:root[data-theme="softclub"] #library .lib-clock, :root[data-theme="softclub"] #library .lib-name, :root[data-theme="softclub"] #library .lib-now .title,
+:root[data-theme="softclub"] #ln-title { text-shadow: 0 0 14px rgba(110, 170, 215, .5); }
+/* The page's motion, on Hyprland's tuned curves: its easeOutQuint for things settling, almostLinear for fades, quick
+   for snaps, and its "easy" spring (mass 1, stiffness 238.1, damping 24.2: a 2% overshoot, settled by a quarter
+   second) for things that pop up, sampled into linear(). (After the themes: the first :root is bluescreen's colours,
+   which tools/cover-palette and dynamic-theme read.) */
+:root {
+  --ease-out: cubic-bezier(.23, 1, .32, 1); --ease-fade: cubic-bezier(.5, .5, .75, 1); --ease-quick: cubic-bezier(.15, 0, .1, 1);
+  --spring: linear(0, 0.0436, 0.1469, 0.2779, 0.4152, 0.5451, 0.6602, 0.757, 0.835, 0.8954, 0.9403, 0.9722, 0.9937, 1.0072, 1.0148, 1.0181, 1.0187, 1.0176, 1.0155, 1.0129, 1.0104, 1.008, 1.0059, 1.0042, 1);
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none; }
 
-#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spaghetti, #spectro, #spectrobox, #scenery, #wait, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spaghetti, #earth, #spectro, #spectrobox, #scenery, #lanes, #wait, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #warp { opacity: .55; }
 #glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 #glass[hidden] { display: none; }
+/* The looks (U, renderer/post.js): the layers above, gathered into one picture and run through a look, drawn over
+   them and under the code. With a look on, the code's lit tokens glow with the kick (--look-kick, 0..1). */
+#post { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+#post[hidden] { display: none; }
+body.look-on .tok.on { box-shadow: 0 0 calc(var(--look-kick, 0) * 14px) color-mix(in srgb, var(--accent) 75%, transparent); }
 /* ---------- CRT (Y): an old screen over everything ---------- */
 /* Its layers (#tube in the page; .crt is the drop effect's little monitor, another thing) over the whole
    picture, code and header too, under the notices: the scanlines, three device pixels apart (--crt-px is
@@ -89,12 +108,12 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font); user-s
   border-radius: 2.4vmin;
   background: radial-gradient(ellipse 80% 82% at 50% 50%, transparent 58%, rgba(0, 0, 0, .16) 80%, rgba(0, 0, 0, .46) 100%);
   box-shadow: 0 0 0 6vmin #000, inset 0 0 5vmin rgba(0, 0, 0, .3);
-  transition: opacity .32s ease-out;
+  transition: opacity .32s var(--ease-out);
 }
 #tube.kick .t-glass { opacity: .62; transition: none; }
 /* the set's own lettering, top right: the channel, the picture setting, VCR green */
 #tube .t-osd {
-  position: absolute; top: 6vmin; right: 7vmin; white-space: pre; opacity: 0; transition: opacity .4s;
+  position: absolute; top: 6vmin; right: 7vmin; white-space: pre; opacity: 0; transition: opacity .4s var(--ease-fade);
   font: 700 clamp(14px, 3.6vmin, 36px)/1.25 var(--font); letter-spacing: .08em; text-align: right; color: #63ff84;
   text-shadow: 0 0 .32em rgba(90, 255, 130, .75), .06em 0 0 rgba(255, 40, 80, .55), -.06em 0 0 rgba(40, 160, 255, .55);
 }
@@ -137,20 +156,20 @@ body.cam-cut #cam { z-index: 1; opacity: .92; }
 #voxcam { opacity: .85; } /* (the voxels in the camera's place, under the backgrounds; a room, so solid) */
 #field { opacity: calc(var(--field) * var(--field-k, 1.5) * var(--hush, 1)); } /* --field-k: the strength you pick (A) */
 /* hushed (a raised fist, or Q): the picture dims, while the code mutes itself line by line */
-#worlds, #worldwords, #chrome, #spaghetti, #spectro, #spectrobox, #scenery, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s; }
+#worlds, #worldwords, #chrome, #spaghetti, #earth, #spectro, #spectrobox, #scenery, #lanes, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s var(--ease-fade); }
 body.hushed { --hush: .3; }
 /* the camera as text (a layer of its own, over the background) stands out more than an ASCII
    background does */
 #asciicam { opacity: calc(var(--field) * 3.2 * var(--hush, 1)); }
 body.hushed #vis, body.hushed #orb, body.hushed #punch { opacity: .3; }
 body.hushed #warp { opacity: .17; }
-body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spaghetti, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery { opacity: .3; }
+body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spaghetti, body.hushed #earth, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery, body.hushed #lanes { opacity: .3; }
 /* over the worlds (and the chrome, the spaghetti, the spectrogram) the code sits on the ID card's panel
    colour (navy on the blue theme), not the theme's own, which fights the picture's colours */
 body.worlds-on, body.chrome-on, body.spaghetti-on, body.spectro-on { --line-bg: color-mix(in srgb, var(--ink) 70%, transparent); }
-/* the worlds (and the spaghetti, the spectrogram, the scenery) over the camera: you show through them
+/* the worlds (and the spaghetti, the spectrogram, the scenery, the lanes) over the camera: you show through them
    (with the cut-out you're in front of them) */
-body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spaghetti, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery { opacity: .6; }
+body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spaghetti, body.cam-on:not(.cam-cut) #earth, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery, body.cam-on:not(.cam-cut) #lanes { opacity: .6; }
 
 /* ---------- code ---------- */
 #code {
@@ -160,6 +179,14 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
 .ln { white-space: pre; min-height: 1.55em; overflow: hidden; text-overflow: ellipsis; }
 .ln.gap { min-height: .8em; }
 .ln .txt { background: var(--line-bg); }
+/* the code on glass (Ctrl+K): the panes are drawn under the code by post.js's glass pass, so the plates go clear */
+body.glass-on .ln .txt, body.glass-on #code .panel { background: transparent; }
+body.glass-on .ln.eval .txt { animation-name: evalflash-glass; }
+body.glass-on .ln.fixed .txt { animation-name: fixed-glass; }
+@keyframes evalflash-glass { from { background: var(--hl-bg); } to { background: transparent; } }
+@keyframes fixed-glass { from { background: rgba(70, 220, 130, .5); } to { background: transparent; } }
+/* off the glass, the plates are rounded (squircles where the browser can), shaded at their foot (inside them: .ln clips) */
+body:not(.glass-on) .ln .txt, body:not(.glass-on) #code .panel { border-radius: 4px; corner-shape: squircle; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .06); }
 .ln.cm { color: var(--dim); }
 .tok { border-radius: 2px; }
 /* slider(...): a thin track under it, filled as far as its value, like the slider Strudel draws */
@@ -173,10 +200,10 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
   background: var(--fg); animation: blink 1s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
-.ln.flash { animation: flash .4s ease-out; }
+.ln.flash { animation: flash .4s var(--ease-out); }
 @keyframes flash { from { background: var(--faint); } to { background: transparent; } }
 /* the rest of the playing code, as a change lands on the bar (Strudel's flash on ctrl+enter) */
-.ln.eval .txt { animation: evalflash .3s ease-out; }
+.ln.eval .txt { animation: evalflash .3s var(--ease-out); }
 @keyframes evalflash { from { background: var(--hl-bg); } to { background: var(--line-bg); } }
 /* a slip, the way an editor shows one: the line squiggles red, the error sits just under it pointing
    at where the typing stopped (codeview.js places it), and once it's fixed the line flashes green */
@@ -189,7 +216,7 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
 }
 #err.above::before { top: auto; bottom: -6px; border-top: 6px solid #d42a2a; border-bottom: 0; }
 .ln.slipped .txt { text-decoration: underline wavy #ff4d4d; text-decoration-skip-ink: none; text-underline-offset: 3px; }
-.ln.fixed .txt { animation: fixed .7s ease-out; }
+.ln.fixed .txt { animation: fixed .7s var(--ease-out); }
 @keyframes fixed { from { background: rgba(70, 220, 130, .5); } to { background: var(--line-bg); } }
 
 .panel {
@@ -204,6 +231,12 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
 body.card-on #sys { right: 348px; }
 
 /* ---------- now-playing ID card (N) ---------- */
+/* a bright arc runs round the card's border once a bar (--turn, set by card.js; after Hyprland's turning borders) */
+#card::before {
+  content: ''; position: absolute; inset: -1px; padding: 1px; pointer-events: none;
+  background: conic-gradient(from var(--turn, 0deg), var(--accent, var(--fg)) 0deg, transparent 70deg, transparent 290deg, var(--accent, var(--fg)) 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+}
 #card {
   position: fixed; z-index: 3; top: 48px; right: 24px; width: 300px; padding: 9px 12px 6px;
   border: 1px solid var(--dim); background: color-mix(in srgb, var(--ink) 90%, transparent); color: var(--fg);
@@ -374,7 +407,7 @@ body.mini header #status { max-width: none; overflow: visible; padding-left: 8px
 /* the star button after the name: GitHub's logo, the project's star count, a star; it fades in with
    its count (stars.js). (The star: dim, filling with gold from the bottom as the count rolls up (--fill,
    0-1); the count on odometer wheels, a digit a line; the glyphs it bursts into; a press sinks it.) */
-header > #b-star { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; flex-shrink: 0; padding: 3px 9px; border: 1px solid var(--dim); color: inherit; text-decoration: none; white-space: nowrap; -webkit-app-region: no-drag; opacity: 0; transition: opacity .5s, transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+header > #b-star { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; flex-shrink: 0; padding: 3px 9px; border: 1px solid var(--dim); color: inherit; text-decoration: none; white-space: nowrap; -webkit-app-region: no-drag; opacity: 0; transition: opacity .5s var(--ease-fade), transform .45s var(--spring); }
 header > #b-star.ready { opacity: 1; }
 header > #b-star:hover, header > #b-star:focus-visible { background: var(--faint); border-color: var(--fg); outline: none; }
 header > #b-star:active { transform: scale(.97); }
@@ -384,7 +417,7 @@ body.mini header > #b-star { display: none; }
 /* the handheld game in the mini player: the handheld on its own, filling the window (game.js), the code put away */
 body.mini.game-on #code { display: none; }
 :root { --gold: #e8b730; }
-:root[data-theme="whitescreen"] { --gold: #b98500; }
+:root[data-theme="whitescreen"], :root[data-theme="softclub"] { --gold: #b98500; }
 .star-i { position: relative; display: inline-block; color: var(--dim); --fill: 0; }
 .star-i::after { content: '★'; position: absolute; left: 0; top: 0; color: var(--gold); clip-path: inset(calc((1 - var(--fill)) * 100%) 0 0 0); }
 .star-n { position: relative; font-variant-numeric: tabular-nums; }
@@ -462,16 +495,21 @@ body.vertical #player { padding-left: max(12px, var(--safe)); padding-right: max
 #player .pl-track.seek:hover::before, #player .pl-track.seek:hover .pl-fill { top: calc(50% - 3px); height: 6px; }
 #player .pl-track:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
 #player .pl-status { flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
+/* the flag at the right end, report a misread (renderer/misread.js): as dim as the status line till it is pointed at, and out of a
+   recording's picture (the song and its progress may be in the video, a button is not) */
+#player .pl-misread { flex: none; color: var(--dim); }
+#player .pl-misread:hover, #player .pl-misread:focus-visible { color: var(--fg); }
+body.recording #player .pl-misread { visibility: hidden; }
 @media (max-width: 899px) {
-  body.player-bar #player { display: grid; height: 62px; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 1fr 1fr; grid-template-areas: "id id status" "transport progress progress"; gap: 0 12px; }
-  #player .pl-id { grid-area: id; } #player .pl-status { grid-area: status; } #player .pl-transport { grid-area: transport; } #player .pl-progress { grid-area: progress; min-width: 0; }
+  body.player-bar #player { display: grid; height: 62px; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-rows: 1fr 1fr; grid-template-areas: "id id status flag" "transport progress progress progress"; gap: 0 12px; }
+  #player .pl-id { grid-area: id; } #player .pl-status { grid-area: status; } #player .pl-transport { grid-area: transport; } #player .pl-progress { grid-area: progress; min-width: 0; } #player .pl-misread { grid-area: flag; align-self: center; }
 }
 @media (max-width: 559px) {
-  body.player-bar #player { grid-template-areas: "id id id" "transport progress progress"; }
+  body.player-bar #player { grid-template-areas: "id id id flag" "transport progress progress progress"; }
   #player .pl-status { display: none; }
 }
 /* the 9:16 layout: the song gets the first row to itself, at any width (its sides are kept clear, and the status line is the code's to say) */
-body.vertical.player-bar #player { grid-template-areas: "id id id" "transport progress progress"; }
+body.vertical.player-bar #player { grid-template-areas: "id id id flag" "transport progress progress progress"; }
 body.vertical #player .pl-status { display: none; }
 /* a touch screen: buttons and track a finger can hit, and a bar tall enough for them */
 @media (hover: none) {
@@ -551,6 +589,8 @@ body.controls-open #notice { bottom: auto; top: 48px; }
 /* the drop effect "not responding": a hung window dragged round over everything, as the pop-ups */
 #storm { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
 #storm[hidden] { display: none; }
+/* (each has a taskbar along the bottom: while one is up, the footer, a layer above, steps aside) */
+body:has(#desk-front.on) footer, body:has(#storm:not([hidden])) footer { opacity: 0 !important; pointer-events: none; }
 #desk-back .big {
   position: absolute; left: 4vw; right: 14vw; top: 14vh; color: var(--fg); opacity: .92;
   font: 900 clamp(60px, 14vw, 230px)/.9 Impact, "Arial Black", sans-serif; letter-spacing: -.01em; word-break: break-word;
@@ -566,12 +606,79 @@ body.controls-open #notice { bottom: auto; top: 48px; }
 }
 .icon i::before { content: ""; position: absolute; left: 0; top: -5px; width: 15px; height: 7px; border-radius: 3px 3px 0 0; background: #f2cd5e; }
 .icon span { padding: 0 2px; word-break: break-all; }
+/* each file's own icon: a sound (a page with a speaker), a script (a page of lines), a zipped folder
+   (its zip down the middle), a program (a window) */
+.icon.sound i, .icon.script i {
+  width: 28px; height: 34px; border-radius: 0; background: linear-gradient(135deg, #fff 0%, #f4f4f4 60%, #dcdcdc 100%);
+  clip-path: polygon(0 0, 72% 0, 100% 22%, 100% 100%, 0 100%);
+}
+.icon.sound i::before, .icon.script i::before { top: 0; left: auto; right: 0; width: 8px; height: 8px; border-radius: 0; background: linear-gradient(225deg, transparent 50%, #c9c9c9 50%); }
+.icon.sound i::after {
+  content: ""; position: absolute; left: 6px; top: 13px; width: 7px; height: 9px; background: #2a62d4;
+  clip-path: polygon(0 25%, 45% 25%, 100% 0, 100% 100%, 45% 75%, 0 75%);
+}
+.icon.script i::after {
+  content: ""; position: absolute; left: 5px; right: 6px; top: 11px; height: 17px;
+  background: repeating-linear-gradient(#5a7fc9 0 2px, transparent 2px 5px);
+}
+.icon.zip i::after { content: ""; position: absolute; left: 16px; top: 0; width: 6px; height: 100%; background: repeating-linear-gradient(#555 0 2px, #ccc 2px 4px); }
+.icon.program i { height: 28px; border-radius: 3px 3px 0 0; background: #ece9d8; border: 1px solid #0831d9; border-top: 6px solid #0058ee; box-sizing: border-box; }
+.icon.program i::before { display: none; }
+
+/* the taskbar: the green start button, a button for each open window (the newest pressed) and the
+   tray, with the bar it's on where the clock goes */
+#desk-front .taskbar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 30px; display: flex; align-items: center;
+  background: linear-gradient(180deg, #3168d5 0%, #4993e6 4%, #2157d7 9%, #2663e0 60%, #1941a5 100%);
+  font: 11px Tahoma, "Segoe UI", sans-serif; color: #fff;
+}
+#desk-front .start {
+  flex: none; display: flex; align-items: center; gap: 5px; height: 100%; padding: 0 22px 0 9px; border-radius: 0 10px 10px 0;
+  background: radial-gradient(circle at 50% 20%, #5eb75e 0%, #3c9a3c 45%, #2f852f 100%);
+  font: italic bold 17px "Trebuchet MS", Tahoma, sans-serif; text-shadow: 1px 1px 1px #1a4a1a; box-shadow: inset -2px 0 3px rgba(0,0,0,.25);
+}
+/* (XP's flag: red, green, blue, yellow, a little gap between them, leaning a little) */
+#desk-front .flag {
+  width: 17px; height: 15px; transform: skewY(-6deg);
+  background: linear-gradient(#f25022, #f25022) 0 0 / 46% 46% no-repeat, linear-gradient(#7fba00, #7fba00) 100% 0 / 46% 46% no-repeat,
+    linear-gradient(#00a4ef, #00a4ef) 0 100% / 46% 46% no-repeat, linear-gradient(#ffb900, #ffb900) 100% 100% / 46% 46% no-repeat;
+}
+#desk-front .tasks { flex: 1; min-width: 0; display: flex; gap: 3px; padding: 0 6px; overflow: hidden; }
+#desk-front .task {
+  flex: 0 1 158px; min-width: 0; display: flex; align-items: center; gap: 5px; height: 23px; padding: 0 8px;
+  border-radius: 3px; background: #3c81f3; box-shadow: inset 1px 1px rgba(255,255,255,.35), inset -1px -1px rgba(0,0,0,.25);
+}
+#desk-front .task.on { background: #1e52b7; box-shadow: inset 1px 1px 2px rgba(0,0,0,.5); }
+#desk-front .task span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#desk-front .task i { flex: none; width: 14px; height: 12px; border-radius: 2px 2px 0 0; background: #ece9d8; border-top: 3px solid #0058ee; box-sizing: border-box; }
+#desk-front .task.box i { border: none; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffb3a7, #f33 45%, #c00); }
+#desk-front .task.box.info i, #desk-front .task.box.question i { background: radial-gradient(circle at 35% 30%, #cfe6ff, #4a9af5 45%, #1660d6); }
+#desk-front .task.box.warning i { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); background: linear-gradient(#fff3a0, #ffd52e 45%, #e8a900); }
+#desk-front .task.cam i { background: #222; border-top-color: #555; }
+#desk-front .tray {
+  position: relative; flex: none; display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 12px 0 10px;
+  background: linear-gradient(180deg, #0c59b9 0%, #139ee9 6%, #18b5f2 10%, #139beb 14%, #1290e8 60%, #0d8dea 76%, #0961b7 100%);
+  border-left: 1px solid #092e7a; box-shadow: inset 1px 0 1px #18bbff;
+}
+#desk-front .vol { width: 9px; height: 10px; background: #fff; clip-path: polygon(0 30%, 40% 30%, 100% 0, 100% 100%, 40% 70%, 0 70%); }
+#desk-front .clock { min-width: 38px; text-align: right; }
+/* the balloon, pointing down at the tray */
+#desk-front .balloon {
+  position: absolute; right: 8px; bottom: 38px; width: 250px; padding: 9px 12px 10px; border: 1px solid #000; border-radius: 7px;
+  background: #ffffe1; color: #000; box-shadow: 2px 3px 6px rgba(0,0,0,.35); animation: pop .45s var(--spring);
+}
+#desk-front .balloon::after {
+  content: ""; position: absolute; right: 26px; bottom: -11px; width: 14px; height: 11px; background: #ffffe1;
+  clip-path: polygon(0 0, 100% 0, 100% 100%); filter: drop-shadow(1px 0 #000);
+}
+#desk-front .balloon b { display: block; margin: 0 0 4px; font-weight: bold; }
+#desk-front .balloon span { line-height: 1.4; }
 
 /* ---------- Windows XP (Luna) windows: takeover pop-ups and error messages ---------- */
 .xp {
   position: absolute; width: max-content; min-width: 250px; max-width: 400px; padding: 0 3px 3px;
   border-radius: 8px 8px 0 0; background: #0831d9; box-shadow: 3px 3px 12px rgba(0,0,0,.45);
-  font: 11px Tahoma, "Segoe UI", sans-serif; color: #000; animation: pop .16s ease-out;
+  font: 11px Tahoma, "Segoe UI", sans-serif; color: #000; animation: pop .45s var(--spring);
 }
 @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
 .xp-title {
@@ -637,12 +744,48 @@ body.controls-open #notice { bottom: auto; top: 48px; }
   font: 11px/1.2 "Lucida Console", Consolas, monospace; color: #000; white-space: pre;
 }
 
+/* ---------- the drop effect "y2k bug" (y2k.js): the XP takeover's desktop and windows, with the millennium bug ---------- */
+/* the bars' flashes (under the windows) and the hourglass (over them, twice its pixels); --y2k-hourglass is y2k.js's picture */
+.y2k-flash { position: absolute; inset: 0; }
+.y2k-hourglass { position: absolute; z-index: 2; width: 28px; height: 40px; background: var(--y2k-hourglass) 0 0 / 28px 40px no-repeat; }
+.y2k-flash[hidden], .y2k-hourglass[hidden] { display: none; }
+/* the hang's copies are where the frozen window was: stamped, never popping in */
+.xp.copy { animation: none; }
+/* the y2k bug's crash: cmd.exe (Lucida Console, grey on black, the errors white) and Visual Studio's memory window */
+.xp.cmd, .xp.hex { max-width: none; }
+.xp.cmd .xp-frame { background: #000; }
+.xp-cmd {
+  box-sizing: border-box; width: 380px; height: calc(10 * 1.25em + 10px); margin: 0; padding: 5px 7px; overflow: hidden;
+  font: 11px/1.25 "Lucida Console", Consolas, monospace; color: #c0c0c0; white-space: pre;
+}
+.xp-cmd b { font-weight: 400; color: #fff; }
+.xp-hex {
+  box-sizing: border-box; width: 330px; margin: 0; padding: 4px 8px 6px; background: #fff; border-top: 1px solid #7f9db9;
+  font: 11px/1.3 "Lucida Console", Consolas, monospace; color: #000; white-space: pre;
+}
+/* the taskbar clock opened: XP's Date and Time Properties, a tab sheet with the date and time big in their field, and the calendar */
+.xp.datetime { max-width: none; }
+.xp-ctl i.help::before { content: "?"; position: absolute; inset: 0; text-align: center; font: bold 14px/20px Tahoma, sans-serif; color: #fff; }
+.dt-tabs { display: flex; gap: 2px; padding: 8px 8px 0; }
+.dt-tabs span { padding: 3px 9px; border: 1px solid #919b9c; border-bottom: 0; border-radius: 3px 3px 0 0; background: linear-gradient(#fff, #ecebe5); }
+.dt-tabs span.on { position: relative; z-index: 1; margin-bottom: -1px; padding-bottom: 4px; border-top: 2px solid #ffc83c; background: #fcfcfe; }
+.dt-sheet { margin: 0 8px; padding: 12px 14px 10px; border: 1px solid #919b9c; background: #fcfcfe; }
+.dt-time, .dt-month, .dt-cal { border: 1px solid #7f9db9; background: #fff; }
+.dt-time { padding: 8px 10px 6px; font-family: Tahoma, "Segoe UI", sans-serif; font-weight: 700; line-height: 1.1; text-align: center; white-space: nowrap; color: #000; }
+.dt-row { display: flex; align-items: flex-start; gap: 14px; margin-top: 12px; }
+.dt-month { flex: 1; min-width: 0; padding: 3px 6px; }
+.dt-cal { display: grid; grid-template-columns: repeat(7, 26px); padding: 2px; text-align: center; line-height: 18px; }
+.dt-cal b { font-weight: 400; color: #fff; background: #316ac5; }
+.dt-cal i { font-style: normal; }
+.dt-cal i.on { color: #fff; background: #316ac5; }
+.dt-zone { margin: 10px 0 0; }
+
 /* a little beige CRT computer screen with an eye on it */
 .crt {
   position: absolute; width: 236px; padding: 16px 16px 26px; border-radius: 14px;
   background: linear-gradient(160deg, #efe8d6 0%, #d9d1bc 60%, #c9c0a6 100%);
   box-shadow: 3px 5px 14px rgba(0,0,0,.45), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.6);
-  animation: pop .16s ease-out;
+  animation: pop .45s var(--spring);
 }
 .crt::after { content: ""; position: absolute; left: 36%; right: 36%; bottom: -13px; height: 13px; border-radius: 0 0 4px 4px; background: linear-gradient(#bdb399, #a3997e); }
 .crt-glass { position: relative; overflow: hidden; border-radius: 18px / 24px; background: #000; box-shadow: 0 0 0 3px #77705f, 0 0 0 5px #b8af96; }
@@ -653,20 +796,15 @@ body.controls-open #notice { bottom: auto; top: 48px; }
 }
 .crt-led { position: absolute; right: 22px; bottom: 9px; width: 6px; height: 6px; border-radius: 50%; background: #3dff76; box-shadow: 0 0 6px #3dff76; }
 
-/* a little blue screen among the pop-ups, in a thin monitor bezel */
+/* a little stop screen among the pop-ups, XP's own (white Lucida Console on its royal blue), in a
+   thin monitor bezel */
 .mini-bsod {
-  position: absolute; width: 330px; padding: 18px 22px 16px; border: 5px solid #1b1b1b; border-radius: 4px;
-  background: #0078d7; color: #fff; font-family: "Segoe UI", system-ui, sans-serif;
-  box-shadow: 3px 3px 12px rgba(0,0,0,.45); animation: pop .16s ease-out;
+  position: absolute; width: 360px; padding: 12px 14px 10px; border: 5px solid #1b1b1b; border-radius: 4px;
+  background: #0000aa; color: #fff; font: 10.5px/1.35 "Lucida Console", Consolas, monospace;
+  box-shadow: 3px 3px 12px rgba(0,0,0,.45); animation: pop .45s var(--spring);
 }
-.mini-bsod .face { font-size: 54px; line-height: 1; margin-bottom: 10px; }
-.mini-bsod p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.35; }
-.mini-bsod .foot { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
-.mini-bsod .qr {
-  flex: none; width: 40px; height: 40px; border: 3px solid #fff;
-  background: repeating-conic-gradient(#fff 0 25%, #0078d7 0 50%) 0 0 / 10px 10px;
-}
-.mini-bsod small { font-size: 9.5px; line-height: 1.4; }
+.mini-bsod p { margin: 0 0 8px; }
+.mini-bsod p:last-child { margin: 0; }
 
 #alerts { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; pointer-events: none; }
 #alerts .xp { position: relative; pointer-events: auto; }
@@ -678,6 +816,17 @@ body.controls-open #notice { bottom: auto; top: 48px; }
 #bsod .face { font-size: clamp(80px, 11vw, 150px); line-height: 1; margin: 0 0 4vh; }
 #bsod p { font-size: clamp(18px, 2.1vw, 30px); max-width: 960px; margin: 0 0 3vh; line-height: 1.35; }
 #bsod small { display: block; font-size: clamp(13px, 1.1vw, 17px); line-height: 1.6; }
+/* its QR code (white, the code in the screen's blue, as the real one's), the small print beside it */
+#bsod .foot { display: flex; gap: clamp(14px, 1.4vw, 22px); align-items: flex-start; margin-top: 2vh; }
+#bsod .qr { flex: none; width: clamp(70px, 6.2vw, 112px); height: auto; color: #0078d7; }
+/* in the 9:16 window: the same screen, sized to the width (so it isn't a small block up in a corner) */
+@media (orientation: portrait) {
+  #bsod { padding: 15vh 9vw; }
+  #bsod .face { font-size: 27vw; }
+  #bsod p { font-size: 5.6vw; margin-bottom: 3.5vh; }
+  #bsod small { font-size: 3.2vw; }
+  #bsod .qr { width: 21vw; }
+}
 
 /* fewer flashes (the help's setting, for anyone sensitive to flashing light): the blue screen
    fades in and out instead of slamming on and off, and the code doesn't shake on a new song */
@@ -718,7 +867,7 @@ html.widget, body.widget { background: transparent !important; }
 body.widget > :not(#punch):not(#w-back) { display: none !important; }
 body.widget #punch { -webkit-app-region: drag; z-index: 1; }
 #w-back { display: none; }
-body.widget #w-back { display: block; position: fixed; top: 8px; right: 8px; z-index: 5; -webkit-app-region: no-drag; width: 26px; height: 26px; border: 0; border-radius: 13px; background: rgba(0, 0, 0, .55); color: #fff; font: 600 13px/26px var(--font); cursor: pointer; opacity: 0; transition: opacity .2s; }
+body.widget #w-back { display: block; position: fixed; top: 8px; right: 8px; z-index: 5; -webkit-app-region: no-drag; width: 26px; height: 26px; border: 0; border-radius: 13px; background: rgba(0, 0, 0, .55); color: #fff; font: 600 13px/26px var(--font); cursor: pointer; opacity: 0; transition: opacity .2s var(--ease-fade); }
 body.widget:hover #w-back { opacity: 1; }
 
 /* The picker under the background button (V still goes round them): a picture of each scene and background */
@@ -743,17 +892,19 @@ body.widget:hover #w-back { opacity: 1; }
 #help .help-tools button { min-height: 36px; }
 
 /* The first visit's hints, over their key in the footer */
-#first-run-hint { position: fixed; z-index: 30; bottom: 52px; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid var(--dim); border-radius: 999px; background: var(--bg); color: var(--fg); font: 13px var(--font); text-align: left; opacity: 0; transition: opacity 200ms; }
+#first-run-hint { position: fixed; z-index: 30; bottom: 52px; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid var(--dim); border-radius: 999px; background: var(--bg); color: var(--fg); font: 13px var(--font); text-align: left; opacity: 0; transition: opacity 200ms var(--ease-fade); }
 #first-run-hint.show { opacity: 1; }
 #first-run-hint kbd { display: inline-block; border: 1px solid var(--dim); padding: 1px 5px; font: inherit; color: var(--fg); }
 body.clean #first-run-hint, body.vertical #first-run-hint, body.mini #first-run-hint, body.widget #first-run-hint, body.recording #first-run-hint { display: none; }
 
-/* Report a bug: an XP error-report box (the window itself is the .xp style the alerts use) */
-#bug-report { position: fixed; width: min(540px, calc(100vw - 32px)); max-width: 540px; border: 0; padding: 0 3px 3px; box-sizing: border-box; }
-#bug-report .xp-msg p { max-width: none; font: 13px Tahoma, sans-serif; }
-#bug-report .bug-label { display: block; margin: 12px 16px 0; font: 12px Tahoma, sans-serif; color: #000; }
-#bug-report textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 5px; background: #fff; color: #000; border: 1px solid #7f9db9; padding: 6px; font: 12px Tahoma, sans-serif; resize: vertical; }
-#bug-report #bug-note { margin: 10px 16px; font: 12px Tahoma, sans-serif; }
+/* Report a bug, and report a misread: an XP error-report box (the window itself is the .xp style the alerts use) */
+#bug-report, #misread-report { position: fixed; width: min(540px, calc(100vw - 32px)); max-width: 540px; border: 0; padding: 0 3px 3px; box-sizing: border-box; }
+#bug-report .xp-msg p, #misread-report .xp-msg p { max-width: none; font: 13px Tahoma, sans-serif; }
+#bug-report .bug-label, #misread-report .bug-label { display: block; margin: 12px 16px 0; font: 12px Tahoma, sans-serif; color: #000; }
+#bug-report textarea, #misread-report textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 5px; background: #fff; color: #000; border: 1px solid #7f9db9; padding: 6px; font: 12px Tahoma, sans-serif; resize: vertical; }
+#bug-report #bug-note, #misread-report #misread-note { margin: 10px 16px; font: 12px Tahoma, sans-serif; }
+/* (the misread's report is code lines: monospace, kept on one row each, a scroll along it where they run long) */
+#misread-report textarea { font: 12px "Lucida Console", Consolas, monospace; }
 
 /* Presets: the picker's first row, five setups a click each (two to a row on a phone) */
 .pick-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
@@ -807,6 +958,8 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-tabs button:hover, #library .lib-tabs button:focus-visible { border-color: var(--fg); background: var(--hl-bg); }
 #library .lib-tabs [role="tablist"] { display: flex; }
 #library .lib-tabs .lib-findbtn { margin-left: auto; cursor: pointer; }
+#library .lib-tabs .lib-tabend { margin-left: auto; display: flex; gap: .5em; }
+#library .lib-tabs .lib-coverbtn { cursor: pointer; }
 /* find: its line over the list (the word, what is typed, how many were found); the words marked in what it lists */
 #library .lib-find { display: flex; align-items: center; gap: .67em; }
 #library .lib-find[hidden] { display: none; }
@@ -823,7 +976,7 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 /* the open album: its cover in characters, the album in bold, artist · tracks · total time */
 #library .lib-head { display: flex; gap: .83em; align-items: center; min-height: 3.83em; }
 #library .lib-cover { position: relative; flex: none; width: 3.83em; height: 3.83em; background: var(--bg); outline: 1px solid var(--fg); }
-#library .lib-cover b { position: absolute; inset: 0; background: var(--fg); opacity: 0; transition: opacity .3s; -webkit-mask: var(--mask) center / 100% 100% no-repeat; mask: var(--mask) center / 100% 100% no-repeat; }
+#library .lib-cover b { position: absolute; inset: 0; background: var(--fg); opacity: 0; transition: opacity .3s var(--ease-fade); -webkit-mask: var(--mask) center / 100% 100% no-repeat; mask: var(--mask) center / 100% 100% no-repeat; }
 #library .lib-cover b[style*="--mask"] { opacity: 1; }
 #library .lib-cover.small { width: 2em; height: 2em; }
 #library .lib-name { font-size: 1.67em; font-weight: 800; line-height: 1.1; }
@@ -852,6 +1005,9 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-list::-webkit-scrollbar { display: none; }
 #library .lib-row { display: grid; grid-template-columns: 2.5em minmax(0, 1fr) auto; align-items: center; padding: .25em .5em; background: var(--lib-line); cursor: pointer; }
 #library .lib-row:hover { background: var(--hl-bg); }
+/* the row that asks for a folder, while a scan runs, is shut like the folder button: no pointer, no hover */
+#library .lib-row[aria-disabled="true"] { cursor: default; }
+#library .lib-row[aria-disabled="true"]:hover { background: var(--lib-line); }
 #library .lib-row .n, #library .lib-row .d { color: var(--dim); font-variant-numeric: tabular-nums; }
 #library .lib-row .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #library .lib-row.on { background: var(--accent-text); color: var(--bg); font-weight: 700; }
@@ -870,6 +1026,8 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-address, #library .lib-rename { width: 100%; padding: 0; border: 0; border-bottom: 1px solid var(--dim); outline: none; background: transparent; color: inherit; font: inherit; }
 #library .lib-address::placeholder { color: var(--dim); }
 #library .lib-note { margin-bottom: .5em; color: var(--dim); font-size: .92em; }
+#library .lib-note a { color: var(--fg); text-decoration: underline; text-underline-offset: .2em; }
+#library .lib-note a:hover, #library .lib-note a:focus-visible { background: var(--faint); }
 /* played lately: the last six albums, a small cover each over its name (← → along it, Enter or a click plays one) */
 #library .lib-shelf { display: flex; flex-direction: column; gap: .4em; }
 #library .lib-shelf[hidden] { display: none; }
@@ -906,6 +1064,50 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-keys { color: var(--dim); font-size: .83em; letter-spacing: .02em; }
 /* (whole items: the ones that don't fit wrap out of sight, the line never cut mid-word) */
 #library .lib-keys .lib-line { display: flex; flex-wrap: wrap; height: 1.45em; overflow: hidden; white-space: pre; }
+/* spotify: its covers as Spotify gives them (only resized, with rounded corners), its logo (white or black by the background, as its guidelines
+   have it: the one place this block has colours of its own), "on Spotify", and the steps for connecting */
+#library .lib-cover.real { display: grid; place-items: center; overflow: hidden; border-radius: 4px; outline: 0; background: var(--faint); }
+#library .lib-cover.real img { display: block; width: 100%; height: 100%; object-fit: cover; }
+#library .lib-cover.liked { color: var(--fg); }
+#library .lib-cover.lib-spot { background: transparent; outline: 0; }
+#library .lib-logo { display: block; width: 100%; height: 100%; fill: #fff; }
+#library[data-tone="light"] .lib-logo { fill: #000; }
+#library .lib-onspot { display: flex; align-items: center; gap: .5em; margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--dim); font-size: .83em; }
+#library .lib-onspot .lib-logo { flex: none; width: max(21px, 1.9em); height: max(21px, 1.9em); }
+#library button.lib-onspot { cursor: pointer; }
+#library button.lib-onspot:hover, #library button.lib-onspot:focus-visible { color: var(--fg); }
+#library .lib-label { margin-top: .5em; color: var(--fg); font-weight: 700; letter-spacing: .04em; }
+#library .lib-list > .lib-label:first-child { margin-top: 0; }
+#library .lib-step { display: flex; gap: .67em; align-items: baseline; margin-bottom: .25em; }
+#library .lib-step .n { flex: none; color: var(--fg); font-variant-numeric: tabular-nums; }
+#library .lib-step b { color: var(--fg); font-weight: 700; overflow-wrap: anywhere; }
+#library .lib-copy { flex: none; margin-left: auto; padding: 0 .5em; border: 1px solid var(--faint); background: transparent; color: var(--dim); font-size: .83em; cursor: pointer; }
+#library .lib-copy:hover, #library .lib-copy:focus-visible { border-color: var(--fg); color: var(--fg); }
+#library .lib-err { padding-left: .67em; border-left: .42em solid var(--fg); background: var(--hl-bg); color: var(--fg); }
+#library .lib-panel > .lib-err { flex: none; margin: 0; }
+#library .lib-wait { color: var(--fg); }
+#library .lib-row.sp .t em { color: var(--dim); font-style: normal; }
+/* (Spotify's names are shown as Spotify gives them: the other rows lower-case theirs, these keep their capitals) */
+#library .lib-row.sp .t b, #library .lib-row.sp .t em, #library .lib-sub.sp { text-transform: none; }
+#library .lib-row.sp.on .t em { color: var(--bg); }
+#library .lib-row.album.sp { grid-template-columns: 2.6em minmax(0, 1fr) auto; }
+#library .lib-row.album.sp .lib-cover.small { width: 2.6em; height: 2.6em; }
+#library .lib-row.sp.open { background: var(--hl-bg); }
+#library .lib-row.sp.armed .t { color: var(--fg); font-weight: 700; }
+/* the open collection's own cover, big at the right of a wide window: Spotify's biggest picture (640 pixels), never shown larger than that, centred
+   in the box your music's characters have (.lib-glyphs below), with the 8 px corners its guidelines give large artwork */
+#library .lib-bigcover { display: none; }
+/* the half look (shift+C, your music only; golden's): the cover itself in a thin frame, the characters faint around it, the album and its
+   tracks written as code. On a phone the cover sits in the head beside the album's line; on a wide window it's big at the right */
+#library.lib-half .lib-glyphs.in { opacity: .2; }
+#library .lib-cover > img { display: none; }
+#library.lib-half .lib-cover > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+#library.lib-half .lib-cover:has(> img) > b { display: none; }
+#library.lib-half .lib-code s { text-decoration: none; color: var(--dim); font-weight: 400; }
+#library.lib-half .lib-row.track .d::before { content: "// "; }
+#library.lib-half .lib-row.track .t u { text-underline-offset: .22em; }
+#library.lib-half .lib-head .lib-photo { flex: none; display: block; width: 7.5em; height: 7.5em; outline: 1px solid var(--fg); box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px var(--faint); background: var(--bg); }
+#library.lib-half .lib-head .lib-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* a wide window: the panel down the left, the cover big on the right (a square, as tall as fits) */
 @media (min-width: 900px) and (min-aspect-ratio: 5/4) {
   #library { --lib-fs: clamp(13px, .885vw, 26px); --lib-pw: clamp(420px, 34.4vw, 900px); --lib-left: 2.5vw; }
@@ -914,11 +1116,17 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
   #library.titlebar .lib-top { padding-right: 0; }
   #library .lib-glyphs { inset: auto; right: max(24px, 3.65vw); top: calc(50% - 1.85vh); height: min(86vh, calc(100vw - 2.5vw - var(--lib-pw) - 3.65vw - 2vw)); aspect-ratio: 1; transform: translateY(-50%); }
   #library .lib-glyphs.in { opacity: .9; }
+  #library .lib-bigcover:not(:empty) { display: grid; place-items: center; position: absolute; right: max(24px, 3.65vw); top: calc(50% - 1.85vh); height: min(86vh, calc(100vw - 2.5vw - var(--lib-pw) - 3.65vw - 2vw)); aspect-ratio: 1; transform: translateY(-50%); pointer-events: none; }
+  #library .lib-bigcover img { display: block; width: min(100%, 640px); aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+  #library.lib-half .lib-glyphs.in { opacity: .3; }
+  #library.lib-half .lib-head .lib-photo { display: none; }
+  #library.lib-half .lib-bigcover img { width: 72%; max-width: none; border-radius: 0; outline: 1px solid var(--fg); box-shadow: 0 0 0 .5em var(--bg), 0 0 0 calc(.5em + 1px) var(--faint); }
   #library .lib-clock { font-size: 2em; }
   #library .lib-name { font-size: 1.76em; }
   #library .lib-sub, #library .lib-now .by { font-size: .88em; }
   #library .lib-cover { width: 3.76em; height: 3.76em; }
   #library .lib-cover.small { width: 1.88em; height: 1.88em; }
+  #library .lib-row.album.sp .lib-cover.small { width: 2.6em; height: 2.6em; }
   #library .lib-now .title { font-size: 2.24em; }
   #library .lib-meta, #library .lib-keys { font-size: .82em; }
 }

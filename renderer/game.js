@@ -98,14 +98,33 @@ const deviceOf = (name) => {
 };
 const ready = (im) => im.complete && im.naturalWidth > 0;
 
+// How much of a canvas H pixels tall the window's foot covers: the player bar and the keys line under it (whichever starts
+// higher), so the handheld stands above them on a wide window. Measured from the page, and again only when the window's size
+// or the body's classes change (the bar comes and goes with them). 0 where there is no page (the tests).
+let footKey = '', footCss = 0;
+function footInset(H) {
+  if (typeof document === 'undefined' || !document.body) return 0;
+  const key = `${innerWidth}x${innerHeight}|${document.body.className}`;
+  if (key !== footKey) {
+    footKey = key;
+    let top = innerHeight;
+    for (const el of [document.getElementById('player'), document.querySelector('body > footer')]) {
+      const r = el?.getBoundingClientRect();
+      if (r && r.height > 0 && r.bottom > innerHeight * 0.5) top = Math.min(top, r.top);
+    }
+    footCss = Math.max(0, Math.min(innerHeight * 0.2, innerHeight - top));
+  }
+  return footCss * (H / innerHeight);
+}
+
 // Where the handheld sits on a canvas W x H, and its screens (dev.screens, units from its top left). On a wide
-// screen, right of the code, as big as fits. On a tall one (a vertical video), in front of the code's lower
+// screen, right of the code, as big as fits above bottom (the canvas pixels the player bar and the keys line cover). On a tall one (a vertical video), in front of the code's lower
 // lines, its shadow on them: as big as fits with its screens' lowest edge above 74.5% of the way down (where a
 // phone app lays its caption over a vertical video), its top no higher than 30% (the code's first lines stay
 // clear), its whole span (a cartridge sticking out too) no wider than 66%; the span's right end at 88% (clear
 // of a phone app's buttons down the right edge), so the starts of the code's lines show to its left. u: a
 // hundredth of its width.
-export function layout(W, H, dev = DEVICES.metal, pocket = false) {
+export function layout(W, H, dev = DEVICES.metal, pocket = false, bottom = 0) {
   const [sw, sh] = dev.size, span = dev.span || [0, sw], ws = span[1] - span[0];
   let u, x, y;
   if (pocket) {   // (the mini player: the handheld on its own, filling the window under its header)
@@ -119,9 +138,10 @@ export function layout(W, H, dev = DEVICES.metal, pocket = false) {
     x = W * 0.88 - span[1] * u;
     y = H * 0.745 - low * u;
   } else {
-    u = Math.min(W * 0.34 / ws, H * 0.88 / sh);
+    const Hs = H - bottom; // (the height above what covers the window's foot: the player bar and the keys line)
+    u = Math.min(W * 0.34 / ws, Hs * 0.88 / sh);
     x = W - ws * u - Math.min(W * 0.06, ws * u * 0.25) - span[0] * u;
-    y = (H - sh * u) / 2;
+    y = (Hs - sh * u) / 2;
   }
   const at = (r) => r && { x: x + r[0] * u, y: y + r[1] * u, w: r[2] * u, h: r[3] * u };
   return { x, y, w: sw * u, h: sh * u, u, top: at(dev.screens.top), bottom: at(dev.screens.bottom) };
@@ -131,7 +151,7 @@ export function layout(W, H, dev = DEVICES.metal, pocket = false) {
 // and bigger on a tall screen (seen from the side, it's narrower and hides less of the code for its size): its top no
 // higher than 15% (a few of the code's first lines still show), its screens' lowest corner above 75.5% (a phone app's
 // caption line), its whole width no more than 80%, its right end at 91%. x, y, and u: a pixel of its picture in the canvas's.
-export function stanceLayout(W, H, dev, pocket = false) {
+export function stanceLayout(W, H, dev, pocket = false, bottom = 0) {
   const st = dev.stance, [dx0, dy0, dx1, dy1] = st.dev, ws = dx1 - dx0;
   if (st.low === undefined) {
     const r = Object.values(dev.screens).filter(Boolean).reduce((a, b) => (a[1] + a[3] > b[1] + b[3] ? a : b));
@@ -153,9 +173,10 @@ export function stanceLayout(W, H, dev, pocket = false) {
     x = W * 0.91 - dx1 * u;
     y = H * 0.755 - st.low * u;
   } else {
-    u = Math.min(W * 0.34 / ws, H * 0.88 / (dy1 - dy0));
+    const Hs = H - bottom;
+    u = Math.min(W * 0.34 / ws, Hs * 0.88 / (dy1 - dy0));
     x = W - ws * u - Math.min(W * 0.06, ws * u * 0.25) - dx0 * u;
-    y = (H - (dy1 - dy0) * u) / 2 - dy0 * u;
+    y = (Hs - (dy1 - dy0) * u) / 2 - dy0 * u;
   }
   return { x, y, u, w: st.img[0] * u, h: st.img[1] * u };
 }
@@ -183,7 +204,7 @@ const NEON = { black: [10, 13, 24], glow: 0.5, lag: 0.18 };
 export function createPageTurner() {
   const CODE_BARS = 4, CODE_MAX = 8, PADS_BARS = 8, TURN = 0.22;
   let page = 'pads', pageFrom = 'pads', pageAt = -9, pageBar = null, typedBar = -99, lastBar = null, pending = null;
-  return (t, vg, lines, held = null) => {
+  return (t, vg, lines, held = null, bpm = 0) => {
     const bar = Math.floor(vg / 16);
     pageBar ??= bar;
     if (held !== 'code' && held !== 'pads') held = null;
@@ -191,7 +212,9 @@ export function createPageTurner() {
     if (held) pending = held;
     else if (page === 'pads') { if (typedBar === bar && bar - pageBar >= PADS_BARS) pending = 'code'; }
     else if (bar - pageBar >= CODE_MAX || (bar - pageBar >= CODE_BARS && bar - typedBar >= 1)) pending = 'pads';
-    if (pending && pending !== page && (held || (lastBar !== null && bar !== lastBar))) { pageFrom = page; page = pending; pageAt = t; pageBar = bar; }
+    // (a page turns on a bar line: from the bar's own start, which the clock says (how far into the bar it is, at the tempo),
+    // not from the frame that noticed it)
+    if (pending && pending !== page && (held || (lastBar !== null && bar !== lastBar))) { pageFrom = page; page = pending; pageAt = !held && bpm > 0 ? t - Math.max(0, Math.min(0.5, (vg - bar * 16) * (15 / bpm))) : t; pageBar = bar; }
     if (pending === page) pending = null;
     lastBar = bar;
     return { now: page, from: pageFrom, k: Math.min(1, (t - pageAt) / TURN) };
@@ -472,7 +495,7 @@ export function createGame() {
   const sized = (c, w, h) => { c = c || document.createElement('canvas'); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } return c; };
   function drawStance(ctx, W, H, dev, t, vg, fever, screensOn, fx, info, ink, pocket) {
     if (!ready(dev.body)) return;
-    const st = dev.stance, L = stanceLayout(W, H, dev, pocket);
+    const st = dev.stance, L = stanceLayout(W, H, dev, pocket, pocket ? 0 : footInset(H));
     if (ink && ready(dev.shade)) { ctx.globalAlpha = 0.8; ctx.drawImage(inkShadow(dev, ink), L.x, L.y, L.w, L.h); ctx.globalAlpha = 1; }
     const Hc = mul3([L.u, 0, L.x, 0, L.u, L.y, 0, 0, 1], st.front); // (its face's units to the canvas)
     const half = (x0, y0, x1, y1) => { const a = apply3(Hc, x0, y0), b = apply3(Hc, x1, y1); return Math.hypot(b[0] - a[0], b[1] - a[1]) / 2; };
@@ -760,24 +783,29 @@ export function createGame() {
     // level: how much each part is playing (0..1); t: now (s); eng: the engine (its hits, tempo and
     // key); title: the song's; offset: how far ahead the blocks are drawn (s), so a note's crossing is
     // matched with its hit
-    draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset = 0, pocket = false, colorway = 'blue', code = null }) {
-      const { dev, design } = shown(colorway); // (colorway: the theme's)
-      col = ownCol(col, dev);
+    // The playing of it, a step at a time (the blocks' simulation calls it at each step of the clock's grid, clock.js
+    // simulate, so a note is hit, judged and lit at the same time however often the screen is drawn): each note that
+    // reaches its target is hit (if its part is playing) or missed, and a hit's judgement says how near the hit heard was.
+    step(st, { blocks, vg, level, eng, offset = 0 }) {
       for (const b of blocks) if (LANE[b.lane] !== undefined && b.gHit === undefined && b.gMiss === undefined && vg >= b.g) {
         // (a note made already past its target, starting up: played already, not judged)
         if (vg - b.g > 1) b.gHit = -1;
-        else judge(b, t, level, t + offset);
+        else judge(b, st, level, st + offset);
       }
       // the judgements still waiting: the hit heard nearest the note's time
       for (const p of pops) {
-        if (!p || p.text || t - p.t < 0.12) continue;
+        if (!p || p.text || st - p.t < 0.12) continue;
         let near = 9;
         for (let i = eng.onsets.length - 1; i >= 0 && i > eng.onsets.length - 48; i--) {
           const o = eng.onsets[i];
-          if (o.id === p.id) near = Math.min(near, Math.abs(o.t - p.at));
+          if (o.id === p.id && (o.known ?? o.t) <= st) near = Math.min(near, Math.abs(o.t - p.at));
         }
         p.text = near < 0.06 ? 'PERFECT' : near < 0.13 ? 'GREAT' : 'GOOD';
       }
+    },
+    draw(ctx, { blocks, vg, W, H, col, level, t, eng, title, offset = 0, pocket = false, colorway = 'blue', code = null }) {
+      const { dev, design } = shown(colorway); // (colorway: the theme's)
+      col = ownCol(col, dev);
       // back from standing by: after the music had stopped it powers on again, and for its first song; a new song's beat
       // found just carries on
       if (idleAt !== null) { if ((idleSilent || !hadBeat) && window.__gameBoot !== false) bootAt = 'next'; idleAt = idleKind = null; idleSilent = false; }
@@ -794,7 +822,7 @@ export function createGame() {
       const skin = skins[window.__gameSkin || design]; // (a switch, to try one the app doesn't go round: dance)
       const m = skin && model(t, vg, blocks, fever, eng, title, col);
       if (m) m.compactCode = pocket && Math.min(W, H) <= 240;
-      if (m && skin.codePage) { m.code = code?.() || null; m.page = turnPage(t, vg, m.code, window.__bottomPage); } // (code: the code view's lines)
+      if (m && skin.codePage) { m.code = code?.() || null; m.page = turnPage(t, vg, m.code, window.__bottomPage, eng.tempo?.bpm); } // (code: the code view's lines)
       const look = (at) => { const k = { ...(skin ? skin.screen : NEON), ...at }; if (k.glow) k.glow *= 1 + 0.6 * fever; return k; };
       const fx = window.__screenFx !== false; // (a mock-up switch, for side by sides)
       const keyName = eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode.toUpperCase()}` : '';
@@ -820,7 +848,7 @@ export function createGame() {
       };
       if (dev.stance) return drawStance(ctx, W, H, dev, t, vg, fever, screensOn, fx, info, ink, pocket);
       // the screens; the body over them; their glow on the glass round them
-      const L = layout(W, H, dev, pocket);
+      const L = layout(W, H, dev, pocket, pocket ? 0 : footInset(H));
       const lk = screensOn(ctx, L, L.u, true);
       drawShell(ctx, L, t, dev, vg, fever, info, ink);
       if (fx) for (const which of ['top', 'bottom']) if (L[which]) screens.spill(ctx, L[which], which, lk[which], 4 * L.u);
@@ -853,7 +881,7 @@ export function createGame() {
         return out;
       };
       if (dev.stance) return drawStance(ctx, W, H, dev, t, lastVg, 0, screensOn, fx, info, ink, pocket);
-      const L = layout(W, H, dev, pocket);
+      const L = layout(W, H, dev, pocket, pocket ? 0 : footInset(H));
       const lk = screensOn(ctx, L, L.u, true);
       drawShell(ctx, L, t, dev, lastVg, 0, info, ink);
       if (fx) for (const which of ['top', 'bottom']) if (L[which]) screens.spill(ctx, L[which], which, lk[which], 4 * L.u);

@@ -15,12 +15,15 @@
 // found; twice as slow with fewer flashes.
 //
 // Drawn with WebGL2: the kitchen raymarched once into a cache, colour and depth (spaghetti-kitchen.js,
-// again only for a new size or theme); each frame the cache put back with its depth, the noodles'
-// shadows on the floor, the crank (raymarched over it), the card going into the slot, and the
-// noodles, each a strip facing the eye shaded as a round, wet strand of the picture, its beads read
-// from a float texture (a strand a row). Measurements as in spaghetti-kitchen.js's PASTA.
+// again only for a new size, or for new background colours once they've settled); each frame the cache
+// put back with its depth, its void taken to the background as it is now, the noodles' shadows on the
+// floor, the crank (raymarched over it), the card going into the slot, and the noodles, each a strip
+// facing the eye shaded as a round, wet strand of the picture, its beads read from a float texture (a
+// strand a row). Measurements as in spaghetti-kitchen.js's PASTA.
 import { PASTA, KITCHEN, CRANK_VERT, CRANK } from './spaghetti-kitchen.js';
-import { Noodles, Dancers } from './noodles.js';
+import { Noodles, Dancers, seedNoodles } from './noodles.js';
+import { clock, simulate } from './clock.js';
+import { hash32 } from './random.js';
 
 // ---------------------------------------------------------------- the pictures
 
@@ -36,6 +39,7 @@ class Covers {
   cover = null;
   presets = [];
   loads = 0;
+  pending = null; // the picture being decoded, a promise (a render waits for it before each frame: see prepare)
 
   clear() { this.pic = null; this.next = null; this.cover = null; this.loads++; }
 
@@ -53,17 +57,18 @@ class Covers {
 
   // the bundled pictures, shuffled
   nextPreset() {
-    if (!this.presets.length) this.presets = PICTURES.map((n) => [Math.random(), n]).sort((a, b) => a[0] - b[0]).map(([, n]) => n);
+    if (!this.presets.length) { const dice = clock.rng('spaghetti-pictures', (this.shuffles = (this.shuffles || 0) + 1)); this.presets = PICTURES.map((n) => [dice(), n]).sort((a, b) => a[0] - b[0]).map(([, n]) => n); }
     return Object.assign(new Image(), { src: new URL(`./pictures/${this.presets.pop()}.jpg`, import.meta.url).href });
   }
 
   load(im) {
     const ticket = ++this.loads, S = Covers.S;
-    Promise.resolve(im.decode?.()).then(() => {
+    const done = Promise.resolve(im.decode?.()).then(() => {
       const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, side = Math.min(w, h);
       if (!side) return null;
       return createImageBitmap(im, (w - side) / 2, (h - side) / 2, side, side, { resizeWidth: S, resizeHeight: S, resizeQuality: 'high' });
-    }).then((bm) => { if (bm && ticket === this.loads) this.next = bm; }, () => {});
+    }).then((bm) => { if (bm && ticket === this.loads) this.next = bm; }, () => {}).then(() => { if (this.pending === done) this.pending = null; });
+    this.pending = done;
   }
 }
 
@@ -72,9 +77,10 @@ class Covers {
 const ZERO = [0, 0, 0];
 const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 
-class Pasta {
+export class Pasta {
   static N = 24; static P = 38; static SLOTS = 4; // strands a sheet, beads a strand, sheets kept
   static LINKS = 240; // endless: links at most
+  static BUDGET = 0.0035 * 60; // endless: the time the links may take, in seconds of work a second: 3.5 ms a frame at 60 a second (see advance)
   static HEAD = [1.1, 1.45, 1.6, 1.55, 1.35, 1.1]; // a dancer's head, from its tip: how much thicker
   static SIDE = 16; // the card's side, units
   static LENGTH = (Pasta.P - 1) * Noodles.L; static STRETCH = Pasta.LENGTH / Pasta.SIDE; // a strand's length, over the card's
@@ -85,6 +91,7 @@ class Pasta {
   constructor(endless = false) {
     const n = endless ? Pasta.LINKS : Pasta.SLOTS * Pasta.N, N = Pasta.N;
     this.endless = endless;
+    seedNoodles(hash32(clock.seed, 'noodles', endless ? 1 : 0)); // (the dancers' dice: this song's)
     this.noodles = new Noodles(n, Pasta.P);
     if (endless) this.noodles.floorG = 150;
     this.dancers = new Dancers(this.noodles);
@@ -104,8 +111,8 @@ class Pasta {
     this.cur = new Array(N).fill(-1); this.made = new Array(N).fill(0);
     this.col = new Array(n).fill(0); this.tex = new Array(n).fill(0); this.born = new Array(n).fill(0); this.gone = new Array(n).fill(null);
     this.linkTex = 0; this.links = 0;
-    // endless: the links let be (as many as the noodles can do in 3.5 ms a frame: the oldest go sooner
-    // on a slow machine), and how long they take a frame (s, smoothed)
+    // endless: the links let be (as many as the noodles can do in 3.5 ms a frame at 60 a second: the oldest go sooner
+    // on a slow machine), and how long they take a step (s, smoothed)
     this.keep = Pasta.LINKS - 2 * N; this.cost = 0;
     // the last kick, and when the card last shook to one and how hard
     this.kickSeen = -10; this.shook = { at: -10, k: 0 };
@@ -139,7 +146,8 @@ class Pasta {
     this.used[free] = true; this.source[free] = null; this.goneAt[free] = null;
     this.order.push(free);
     this.dropAt = t;
-    this.skew = (0.03 + 0.05 * Math.random()) * (Math.random() < 0.5 ? 1 : -1);
+    const dice = clock.rng('spaghetti-card', Math.round(t * 1000));
+    this.skew = (0.03 + 0.05 * dice()) * (dice() < 0.5 ? 1 : -1);
     this.fed = 0; this.cardFrom = 0; this.turn = 0; this.turned = 0; this.linkTex = free;
     this.out.fill(false);
   }
@@ -153,9 +161,10 @@ class Pasta {
     this.source[this.slot] = null; this.dropAt = t + Pasta.PULL; this.cardFrom = Infinity;
   }
 
-  // A frame: b beats into the round, the card going in from feed[0] to feed[1] (beats), slow 2 with
-  // fewer flashes; pic, the picture the spaghetti has now.
-  draw(c, dt, b, feed, slow, pic) {
+  // A step of dt seconds (the spaghetti's simulation calls it at each step of the clock's grid, clock.js simulate): b beats
+  // into the round, the card going in from feed[0] to feed[1] (beats), slow 2 with fewer flashes; pic, the picture the
+  // spaghetti has now. The crank, the card going in, the strands fed, the dancers and the noodles all go a step on.
+  advance(c, dt, b, feed, slow, pic) {
     const t = c.t, N = Pasta.N, SIDE = Pasta.SIDE, STRETCH = Pasta.STRETCH, noodles = this.noodles;
     if (this.slot < 0) this.start(t);
     if (this.cardFrom === Infinity && t - this.dropAt > 0.95) { this.cardFrom = this.fed; this.linkTex = this.slot; } // (endless, a new card landed)
@@ -209,11 +218,11 @@ class Pasta {
     }
     // the kick: the ones lying on the floor hop; endless, as high as they can and still be down a
     // little before the next beat (for its hop), the heap spreading
-    if (c.eng.lastKick !== this.kickSeen) {
+    if (c.eng.lastKick !== this.kickSeen && (c.eng.lastKickKnown ?? c.eng.lastKick) <= t) {
       this.kickSeen = c.eng.lastKick;
-      const P = c.eng.tempo.locked && c.eng.tempo.P > 0 ? c.eng.tempo.P : 0.5;
+      const P = c.eng.periodAt(t);
       noodles.hop(this.endless ? noodles.hopBeat(P) * (c.calm ? 0.5 : 1) : c.calm ? 2.5 : 5, this.endless ? 2 : 0);
-      if (Math.random() < 0.3) this.shook = { at: t, k: c.calm ? 0.5 : 1 }; // (the card shakes to some, not all: a rattle on every one is a machine)
+      if (clock.rng('spaghetti-shake', Math.round(t * 1000))() < 0.3) this.shook = { at: t, k: c.calm ? 0.5 : 1 }; // (the card shakes to some, not all: a rattle on every one is a machine)
     }
     // the oldest sheet shrinking away
     for (let s = 0; s < Pasta.SLOTS; s++) {
@@ -225,13 +234,20 @@ class Pasta {
     if (!this.endless) this.dancers.update(this.groove(c), Math.min(dt, 0.05), (s) => (this.goneAt[Math.floor(s / N)] === null ? this.order.indexOf(Math.floor(s / N)) + 1 : 0));
     const t0 = performance.now();
     noodles.step(Math.min(dt, 0.05));
-    if (this.endless) {
-      this.cost += ((performance.now() - t0) / 1000 - this.cost) * 0.05;
+    // (how many links the machine can keep going is judged by how long a step takes to work out: real time, and so
+    // not in a render, where nothing may depend on how fast the machine happens to be)
+    if (this.endless && clock.mode !== 'render') {
+      this.cost += ((performance.now() - t0) / 1000 - this.cost) * 0.017; // (0.05 a frame at 60 a second: this is called 180 times)
       let alive = 0;
       for (const a of noodles.alive) if (a) alive++;
-      const fits = (alive * 0.0035) / Math.max(this.cost, 1e-6);
-      this.keep += (Math.min(Pasta.LINKS - 2 * N, Math.max(3 * N, fits)) - this.keep) * 0.01; // (eased: all at once, a crowd of them shrinks away together)
+      const fits = (alive * Pasta.BUDGET * dt) / Math.max(this.cost, 1e-6); // (a step's share of the budget: it is called 180 times a second, each for a 180th of one)
+      this.keep += (Math.min(Pasta.LINKS - 2 * N, Math.max(3 * N, fits)) - this.keep) * 0.0034; // (eased: all at once, a crowd of them shrinks away together; 0.01 a frame)
     }
+  }
+
+  // What the machine looks like now, at time t: the beads and what each strand shows, and the card.
+  present(t) {
+    const noodles = this.noodles, N = Pasta.N;
 
     // the beads and what each strand shows
     const P = Pasta.P, W = P + 1, v = this.beads, x = noodles.x, y = noodles.y, z = noodles.z;
@@ -281,12 +297,12 @@ class Pasta {
   // kick's the biggest, then a snare's, a hat's a little; on the beats with none heard), slower
   // between, a turn a beat over the bar. Smooth without a beat.
   pace(c) {
-    const eng = c.eng, p = eng.placeAt(c.t + c.offset);
-    if (!p) return 1;
+    const eng = c.eng, step = eng.stepAt(c.t + c.offset, c.t); // (the beat grid as it was at this step's time)
+    if (step === null) return 1;
     const w = new Array(16).fill(0);
-    for (const [id, k] of [['bd', 1], ['sd', 0.8], ['hhc', 0.25], ['hho', 0.25]]) { const on = eng.v[id].on; for (let s = 0; s < 16; s++) if (on[s]) w[s] += k; }
+    for (const [id, k] of [['bd', 1], ['sd', 0.8], ['hhc', 0.25], ['hho', 0.25]]) { const on = eng.learnedAt(c.t).on[id]; for (let s = 0; s < 16; s++) if (on[s]) w[s] += k; }
     if (!w.some((x) => x > 0)) for (let s = 0; s < 16; s += 4) w[s] = 1;
-    const bar = p.beatF - eng.tempo.down, rise = 0.06, base = 0.3; // (a lurch peaks rise beats after its hit)
+    const bar = step / 4, rise = 0.06, base = 0.3; // (a lurch peaks rise beats after its hit)
     let v = base, area = 4 * base;
     for (let s = 0; s < 16; s++) {
       if (!(w[s] > 0)) continue;
@@ -299,12 +315,13 @@ class Pasta {
 
   // what the dancers hear
   groove(c) {
-    const eng = c.eng, T = eng.tempo, p = eng.placeAt(c.t + c.offset), bd = eng.v.bd.on;
+    // (all as the engine had it at this step's time: the beat grid, the hits, the level)
+    const eng = c.eng, step = eng.stepAt(c.t + c.offset, c.t), bd = eng.learnedAt(c.t).on.bd, H = eng.hitsAt(c.t);
     return {
-      t: c.t, P: T.locked && T.P > 0 ? T.P : 0.5, beat: p ? p.beatF - T.down : null,
-      kick: eng.lastKick, snare: eng.v.sd.lastHit.t, hat: eng.v.hhc.lastHit.t, openHat: eng.v.hho.lastHit.t,
-      bass: eng.lastBassHit?.t ?? -10, bassF0: eng.lastBassHit?.f0 ?? 60, drop: eng.lastDrop,
-      level: eng.level, silent: eng.silent, calm: c.calm, fourOnFloor: bd[0] && bd[4] && bd[8] && bd[12],
+      t: c.t, P: eng.periodAt(c.t), beat: step === null ? null : step / 4,
+      kick: H.kick, snare: H.snare, hat: H.hat, openHat: H.openHat,
+      bass: H.bass, bassF0: H.bassF0, drop: H.drop,
+      level: eng.levelAt(c.t), silent: eng.silentAt(c.t), calm: c.calm, fourOnFloor: bd[0] && bd[4] && bd[8] && bd[12],
     };
   }
 
@@ -353,16 +370,20 @@ class Pasta {
 const FULL = `#version 300 es
 void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
 
-// the cached kitchen, its colour and depth, into the frame
+// the cached kitchen, its colour and depth, into the frame, its void (what's at the far plane) moved by bgShift: the
+// background now, less the one the kitchen was drawn for (the floor's anti-aliased edge has depth under 1, so its share of
+// the old background stays in it till the kitchen is drawn again: a few levels on a 1 px ring, while the colours move)
 const COPY = `#version 300 es
 precision highp float;
 uniform sampler2D color;
 uniform highp sampler2D depth;
+uniform vec3 bgShift;
 out vec4 o;
 void main() {
   ivec2 p = ivec2(gl_FragCoord.xy);
-  o = texelFetch(color, p, 0);
-  gl_FragDepth = texelFetch(depth, p, 0).r;
+  float d = texelFetch(depth, p, 0).r;
+  o = texelFetch(color, p, 0) + vec4(d < 1.0 ? vec3(0.0) : bgShift, 0.0);
+  gl_FragDepth = d;
 }`;
 
 // one of the (up to four) sheets' pictures
@@ -526,18 +547,21 @@ const LONG = 2048; // the canvas's longest side, px
 // (a fresh compile is left a moment after it's done before it's drawn with, as the chrome's is; one
 // done within QUICK_MS of being asked came from the shader cache, and is used at once)
 const SETTLE_MS = 1500, QUICK_MS = 150;
+// (the kitchen is drawn again for new background colours once they've stayed put for BG_SETTLE s of the clock's time, or at once
+// when they're BG_FAR levels (of 255) off the ones it was drawn for: a theme picked, or a long ease, where its tints would show)
+const BG_SETTLE = 0.5, BG_FAR = 32;
 
 export function createSpaghetti(canvas) {
   let gl = null, ok = false, built = false, par = null, jobs = null, progs = {}, empty = null, cardVao = null, cardBuf = null;
-  let beadTex = null, dummy = null, cache = null;
+  let beadTex = null, dummy = null, cache = null, seen = '', movedAt = 0; // (the background's key last frame, and the clock's time it last changed)
   const pics = [null, null, null, null]; // each sheet's picture, with mipmaps
   // the time round (Spaghetti.swift's): the machine, the pictures; whether it's started, a new round
   // (for the pictures), beats into it, where its parts end (the crank starts, stops, the noodles have
   // landed), how slow
-  let pasta = new Pasta(), started = false, round = false, b = 0, feed = [0, 0], end = 0, slow = 1, last = 0;
+  let pasta = new Pasta(), started = false, round = false, b = 0, feed = [0, 0], end = 0, slow = 1;
   const covers = new Covers();
 
-  const UNIFORMS = ['u.view', 'u.origin', 'u.scale', 'u.crank', 'u.r', 'u.bg', 'pass', 'centre', 'centreInfo', 'centreDepth', 'color', 'depth', 'beads', 'P', 'p0', 'p1', 'p2', 'p3'];
+  const UNIFORMS = ['u.view', 'u.origin', 'u.scale', 'u.crank', 'u.r', 'u.bg', 'pass', 'centre', 'centreInfo', 'centreDepth', 'color', 'depth', 'bgShift', 'beads', 'P', 'p0', 'p1', 'p2', 'p3'];
   // A program started now, compiled in the background where the driver can; finish() looks at it
   // once it's done.
   const program = ([vert, frag]) => {
@@ -575,6 +599,7 @@ export function createSpaghetti(canvas) {
     if (!gl) return;
     par = gl.getExtension('KHR_parallel_shader_compile');
     const list = { kitchen: [FULL, KITCHEN], crank: [CRANK_VERT, CRANK], copy: [FULL, COPY], shadow: [SHADOW_VERT, SHADOW], card: [CARD_VERT, CARD], noodle: [NOODLE_VERT, NOODLE] };
+    // (performance.now() here and in finish: how long its programs took to compile and settle, real time, for the driver)
     jobs = { at: performance.now(), done: 0, progs: Object.fromEntries(Object.entries(list).map(([k, v]) => [k, program(v)])) };
     empty = gl.createVertexArray();
     cardVao = gl.createVertexArray();
@@ -660,20 +685,26 @@ export function createSpaghetti(canvas) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     for (let k = 0; k < 3; k++) bind(k, null);
     gl.deleteFramebuffer(f0); gl.deleteFramebuffer(f1); gl.deleteTexture(first); gl.deleteTexture(info);
-    cache = { color, depth, W, H, key };
+    cache = { color, depth, W, H, key, bg: U.bg };
   }
 
-  // The frame: the kitchen (drawn again only for a new size or theme), a sheet's new picture, then
-  // the kitchen put back with its depth, the noodles' shadows on the floor, the crank, the card, the
-  // noodles.
-  function encode(col) {
+  // The frame: the kitchen (drawn again only for a new size, or for new background colours once they've settled), a
+  // sheet's new picture, then the kitchen put back with its depth, the noodles' shadows on the floor, the crank, the
+  // card, the noodles.
+  function encode(t, col) {
     const dpr = devicePixelRatio || 1, k = Math.min(dpr, LONG / Math.max(1, innerWidth, innerHeight));
     const W = Math.max(1, Math.round(innerWidth * k)), H = Math.max(1, Math.round(innerHeight * k));
     if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
     const scale = Math.min(W / FIT.w, H / FIT.h);
     U = { view: [W, H], origin: [W / 2, H / 2 + FIT.mid * scale], scale, crank: pasta.crank, r: Noodles.R, bg: col.bg.map((v) => v / 255) };
+    // The kitchen has the background in it (the void round the floor is exactly it, and the floor, the slab's sides and the
+    // chrome take a little of it), but it isn't drawn again for each step of a cover's colours easing to the next one's (1.2 s,
+    // a step a frame): it stays as it was, its void taken to the colours as they are now (the copy's bgShift), till they've
+    // stopped, or are far off the ones it was drawn for.
     const key = col.bg.join();
-    if (!cache || cache.W !== W || cache.H !== H || cache.key !== key) kitchen(W, H, key);
+    if (key !== seen || t < movedAt) { seen = key; movedAt = t; } // (a clock gone back starts the wait again)
+    const far = cache && U.bg.some((v, i) => Math.abs(v - cache.bg[i]) * 255 > BG_FAR);
+    if (!cache || cache.W !== W || cache.H !== H || (cache.key !== key && (far || t - movedAt >= BG_SETTLE))) kitchen(W, H, key);
     for (const s of pasta.copies) {
       const src = pasta.source[s];
       if (!src) continue;
@@ -699,7 +730,7 @@ export function createSpaghetti(canvas) {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     // the kitchen, with its depth
     bind(0, cache.color); bind(1, cache.depth);
-    use('copy');
+    gl.uniform3fv(use('copy').bgShift, U.bg.map((v, i) => v - cache.bg[i]));
     gl.disable(gl.BLEND);
     gl.depthFunc(gl.ALWAYS);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -731,9 +762,9 @@ export function createSpaghetti(canvas) {
   function start(c) {
     slow = c.calm ? 2 : 1;
     let whole = 4 * slow;
-    const p = c.eng.placeAt(c.t);
-    if (p) {
-      const x = p.beatF - c.eng.tempo.down + whole;
+    const step = c.eng.stepAt(c.t, c.t); // (the grid as it was at this step's time)
+    if (step !== null) {
+      const x = step / 4 + whole;
       whole += (4 - (x - 4 * Math.floor(x / 4))) % 4;
     }
     feed = [whole, whole + 16 * slow];
@@ -743,8 +774,23 @@ export function createSpaghetti(canvas) {
     pasta.start(c.t);
   }
 
+  // The machine goes a step on 180 times a second on the clock's own grid (clock.js simulate: the noodles' own step is a
+  // 180th of a second), from the engine as it was at the step's time: the round's beats, the crank, the card going in, the
+  // strands, the dancers, the noodles. So the spaghetti at a time is the same however often it was drawn.
+  let cur = null;
+  const sim = simulate(180, (st, h) => {
+    const { eng, calm, offset, picture } = cur, c = { t: st, eng, calm, offset };
+    const bpm = eng.bpmAt(st);
+    b += h / (bpm > 0 ? 60 / bpm : 0.5);
+    if (b >= end) start(c);
+    pasta.advance(c, h, b, feed, slow, covers.pic);
+  });
+
   return {
     get broken() { return !ok; },
+    // For a render, before each frame: the cover picture being decoded is waited for (it is decoded on the browser's own time, so
+    // which frame it first shows on would be the machine's). Resolves at once when none is.
+    prepare() { return clock.mode === 'render' ? covers.pending : null; },
     // (compiling: its programs started and not yet done)
     get waiting() { return !!jobs && !ok; },
     // Not in use: everything let go (made again when it's back).
@@ -764,15 +810,16 @@ export function createSpaghetti(canvas) {
       if (!ok && !finish()) return;
       if (endless !== pasta.endless) { pasta = new Pasta(endless); started = false; }
       const c = { t, eng, calm, offset };
-      const dt = Math.min(0.1, Math.max(0, t - last));
-      last = t;
-      if (!started) { start(c); started = true; }
-      b += dt / (eng.tempo.locked && eng.tempo.P > 0 ? eng.tempo.P : 0.5);
-      if (b >= end) start(c);
-      if (covers.update(picture, round, true)) pasta.drop(t); // (endless: a new picture's card dropped in)
+      if (!started) { start(c); started = true; sim.reset(); }
+      const arrived = covers.update(picture, round, true);
       round = false;
-      pasta.draw(c, dt, b, feed, slow, covers.pic);
-      encode(col);
+      cur = { eng, calm, offset, picture };
+      sim.advance(t);
+      // (endless: a new picture's card dropped in, once this frame's steps are run, and at the step they ended on: the machine goes by
+      // the grid, and the frame's time, which no step is at, was ahead of those steps)
+      if (arrived) pasta.drop(sim.at ?? t);
+      pasta.present(t);
+      encode(t, col);
     },
   };
 }

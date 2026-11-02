@@ -19,6 +19,7 @@
 // looks up. No borrowed shader code: these are the published formulas.
 import { NOTES } from './engine.js';
 import { COLLAGE, layout, drawPanel } from './collage.js';
+import { clock, simulate } from './clock.js';
 
 const VERT = `#version 300 es
 in vec2 p;
@@ -187,7 +188,7 @@ const SETTLE_MS = 1500, QUICK_MS = 150;
 export function createChrome(canvas) {
   let gl = null, ok = false, stepProg, surfProg, showProg, colProg, buf, water = [], fbo = [], surfTex = null, surfFbo = null, imgTex = null, imgFbo = null, filmTex, boltTex, textTex;
   let ls = {}, lf = {}, lv = {}, lc = {}, i = 0, w = 0, h = 0, sw = 0, sh = 0, iw = 0, ih = 0;
-  let last = 0, flash = 0, boltOn = 0, boltAt = -9, thick = 260, thickTo = 260, swell = 0.1, iris = 0.75;
+  let flash = 0, boltOn = 0, boltAt = -9, thick = 260, thickTo = 260, swell = 0.1, iris = 0.75;
   let pulse = 0, tear = 0, lay = { rects: [], text: null }, layBar = null, strips = [];
   const drops = [];
   const panel = document.createElement('canvas').getContext('2d');
@@ -219,6 +220,7 @@ export function createChrome(canvas) {
     // (the ripples need float pictures to draw into; without them the chrome stays off)
     if (!gl || !gl.getExtension('EXT_color_buffer_float')) return;
     par = gl.getExtension('KHR_parallel_shader_compile');
+    // (performance.now() here and below: how long its programs took to compile and settle, real time, for the driver: not a picture's)
     jobs = { at: performance.now(), done: 0, progs: [STEP, SURF, SHOW, COLLAGE].map(program) };
     buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -298,11 +300,11 @@ export function createChrome(canvas) {
   };
   // the clap: a holographic strip or two over the collage, and lightning, a bolt at most every
   // 1.8 seconds (none of either with fewer flashes)
-  const clap = (calm, collage) => {
+  const clap = (calm, collage, at) => {
     if (calm) return;
-    if (collage) for (let k = rnd() < 0.5 ? 1 : 2; k > 0; k--) { const y = 0.06 + 0.88 * rnd(), hh = (4 + 14 * rnd()) / (canvas.height || 800), x = 0.03 + 0.55 * rnd(); strips.push({ r: [x, y, Math.min(1, x + 0.15 + 0.4 * rnd()), y + hh], until: last + 0.25 + 0.2 * rnd() }); }
-    if (last - boltAt < 1.8) return;
-    boltAt = last;
+    if (collage) for (let k = rnd() < 0.5 ? 1 : 2; k > 0; k--) { const y = 0.06 + 0.88 * rnd(), hh = (4 + 14 * rnd()) / (canvas.height || 800), x = 0.03 + 0.55 * rnd(); strips.push({ r: [x, y, Math.min(1, x + 0.15 + 0.4 * rnd()), y + hh], until: at + 0.25 + 0.2 * rnd() }); }
+    if (at - boltAt < 1.8) return;
+    boltAt = at;
     bolt();
   };
   // a new layout every `every` bars (the same bar, the same layout), the panel lettered for it
@@ -318,48 +320,81 @@ export function createChrome(canvas) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, panel.canvas);
   };
   // how loud a band of the fast spectrum is, 0-1 (as the warp reads it)
-  const band = (eng, lo, hi) => {
-    const db = eng.fastDb, hz = eng.hzFast;
+  const band = (eng, lo, hi, at) => {
+    const db = eng.dbAt(at), hz = eng.hzFast;
     let m = -160;
     for (let k = Math.max(1, Math.floor(lo / hz)); k <= Math.min(db.length - 1, Math.ceil(hi / hz)); k++) m = Math.max(m, db[k]);
     return Math.min(1, Math.max(0, (m + 90) / 60));
   };
 
-  // One frame: the water's steps (with the drops since the last), the surface, the chrome (onto the
-  // screen, or into its picture), then the collage.
-  function render(t, low, high, collage) {
-    const W = Math.round(innerWidth * devicePixelRatio), H = Math.round(innerHeight * devicePixelRatio);
-    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
-    const WW = Math.max(16, Math.round(W / 5)), WH = Math.max(16, Math.round(H / 5)), SW = Math.max(16, Math.round(W / 3)), SH = Math.max(16, Math.round(H / 3));
-    size(WW, WH, SW, SH, collage ? W : 1, collage ? H : 1);
-    const dt = Math.min(0.1, Math.max(0, t - last));
-    last = t;
-    flash *= Math.exp(-dt * 7);
-    boltOn *= Math.exp(-dt * 8);
-    pulse *= Math.exp(-dt * 6);
-    tear *= Math.exp(-dt * 4);
-    thick += (thickTo - thick) * Math.min(1, dt * 2);
-    swell += (0.1 + 0.06 * low - swell) * Math.min(1, dt * 3);
-    iris = 0.65 + 0.3 * high;
-    // the water: two steps a frame (three when frames come at 30 a second)
+  // The water, the flash, the bolt and the rest of what moves go a step on at each step of the clock's grid, 120 a
+  // second (the water was two steps a frame at 60 frames a second), the hits that made them each taken in at the step
+  // it falls in, and the engine's spectrum as it was then: so the chrome at a time is the same however often it was
+  // drawn.
+  let cur = null, since = null, root = -1;
+  const events = []; // (what the app tells it: a drop, with its time)
+  const seen = new WeakSet();
+  const sim = simulate(120, (st, h) => {
+    const { eng, calm, collage, WW, WH } = cur;
+    // the engine's hits, from when the chrome came on (none from before)
+    for (const o of eng.onsets) {
+      if ((o.known ?? o.t) > st || seen.has(o)) continue; // (not before the engine filed it)
+      seen.add(o);
+      if (o.t < since) continue;
+      if (o.id === 'bd') {
+        // where the kick falls in the bar, left to right; a little higher or lower each bar
+        const p = eng.placeAt(o.t), step = p ? p.step : 8, b = p ? p.bar : 0, s = Math.min(1, o.s);
+        drop(0.06 + (0.88 * (step + 0.5)) / 16, 0.5 + 0.3 * Math.sin(b * 1.9), 0.04 + 0.015 * s, 1.0 + 0.8 * s);
+        pulse = 1;
+      } else if (o.id === 'sd') clap(calm, collage, st);
+      else if (o.id === 'hh') tear = Math.min(1, tear + 0.4);
+    }
+    while (events.length && events[0].t <= st) {
+      const e = events.shift();
+      drop(0.5, 0.5, 0.08, 2.4);
+      pulse = 1;
+      if (!e.calm) { boltAt = st; bolt(); }
+    }
+    // the chord's root sets the film's thickness (a fifth round the circle a step), so each chord has its own colours
+    const pos = eng.stepAt(st, st); // (the beat grid, and what was learned of the bar, as they were at this step's time)
+    if (pos !== null) {
+      const slot = eng.learnedAt(st).slots[((Math.floor(Math.round(pos) / 16) % 4) + 4) % 4];
+      if (slot?.chord && slot.chord.root !== root && st >= eng.chordSeen) { root = slot.chord.root; thickTo = 170 + 20 * ((root * 7) % 12); }
+    }
+    flash *= Math.exp(-h * 7);
+    boltOn *= Math.exp(-h * 8);
+    pulse *= Math.exp(-h * 6);
+    tear *= Math.exp(-h * 4);
+    thick += (thickTo - thick) * (1 - Math.exp(-h * 2));
+    swell += (0.1 + 0.06 * band(eng, 40, 200, st) - swell) * (1 - Math.exp(-h * 3));
+    // the water: a step, with the drops since the last
     gl.viewport(0, 0, WW, WH);
     gl.useProgram(stepProg);
     gl.uniform2f(ls.texel, 1 / WW, 1 / WH);
     gl.uniform1f(ls.damp, 0.994);
     gl.uniform1f(ls.aspect, WW / WH);
-    const steps = dt > 0.025 ? 3 : 2;
-    for (let s = 0; s < steps; s++) {
-      const n = s === 0 ? drops.length : 0;
-      if (n) gl.uniform4fv(ls.drops, new Float32Array(drops.flat().concat(new Array((12 - n) * 4).fill(0))));
-      gl.uniform1i(ls.nDrops, n);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1 - i]);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, water[i]);
-      gl.uniform1i(ls.water, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      i = 1 - i;
-    }
+    const n = drops.length;
+    if (n) gl.uniform4fv(ls.drops, new Float32Array(drops.flat().concat(new Array((12 - n) * 4).fill(0))));
+    gl.uniform1i(ls.nDrops, n);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1 - i]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, water[i]);
+    gl.uniform1i(ls.water, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    i = 1 - i;
     drops.length = 0;
+  });
+
+  // One frame: the water stepped up to now, the surface, the chrome (onto the screen, or into its picture), then the
+  // collage.
+  function render(t, eng, high, collage, calm) {
+    const W = Math.round(innerWidth * devicePixelRatio), H = Math.round(innerHeight * devicePixelRatio);
+    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+    const WW = Math.max(16, Math.round(W / 5)), WH = Math.max(16, Math.round(H / 5)), SW = Math.max(16, Math.round(W / 3)), SH = Math.max(16, Math.round(H / 3));
+    size(WW, WH, SW, SH, collage ? W : 1, collage ? H : 1);
+    iris = 0.65 + 0.3 * high;
+    cur = { eng, calm, collage, WW, WH };
+    sim.advance(t);
     // the surface: its normal, height and film
     gl.bindFramebuffer(gl.FRAMEBUFFER, surfFbo);
     gl.viewport(0, 0, SW, SH);
@@ -406,15 +441,12 @@ export function createChrome(canvas) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  // the engine's hits, from when the chrome came on (none from before)
-  const seen = new WeakSet();
-  let since = null, root = -1;
   return {
     get broken() { return !ok; },
     // (compiling: its programs started and not yet done)
     get waiting() { return !!jobs && !ok; },
     // a drop (the kick back after a break): a big bead in the middle, and a bolt
-    splash(calm) { if (!ok) return; drop(0.5, 0.5, 0.08, 2.4); pulse = 1; if (!calm) { boltAt = last; bolt(); } },
+    splash(calm) { if (!ok) return; events.push({ t: clock.now(), calm }); if (events.length > 8) events.shift(); },
     // Not in use: let the pictures go (draw() makes them again) and start afresh next time.
     clear() { if (ok) size(1, 1, 1, 1, 1, 1); canvas.width = canvas.height = 1; since = null; layBar = null; lay = { rects: [], text: null }; },
     // song: { title, artist } (or null); calm: fewer flashes; collage: the collage over it or not
@@ -422,30 +454,14 @@ export function createChrome(canvas) {
       if (!built) { built = true; build(); }
       if (!ok && !finish()) return;
       if (since === null) since = t;
-      for (const o of eng.onsets) {
-        if (seen.has(o)) continue;
-        seen.add(o);
-        if (o.t < since) continue;
-        if (o.id === 'bd') {
-          // where the kick falls in the bar, left to right; a little higher or lower each bar
-          const p = eng.placeAt(o.t), step = p ? p.step : 8, b = p ? p.bar : 0, s = Math.min(1, o.s);
-          drop(0.06 + (0.88 * (step + 0.5)) / 16, 0.5 + 0.3 * Math.sin(b * 1.9), 0.04 + 0.015 * s, 1.0 + 0.8 * s);
-          pulse = 1;
-        } else if (o.id === 'sd') clap(calm, collage);
-        else if (o.id === 'hh') tear = Math.min(1, tear + 0.4);
-      }
       const p = eng.placeAt(t);
       if (p) {
-        // the chord's root sets the film's thickness (a fifth round the circle a step), so each
-        // chord has its own colours
-        const slot = eng.slots[((p.bar % 4) + 4) % 4];
-        if (slot?.chord && slot.chord.root !== root) { root = slot.chord.root; thickTo = 170 + 20 * ((root * 7) % 12); }
         if (collage) {
           const key = eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : 'key ?';
           newBar(p.bar, calm ? 4 : 2, [song?.title || 'toaster', song?.artist || '', `${key} · ${Math.round(eng.tempo.shown || eng.tempo.bpm)} bpm`]);
         }
       }
-      render(t, band(eng, 40, 200), band(eng, 6000, 14000), collage);
+      render(t, eng, band(eng, 6000, 14000, t), collage, calm);
     },
   };
 }

@@ -10,6 +10,64 @@ const updates = require('./update.js');
 // ten minutes (null when it can't be had). (Kept out of update.js: a change there only shows at the next
 // update.)
 const REPO_PAGE = 'https://github.com/StopBanning/toaster';
+// The Earth's views (V, renderer/earth.js): NASA's footage from the space station, 6-25 MB a clip, so not in the app.
+// Each comes down from the site the first time it's picked and is kept in the settings folder, so after that it
+// plays offline. Only these files, each checked against its SHA-256 (a damaged or changed one is fetched again).
+// TOASTER_MEDIA_BASE points it elsewhere for testing.
+const EARTH_SUMS = {
+  'earth-aurora': '7e18fe8b83f26155c50e66d53372f95728e6098306a6abccdfee96c9b3b75c7b',
+  'earth-northern-lights': '8181248931a137dce2a3839f345e5295b44404e17570ea903bf6d7ff99e42d4f',
+  'earth-city-lights': 'c1e4342f92a1d8ca8d722b217f107db4a10dbea36fbd2cacc3d6cd8129ec1cf5',
+  'earth-dawn': 'ca3f6b0f8a84aed35a11d5fb6caebbd4eb2b9eec3f65d762d721f41995296a8a',
+  'earth-day': '40d0fd820153b5008e1a0bbb8d9b35e5b732bf0f2aa81758b1764c3a39c32672',
+};
+const EARTH_BASE = process.env.TOASTER_MEDIA_BASE || 'https://toaster.locust.lol/media/';
+// Looks from outside (U, docs/looks-from-shaders.md): the shaders that ship in renderer/looks and the ones in the
+// looks folder in the settings folder (yours: mine), each a .frag or .glsl of at most 64 KB, at most 24 a folder.
+const looksDir = () => path.join(app.getPath('userData'), 'looks');
+async function looksList() {
+  const read = async (dir, mine) => {
+    const out = [];
+    for (const f of (await fs.promises.readdir(dir).catch(() => [])).filter((n) => /\.(frag|glsl)$/i.test(n)).sort().slice(0, 24)) {
+      const file = path.join(dir, f), st = await fs.promises.stat(file).catch(() => null);
+      if (!st?.isFile() || st.size > 65536) continue;
+      out.push({ name: f.replace(/\.(frag|glsl)$/i, '').replace(/[-_]+/g, ' ').trim(), text: await fs.promises.readFile(file, 'utf8'), mine });
+    }
+    return out;
+  };
+  return [...await read(path.join(__dirname, 'renderer', 'looks'), false), ...await read(looksDir(), true)];
+}
+const sha256 = (bytes) => require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+const earthFetches = new Map(); // (a clip being fetched: asked again meanwhile, the same download)
+const earthChecked = new Map(); // (a kept clip checked this run: its size and time then, so it isn't hashed on every pick)
+const EARTH_MAX = 64 * 1024 * 1024; // (no view is near this: a response bigger than it is refused)
+async function earthClip(name) {
+  const sum = EARTH_SUMS[name];
+  if (!sum) throw new Error('no such view');
+  const dir = path.join(app.getPath('userData'), 'media', 'earth'), file = path.join(dir, name + '.mp4');
+  try {
+    const st = await fs.promises.stat(file), seen = `${st.size}:${st.mtimeMs}`;
+    const kept = await fs.promises.readFile(file);
+    if (earthChecked.get(name) === seen || sha256(kept) === sum) { earthChecked.set(name, seen); return kept; }
+  } catch {}
+  if (!earthFetches.has(name)) {
+    earthFetches.set(name, (async () => {
+      const { net } = require('electron');
+      const res = await net.fetch(`${EARTH_BASE}earth/${name}.mp4`, { signal: AbortSignal.timeout(180000) });
+      if (!res.ok) throw new Error(`the view didn't come down (${res.status})`);
+      if (+res.headers.get('content-length') > EARTH_MAX) throw new Error('the view is too big');
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.length > EARTH_MAX || sha256(bytes) !== sum) throw new Error('the view came down damaged');
+      try {
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(file + '.part', bytes);
+        await fs.promises.rename(file + '.part', file);
+      } catch (err) { console.warn('the Earth: a view came down but could not be kept', err.message); } // (it plays; it comes down again next time)
+      return bytes;
+    })().finally(() => earthFetches.delete(name)));
+  }
+  return earthFetches.get(name);
+}
 let starsKept = null;
 async function repoStars() {
   if (starsKept && Date.now() - starsKept.at < 600000) return starsKept.n;
@@ -25,9 +83,11 @@ async function repoStars() {
 // The radio's titles (renderer/app.js, useRadio): Icecast and Shoutcast put them in the stream itself
 // when asked (Icy-MetaData), so the station's stream is read a second time, its sound thrown away, and
 // each new title goes to the page (send). A station that sends none (no icy-metaint) is let go at once.
-// One station at a time: radioTitles stops it. (helpers/radio.cjs is loaded when it's first needed: the
-// test copies of the app don't carry helpers/.)
-let radioTitles = null;
+// One station at a time for each page, the main window and the desktop handheld each with its own: radioTitles has each page's
+// read (its AbortController), stopTitles stops it, and a page that goes stops its own. (helpers/radio.cjs is loaded when it's
+// first needed: the test copies of the app don't carry helpers/.)
+const radioTitles = new Map(), radioWatched = new WeakSet();
+function stopTitles(page) { radioTitles.get(page)?.abort(); radioTitles.delete(page); }
 async function readTitles(url, ctl, send) {
   const { net } = require('electron');
   const { icyTitles } = require('./helpers/radio.cjs');
@@ -40,8 +100,9 @@ async function readTitles(url, ctl, send) {
 
 // The player bar's transport (renderer/player.js): play, pause, next and previous on the system's own player, and where
 // it is in the song, asked through helpers/player.cjs (loaded when it's first needed, as radio.cjs is). A copy run from
-// source with --player-dry-run sends nothing, to any player: it keeps the commands it would have sent, which
-// player:sent hands over for the checks (null in any other copy). Neither does anything in the installed app.
+// source with --player-dry-run sends nothing, to any player: it keeps the commands it would have sent (a Spotify link the library
+// plays too, in the Mac's AppleScript, or as ['open', address] elsewhere), which player:sent hands over for the checks (null in any
+// other copy). Neither does anything in the installed app.
 let playerControl = null, playerSent = null;
 function player() {
   if (!playerControl) {
@@ -49,8 +110,8 @@ function player() {
     if (!app.isPackaged && process.argv.includes('--player-dry-run')) {
       const dry = dryRunner();
       playerSent = dry.sent;
-      playerControl = createPlayerControl({ run: dry.run });
-    } else playerControl = createPlayerControl();
+      playerControl = createPlayerControl({ run: dry.run, open: dry.open });
+    } else playerControl = createPlayerControl({ open: (uri) => shell.openExternal(uri) }); // (open: a pasted Spotify link, off a Mac)
   }
   return playerControl;
 }
@@ -66,6 +127,9 @@ const switchValue = (name) => process.argv.find((a) => a.startsWith(`--${name}=`
 const testData = app.isPackaged ? '' : switchValue('user-data-dir') || process.env.TOASTER_USER_DATA || '';
 const hidden = !app.isPackaged && (process.argv.includes('--hidden') || process.env.TOASTER_HIDDEN === '1');
 if (hidden && mac) app.dock?.hide();
+// (a test copy with a folder of its own keeps its recordings, drop clips and perfect copies there too, in Videos/Toaster: never
+// in yours)
+const videosDir = () => (testData ? path.join(path.resolve(testData), 'Videos', 'Toaster') : path.join(app.getPath('videos'), 'Toaster'));
 
 // Run from source (npm start, npm run dev, the checks), it keeps its settings in a folder of its
 // own, so trying things out never changes the installed app's.
@@ -103,6 +167,7 @@ try {
 } catch { /* start fresh */ }
 
 let win = null;
+let takeKit = null, takeDrop = () => {}; // the perfect take's store and render, once first needed, and its stop (see setUpIpc)
 let nowPlayingProc = null, nowPlayingTimer = null, nowPlayingDelay = 2000, quitting = false;
 let lastNowPlaying = null;
 let normalBounds = null;
@@ -150,7 +215,7 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.on('closed', () => { win = null; widget?.close(); });
+  win.on('closed', () => { win = null; widget?.close(); takeDrop('the window closed'); });
   // The page is the app: it never opens other windows or goes anywhere else (links to Strudel go
   // to the browser, through open:strudel).
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -173,6 +238,9 @@ function createWindow() {
   // Fullscreen hides the traffic lights, so the page can use that left gap.
   win.on('enter-full-screen', () => win.webContents.send('win:full', true));
   win.on('leave-full-screen', () => win.webContents.send('win:full', false));
+  // (a perfect copy being made ends with the page that asked for it: a reload, or the page crashing)
+  win.webContents.on('did-start-loading', () => takeDrop('the page reloaded'));
+  win.webContents.on('render-process-gone', () => takeDrop('the page stopped'));
   win.webContents.on('did-finish-load', () => {
     if (lastNowPlaying) win.webContents.send('nowplaying', lastNowPlaying);
     // Start listening right away. Screen/audio capture needs a user gesture, and running this
@@ -199,7 +267,9 @@ function setUpCapture() {
       callback({});
     }
   });
-  const allowed = new Set(['media', 'display-capture', 'fullscreen']);
+  // (what our own window may ask for: the sound and the screen it hears, fullscreen, and plain text onto the clipboard from a
+  // click, which is the misread report's "copy report". Reading the clipboard is not on the list.)
+  const allowed = new Set(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write']);
   // (asked for by our own window only)
   const ours = (wc) => !!wc && (wc === win?.webContents || wc === widget?.webContents);
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(ours(wc) && allowed.has(permission)));
@@ -367,6 +437,34 @@ function library() {
   return libraryKept;
 }
 
+// Spotify (the library's spotify section, renderer/library-panel.js): the sign-in with the listener's own Client ID and the tokens it
+// gives, the lists and the player calls those allow, a pasted link played in the Spotify app, and the covers, all in helpers/spotify.cjs
+// (loaded when it's first needed, as the other helpers are: the test copies of the app don't carry helpers/). The tokens stay here, in
+// main, kept encrypted by safeStorage in the settings folder (spotify.bin): the page asks for a list or a play and gets rows or words
+// back, and is never given a token. A copy run from source can be told to talk to a fake Spotify on this machine instead
+// (--spotify-fake=http://127.0.0.1:<port>, helpers/spotify-fake.cjs: for the checks, which never call Spotify); it does nothing in the
+// installed app.
+let spotifyKept = null;
+function spotify() {
+  if (!spotifyKept) {
+    const { createSpotify, createWebApi, patient } = require('./helpers/spotify.cjs');
+    const { net, safeStorage } = require('electron');
+    const fakeAt = app.isPackaged ? '' : switchValue('spotify-fake') || '';
+    const fake = fakeAt ? require('./helpers/spotify-fake.cjs').fakeSpotify(fakeAt) : null;
+    const fetch = patient(fake ? fake.fetch : (url, init) => net.fetch(String(url), init));
+    const connection = createSpotify({
+      file: path.join(app.getPath('userData'), 'spotify.bin'), fetch,
+      safeStorage: fake ? fake.safeStorage : safeStorage,
+      openExternal: fake ? fake.openExternal : async (url) => { try { await shell.openExternal(url); } catch { throw new Error('Toaster could not open your browser to sign in to Spotify.'); } },
+      ...(fake ? { accounts: fake.base } : {}),
+    });
+    const web = createWebApi({ accessToken: connection.accessToken, fetch, ...(fake ? { api: fake.base } : {}) });
+    spotifyKept = { connection, web, fetch };
+  }
+  return spotifyKept;
+}
+const plainObject = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {}); // (what the page sends for a request is checked by the helper, which wants an object)
+
 function setUpIpc() {
   ipcMain.handle('sys:info', () => {
     const d = screen.getPrimaryDisplay();
@@ -506,15 +604,19 @@ function setUpIpc() {
   // The header's star button: the project's star count, and its page in the browser.
   ipcMain.handle('repo:stars', () => repoStars().catch(() => null));
   ipcMain.handle('repo:open', () => shell.openExternal(REPO_PAGE));
-  // The radio's titles: read from the stream at url and sent to the page that asked, till it asks
-  // again (with null when the radio stops).
+  // The library's empty radio: the few stations that publish their streams' addresses (docs/radio-stations.md), in the browser.
+  ipcMain.handle('stations:open', () => shell.openExternal(`${REPO_PAGE}/blob/main/docs/radio-stations.md`));
+  // The radio's titles: read from the stream at url and sent to the page that asked, till that page asks
+  // again (with null when the radio stops). Another page's read is its own: the handheld's start, which stops
+  // what it has, no longer stops the main window's.
   ipcMain.handle('radio:titles', (e, url) => {
-    radioTitles?.abort();
-    radioTitles = null;
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
     const page = e.sender;
-    radioTitles = new AbortController();
-    readTitles(url, radioTitles, (song) => { if (!page.isDestroyed()) page.send('radio:title', song); }).catch(() => {});
+    stopTitles(page);
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+    if (!radioWatched.has(page)) { radioWatched.add(page); page.once('destroyed', () => stopTitles(page)); }
+    const ctl = new AbortController();
+    radioTitles.set(page, ctl);
+    readTitles(url, ctl, (song) => { if (!page.isDestroyed()) page.send('radio:title', song); }).catch(() => {});
   });
   // The radio's song's cover: looked up in the iTunes Store's search (it needs no key) by its artist
   // and title, kept only if both match (pickCover), and handed over as the picture's bytes (the page
@@ -553,9 +655,9 @@ function setUpIpc() {
   ipcMain.handle('open:strudel', (_e, url) => {
     if (typeof url === 'string' && url.startsWith('https://strudel.cc/#') && url.length < 60000) return shell.openExternal(url);
   });
-  // A bug report's draft, a GitHub new-issue link, opened in your browser. Only Toaster's own
-  // new-issue page goes through here (helpers/issue-url.cjs, loaded when it's first needed: the
-  // test copies of the app don't carry helpers/).
+  // A bug report's draft, or a misread report's: a GitHub new-issue link, opened in your browser. Only
+  // Toaster's own new-issue page goes through here (helpers/issue-url.cjs, loaded when it's first
+  // needed: the test copies of the app don't carry helpers/).
   ipcMain.handle('open:bug-issue', (_e, url) => {
     if (!require('./helpers/issue-url.cjs').isAllowedIssueUrl(url)) throw new Error('Invalid bug report URL');
     return shell.openExternal(url);
@@ -566,7 +668,7 @@ function setUpIpc() {
   ipcMain.handle('rec:source', () => win?.webContents.getMediaSourceId(win.webContents));
   ipcMain.handle('rec:start', (_e, ext) => {
     endRecording();
-    const dir = path.join(app.getPath('videos'), 'Toaster');
+    const dir = videosDir();
     fs.mkdirSync(dir, { recursive: true });
     const dotExt = '.' + (ext === 'webm' ? 'webm' : 'mp4');
     const stem = path.join(dir, `toaster ${stamp()}`);
@@ -598,7 +700,7 @@ function setUpIpc() {
   ipcMain.handle('win:close', () => win?.close());
   ipcMain.handle('rec:show', (_e, file) => {
     // only files inside our own folders (resolved first, so a .. in the path can't step out)
-    const ours = [path.join(app.getPath('videos'), 'Toaster'), path.join(app.getPath('music'), 'Toaster')];
+    const ours = [videosDir(), path.join(app.getPath('music'), 'Toaster')];
     if (typeof file !== 'string') return;
     const at = path.resolve(file);
     if (ours.some((dir) => { const rel = path.relative(dir, at); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); })) shell.showItemInFolder(at);
@@ -607,7 +709,7 @@ function setUpIpc() {
   // (its name taken at once, then written in the background: written in one go, the 16-26 MB held
   // up the window and a recording's chunks meanwhile)
   ipcMain.handle('clip:save', async (_e, buf, ext) => {
-    const dir = path.join(app.getPath('videos'), 'Toaster');
+    const dir = videosDir();
     fs.mkdirSync(dir, { recursive: true });
     const dotExt = '.' + (ext === 'webm' ? 'webm' : 'mp4');
     const file = freeBase(path.join(dir, `toaster drop ${stamp()}`), [dotExt]) + dotExt;
@@ -619,6 +721,97 @@ function setUpIpc() {
     }
     return file;
   });
+  // The perfect take (stream B; helpers/take-*.cjs, loaded when first needed): while M records with the perfect copy on, the
+  // page keeps the take: its sound from a run-up before M, what the page was like, what changed. When M stops, the take is
+  // drawn again frame by frame in a hidden window (renderer/take-replay.js) and written beside the recording, as
+  // "<recording> perfect.mp4". One at a time; quitting, or the page reloading, ends it; a take is dropped once drawn.
+  const toPage = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
+  const takes = () => {
+    if (!takeKit) {
+      const { createTakeStore, checkMeta, checkEnd } = require('./helpers/take-store.cjs');
+      const { createTakeRender } = require('./helpers/take-render.cjs');
+      takeKit = { store: createTakeStore({ root: path.join(app.getPath('userData'), 'takes') }), render: createTakeRender({ BrowserWindow, ipcMain }), checkMeta, checkEnd, stems: new Map(), queue: Promise.resolve(), waiting: new Set() };
+      takeKit.store.prune(0); // (takes left by a run that ended mid-take are never drawn: gone)
+    }
+    return takeKit;
+  };
+  const fromPage = (e) => e.sender === win?.webContents;
+  ipcMain.handle('take:begin', (e, meta) => {
+    if (!fromPage(e)) throw new Error('not the page');
+    const k = takes(), id = k.store.begin(k.checkMeta(meta));
+    k.stems.set(id, recording?.stem || path.join(videosDir(), `toaster ${stamp()}`));
+    return id;
+  });
+  // (the first sound that can't be kept ends the take, said once: a copy with a hole in its sound is no copy, and a full disk
+  // would say so every second; take:end then finds no take, so nothing is drawn or said to be saved)
+  ipcMain.on('take:sound', (e, id, data) => {
+    if (!fromPage(e) || !takeKit?.stems.has(id)) return;
+    try { takeKit.store.sound(id, data); } catch (err) {
+      takeKit.stems.delete(id);
+      try { takeKit.store.end(id); takeKit.store.remove(id); } catch { /* gone */ }
+      toPage('take:failed', err.message);
+    }
+  });
+  ipcMain.handle('take:end', (e, id, end) => {
+    if (!fromPage(e) || !takeKit?.stems.has(id)) return false;
+    const k = takeKit, stem = k.stems.get(id);
+    k.stems.delete(id);
+    const meta = k.store.end(id);
+    let last;
+    try { last = k.checkEnd(end, meta); } catch (err) { k.store.remove(id); throw err; }
+    if (!last.keep) { k.store.remove(id); return false; }
+    // (one at a time, in order: a second recording's copy waits for the first's. A step that fails does not end the line: a take's
+    // folder that Windows would not let go of, a scanner holding its sound, rejected the queue, and no copy was made again till
+    // Toaster was started again. renderTake says its own failures; a take left behind goes at the next start's prune)
+    k.waiting.add(id);
+    k.queue = k.queue.then(() => (k.waiting.delete(id) ? renderTake(id, meta, last, stem) : k.store.remove(id))).catch(() => {});
+    return true;
+  });
+  ipcMain.handle('take:cancel', () => stopCopies('stopped'));
+  // Ctrl+K's stop: the copies waiting and the one being made. Not a take still recording: M goes on, and its copy is still to come.
+  function stopCopies(why) {
+    if (!takeKit) return;
+    takeKit.waiting.clear();
+    takeKit.render.cancel(why);
+  }
+  // Every take still recording and every copy waiting or being made, ended: a reload, the page crashing, the window closing,
+  // quitting.
+  function dropTakes(why) {
+    if (!takeKit) return;
+    for (const id of takeKit.stems.keys()) { try { takeKit.store.end(id); takeKit.store.remove(id); } catch { /* gone */ } }
+    takeKit.stems.clear();
+    stopCopies(why);
+  }
+  takeDrop = dropTakes;
+  async function renderTake(id, meta, last, stem) {
+    const k = takeKit;
+    try {
+      const take = k.store.read(id), fps = meta.fps, frames = Math.max(1, Math.floor(last.duration * fps));
+      const from = Math.round(meta.runup * meta.sampleRate);
+      const samples = Math.max(0, Math.min(take.sound.samples - from, Math.round((frames / fps) * meta.sampleRate)));
+      const sound = samples ? { sampleRate: meta.sampleRate, channels: 2, samples, read: (i, n) => take.sound.read(from + i, Math.min(n, samples - i)) } : null;
+      // (the sound as the page's analysers hear it, one channel, made a stretch at a time so the take's two never sit in memory whole)
+      const mono = new Float32Array(take.sound.samples);
+      for (let i = 0; i < mono.length; i += 480000) {
+        const [l, r] = take.sound.read(i, 480000);
+        for (let j = 0; j < l.length; j++) mono[i + j] = (l[j] + r[j]) / 2;
+      }
+      fs.mkdirSync(path.dirname(stem), { recursive: true });
+      const out = freeBase(`${stem} perfect`, ['.mp4', '.mp4.part']) + '.mp4';
+      let shown = -1;
+      const done = await k.render.render({
+        page: { file: path.join(__dirname, 'renderer', 'index.html'), preload: path.join(__dirname, 'helpers', 'take-render-preload.cjs') },
+        css: meta.css, dpr: meta.dpr, fps, frames, t0: meta.t0, out, sound, take: { meta, sound: mono, changes: last.changes }, loadMs: 120000,
+        frameMs: 150000, // (a look that begins during the take is waited for inside its frame, two minutes at most: take-replay.js)
+      }, { onProgress: (f) => { const pct = Math.floor(f * 100); if (pct !== shown) { shown = pct; toPage('take:progress', f); } } });
+      toPage('take:done', done.file);
+    } catch (err) {
+      toPage('take:failed', err?.message || String(err));
+    } finally {
+      try { k.store.remove(id); } catch { /* already gone */ }
+    }
+  }
+  app.on('before-quit', () => dropTakes('Toaster closed'));
   // The hand log (Ctrl+Shift+H, renderer/handlog.js): lines of JSON (numbers only), in the
   // settings folder's "hand logs", a file a log, added to every few seconds.
   let handLog = null, handLogWrites = Promise.resolve();
@@ -656,6 +849,18 @@ function setUpIpc() {
   ipcMain.handle('library:cached', () => library().cached());
   ipcMain.handle('library:scan', (e) => library().scan((p) => { if (!e.sender.isDestroyed()) e.sender.send('library:progress', p); }));
   ipcMain.handle('library:read', (_e, rel) => library().read(rel));
+  ipcMain.handle('earth:clip', (_e, name) => earthClip(String(name)));
+  ipcMain.handle('looks:list', () => looksList());
+  ipcMain.handle('looks:open', async () => { await fs.promises.mkdir(looksDir(), { recursive: true }); return shell.openPath(looksDir()); });
+  // Spotify (above): whether it is connected (never a token), connecting and disconnecting, the lists and the player, a pasted link played
+  // in the Spotify app, and a cover as a data: address. helpers/spotify.cjs checks each request before anything is sent; none asks for a token.
+  ipcMain.handle('spotify:status', () => spotify().connection.status());
+  ipcMain.handle('spotify:connect', (_e, clientId) => spotify().connection.connect(clientId));
+  ipcMain.handle('spotify:disconnect', () => spotify().connection.disconnect());
+  ipcMain.handle('spotify:list', (_e, request) => spotify().web.list(plainObject(request)));
+  ipcMain.handle('spotify:play', (_e, request) => spotify().web.play(plainObject(request)));
+  ipcMain.handle('spotify:open', (_e, text) => require('./helpers/spotify.cjs').openLink(text, (uri) => player().playLink(uri)));
+  ipcMain.handle('spotify:cover', (_e, url) => require('./helpers/spotify.cjs').fetchCover(url, { fetch: spotify().fetch }));
 }
 
 function stamp(d = new Date()) {
@@ -719,7 +924,7 @@ app.on('window-all-closed', () => {
   quitting = true;
   clearTimeout(nowPlayingTimer);
   nowPlayingProc?.kill();
-  radioTitles?.abort();
+  for (const page of [...radioTitles.keys()]) stopTitles(page);
   libraryKept?.stop();
   stopFaces();
   endRecording().finally(() => app.quit());

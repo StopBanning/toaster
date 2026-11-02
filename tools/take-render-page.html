@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>take-render check page</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}canvas,#flash{position:fixed;inset:0;width:100%;height:100%}
+#code{position:fixed;left:24px;top:120px;font:14px/1.5 Menlo,monospace;color:#e8e8e8;white-space:pre}#code .lit{background:#ff4fa3;color:#000}
+#flash{background:#fff;display:none}#mark{position:fixed;left:0;top:0;width:256px;height:16px;inset:auto;image-rendering:pixelated}</style>
+<canvas id="gl"></canvas><div id="code"></div><div id="flash"></div><canvas id="mark" width="16" height="1"></canvas>
+<script src="take-render-page.js"></script>
