@@ -16,6 +16,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
 const app = read('renderer/app.js'), main = read('main.js'), preload = read('preload.js');
 
+// GitHub's Windows runner has no audio device and no GPU: a real take there can't keep its sound on the clock or draw its frames
+// (0.4.30's CI: the audio tap a third short, the render's UnknownVizError), so these run on a desktop, not there. The perfect
+// copy is opt-in (Ctrl+K), and a take that can't run leaves the recording as it is and says why.
+const RUNNER = process.env.GITHUB_ACTIONS === 'true' && process.platform === 'win32' && "GitHub's Windows runner: no audio device, no GPU";
+
 test('the setting and the wiring: saved, off by default, Ctrl+K, the tap before M\'s delay, the files in a test copy\'s own folder', () => {
   assert.match(app, /const SAVED = \['perfectCopy', /);
   assert.match(app, /state\.perfectCopy = state\.perfectCopy === true;/, 'off unless turned on');
@@ -42,7 +47,7 @@ try { electron = createRequire(import.meta.url)('electron'); if (!fs.existsSync(
 const tool = (name) => { const bin = process.env[name.toUpperCase()] || name; return spawnSync(bin, ['-version'], { encoding: 'utf8' }).status === 0 ? bin : null; };
 const ffprobe = tool('ffprobe');
 
-test('for real: a take made in the app comes out as "<recording> perfect.mp4" in the test copy\'s own folder', { skip: !electron && 'no Electron here', timeout: 300000 }, () => {
+test('for real: a take made in the app comes out as "<recording> perfect.mp4" in the test copy\'s own folder', { skip: (!electron && 'no Electron here') || RUNNER, timeout: 300000 }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'toaster-take-live-'));
   try {
     const r = spawnSync(process.execPath, [path.join(here, 'take-live-check.mjs'), dir, String(9361 + (process.pid % 30))], { encoding: 'utf8', timeout: 280000 });

@@ -20,6 +20,11 @@ const { outputSize } = require('../helpers/take-render.cjs');
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
 const driver = read('helpers/take-render.cjs'), renderPreload = read('helpers/take-render-preload.cjs'), encoderPage = read('renderer/take-encoder.js'), encoderHtml = read('renderer/take-encoder.html');
 
+// GitHub's Windows runner has no audio device and no GPU: a real take there can't keep its sound on the clock or draw its frames
+// (0.4.30's CI: the audio tap a third short, the render's UnknownVizError), so these run on a desktop, not there. The perfect
+// copy is opt-in (Ctrl+K), and a take that can't run leaves the recording as it is and says why.
+const RUNNER = process.env.GITHUB_ACTIONS === 'true' && process.platform === 'win32' && "GitHub's Windows runner: no audio device, no GPU";
+
 test('the output is the page\'s CSS size times its pixel ratio, an even number of pixels each way', () => {
   assert.deepEqual(outputSize({ width: 540, height: 960 }, 2), { width: 1080, height: 1920 });
   assert.deepEqual(outputSize({ width: 960, height: 540 }, 2), { width: 1920, height: 1080 });
@@ -46,7 +51,7 @@ try { electron = require('electron'); if (!fs.existsSync(electron)) electron = n
 const tool = (name) => { const bin = process.env[name.toUpperCase()] || name; return spawnSync(bin, ['-version'], { encoding: 'utf8' }).status === 0 ? bin : null; };
 const ffmpeg = tool('ffmpeg'), ffprobe = tool('ffprobe');
 
-test('for real: a whole take, then a cancel, a crash, a stall, a page that fails and a second render, each said in words, and an odd size drawn at the even size below, with nothing left behind', { skip: !electron && 'no Electron here', timeout: 180000 }, () => {
+test('for real: a whole take, then a cancel, a crash, a stall, a page that fails and a second render, each said in words, and an odd size drawn at the even size below, with nothing left behind', { skip: (!electron && 'no Electron here') || RUNNER, timeout: 180000 }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'toaster-take-render-'));
   try {
     const run = spawnSync(electron, [path.join(here, 'take-render-check.cjs'), dir], { encoding: 'utf8', timeout: 170000 });

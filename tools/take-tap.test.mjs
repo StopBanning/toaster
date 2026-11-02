@@ -16,6 +16,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
 const tap = read('renderer/take-tap.js'), worklet = read('renderer/take-tap-worklet.js');
 
+// GitHub's Windows runner has no audio device and no GPU: a real take there can't keep its sound on the clock or draw its frames
+// (0.4.30's CI: the audio tap a third short, the render's UnknownVizError), so these run on a desktop, not there. The perfect
+// copy is opt-in (Ctrl+K), and a take that can't run leaves the recording as it is and says why.
+const RUNNER = process.env.GITHUB_ACTIONS === 'true' && process.platform === 'win32' && "GitHub's Windows runner: no audio device, no GPU";
+
 test('the tap plays nothing, sends every quantum with its place on the audio clock, and hands on copies', () => {
   assert.match(tap, /numberOfInputs: 1, numberOfOutputs: 0, channelCount: channels, channelCountMode: 'explicit', channelInterpretation: 'speakers'/);
   assert.match(worklet, /this\.port\.postMessage\(\{ frame: currentFrame, data: out \}, \[out\.buffer\]\);/);
@@ -27,7 +32,7 @@ test('the tap plays nothing, sends every quantum with its place on the audio clo
 let electron = null;
 try { electron = createRequire(import.meta.url)('electron'); if (!fs.existsSync(electron)) electron = null; } catch { /* no Electron here */ }
 
-test('for real: every sample through unchanged, in blocks on the audio clock; a live context keeps coming with no gap', { skip: !electron && 'no Electron here', timeout: 90000 }, () => {
+test('for real: every sample through unchanged, in blocks on the audio clock; a live context keeps coming with no gap', { skip: (!electron && 'no Electron here') || RUNNER, timeout: 90000 }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'toaster-take-tap-'));
   try {
     const run = spawnSync(electron, [path.join(here, 'take-tap-check.cjs'), dir], { encoding: 'utf8', timeout: 80000 });
