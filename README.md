@@ -203,6 +203,9 @@ anonymously (Cloudflare Web Analytics, no cookies) and asks GitHub for the proje
 
 - It does best with a steady beat. A song without clear drums can take 8 to 20 seconds to find
   one; tap Space on the beat to give it the tempo.
+- Its weak spot is the kick under a busy or sidechained bass, which is most modern dance and pop: it can
+  take bass notes for kicks and write a syncopated kick line where the song is four to the floor. If a song
+  reads wrong, the flag at the end of the site's player bar reports it in one click.
 - The song's title (and its cover, for the ID card) come from the system's media controls
   (Windows' media controls, or the Mac's Now Playing), so any player that shows up there works:
   Spotify, browsers and the rest.
