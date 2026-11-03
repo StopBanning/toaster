@@ -211,7 +211,7 @@ const PAGE = 50; // (the most each of these endpoints gives at once)
 const LISTS = {
   playlists: { path: () => '/v1/me/playlists', shape: (item) => collection('playlist', item, item.owner?.display_name, item.tracks?.total ?? item.items?.total) },
   albums: { path: () => '/v1/me/albums', shape: (item) => collection('album', item.album, artists(item.album), item.album?.total_tracks) },
-  playlist: { id: true, path: (id) => `/v1/playlists/${id}/tracks`, shape: (item) => track(item.track) },
+  playlist: { id: true, path: (id) => `/v1/playlists/${id}/items`, shape: (item) => track(item.item ?? item.track) }, // (Spotify's 2026 API: /items, the song under .item)
   album: { id: true, path: (id) => `/v1/albums/${id}/tracks`, shape: (item) => track(item) },
   liked: { path: () => '/v1/me/tracks', shape: (item) => track(item.track) },
 };
@@ -240,6 +240,7 @@ async function failure(res) {
   const body = await res.json().catch(() => ({}));
   const reason = body.error?.reason || '', said = body.error?.message || '';
   if (res.status === 401) return new Error('Spotify wants you to connect again.');
+  if (res.status === 403 && /\/v1\/playlists\/[A-Za-z0-9]{22}\/items$/.test(new URL(res.url || 'http://x/').pathname)) return new Error('Spotify only lets Toaster list the songs of playlists you made or work on: enter plays this one from the top.');
   if (res.status === 403 && reason === 'PREMIUM_REQUIRED') return new Error('Spotify says starting songs from Toaster needs Premium.');
   if (res.status === 404 && reason === 'NO_ACTIVE_DEVICE') return new Error('Open Spotify on this computer and play anything once, then try again.');
   if (res.status === 429) return new Error(`Spotify asks Toaster to slow down: try again in ${Number(res.headers.get('retry-after')) || 30} s.`);
@@ -345,7 +346,7 @@ async function openLink(text, playLink) {
 
 // The one server a cover may come from. The page's security policy keeps out pictures from any other, so main fetches the one the page is
 // showing and hands it over as a data: address; Spotify's artwork is served from here, and a cover on another host is not fetched at all.
-const COVER_HOSTS = ['i.scdn.co'];
+const COVER_HOSTS = ['i.scdn.co', 'mosaic.scdn.co', 'image-cdn-ak.spotifycdn.com', 'image-cdn-fa.spotifycdn.com'];
 const COVER_MAX = 1536 * 1024; // (a 640-pixel cover is about 100 KB: more than this is not one)
 const COVER_WAIT = 10 * 1000;
 
@@ -353,7 +354,7 @@ function isCoverUrl(value) {
   if (typeof value !== 'string' || value.length > 400) return false;
   let url;
   try { url = new URL(value); } catch { return false; }
-  return url.protocol === 'https:' && COVER_HOSTS.includes(url.hostname) && !url.username && !url.password && !url.port && url.pathname.startsWith('/image/');
+  return url.protocol === 'https:' && COVER_HOSTS.includes(url.hostname) && !url.username && !url.password && !url.port && (url.hostname === 'i.scdn.co' ? url.pathname.startsWith('/image/') : !url.search && /^\/[\w/.-]+$/.test(url.pathname));
 }
 
 // What a picture's first bytes say it is, or null: a JPEG, a PNG or a WebP is a cover; a page, a script or anything else is not.

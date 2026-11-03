@@ -159,3 +159,25 @@ test('the real runner gives back what a program printed, and a failure carries w
   const p = createPlayerControl({ platform: 'darwin', run: (file, args) => realRun(process.execPath, ['-e', 'console.error("Not authorized to send Apple events to Music. (-1743)"); process.exit(1)']) });
   assert.deepEqual(await p.command('music', 'next'), { ok: false, why: 'denied' });
 });
+
+test("what's playing, asked of Spotify then Music on a Mac (macOS 15.4 closed the system's list): never opens either, reads their answer, nothing off a Mac", async () => {
+  const P = createRequire(import.meta.url)('../helpers/player.cjs');
+  const script = P.macNowPlaying();
+  assert.match(script, /if application "Spotify" is running then/);
+  assert.match(script, /if application "Music" is running then/);
+  assert.doesNotMatch(script.replace(/if application "(Spotify|Music)" is running then\n try\n tell application "\1"/g, ''), /tell application/, 'every tell is behind its "is running"');
+  const S = String.fromCharCode(31);
+  assert.deepEqual(P.parseNowPlaying(['Spotify', 'One Night in Berlin', 'Baby Jane', 'playing', 'https://i.scdn.co/image/ab67616d0000b273abc'].join(S) + '\n'),
+    { app: 'Spotify', title: 'One Night in Berlin', artist: 'Baby Jane', playing: true, cover: 'https://i.scdn.co/image/ab67616d0000b273abc' });
+  assert.deepEqual(P.parseNowPlaying(['Music', 'Jóga', 'Björk', 'paused', ''].join(S)), { app: 'Music', title: 'Jóga', artist: 'Björk', playing: false, cover: null });
+  assert.equal(P.parseNowPlaying(['Spotify', 'x', 'y', 'playing', 'https://evil.com/image/abc'].join(S)).cover, null, 'a cover only from Spotify\'s picture server');
+  for (const nothing of ['', '\n', 'Spotify', ['Spotify', '', 'y', 'playing', ''].join(S)]) assert.equal(P.parseNowPlaying(nothing), null, JSON.stringify(nothing));
+  const sent = [];
+  const mac = P.createPlayerControl({ platform: 'darwin', run: async (file, args) => { sent.push([file, ...args]); return ['Spotify', 'a', 'b', 'playing', ''].join(S); } });
+  assert.deepEqual(await mac.nowPlaying(), { app: 'Spotify', title: 'a', artist: 'b', playing: true, cover: null });
+  assert.equal(sent[0][0], '/usr/bin/osascript');
+  const refused = P.createPlayerControl({ platform: 'darwin', run: async () => { throw Object.assign(new Error('x'), { stderr: '-1743' }); } });
+  assert.equal(await refused.nowPlaying(), null);
+  const win = P.createPlayerControl({ platform: 'win32', run: async () => { throw new Error('nothing should run'); } });
+  assert.equal(await win.nowPlaying(), null);
+});

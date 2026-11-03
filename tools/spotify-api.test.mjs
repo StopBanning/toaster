@@ -50,12 +50,12 @@ test('your playlists, as rows: name, owner, track count, cover and uri, with the
   } finally { await f.close(); }
 });
 
-test('saved albums and an album\'s tracks; a playlist\'s gaps, local files and podcast episodes are left out', async () => {
+test('saved albums and an album\'s tracks; a playlist\'s songs from /items (Spotify\'s 2026 address); its gaps, local files and podcast episodes are left out', async () => {
   const song = (n, extra = {}) => ({ id: String(n).padStart(22, 'T'), name: `song ${n}`, artists: [{ name: 'a' }, { name: 'b' }], duration_ms: 1000 * n, uri: TRACK(n), type: 'track', ...extra });
   const f = await fakeApi({
     'GET /v1/me/albums': () => [200, { total: 1, items: [{ album: { id: ALBUM, name: '(III)', artists: [{ name: 'Crystal Castles' }], total_tracks: 12, images: [{ url: 'u', width: 300 }] } }] }],
     [`GET /v1/albums/${ALBUM}/tracks`]: () => [200, { total: 2, items: [song(1), song(2)] }],
-    [`GET /v1/playlists/${PLAYLIST}/tracks`]: () => [200, { total: 4, items: [{ track: song(3) }, { track: null }, { track: song(4, { is_local: true, uri: 'spotify:local:x' }) }, { track: { ...song(5), type: 'episode' } }] }],
+    [`GET /v1/playlists/${PLAYLIST}/items`]: () => [200, { total: 5, items: [{ item: song(3) }, { item: null }, { item: song(4, { is_local: true, uri: 'spotify:local:x' }) }, { item: { ...song(5), type: 'episode' } }, { track: song(6) }] }], // (2026's /items: the song under .item; .track still read)
   });
   try {
     const web = createWebApi({ accessToken: tokens().accessToken, api: f.api });
@@ -63,7 +63,7 @@ test('saved albums and an album\'s tracks; a playlist\'s gaps, local files and p
     const tracks = await web.list({ list: 'album', id: ALBUM, offset: 50 });
     assert.deepEqual(tracks.items[0], { id: '1'.padStart(22, 'T'), name: 'song 1', by: 'a, b', ms: 1000, uri: TRACK(1), cover: '' });
     assert.equal(f.seen[1].query.offset, '50');
-    assert.deepEqual((await web.list({ list: 'playlist', id: PLAYLIST })).items.map((t) => t.name), ['song 3']);
+    assert.deepEqual((await web.list({ list: 'playlist', id: PLAYLIST })).items.map((t) => t.name), ['song 3', 'song 6']);
   } finally { await f.close(); }
 });
 

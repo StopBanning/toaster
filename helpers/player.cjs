@@ -42,6 +42,23 @@ function parsePosition(output) {
   return m ? { position: Number(m[1]) / 1000, duration: Number(m[2]) / 1000, playing: /^playing$|kPSP/i.test(m[3]) } : null;
 }
 
+// What's playing, asked of Spotify and then Music, for the Macs where the system's own list (MediaRemote, which
+// helpers/mac/nowplaying reads) answers nothing: macOS 15.4 closed it to apps that aren't Apple's. One line, the fields
+// split by a character no title has: the app, the title, the artist, the state and (Spotify only) the cover's address.
+const NP_SEP = '\u001f';
+function macNowPlaying() {
+  const field = (app, extra) => `tell application "${app}" to return "${app}" & sep & (name of current track) & sep & (artist of current track) & sep & (player state as text) & sep & ${extra}`;
+  return `set sep to (ASCII character 31)\n` +
+    `if application "Spotify" is running then\n try\n ${field('Spotify', '(artwork url of current track)')}\n end try\nend if\n` +
+    `if application "Music" is running then\n try\n ${field('Music', '""')}\n end try\nend if\nreturn ""`;
+}
+// { app, title, artist, playing, cover } or null (neither running, or nothing in it); a paused player counts, so the card keeps the song.
+function parseNowPlaying(output) {
+  const f = String(output).replace(/\r?\n$/, '').split(NP_SEP);
+  if (f.length < 5 || !f[1]) return null;
+  return { app: f[0], title: f[1], artist: f[2] || null, playing: /^playing$|kPSP/i.test(f[3]), cover: /^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]+$/.test(f[4]) ? f[4] : null };
+}
+
 // A pasted Spotify link, played in the Spotify app (the spotify section's first tier, which needs no sign-in). This is the one
 // place Toaster starts the app itself: the listener asked for this song, so unlike the buttons above, which only answer a player that
 // is already running, a bare "tell application" here is wanted (AppleScript launches Spotify if it isn't running, in the background,
@@ -136,7 +153,14 @@ function createPlayerControl({ platform = process.platform, run = realRun, open 
     }
   }
 
-  return { command, position, playLink };
+  // What's playing, asked of the two players directly (see macNowPlaying): null off a Mac, when neither is running, or
+  // when macOS won't let Toaster ask.
+  async function nowPlaying() {
+    if (platform !== 'darwin') return null;
+    try { return parseNowPlaying(await run(OSASCRIPT, ['-e', macNowPlaying()])); } catch { return null; }
+  }
+
+  return { command, position, playLink, nowPlaying };
 }
 
-module.exports = { ACTIONS, MAC_PLAYERS, MEDIA_KEYS, LINK_URI, macCommand, macPosition, macPlayLink, parsePosition, windowsArgs, realRun, dryRunner, createPlayerControl };
+module.exports = { ACTIONS, MAC_PLAYERS, MEDIA_KEYS, LINK_URI, macCommand, macPosition, macPlayLink, parsePosition, macNowPlaying, parseNowPlaying, windowsArgs, realRun, dryRunner, createPlayerControl };

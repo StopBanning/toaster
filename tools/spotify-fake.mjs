@@ -122,9 +122,11 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
       }
       if (req.method === 'GET' && url.pathname === '/v1/me/albums') return ok(page(ALBUMS.map((a) => ({ added_at: '2024-05-01T00:00:00Z', album: { id: a.id, name: a.name, artists: artistsOf(a.artist), total_tracks: a.tracks.length, images: imagesOf(a.key) } })), url));
       if (req.method === 'GET' && url.pathname === '/v1/me/tracks') return ok(page(LIKED.map((t) => ({ added_at: '2024-05-01T00:00:00Z', track: trackOf(t) })), url));
-      if (req.method === 'GET' && (hit = /^\/v1\/playlists\/([A-Za-z0-9]{22})\/tracks$/.exec(url.pathname))) {
+      // (Spotify's 2026 Web API: a playlist's songs at /items, each under .item; the old /tracks answers 403, as Spotify's does)
+      if (req.method === 'GET' && /^\/v1\/playlists\/[A-Za-z0-9]{22}\/tracks$/.test(url.pathname)) return send(res, 403, { error: { status: 403, message: 'Forbidden' } });
+      if (req.method === 'GET' && (hit = /^\/v1\/playlists\/([A-Za-z0-9]{22})\/items$/.exec(url.pathname))) {
         const p = PLAYLISTS.find((x) => x.id === hit[1]);
-        return p ? ok(page(p.tracks.map((t) => ({ track: trackOf(t) })), url)) : send(res, 404, { error: { status: 404, message: 'Not found.' } });
+        return p ? ok(page(p.tracks.map((t) => ({ item: trackOf(t) })), url)) : send(res, 404, { error: { status: 404, message: 'Not found.' } });
       }
       if (req.method === 'GET' && (hit = /^\/v1\/albums\/([A-Za-z0-9]{22})\/tracks$/.exec(url.pathname))) {
         const a = ALBUMS.find((x) => x.id === hit[1]);

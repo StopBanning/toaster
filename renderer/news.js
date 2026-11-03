@@ -4,6 +4,10 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.31', items: [
+    { key: 'G', text: "the spotify tab works with Spotify's new rules: your playlists open with their songs again (Spotify moved where an app asks for them) and their covers show; a playlist someone else made says Spotify lists only your own playlists' songs, and enter still plays it" },
+    { key: 'Mac', text: "Toaster knows the song again on newer Macs: macOS stopped telling apps what's playing, so Toaster asks Spotify and Music themselves, for the title, the artist and Spotify's cover" },
+  ] },
   { version: '0.4.30', items: [
     { act: 'visual', text: "a new background, the Earth: NASA's footage from the space station, five views (aurora, northern lights, city lights, dawn and day) that A moves through, with the code on panes of glass over it" },
     { act: 'dropfx', text: "a new drop effect, the y2k bug: the clock rolls over to 1900 on the drop, the code crashes in consoles, a debugger and a memory dump, and the PC freezes into a blue screen" },

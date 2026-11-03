@@ -314,6 +314,36 @@ function ensureMacHelpers() {
   if (result.status !== 0) console.error(result.stderr || result.stdout || 'could not compile the mac helpers');
 }
 
+function sendNowPlaying(reading) {
+  lastNowPlaying = reading;
+  win?.webContents.send('nowplaying', lastNowPlaying);
+  widget?.webContents.send('nowplaying', lastNowPlaying);
+}
+
+// On a Mac the helper reads the system's Now Playing list (MediaRemote), which macOS 15.4 closed to apps that aren't Apple's: there it
+// answers nothing, ever. So while it does, Spotify and Music are asked directly every two seconds (helpers/player.cjs nowPlaying, by
+// AppleScript, and only when one is running), with Spotify's cover fetched once per song from its picture server (helpers/spotify.cjs).
+let helperReading = null, askedReading = null, askedCover = { url: null, art: null }, askTimer = null;
+async function askPlayers() {
+  askTimer = null;
+  if (quitting) return;
+  try {
+    if (!helperReading?.title) {
+      const np = await player().nowPlaying();
+      if (np && np.cover && np.cover !== askedCover.url) {
+        askedCover = { url: np.cover, art: null };
+        askedCover.art = await spotifyCover(np.cover).catch(() => null);
+      }
+      const reading = np ? { title: np.title, artist: np.artist, app: np.app, playing: np.playing, art: np.cover && np.cover === askedCover.url ? askedCover.art : null } : null;
+      const was = askedReading;
+      askedReading = reading;
+      if (reading && JSON.stringify(reading) !== JSON.stringify(was)) sendNowPlaying(reading);
+      else if (!reading && was) sendNowPlaying(helperReading || { title: null, artist: null, app: null, playing: false, art: null });
+    }
+  } catch { /* the next try */ }
+  askTimer = setTimeout(askPlayers, 2000);
+}
+
 function startNowPlaying() {
   nowPlayingTimer = null;
   if (quitting || nowPlayingProc) return;
@@ -331,9 +361,9 @@ function startNowPlaying() {
       buffer = buffer.slice(nl + 1);
       if (!line) continue;
       try {
-        lastNowPlaying = JSON.parse(line);
-        win?.webContents.send('nowplaying', lastNowPlaying);
-        widget?.webContents.send('nowplaying', lastNowPlaying);
+        helperReading = JSON.parse(line);
+        if (mac && !helperReading.title && askedReading) continue; // (the system's list says nothing: the players' own answer stands)
+        sendNowPlaying(helperReading);
       } catch { /* ignore partial or odd lines */ }
     }
   });
@@ -463,6 +493,8 @@ function spotify() {
   }
   return spotifyKept;
 }
+// a cover from Spotify's picture server as a data: address (the spotify section's covers and the playing song's, askPlayers)
+const spotifyCover = (url) => require('./helpers/spotify.cjs').fetchCover(url, { fetch: spotify().fetch });
 const plainObject = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {}); // (what the page sends for a request is checked by the helper, which wants an object)
 
 function setUpIpc() {
@@ -917,9 +949,10 @@ app.whenReady().then(() => {
   // (the now-playing helper a moment after: PowerShell loading .NET took a core while the window and
   // its graphics were starting; the page gets the latest reading whenever it comes)
   nowPlayingTimer = setTimeout(startNowPlaying, 2000);
+  if (mac) askTimer = setTimeout(askPlayers, 2500);
 });
 
-app.on('before-quit', () => { quitting = true; clearTimeout(nowPlayingTimer); });
+app.on('before-quit', () => { quitting = true; clearTimeout(nowPlayingTimer); clearTimeout(askTimer); });
 app.on('window-all-closed', () => {
   quitting = true;
   clearTimeout(nowPlayingTimer);

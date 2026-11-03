@@ -134,11 +134,11 @@ test('a copy run with --player-dry-run keeps the link it would have played: the 
 
 // ---------------------------------------------------------------- covers
 
-test('a cover comes only from i.scdn.co over https: the address is checked before anything is asked', async () => {
-  for (const url of [coverUrl('(III)'), coverUrl('Lonerism', 640), 'https://i.scdn.co/image/ab67616d00001e02aabbcc', 'https://I.SCDN.CO/image/abc']) assert.equal(S.isCoverUrl(url), true, url);
+test('a cover comes only from Spotify\'s picture hosts over https (i.scdn.co, and the mosaic and uploaded playlist covers): the address is checked before anything is asked', async () => {
+  for (const url of [coverUrl('(III)'), coverUrl('Lonerism', 640), 'https://i.scdn.co/image/ab67616d00001e02aabbcc', 'https://I.SCDN.CO/image/abc', 'https://mosaic.scdn.co/640/ab67616d00001e02aaaa', 'https://image-cdn-ak.spotifycdn.com/image/ab67706c0000da84bbbb', 'https://image-cdn-fa.spotifycdn.com/image/ab67706c0000da84cccc']) assert.equal(S.isCoverUrl(url), true, url);
   const BADURLS = ['http://i.scdn.co/image/abc', 'https://i.scdn.co.evil.com/image/abc', 'https://evil.com/image/abc', 'https://evil.com/?https://i.scdn.co/image/abc', 'https://i.scdn.co@evil.com/image/abc',
-    'https://user:pw@i.scdn.co/image/abc', 'https://i.scdn.co:8443/image/abc', 'https://i.scdn.co./image/abc', 'https://scdn.co/image/abc', 'https://mosaic.scdn.co/640/abc',
-    'https://image-cdn-ak.spotifycdn.com/image/abc', 'https://i.scdn.co/other/abc', 'https://i.scdn.co', 'file:///etc/passwd', 'data:image/png;base64,AAAA', 'javascript:alert(1)',
+    'https://user:pw@i.scdn.co/image/abc', 'https://i.scdn.co:8443/image/abc', 'https://i.scdn.co./image/abc', 'https://scdn.co/image/abc', 'https://mosaic.scdn.co', 'https://mosaic.scdn.co/640/a?b', 'https://mosaic.scdn.co.evil.com/640/abc',
+    'https://image-cdn-xx.spotifycdn.com/image/abc', 'https://i.scdn.co/other/abc', 'https://i.scdn.co', 'file:///etc/passwd', 'data:image/png;base64,AAAA', 'javascript:alert(1)',
     '//i.scdn.co/image/abc', 'i.scdn.co/image/abc', '', 'x'.repeat(500), null, undefined, 5, {}, ['https://i.scdn.co/image/abc']];
   let asked = 0;
   const fetch = async () => { asked++; return new Response(Buffer.from([0xff, 0xd8, 0xff, 0xe0])); };
@@ -147,7 +147,7 @@ test('a cover comes only from i.scdn.co over https: the address is checked befor
     await assert.rejects(S.fetchCover(url, { fetch }), /only from Spotify's own picture server/, JSON.stringify(url));
   }
   assert.equal(asked, 0, 'not one of them was asked for');
-  assert.deepEqual(S.COVER_HOSTS, ['i.scdn.co'], 'the one host');
+  assert.deepEqual(S.COVER_HOSTS, ['i.scdn.co', 'mosaic.scdn.co', 'image-cdn-ak.spotifycdn.com', 'image-cdn-fa.spotifycdn.com'], "Spotify's picture hosts, and only those");
 });
 
 test('a cover comes back as a data: address of the picture as served, whatever the server says it is; a redirect is not followed', async () => {
