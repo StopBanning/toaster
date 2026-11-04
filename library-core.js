@@ -71,8 +71,8 @@ export const queueText = (line) => line.map((p) => (p.now ? `▶ ${p.text}` : p.
 
 // ---------------------------------------------------------------- scenes
 
-// The settings a scene holds are the ones presets use (renderer/presets.js), no more
-export const SETUP_KEYS = [...new Set(PRESETS.flatMap((p) => Object.keys(p.settings)))];
+// A scene holds the preset settings (renderer/presets.js) and the library's shared cover look.
+export const SETUP_KEYS = [...new Set([...PRESETS.flatMap((p) => Object.keys(p.settings)), 'libCover'])];
 
 // The setup as it is now, in the shape of a preset's settings: `current` is what choosePreset builds in app.js (the settings by name)
 export const setupOf = (current) => Object.fromEntries(SETUP_KEYS.map((k) => [k, current[k]]));

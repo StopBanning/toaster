@@ -5,8 +5,9 @@
 // bars: cmd.exe consoles printing stack traces into the song's own lines, the debugger asking to attach, a memory dump
 // of the live pattern, XP's application errors, cascading 24 px down and right, with Notepad's pattern.txt among them. For two bars
 // the PC hangs: one error is dragged round under the hourglass, leaving a copy of itself every 16th. The last
-// bar is Toaster's own blue screen (the "blue screen" drop effect's). Then it's 11:59:59 again for a beat, and
-// the desktop goes. It wears the XP takeover's own windows, taskbar and icons (Colin: "the xp window aesthetic is
+// bar is Toaster's own blue screen (the "blue screen" drop effect's). On its last beat the screen's glass cracks where it's
+// hit and, a 16th later, falls away in shards (slava3ngl's shattering PCs, inspo #28) onto the desktop, 11:59:59 again,
+// which stays a beat after the bar, and the desktop goes. It wears the XP takeover's own windows, taskbar and icons (Colin: "the xp window aesthetic is
 // better for design"), with an hourglass drawn here pixel by pixel. It shares the XP takeover's layers
 // (#desk-back, #desk-front): one or the other is up, never both. Everything on it is where the clock says (the
 // drag, the flashes, the blue screen's count), and a copy is made on its kick's own step, so a render draws it
@@ -140,6 +141,31 @@ function calendar(y, m, d) {
 }
 const EVE = ['11:59:59 PM', [1999, 11, 31], '11:59 PM'], MIDNIGHT = ['12:00:00 AM', [1900, 0, 1], '12:00 AM'];
 
+// ---- the shatter: cracks from where the glass is hit (rays, and rings round it at each ray's own radii, so neighbours share their
+// corners), cut into shards that fly out from the hit and fall. Seeded by the drop's time, so a render breaks it the same as live.
+const RAYS = 11, RINGS = 4, GRAVITY = 2.6; // (gravity in screen heights a second squared)
+function seeded(seed) {
+  return () => { seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+}
+export function shardsOf(w, h, seed) {
+  const r = seeded(seed), hx = w * (0.38 + 0.24 * r()), hy = h * (0.36 + 0.22 * r()), far = Math.hypot(w, h) * 1.1;
+  const rays = Array.from({ length: RAYS }, (_, i) => (i + 0.2 + 0.6 * r()) / RAYS * Math.PI * 2);
+  const radii = rays.map(() => [0, ...Array.from({ length: RINGS - 1 }, (_, k) => far * ((k + 1) / RINGS) ** 1.7 * (0.75 + 0.5 * r())), far]);
+  const at = (i, k) => { const a = rays[i % RAYS], d = radii[i % RAYS][k]; return [hx + Math.cos(a) * d, hy + Math.sin(a) * d]; };
+  const out = [];
+  for (let i = 0; i < RAYS; i++) {
+    for (let k = 0; k < RINGS; k++) {
+      const pts = k ? [at(i, k), at(i, k + 1), at(i + 1, k + 1), at(i + 1, k)] : [at(i, 0), at(i, 1), at(i + 1, 1)];
+      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      const dx = cx - hx, dy = cy - hy, dist = Math.hypot(dx, dy) || 1, push = 0.55 * h / (1 + dist / (0.25 * h)); // (the ones by the hit fly hardest)
+      out.push({ pts, cx, cy, vx: (dx / dist) * push, vy: (dy / dist) * push - 0.15 * h * r(), spin: (r() - 0.5) * 540, tilt: (r() - 0.5) * 160 });
+    }
+  }
+  const lines = rays.map((_, i) => [[hx, hy], ...radii[i].slice(1, RINGS).map((_, k) => at(i, k + 1))]);
+  for (let k = 1; k < RINGS; k++) for (let i = 0; i < RAYS; i++) lines.push([at(i, k), at(i + 1, k)]);
+  return { hit: [hx, hy], shards: out, lines };
+}
+
 export function createY2k({ back, front, bsod }) {
   let active = false, began = 0, barLen = 2, until = 0, song = '';
   let nextCopy = 0, rolled = false, secs = 0, wins = [], copies = [], hung = null, spawned = 0, note = null, home = false, dt = null;
@@ -149,6 +175,10 @@ export function createY2k({ back, front, bsod }) {
   const flash = add('y2k-flash', '', true); // (under the windows, as the XP takeover's)
   const glass = add('y2k-hourglass');
   const pct = bsod?.querySelector('.pct'); // (the app's own blue screen, shown for the last bar)
+  const shatter = document.createElement('div'); // (the blue screen in pieces, over it and the desktop)
+  shatter.className = 'y2k-shatter'; shatter.hidden = true; shatter.setAttribute('aria-hidden', 'true');
+  (bsod || front).after(shatter);
+  let cut = null, pieces = [];
   let blue = false;
   const showBlue = (on, t) => {
     if (!bsod || on === blue) return;
@@ -157,6 +187,38 @@ export function createY2k({ back, front, bsod }) {
     bsod.classList.toggle('show', on);
   };
   const barAt = (t) => Math.floor((t - began) / barLen);
+  // the crack: where it's hit and the lines, over the blue screen
+  function crack() {
+    cut = shardsOf(innerWidth, innerHeight, Math.floor(began * 1000) | 0);
+    const d = cut.lines.map((l) => 'M' + l.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')).join('');
+    shatter.innerHTML = `<svg viewBox="0 0 ${innerWidth} ${innerHeight}"><path d="${d}"/></svg>`;
+    shatter.hidden = false;
+  }
+  // the fall: the blue screen goes, and a copy of it for each shard, cut to its piece, takes its place
+  function breakGlass() {
+    if (!cut) crack();
+    shatter.innerHTML = '';
+    pieces = cut.shards.map((p) => {
+      const el = bsod ? bsod.cloneNode(true) : document.createElement('div');
+      el.removeAttribute('id'); el.removeAttribute('data-born'); el.className = 'bsod-shard';
+      el.style.clipPath = `polygon(${p.pts.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`).join(',')})`;
+      const glassEl = document.createElement('div'); // (unclipped round it, so its glow lights the piece's edges: glass)
+      glassEl.className = 'glass';
+      glassEl.style.transformOrigin = `${p.cx.toFixed(1)}px ${p.cy.toFixed(1)}px`;
+      glassEl.append(el);
+      shatter.append(glassEl);
+      return glassEl;
+    });
+  }
+  function fall(u) {
+    const h = innerHeight;
+    cut.shards.forEach((p, i) => {
+      const x = p.vx * u, y = p.vy * u + 0.5 * GRAVITY * h * u * u;
+      pieces[i].style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) rotateZ(${(p.spin * u).toFixed(1)}deg) rotate3d(1, .4, 0, ${(p.tilt * u).toFixed(1)}deg)`;
+      pieces[i].style.opacity = Math.max(0, 1 - Math.max(0, u - 0.45) / 0.35).toFixed(3);
+    });
+  }
+  function clearShatter() { shatter.hidden = true; shatter.innerHTML = ''; cut = null; pieces = []; }
   const pad = (n) => String(n).padStart(2, '0');
 
   function setClock([time, [y, m, d], tray]) {
@@ -276,6 +338,7 @@ export function createY2k({ back, front, bsod }) {
       fit();
       place(dt, (innerWidth - dt.offsetWidth) / 2, innerHeight * (innerHeight > innerWidth ? 0.05 : 0.08));
       showBlue(false);
+      clearShatter();
       flash.hidden = true;
     },
     kick() {
@@ -295,6 +358,7 @@ export function createY2k({ back, front, bsod }) {
       if (!active && !back.classList.contains('y2k')) return;
       active = false;
       clearAll();
+      clearShatter();
       tasks.innerHTML = '';
       showBlue(false);
       flash.hidden = true;
@@ -330,12 +394,17 @@ export function createY2k({ back, front, bsod }) {
       const lit = !calm && bar >= 1 && bar < BSOD && t - (began + bar * barLen) < 0.09;
       flash.hidden = !lit;
       if (lit) flash.style.background = FLASHES[(bar - 1) % FLASHES.length];
-      // the last bar: Toaster's own blue screen, its percentage counting up an 8th at a time
-      const onBlue = bar === BSOD && t < until;
+      // the last bar: Toaster's own blue screen, its percentage counting up an 8th at a time; on its last beat the glass cracks,
+      // and a 16th later it falls away in shards
+      const crackAt = began + (BSOD + 0.75) * barLen, fallAt = crackAt + barLen / 16;
+      const onBlue = bar === BSOD && t < fallAt;
       showBlue(onBlue, began + BSOD * barLen);
       if (onBlue && pct) pct.textContent = Math.min(100, Math.floor((t - (began + BSOD * barLen)) / (barLen / 8)) * 15);
-      // then 11:59:59 again, on an empty desktop, for a beat
-      if (t >= until && !home) { home = true; clearAll(true); setClock(EVE); }
+      if (t >= crackAt && t < fallAt && !cut) crack();
+      if (t >= fallAt && !pieces.length) breakGlass();
+      if (pieces.length) fall(t - fallAt);
+      // under it, 11:59:59 again on an empty desktop, a beat past the bar
+      if (t >= fallAt && !home) { home = true; clearAll(true); setClock(EVE); }
       if (t >= until + barLen / 4) this.stop();
     },
   };

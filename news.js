@@ -4,6 +4,18 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.4.32', items: [
+    { act: 'visual', text: "a new background, the backrooms: an endless walk through yellow rooms, and the song works the lights: a kick brightens them, a drop blows them out" },
+    { act: 'dropfx', text: "the y2k bug's blue screen shatters on its last beat and falls away in glass onto the desktop" },
+    { act: 'strength', in: 'scenery', text: "the festival's drop fills the sky with fireworks, in a tall window too" },
+    { act: 'visual', text: "the Earth moves on to its next view by itself, as a breakdown starts or every 32 bars (A still picks one)" },
+    { key: 'kick', text: "the kick's flashes follow the kick line Toaster wrote, so a bass note or a fill no longer sets them off, and Toaster gets the kick and bar one right on more songs" },
+    { key: 'G', text: "the spotify tab has full ascii and half ascii too (Shift+C), sharing your music’s cover look; the big cover follows the cursor: on a song in a playlist or album it's that song's own cover, not the playlist's mosaic; and when a new song starts playing, it shows that song's cover" },
+    { act: 'dropfx', text: "the y2k bug plays through once: the song's next drop no longer starts the crash over halfway (D still does)" },
+    { key: 'kick', text: "after a break the kick line comes back with the kick, instead of staying quiet for a few seconds after the drop" },
+    { key: 'M', text: "a perfect copy's video no longer shows the 'tap anywhere' note" },
+    { key: 'Mac', text: "updates on a Mac are about 40% smaller (a zip for your kind of Mac, not both) and the update box shows how much has come down, on Windows too; it starts with the update after this one" },
+  ] },
   { version: '0.4.31', items: [
     { key: 'G', text: "the spotify tab works with Spotify's new rules: your playlists open with their songs again (Spotify moved where an app asks for them) and their covers show; a playlist someone else made says Spotify lists only your own playlists' songs, and enter still plays it" },
     { key: 'Mac', text: "Toaster knows the song again on newer Macs: macOS stopped telling apps what's playing, so Toaster asks Spotify and Music themselves, for the title, the artist and Spotify's cover" },

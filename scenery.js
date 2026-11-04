@@ -4114,20 +4114,24 @@ int beamLine(vec2 c, vec2 o, float a) {
 }
 // the fireworks: three shells each time (leap), rising from behind the stage, each bursting into a
 // ring of sparks that streak out, fall and twinkle out, white hot at first; at p the brightest
-// (0-1), its colour and its glyph (a streak along its way out, its head a star)
+// (0-1), its colour and its glyph (a streak along its way out, its head a star). On a drop (leap.y 2)
+// the big show: five shells close together, wider bursts with more and bolder sparks, all of them over
+// the window whatever its shape, spread across it (the 8-bar show's spread, round the stage, runs off a tall one's sides)
 float fireworks(vec2 p, float beats, out vec3 col, out int g) {
   col = vec3(0.0);
   g = 0;
   if (leap.w < 0.5 || leap.x > 3.6) return 0.0;
-  float best = 0.0;
+  float best = 0.0, big = leap.y > 1.5 ? 1.0 : 0.0, aspect = view.x / view.y;
   vec2 cs = vec2(cw, ch);
-  for (int s = 0; s < 3; s++) {
-    float fs = float(s), t = leap.x - fs * 0.4;
+  for (int s = 0; s < 5; s++) {
+    if (s > 2 && big < 0.5) break;
+    float fs = float(s), t = leap.x - fs * mix(0.4, 0.22, big);
     if (t < 0.0) continue;
     float seed = leap.z * 17.0 + fs * 3.7;
-    vec2 from = vec2(moon.x + (h1(seed) - 0.5) * 0.7, moon.y + 0.05);
-    vec2 burst = vec2(from.x + (h1(seed + 1.0) - 0.5) * 0.25, 0.62 + 0.22 * h1(seed + 2.0));
-    vec3 c = s == 1 ? showB(beats) : s == 2 ? rgb(255.0, 220.0, 130.0) : showA(beats);
+    // (the drop's five spread evenly across the window, each a little off its fifth, so none bursts off an edge)
+    vec2 from = big > 0.5 ? vec2(aspect * (0.14 + 0.18 * fs + 0.06 * (h1(seed) - 0.5)), moon.y + 0.05) : vec2(moon.x + (h1(seed) - 0.5) * 0.7, moon.y + 0.05);
+    vec2 burst = big > 0.5 ? vec2(from.x + aspect * 0.05 * (h1(seed + 1.0) - 0.5), 0.5 + 0.2 * h1(seed + 2.0)) : vec2(from.x + (h1(seed + 1.0) - 0.5) * 0.25, 0.62 + 0.22 * h1(seed + 2.0));
+    vec3 c = s == 1 || s == 4 ? showB(beats) : s == 2 ? rgb(255.0, 220.0, 130.0) : showA(beats);
     if (t < 0.65) {
       // rising, its trail behind it
       float u = t / 0.65;
@@ -4138,21 +4142,23 @@ float fireworks(vec2 p, float beats, out vec3 col, out int g) {
       }
       continue;
     }
-    float tb = t - 0.65, R = 0.17 + 0.07 * h1(seed + 3.0);
+    float tb = t - 0.65, R = (0.17 + 0.07 * h1(seed + 3.0)) * mix(1.0, 1.2, big) * (big > 0.5 ? min(1.0, aspect * 1.1) + 0.25 : 1.0);
     if (length(p - burst) > R * 1.15 + 0.05 * tb * tb + 0.02) continue;          // (nowhere near it)
     float fade = exp(-tb * 1.2), out1 = 1.0 - exp(-tb * 2.8), tp = max(tb - 0.14, 0.0), out0 = 1.0 - exp(-tp * 2.8);
     vec3 cc = tb < 0.25 ? mix(rgb(255.0, 250.0, 235.0), c, tb / 0.25) : c;
     // (its first instant: one flash at its heart, the sparks drawn once they're on their way)
     if (tb < 0.12 && length((p - burst) / cs) < 0.7) { best = 1.0; col = rgb(255.0, 252.0, 240.0); g = G_SPARK; continue; }
-    for (int k = 0; k < 20; k++) {
-      float fk = float(k), ang = fk * 0.31416 + h1(seed + fk) * 0.25, sp = R * (0.8 + 0.2 * h1(seed + fk * 1.7));
+    float nk = mix(20.0, 32.0, big), thick = mix(0.6, 1.0, big);
+    for (int k = 0; k < 32; k++) {
+      if (float(k) >= nk) break;
+      float fk = float(k), ang = fk * 6.28318 / nk + h1(seed + fk) * 0.25, sp = R * (0.8 + 0.2 * h1(seed + fk * 1.7));
       vec2 u = vec2(sin(ang), cos(ang));
       vec2 q1 = burst + u * sp * out1 - vec2(0.0, 0.05 * tb * tb), q0 = burst + u * sp * out0 - vec2(0.0, 0.05 * tp * tp);
       if (length((q1 - burst) / cs) < 1.2) continue;
       // (the streak from q0 to q1, measured in cells)
       vec2 a = (p - q0) / cs, ab = (q1 - q0) / cs;
       float h = clamp(dot(a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
-      if (length(a - ab * h) < 0.6) {
+      if (length(a - ab * h) < thick) {
         float b = fade * (0.45 + 0.55 * h) * (tb > 1.6 ? 0.6 + 0.4 * h1(seed + fk * 2.3 + floor(tb * 9.0)) : 1.0);
         if (b > best) {
           best = b;
@@ -7836,7 +7842,7 @@ export function createScenery(canvas) {
     const bar = step !== null ? Math.floor(step / 16) : null;
     if (bar !== null && bar !== lastBar) {
       if (lastBar !== null && bar % 8 === 0) {
-        popAt = st;
+        if (st - dropAt > 3.6) popAt = st; // (not over a drop's show: a drop lands on an 8-bar line as often as not, and this cut it off)
         const dice = mulberry32(hash32(clock.seed, 'bar', bar));
         if (!night && !flock) flock = { t: st, y: 0.66 + 0.18 * dice() };
         if (night) falling = { t: st, x: (0.35 + 0.55 * dice()) * aspect, y: 0.72 + 0.2 * dice() };
@@ -8098,7 +8104,7 @@ export function createScenery(canvas) {
       gl.uniform4fv(u('birds'), birds);
       gl.uniform4fv(u('shoot'), shoot);
       gl.uniform4fv(u('car'), flight ? [(flight.x - 20 * Sz) / H, 1 - (flight.y + 9.5 * Sz) / H, 0, 1] : carU);
-      gl.uniform4f(u('leap'), t - popAt, scene === 'space' ? (popAt === dropAt ? 2 : 1) : Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'space' ? 1 : 0);
+      gl.uniform4f(u('leap'), t - popAt, scene === 'space' || scene === 'festival' ? (popAt === dropAt ? 2 : 1) : Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'space' ? 1 : 0);
       const M = V.stage || V.moon; // (halloween's moon, or the festival's stage)
       gl.uniform4f(u('moon'), (M?.[0] ?? 0) * aspect, M?.[1] ?? 0, M?.[2] ?? 0, 0);
       if (scene === 'sharks') {
