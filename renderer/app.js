@@ -31,6 +31,7 @@ import { createSpectro } from './spectro.js';
 import { createScenery, FIELD } from './scenery.js';
 import { createLanes } from './lanes.js';
 import { createEarth, EARTH_CLIPS } from './earth.js';
+import { createBackrooms } from './backrooms.js';
 import { createWait } from './wait.js';
 import { createCuts } from './cuts.js';
 import { createTape } from './tape.js';
@@ -57,13 +58,13 @@ import { lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off', 'spaghetti', 'lanes', 'earth'];
+const VISUALS = ['spectrum', 'tunnel', 'spiral', 'pitchwheel', 'warp', 'cuts', 'worlds', 'chrome', 'spectrogram', 'scenery', 'rain', 'scope', 'fire', 'off', 'spaghetti', 'lanes', 'earth', 'backrooms'];
 // What V goes round, best first, and their names on screen. The rest of VISUALS (spectrum, tunnel, spiral, pitch wheel,
 // warp, scope) are out of the round since 0.4.23: kept unlisted for a release, in case someone misses one, then gone.
 // The rain came back in 0.4.26: someone did miss it. The rest stay out of V but can be picked by name in Ctrl+K
 // ("background: warp (classic)"), and stay picked.
-const V_ROUND = ['scenery', 'earth', 'worlds', 'chrome', 'spaghetti', 'spectrogram', 'lanes', 'cuts', 'fire', 'rain', 'off'];
-const V_NAME = { scenery: 'scenes', pitchwheel: 'pitch wheel', earth: 'the Earth' };
+const V_ROUND = ['scenery', 'earth', 'backrooms', 'worlds', 'chrome', 'spaghetti', 'spectrogram', 'lanes', 'cuts', 'fire', 'rain', 'off'];
+const V_NAME = { scenery: 'scenes', pitchwheel: 'pitch wheel', earth: 'the Earth', backrooms: 'the backrooms' };
 const visName = (v) => V_NAME[v] || v;
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
@@ -128,6 +129,8 @@ const chrome = createChrome($('chrome'));
 const spaghetti = createSpaghetti($('spaghetti'));
 const earth = createEarth($('earth')); // the planet from the space station, NASA's footage
 let earthSaid = false; // (told once that a clip couldn't come down)
+const backrooms = createBackrooms($('backrooms')); // our own walk through the backrooms, its lights worked by the song
+let backroomsSaid = false;
 let pendingLook = null; // (the look last used, while the looks from outside load)
 const outsideLooks = new Set(); // (the looks from outside now in U's round)
 const spectro = createSpectro($('spectro'), $('spectrobox')); // the spectrogram, and the pins over it
@@ -150,7 +153,7 @@ const sys = createSysinfo($('sys'), () => describeAudio());
 const card = createCard($('card'));
 const glass = createGlass($('glass'), $('code'));
 const orb = createOrb($('orb'));
-const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spaghetti', 'earth', 'spectro', 'spectrobox', 'scenery', 'lanes', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
+const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spaghetti', 'earth', 'backrooms', 'spectro', 'spectrobox', 'scenery', 'lanes', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
 const storm = createStorm($('storm')); // the drop effect "not responding"
 const STORM_LAYERS = [...LAYERS, $('glass')]; // (what its window shows: the backgrounds, and the glass blob over them)
 const lens = createLens($('lens')); // the finger frame
@@ -223,7 +226,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['perfectCopy', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip'];
+const SAVED = ['perfectCopy', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip', 'patternKick', 'earthTour'];
 function loadSettings() {
   let saved = {};
   try {
@@ -268,7 +271,7 @@ function loadSettings() {
   state.playerBar = readPlayerBar(state.playerBar); // (and none of these two: the bar on, and out of recordings)
   state.playerRec = readPlayerRec(state.playerRec);
   // (the library's: an older profile has no scenes, and as its stations only the last one played)
-  state.userScenes = readScenes(state.userScenes, { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true });
+  state.userScenes = readScenes(state.userScenes, { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true, libCover: ['chars', 'photo'] });
   state.radioStations = readStations(state.radioStations, state.radio);
   state.spotifyLinks = readLinks(state.spotifyLinks); // (an older profile has none)
   state.queueRepeat = readRepeat(state.queueRepeat); // (an older profile has neither: the album repeats, in its order)
@@ -744,7 +747,7 @@ function clearTapNote() {
   flashStatus('back on');
 }
 function waitForTap() {
-  if (tapToRevive) return;
+  if (tapToRevive || globalThis.clock?.mode === 'render') return; // (a render's page plays no sound: the note would be drawn into the video)
   showNotice('the sound stopped: tap anywhere to turn it back on', null, true);
   tapToRevive = async () => {   // (started inside the tap: that's what lets resume() through)
     if (await reviveAudio()) clearTapNote();
@@ -928,7 +931,27 @@ function songArt() {
   return state.manual ? null : state.source === 'system' ? artImg : state.source === 'radio' ? radioArt : null;
 }
 
-eng.on.kick = (s) => {
+// The kick's visuals. Once the beat is locked and the kick's line is written, they follow that line, step by step on
+// Toaster's own clock (patternClock, from drawFrame), so a flash lands on every kick the code shows and nowhere else: no
+// stray flash from a bass note or a fill, no lag behind the hit. Before the lock, or with the line muted, the kick heard
+// fires them, as it always did. (Wet Carp, Nov 3: "my screen flash on the kick ... keeps the same pattern, which helps
+// avoid extra noise".)
+const patternKickOn = () => state.patternKick !== false && !!eng.tempo.locked && !!eng.v?.bd?.here;
+eng.on.kick = (s) => { if (!patternKickOn()) kickVisuals(s); };
+let patternStep = null;
+function patternClock(t) {
+  const at = patternKickOn() ? eng.placeAt(t) : null;
+  if (!at) { patternStep = null; return; }
+  const cur = Math.floor(at.bar * 16 + at.step + at.off + 1e-6);   // (the step whose start has passed)
+  if (patternStep !== null && cur > patternStep && cur - patternStep <= 4) {
+    for (let q = patternStep + 1; q <= cur; q++) {
+      const step = ((q % 16) + 16) % 16;
+      if (eng.v.bd.shown?.[step]) kickVisuals(step === 0 ? 1 : 0.8);   // (the bar's first kick a little harder)
+    }
+  }
+  patternStep = cur;
+}
+function kickVisuals(s) {
   field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick(); y2k.kick();
   lens.kick(s, state.calm);
   fire.kick(s, state.calm);
@@ -942,12 +965,14 @@ eng.on.kick = (s) => {
     const t = nowSec(), at = eng.placeAt(t);
     worlds.kick(s, t, state.calm, eng.tempo.P || 0.5, at ? at.step === 15 || at.step <= 1 : null);
   }
-};
+}
 // Drop clips: the first two drops of each song (the ones that matter, without a long night of
 // a song that keeps dropping filling the disk). Turning them on again starts the count over.
 // A 12 s gap (matching the engine's drop cooldown) keeps D on a real drop from starting a second clip.
 let clipsThisSong = 0, lastClipAt = -99;
-eng.on.drop = () => {
+// pressed: D (or a perfect copy replaying it). The y2k bug tells one story over its 8 bars (midnight, the crash, the blue screen), so a drop
+// the engine hears while it runs (the kick back after a break inside them) leaves it alone; D still starts it over.
+eng.on.drop = (pressed = false) => {
   const t = nowSec();
   if (clipsThisSong < 2 && t - lastClipAt > 12 && clips.drop()) { clipsThisSong++; lastClipAt = t; flashStatus('✂ clipping the drop…'); }
   if (VISUALS[state.visual] === 'worlds') worlds.drop(t, eng.bar);
@@ -959,7 +984,7 @@ eng.on.drop = () => {
   const mode = DROPS[state.drop];
   // a bar's length in seconds; half a second a beat if the tempo isn't known yet
   if (mode === 'xp takeover') { y2k.stop(); takeover.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4); }
-  else if (mode === 'y2k bug') { takeover.stop(); y2k.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4); }
+  else if (mode === 'y2k bug') { if (pressed || !y2k.active) { takeover.stop(); y2k.start(t, currentSong()?.title, (eng.tempo.P || 0.5) * 4); } }
   else if (mode === 'blue screen') showBsod($('bsod'), glitch, eng.tempo.P || 0.35);
   else if (mode === 'not responding') storm.start(t, eng.tempo.locked ? eng.tempo.bpm : 0);
 };
@@ -1043,7 +1068,7 @@ function setVisual(i) {
   state.visual = i;
   const mode = VISUALS[i];
   if (!FIELD_VIS.includes(mode)) field.clear();
-  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spaghetti', spaghetti], ['earth', earth], ['spectrogram', spectro], ['scenery', scenery], ['lanes', lanes], ['fire', fire]]) if (mode !== name) v.clear();
+  for (const [name, v] of [['tunnel', tunnel], ['spiral', spiral], ['pitchwheel', wheel], ['warp', warp], ['cuts', cuts], ['worlds', worlds], ['chrome', chrome], ['spaghetti', spaghetti], ['earth', earth], ['backrooms', backrooms], ['spectrogram', spectro], ['scenery', scenery], ['lanes', lanes], ['fire', fire]]) if (mode !== name) v.clear();
   $('b-visual').textContent = visName(mode) + ' ▾';
   queueMicrotask(footerKeys); // (A's word follows the background; after the page's first run, once the keys are set up)
   document.body.classList.toggle('worlds-on', mode === 'worlds');
@@ -1066,11 +1091,27 @@ function nextWorldLook() {
   saveSettings();
 }
 // A, while the Earth is on: the next view (the aurora, the northern lights, city lights, dawn, the day side)
-function nextEarthClip() {
+function nextEarthClip(quiet = false) {
   state.earthClip = EARTH_CLIPS[(EARTH_CLIPS.indexOf(state.earthClip) + 1) % EARTH_CLIPS.length];
   earth.setClip(state.earthClip);
-  flashStatus('the Earth: ' + state.earthClip);
+  if (!quiet) flashStatus('the Earth: ' + state.earthClip);
+  earthTour.at = nowSec(); // (a view picked by hand starts the tour's count over)
   saveSettings();
+}
+// The Earth moves through its views with the song: the view changes as a breakdown starts (it fades through black in the quiet,
+// so the drop lands on a new view at full light), and after 32 bars on one view it moves on at the next bar line anyway. Not
+// in the first 8 bars of a view, and not before the beat is found. (earthTour: false in the settings keeps the view you picked.)
+const earthTour = { at: -Infinity, quiet: false };
+function tourEarth(t) {
+  if (VISUALS[state.visual] !== 'earth' || state.earthTour === false || !eng.tempo.locked || eng.silent) { earthTour.quiet = false; return; }
+  if (earthTour.at === -Infinity) { earthTour.at = t; return; } // (the view you came to stays for its first 8 bars at least)
+  const bar = 4 * (eng.tempo.P || 0.5), held = t - earthTour.at;
+  const quiet = t - (eng.lastKick ?? -99) > 2 * bar && t - (eng.lastDrop ?? -99) > 4 * bar; // (the code's "// breakdown")
+  const startsQuiet = quiet && !earthTour.quiet;
+  earthTour.quiet = quiet;
+  if (held < 8 * bar) return;
+  const at = eng.placeAt(t), onOne = !!at && at.step === 0 && Math.abs(at.off) < 0.5;
+  if (startsQuiet || (held >= 32 * bar && onOne && !quiet)) nextEarthClip(true);
 }
 // A, while the chrome is on: the collage over it, off and on
 function toggleCollage() {
@@ -1346,9 +1387,11 @@ async function offerUpdate(u) {
   });
   $('alerts').querySelector('button').addEventListener('click', async () => {
     if (!u.canInstall) { window.nc.updatePage(); return; }
+    showUpdateProgress();
     flashStatus('downloading the update');
     try {
       await window.nc.updateInstall();
+      $('update-download-text').textContent = `opening Toaster ${u.version}`;
       flashStatus(`opening Toaster ${u.version}`);
     } catch (err) {
       xpAlert($('alerts'), { title: 'toaster update', icon: 'warning', text: `The update didn't go through (${String(err?.message || err).replace(/^.*?Error: /, '')}), and nothing changed. Get it from its page instead?`, buttons: ['Open page', 'OK'] });
@@ -1356,7 +1399,28 @@ async function offerUpdate(u) {
     }
   });
 }
-window.nc?.onUpdateProgress?.((p) => flashStatus(`downloading the update ${Math.round(p * 100)}%`));
+function showUpdateProgress() {
+  xpAlert($('alerts'), { title: 'toaster update', icon: 'info', text: 'downloading the update…', buttons: [] });
+  const box = $('alerts').querySelector('.xp');
+  box.querySelector('.xp-ctl').remove();
+  box.querySelector('p').id = 'update-download-text';
+  const bar = document.createElement('progress');
+  bar.id = 'update-download-bar';
+  bar.max = 1;
+  bar.setAttribute('aria-label', 'Update download');
+  box.querySelector('.xp-frame').append(bar);
+}
+window.nc?.onUpdateProgress?.((p) => {
+  const text = $('update-download-text'), bar = $('update-download-bar');
+  if (!text || !bar) return;
+  const mb = (bytes) => (bytes / 1e6).toFixed(1);
+  text.textContent = p.total
+    ? `downloading the update: ${mb(p.downloaded)} / ${mb(p.total)} MB`
+    : `downloading the update: ${mb(p.downloaded)} MB (total unknown)`;
+  if (p.fraction === null) bar.removeAttribute('value');
+  else bar.value = p.fraction;
+  if (p.fraction === 1) text.textContent += ' — checking and unpacking…';
+});
 
 // What's new (news.js): after an update, once, a box with what came in since the version last
 // opened, each with its key (the first time Toaster opens, the welcome note instead); "Show in
@@ -2193,6 +2257,8 @@ function draw(now) {
 // One frame, for time t: every layer drawn as it is at that time. Live, draw() above calls it as the screen asks; in
 // render mode whoever drives the clock calls it, once per frame of the video, after clock.set(t).
 function drawFrame(t) {
+  patternClock(t);
+  tourEarth(t);
   showLayers();
   if (THEMES[state.theme] === 'dynamic') stepTheme(t);
   if (clock.mode === 'render') domTime(t); // (in a render each CSS animation takes its age from the clock: see dom-time.js)
@@ -2212,6 +2278,9 @@ function drawFrame(t) {
   else if (mode === 'earth') {
     earth.draw(t, eng, { offset: syncOffset() });
     if (earth.failed && !earthSaid) { earthSaid = true; flashStatus("the Earth's views come down the first time: no connection"); }
+  } else if (mode === 'backrooms') {
+    backrooms.draw(t, eng, { offset: syncOffset() });
+    if (backrooms.failed && !backroomsSaid) { backroomsSaid = true; flashStatus('the backrooms come down the first time: no connection'); }
   }
   else if (mode === 'worlds') {
     const played = ['bd', 'sd', 'hhc', 'hho'].filter((id) => eng.presentAt(id, t)).map((id) => ({ bd: 'kick', sd: 'clap', hhc: 'hats', hho: 'open hats' })[id]).join(' ');
@@ -2303,6 +2372,7 @@ const presetSetters = {
   theme: (name) => { state.theme = THEMES.indexOf(name); applyTheme(); saveSettings(); },
   codeHidden: (v) => (v === 'beat' ? setCodeHidden(false, true) : setCodeHidden(v)),
   vertical: async (on) => state.vertical === on || (await toggleLayout()),
+  libCover: setLibCover,
 };
 let presetQueue = Promise.resolve();
 function choosePreset(id) {
@@ -2354,6 +2424,7 @@ visMenu.onclick = (e) => {
   } else if (b.dataset.kind === 'earth') {
     state.earthClip = b.dataset.name.replace(/-/g, ' ');
     earth.setClip(state.earthClip);
+    earthTour.at = nowSec();
     setVisual(VISUALS.indexOf('earth'));
     flashStatus('the Earth: ' + state.earthClip);
   } else { setVisual(VISUALS.indexOf(b.dataset.name)); flashStatus('background: ' + visName(b.dataset.name)); }
@@ -2410,7 +2481,7 @@ const ACTIONS = [
   // time: the toast pops, the koi gather, the sharks charge, the fireworks go up)
   { id: 'drop', key: 'd', run: () => {
     const t = nowSec();
-    eng.lastDrop = t; eng.on.drop();
+    eng.lastDrop = t; eng.on.drop(true);
     takeRec.dropsAt = [...(takeRec.dropsAt || []).filter((x) => x > t - TAKE_RUNUP), t]; // (the run-up's, for a take begun after)
     if (takeRec.id) takeRec.changes.push({ t, drop: true }); // (a perfect copy drops it again, at the same time: take-replay.js)
   } },
@@ -2472,6 +2543,7 @@ const paletteEntries = () => [
     id: 'earth:' + c, name: 'the Earth: ' + c, aliases: ['earth', 'space', 'nasa', ...(c.includes('aurora') || c.includes('northern') ? ['aurora', 'northern lights'] : [])],
     run: () => { state.earthClip = c; earth.setClip(c); setVisual(VISUALS.indexOf('earth')); flashStatus('the Earth: ' + c); },
   })),
+  { id: 'vis:backrooms', name: 'the backrooms', aliases: ['backrooms', 'liminal', 'liminal spaces', 'yellow rooms'], run: () => setVisual(VISUALS.indexOf('backrooms')) },
   ...BLOCK_LOOKS.map((look) => ({
     id: 'look:' + look, name: 'code look: ' + ({ game: 'handheld game', blocks: 'punchcard' }[look] || look),
     aliases: look === 'game' ? ['handheld', 'game'] : [],
@@ -2694,6 +2766,7 @@ function playingNow() {
   return {
     id: `${state.source}|${song?.title}|${song?.artist}|${track?.path || ''}`, track: track?.path || null, radio: state.source === 'radio' ? state.radio : '',
     title: station ? state.label : song?.title || '', artist: station ? 'radio' : song && song.artist !== 'File' ? song.artist : '', ms: Math.round(ms), stoppable: ['file', 'radio', 'demo'].includes(state.source),
+    art: state.source === 'system' && artSrc.startsWith('data:') ? artSrc : '', // (the system's song's own cover, as Spotify or Music gave it: the spotify tab's big cover follows it)
   };
 }
 // The library's spotify section (library-panel.js; main has the rest, helpers/spotify.cjs). A link pasted is read and played in the Spotify
@@ -2942,7 +3015,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 });
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
-const prepareFrame = (t) => Promise.all([scenery.prepare(t), spaghetti.prepare(), earth.prepare(t)]);
+const prepareFrame = (t) => Promise.all([scenery.prepare(t), spaghetti.prepare(), earth.prepare(t), backrooms.prepare(t)]);
 window.__nc = { clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
 // (for the clock harness, tools/clock-harness.mjs, and for whatever drives a render: the layers and what a look is made of)
 Object.assign(window.__nc, { setAutoScene: (n, at) => { autoScene = n; if (Number.isFinite(at)) autoSceneAt = at; }, lookWaiting, setPerfectCopy, takeBegin, takeEnd, takeState: () => ({ id: takeRec.id, tapping: !!takeRec.tap, runup: takeRec.blocks.length, making: !!takeRec.making }), VISUALS, BLOCK_LOOKS, THEMES, SPAGHETTI_KINDS, DROPS, scenery, chrome, spaghetti, spectro, warp, fire, tunnel, spiral, wheel, field, wait, storm, sceneShown, applyCard, setCrt, freshStart, setPostLook: (name) => setLook(name === 'none' ? 'off' : name, false), setGlassPlates: (on) => setGlassPlates(on, false) });
@@ -3007,7 +3080,7 @@ const applySetup = (settings) => applyPreset({ name: 'take', settings }, { ...st
 // they are, so the wait changes nothing; then a moment for a compile's last driver work and the fonts)
 // (the look as it is now not ready: its shaders still compiling, its pictures not loaded; the replay asks before each frame, see take-replay.js)
 function lookWaiting() {
-  const mode = VISUALS[state.visual], w = { worlds, chrome, spaghetti, spectrogram: spectro, warp, scenery, earth }[mode];
+  const mode = VISUALS[state.visual], w = { worlds, chrome, spaghetti, spectrogram: spectro, warp, scenery, earth, backrooms }[mode];
   return mode === 'scenery' ? !scenery.drawnScene || scenery.drawnScene !== sceneShown() : !!w?.waiting || !!w?.broken;
 }
 async function lookReady(t) {

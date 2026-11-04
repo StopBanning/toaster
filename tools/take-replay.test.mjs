@@ -92,7 +92,7 @@ test('a take whose looks never wait is drawn as before: nothing is waited for, w
 });
 
 test('a take keeps D\'s drops and the toggles a scene doesn\'t hold, and the copy does them again (B5)', () => {
-  assert.match(replaySrc, /else if \(c\.drop\) \{ eng\.lastDrop = c\.t; eng\.on\.drop\(\); \}/, 'D, at its own time, as the key does it');
+  assert.match(replaySrc, /else if \(c\.drop\) \{ eng\.lastDrop = c\.t; eng\.on\.drop\(true\); \}/, 'D, at its own time, as the key does it (pressed)');
   assert.match(app, /    if \(takeRec\.id\) takeRec\.changes\.push\(\{ t, drop: true \}\);/, 'a drop during the take is noted');
   assert.match(app, /\.\.\.\(takeRec\.dropsAt \|\| \[\]\)\.filter\(\(x\) => x >= soundAt\)\.map\(\(x\) => \(\{ t: x, drop: true \}\)\)/, 'and the run-up\'s');
   assert.match(app, /const TAKE_EXTRAS = \['orb', 'card', 'cardV', 'cardBig', 'hushed', 'drop', 'crt', 'look', 'worldLook', 'chromeCollage', 'spaghettiKind', 'spectroTheme'\];/);

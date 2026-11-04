@@ -21,8 +21,13 @@ const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=
 const home = os.homedir();
 export const REFS = process.env.DETBENCH_REFS || path.join(home, 'Archive/toaster-song-references-2026-11-01');
 export const KICKREF = process.env.DETBENCH_KICKREF || path.join(home, 'work/scratch/detbench/refs/kickref');
+export const KICKEXTRA = [path.join(home, 'work/now-coding/backlog/research/kickref-nov2'), path.join(home, 'work/scratch/vet-saints/ref')];
 const AUDIO = path.join(home, 'work/scratch/toaster-audio');
-const local = (p) => p && path.join(AUDIO, p.split(/[\\/]/).pop());
+const local = (p) => {
+  if (!p) return null;
+  const f = p.split(/[\\/]/).pop();
+  return [path.join(AUDIO, f), path.join(REFS, 'downbeat-key/inputs/audio', f)].find((x) => fs.existsSync(x)) || path.join(AUDIO, f);
+};
 export const KEYSONGS = ['betteroffalone-alicedeejay', 'tozpembe-manifest'];
 export const HELDSONGS = ['prettyravegirl-s3rl', 'afterdark-mrkitty', 'baptism-crystalcastles', 'char-crystalcastles', 'musicformachines-grimes',
   'lady-modjo', 'language-porter', 'callonme-prydz', 'goomuck', 'levels-avicii', 'dracula-tameimpala', 'ghostbusters-rpj'];
@@ -39,14 +44,16 @@ export function songs() {
   }
   return out;
 }
-export function kickSongs() {
-  if (!fs.existsSync(KICKREF)) return [];
-  return fs.readdirSync(KICKREF).filter((x) => x.endsWith('.json')).sort().flatMap((f) => {
-    try {
-      const r = JSON.parse(fs.readFileSync(path.join(KICKREF, f), 'utf8'));
-      return fs.existsSync(r.audio) ? [{ key: r.slug, audio: r.audio, end: r.window[1] }] : [];
-    } catch { return []; }
-  });
+export function kickSongs(includeExtra = false) {
+  const dirs = includeExtra ? [KICKREF, ...KICKEXTRA] : [KICKREF];
+  return dirs.filter((d) => fs.existsSync(d)).flatMap((dir) =>
+    fs.readdirSync(dir).filter((x) => x.endsWith('.json')).sort().flatMap((f) => {
+      try {
+        const r = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        return fs.existsSync(r.audio) ? [{ key: r.slug, audio: r.audio, end: r.window[1] }] : [];
+      } catch { return []; }
+    })
+  );
 }
 export function synthSongs(root) {
   const checks = fs.readFileSync(path.join(root, 'tools/checks.js'), 'utf8');
@@ -58,7 +65,7 @@ export function jobs(sets, only, root = path.join(here, '../..')) {
   if (sets.includes('full')) for (const s of songs()) if (pick(s.key)) js.push({ key: 'full:' + s.key, audio: s.audio, from: 0, seconds: Math.min(150, s.duration - 0.5) });
   if (sets.includes('mid')) for (const s of songs()) if (pick(s.key) && s.duration > 125) js.push({ key: 'mid:' + s.key, audio: s.audio, from: 60, seconds: 60 });
   if (sets.includes('synth')) for (const k of synthSongs(root)) for (const seed of [k, k + ' 2']) if (pick(k)) js.push({ key: `synth:${k}${seed === k ? '' : '#2'}`, synth: k, seed, from: 0, seconds: k === 'change' ? 85 : 45 });
-  if (sets.includes('kick')) for (const s of kickSongs()) if (pick(s.key)) js.push({ key: 'kick:' + s.key, audio: s.audio, from: 0, seconds: +(s.end + 1).toFixed(2) });
+  if (sets.includes('kick')) for (const s of kickSongs(!!only)) if (pick(s.key)) js.push({ key: 'kick:' + s.key, audio: s.audio, from: 0, seconds: +(s.end + 1).toFixed(2) });
   // (bench instrumentation, harmony.mjs) key: two songs whose key is known, from the start at five poll phases (the key
   // they settle on has hung on a few ms of timing); held: the key work's held-out songs (round 3's twelve), from the start
   for (const [set, list] of [['key', KEYSONGS], ['held', HELDSONGS]]) {

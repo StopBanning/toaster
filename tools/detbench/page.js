@@ -71,6 +71,28 @@ async function ({ job, sources, sr }, audio) {
     e.tape = createTape();
     resetCodegen();
     const from = (job.from || 0) - (job.phase || 0);
+    let stretches = [], curStretch = null, beforeOrigin = null;
+    const calcOrigin = (s, st) => {
+      if (!s || !st?.final || !st.rows.length) return null;
+      const first = Math.min(...st.rows.map((r) => r.kind === 'pattern'
+        ? Math.round((r.b - st.moved - st.down) / 4)
+        : Math.floor((r.b - st.moved - st.down + 2) / 4)));
+      return +(from + st.final.t0 + ((s.timeline?.originBeat ?? first * 4) + st.down - st.final.n0) * st.final.P).toFixed(4);
+    };
+    const reset0 = e.tape.reset.bind(e.tape), lock0 = e.tape.lock.bind(e.tape), pat0 = e.tape.pattern.bind(e.tape), harm0 = e.tape.harmony.bind(e.tape), shift0 = e.tape.shift.bind(e.tape);
+    e.tape.reset = (down = 0) => {
+      const done = e.tape.song(down);
+      if (done) {
+        const best = stretches[(done.coverage?.selectedStretch ?? 1) - 1] || stretches.reduce((a, b) => !a || b.patterns > a.patterns ? b : a, null);
+        if (best?.patterns >= 4) beforeOrigin = calcOrigin(done, best);
+      }
+      stretches = []; curStretch = null;
+      return reset0(down);
+    };
+    e.tape.lock = (...a) => { curStretch = { moved: 0, rows: [], patterns: 0, down: 0 }; stretches.push(curStretch); return lock0(...a); };
+    e.tape.shift = (d) => { if (curStretch) curStretch.moved += d; return shift0(d); };
+    e.tape.pattern = (b, p) => { if (curStretch) { curStretch.rows.push({ b: b + curStretch.moved, kind: 'pattern' }); curStretch.patterns++; } return pat0(b, p); };
+    e.tape.harmony = (b, ...r) => { if (curStretch) curStretch.rows.push({ b: b + curStretch.moved, kind: 'harmony' }); return harm0(b, ...r); };
     const beats = [], tempo = [], lines = [], notes = [];
     // (bench instrumentation) each bar's harmony as the engine filed it: the bar's start and length, the chord found in it
     // (null: none) and the one its slot writes, the bass found in it (per beat, filled forward as the code writes them, else
@@ -141,9 +163,13 @@ async function ({ job, sources, sr }, audio) {
       }
       // (bench instrumentation: the tuning the engine names notes in, the bass tracker's and the note analysis's, every 10 s)
       if (k % 666 === 0) tuning.push([+(now + from).toFixed(1), e.bt.c !== undefined ? +(Math.atan2(e.bt.s, e.bt.c) / (2 * Math.PI)).toFixed(3) : null, e.tune ? +(e.tune.est ?? e.tune.off).toFixed(3) : null]);
+      if (curStretch) { curStretch.final = { t0: T.t0, n0: T.n0, P: T.P }; curStretch.down = T.down; }
       lastTime = now;
     }
     await ac0.resume(); await render;
-    return { key: job.key, from: job.from || 0, seconds: duration, sr, beats, tempo, lines, notes: notes.slice(0, 400), truth, harmony, tuning, keylog };
+    const song = e.tape.song(e.tempo.down);
+    const best = stretches[(song?.coverage?.selectedStretch ?? 1) - 1] || stretches.reduce((a, b) => !a || b.patterns > a.patterns ? b : a, null);
+    const origin = song?.origin != null ? +(from + song.origin).toFixed(4) : (song ? (best && best.patterns >= 4 ? calcOrigin(song, best) : beforeOrigin) : null);
+    return { key: job.key, from: job.from || 0, seconds: duration, sr, beats, tempo, lines, notes: notes.slice(0, 400), truth, harmony, tuning, keylog, song, origin };
   } catch (error) { return { error: String(error.stack || error) }; }
 }

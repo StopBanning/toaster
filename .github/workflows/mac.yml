@@ -1,6 +1,9 @@
 # The Mac app, built on GitHub's Macs: on every release (the zip goes onto it, beside the Windows one)
 # and on a push to mac-build (a test: the zip and a screenshot of it running, as the run's artifact).
-# Signed ad hoc only, so a Mac asks before its first start (see the README).
+# Signed with Toaster's own self-signed identity when the repo has it (secrets MAC_SIGN_P12, base64 of a .p12, and
+# MAC_SIGN_PASSWORD; tools/release/SIGNING.md), else ad hoc. Either way a Mac asks before its first start (see the README); the
+# identity is what keeps the Mac's answers (the keychain's Always Allow, the permissions) from one update to the next: an ad hoc
+# signature is new with every build, so every update looked like a new app.
 name: Mac build
 on:
   release:
@@ -20,17 +23,36 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run package:mac
-      - name: Sign it ad hoc, check it, zip it
+      - name: Sign it (Toaster's own identity, else ad hoc), check it, zip it
+        env:
+          MAC_SIGN_P12: ${{ secrets.MAC_SIGN_P12 }}
+          MAC_SIGN_PASSWORD: ${{ secrets.MAC_SIGN_PASSWORD }}
         run: |
-          APP=dist/Toaster-darwin-universal/Toaster.app
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          lipo -archs "$APP/Contents/MacOS/Toaster"
-          lipo -archs "$(find "$APP" -name nowplaying -type f | head -1)"
           V=$(node -p "require('./package.json').version")
-          ditto -c -k --sequesterRsrc --keepParent "$APP" "Toaster-$V-mac-universal.zip"
-          echo "ZIP=Toaster-$V-mac-universal.zip" >> "$GITHUB_ENV"
-          ls -l "Toaster-$V-mac-universal.zip"
+          ID=- KC=()
+          if [ -n "$MAC_SIGN_P12" ]; then
+            # (a keychain of its own for the run, never the runner's search list; codesign takes it by path. The identity is
+            # self-signed, so untrusted: codesign signs with it all the same, and its requirement names the certificate)
+            K="$RUNNER_TEMP/sign.keychain-db" P="$(uuidgen)"
+            security create-keychain -p "$P" "$K" && security set-keychain-settings -lut 3600 "$K" && security unlock-keychain -p "$P" "$K"
+            echo "$MAC_SIGN_P12" | base64 --decode > "$RUNNER_TEMP/sign.p12"
+            security import "$RUNNER_TEMP/sign.p12" -k "$K" -P "$MAC_SIGN_PASSWORD" -T /usr/bin/codesign >/dev/null
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$P" "$K" >/dev/null
+            rm -f "$RUNNER_TEMP/sign.p12"
+            ID=$(security find-identity -p codesigning "$K" | awk '/"Toaster Self-Signed"/ { print $2; exit }')
+            [ -n "$ID" ] || { echo "MAC_SIGN_P12 holds no 'Toaster Self-Signed' identity"; exit 1; }
+            KC=(--keychain "$K")
+          fi
+          for ARCH in arm64 x64 universal; do
+            APP="dist/Toaster-darwin-$ARCH/Toaster.app"
+            codesign --force --deep "${KC[@]}" --sign "$ID" "$APP"
+            codesign -d -r- "$APP" 2>&1 | grep designated
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            lipo -archs "$APP/Contents/MacOS/Toaster"
+            lipo -archs "$(find "$APP" -name nowplaying -type f | head -1)"
+            ditto -c -k --sequesterRsrc --keepParent "$APP" "Toaster-$V-mac-$ARCH.zip"
+            ls -l "Toaster-$V-mac-$ARCH.zip"
+          done
       - name: Start it, and a screenshot 25 s in
         run: |
           open dist/Toaster-darwin-universal/Toaster.app
@@ -42,11 +64,22 @@ jobs:
         with:
           name: toaster-mac
           path: |
-            ${{ env.ZIP }}
+            Toaster-*-mac-*.zip
             shot.png
           if-no-files-found: ignore
       - name: Onto the release
         if: github.event_name == 'release'
-        run: gh release upload "${{ github.event.release.tag_name }}" "$ZIP" --clobber
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" Toaster-*-mac-*.zip --clobber
+          gh api "repos/${{ github.repository }}/releases/tags/${{ github.event.release.tag_name }}" > release.json
+          node - <<'NODE'
+          const { assets } = require('./release.json');
+          const v = require('./package.json').version;
+          for (const arch of ['arm64', 'x64', 'universal']) {
+            const name = `Toaster-${v}-mac-${arch}.zip`;
+            const asset = assets.find((a) => a.name === name);
+            if (!/^sha256:[0-9a-f]{64}$/.test(asset?.digest || '')) throw new Error(`No GitHub SHA-256 digest for ${name}`);
+          }
+          NODE
         env:
           GH_TOKEN: ${{ github.token }}

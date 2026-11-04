@@ -184,10 +184,11 @@ const lastBody = {};
 // turned its steps (relabel: new bar lines, the beat found on another 16th); the line written turns
 // with them, or a pattern moved a beat read as a change of a step or two, and waited two bars.
 const written = {};
-function calm(id, on, bar, turned = 0) {
+function calm(id, on, bar, turned = 0, four = false, here = true) {
   if (!on || bar === null) return on;
   const w = written[id];
-  if (!w) { written[id] = { on: on.slice(), cand: null, since: 0, bar, bars: 0, turned }; return on; }
+  if (!w) { written[id] = { on: on.slice(), cand: null, since: 0, bar, bars: 0, turned, muted: !here }; return on; }
+  if (!here) { w.muted = true; w.cand = null; }
   if (bar !== w.bar) { w.bar = bar; w.bars++; }
   if (turned !== w.turned) {
     const old = w.on.slice(), d = turned - w.turned;
@@ -195,8 +196,8 @@ function calm(id, on, bar, turned = 0) {
     w.turned = turned; w.cand = null;
   }
   const diff = on.reduce((n, x, s) => n + (x !== w.on[s]), 0);
-  if (diff === 0) w.cand = null;
-  else if (diff > 2) { w.on = on.slice(); w.cand = null; }
+  if (diff === 0) { w.cand = null; if (here) w.muted = false; }
+  else if (diff > 2 || four || (here && w.muted)) { w.on = on.slice(); w.cand = null; w.muted = false; }
   else {
     const key = on.join();
     if (w.cand !== key) { w.cand = key; w.since = w.bars; }
@@ -227,9 +228,9 @@ export function buildLines(eng, meta, t) {
 
   const k = eng.knobs;
   for (const id of ['bd', 'sd', 'hhc', 'hho']) {
-    const d = DRUMS[id];
-    const on = calm(id, eng.v[id].shown, eng.bar, eng.v[id].turned);
-    const body = eng.present(id, t) && on ? stepParts(on.map((x) => (x ? d.token : null))) : null;
+    const d = DRUMS[id], here = eng.present(id, t);
+    const on = calm(id, eng.v[id].shown, eng.bar, eng.v[id].turned, eng.v[id].four || eng.v[id].back, here);
+    const body = here && on ? stepParts(on.map((x) => (x ? d.token : null))) : null;
     if (body) {
       lastBody[id] = body.map((p) => p.text).join('');
       out[id] = [{ text: `${d.label}: s("` }, ...body, { text: '")' + d.tail(k, eng) }];

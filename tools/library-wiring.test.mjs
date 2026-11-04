@@ -50,7 +50,7 @@ test('the folder is main\'s, the scenes and the stations are saved with the othe
   assert.ok(!saved.some((k) => /library|folder/i.test(k)), 'the folder is not a page setting: the page could name any, and main\'s is the one it reads');
   assert.match(app, /^  radioStations: \[\],/m);
   assert.match(app, /^  userScenes: \[\],/m);
-  assert.match(app, /state\.userScenes = readScenes\(state\.userScenes, \{ visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: \['auto', \.\.\.scenery\.scenes\], blocks: true, vertical: true \}\);/);
+  assert.match(app, /state\.userScenes = readScenes\(state\.userScenes, \{ visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: \['auto', \.\.\.scenery\.scenes\], blocks: true, vertical: true, libCover: \['chars', 'photo'\] \}\);/);
   assert.match(app, /state\.radioStations = readStations\(state\.radioStations, state\.radio\);/);
   // and the queue's two modes, read back as they were or as the album in order (an older profile has neither)
   assert.ok(saved.includes('queueRepeat') && saved.includes('queueShuffle'));
@@ -75,15 +75,16 @@ test('the folder is main\'s, the scenes and the stations are saved with the othe
   assert.deepEqual(load({ userScenes: 'junk', radioStations: { a: 1 } }), [[], []]);
 });
 
-test('a scene is applied as a preset is, through the same setters, and holds only what presets hold', () => {
+test('a scene is applied as a preset is, through the same setters, and also holds the shared cover look', () => {
   assert.match(app, /function choosePreset\(id\) \{\s*const preset = PRESETS\.find\(\(p\) => p\.id === id\);\s*if \(!preset\) return Promise\.reject\(new Error\('Unknown preset'\)\);\s*return runPreset\(preset, 'preset'\);\s*\}/);
   assert.match(body('runPreset'), /if \(await applyPreset\(preset, current, presetSetters\)\) flashStatus\(`\$\{word\}: \$\{preset\.name\.toLowerCase\(\)\}`\);/);
   assert.match(app, /applyScene: \(scene\) => runPreset\(scene, 'scene'\)\.catch\(showError\),/);
   // the setters for each setting a preset has, and the code's one takes "just the beat hidden" as well as a yes or no
   const setters = app.slice(app.indexOf('const presetSetters = {'), app.indexOf('};', app.indexOf('const presetSetters = {')));
   for (const key of SETUP_KEYS) assert.ok(new RegExp(`\\n  ${key}:`).test(setters), `a setter for ${key}`);
+  assert.match(setters, /libCover: setLibCover,/);
   assert.match(setters, /codeHidden: \(v\) => \(v === 'beat' \? setCodeHidden\(false, true\) : setCodeHidden\(v\)\),/);
-  assert.deepEqual([...SETUP_KEYS].sort(), [...new Set(PRESETS.flatMap((p) => Object.keys(p.settings)))].sort());
+  assert.deepEqual([...SETUP_KEYS].sort(), [...new Set([...PRESETS.flatMap((p) => Object.keys(p.settings)), 'libCover'])].sort());
   // the setup it saves is the one choosePreset compares with (the beat as 'beat')
   assert.match(app, /const currentSetup = \(\) => setupOf\(\{ \.\.\.state, visual: VISUALS\[state\.visual\], theme: THEMES\[state\.theme\], codeHidden: state\.beatHidden \? 'beat' : state\.codeHidden \}\);/);
 });

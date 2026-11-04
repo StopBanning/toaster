@@ -107,7 +107,7 @@ export async function replay(n, take, api, { apply = () => {}, waitReady = async
       for (; nextChange < upTo; nextChange++) {
         const c = changes[nextChange];
         if (c.tap) eng.tap(c.t);
-        else if (c.drop) { eng.lastDrop = c.t; eng.on.drop(); } // (D, as the app's key does it)
+        else if (c.drop) { eng.lastDrop = c.t; eng.on.drop(true); } // (D, as the app's key does it)
         else if (c.resume) eng.resume(c.resume); // (a file played on after a pause: its grid moves on, as app.js's followPauses does)
         else apply(c.set);
       }

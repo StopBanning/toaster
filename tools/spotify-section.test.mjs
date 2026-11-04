@@ -639,33 +639,23 @@ test('what main says is shown as it is said, over the list; nothing is repainted
   assert.doesNotMatch(spotifyPart, /addEventListener\('(paste|input|change)'/);
 });
 
-test('a cover is shown as Spotify gives it, only resized: a data: address from main, never an address the page fetched, never filtered, faded, masked or drawn in characters', () => {
-  assert.match(spotifyPart, /const spCover = \(url, cls = ''\) => `<i class="lib-cover real \$\{cls\}"\$\{url \? ` data-sp="\$\{esc\(url\)\}"` : ''\}><\/i>`;/, 'the address is an attribute to ask main with, not a source');
+test('Spotify covers share the library glyph renderer, with data from main and cursor-following artwork', () => {
+  assert.match(spotifyPart, /const spCover = .*data-sp=.*<b><\/b>/, 'a mask layer and an address to ask main with');
   const sources = [...spotifyPart.matchAll(/\.src = ([^;]+);/g)].map((m) => m[1]);
-  assert.deepEqual(sources, ['data', 'data'], 'the only picture source, in the two places a cover is shown (a row\'s or the head\'s, and the big one), is the data: address main gave');
-  assert.match(spotifyPart, /\.then\(\(data\) => \{\s*if \(gen !== X\.gen \|\| typeof data !== 'string'\) return;/);
-  assert.doesNotMatch(spotifyPart, /glyphMask|glyphRows|imageOf|canvas|getImageData|new Image/, 'no covers in characters for Spotify');
-  assert.match(panel, /if \(el\.dataset\.sp !== undefined\) \{ spCoverOn\(el\); return; \}/, 'a real cover never goes the way of a glyph cover');
-  const rules = css.slice(css.indexOf('/* spotify: its covers as Spotify gives them'), css.indexOf('/* a wide window: the panel down the left'));
-  assert.ok(rules.length > 800, 'found the block');
-  const real = [...rules.matchAll(/#library [^{]*\.lib-cover\.real[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join(' ');
-  assert.match(real, /border-radius: 4px/, 'rounded corners');
-  assert.doesNotMatch(real, /filter|opacity|mask|blend|transform|backdrop|clip-path|mix-blend/, 'nothing that alters the picture');
-  assert.doesNotMatch(rules.replace(/\/\*[\s\S]*?\*\//g, ''), /\.lib-cover\.real[^{]*\s*\{[^}]*(filter|opacity)/);
-  // the big one, at the right of a wide window: the same picture, in a box, with nothing done to it; no glyph art of another cover behind this tab
-  const wide = css.slice(css.indexOf('@media (min-width: 900px) and (min-aspect-ratio: 5/4) {'));
-  const big = [...wide.matchAll(/#library \.lib-bigcover[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join(' ');
-  assert.match(big, /display: block/);
-  assert.match(wide, /#library \.lib-bigcover img \{[^}]*width: min\(100%, 640px\);[^}]*border-radius: 8px;[^}]*\}/, 'never larger than the 640 pixels Spotify gives, with the 8 px corners its guidelines give large artwork');
-  // Spotify's biggest picture of the open collection (main names it big), asked for once it is open; the row's till it comes
-  assert.match(spotifyPart, /want = coll\?\.big \|\| coll\?\.cover;/);
-  assert.match(spotifyPart, /const data = \(want && X\.covers\.get\(want\)\) \|\| \(coll\?\.cover && X\.covers\.get\(coll\.cover\)\);/);
-  assert.doesNotMatch(wide.match(/#library \.lib-bigcover img \{[^}]*\}/)[0], /filter|opacity|mask|blend|transform|backdrop|clip-path/);
-  assert.match(css, /#library \.lib-bigcover \{ display: none; \}/, 'and nowhere else');
-  assert.match(panel, /const id = S\.section === 'spotify' \? null : openAlbum\(\)\?\.cover \|\| null, token = \+\+S\.artToken;/, 'no covers in characters on this tab, nor another album\'s behind it');
-  assert.match(panel, /paintTabs\(\); paintHead\(\); paintMeta\(\); paintList\(\); paintKeys\(\); paintArt\(\); paintBig\(\);\s*S\.listSig = listSig\(\);/, 'the art follows the section');
-  // kept in memory only, and a hundred and fifty at most
-  assert.doesNotMatch(spotifyPart, /localStorage|sessionStorage|indexedDB|caches\.|writeFile/, 'nothing of Spotify\'s is kept past the app\'s life');
+  assert.deepEqual(sources, ['data', 'data'], 'images still use only the data address main gave');
+  assert.match(spotifyPart, /glyphMask\(data, COVER_COLS, COVER_ROWS, COVER_PX, COVER_PX\)/);
+  assert.match(spotifyPart, /if \(gen !== X\.gen \|\| typeof data !== 'string'\) return;/);
+  assert.match(spotifyPart, /want = song \? song\.big \|\| song\.cover : coll\?\.big \|\| coll\?\.cover;/);
+  assert.match(spotifyPart, /return \(want && X\.covers\.get\(want\)\) \|\| \(song\?\.cover && X\.covers\.get\(song\.cover\)\) \|\| /, 'fall back to the collection until the song artwork arrives');
+  assert.match(panel, /if \(S\.section === 'spotify'\) \{ const key = spotifyKey\(rows\(\)\[i\]\); if \(key !== X\.cursorKey\) X\.bigFrom = 'cursor'; X\.cursorKey = key; paintBig\(\); \}/, 'the big cover follows the cursor, once it moves');
+  // and the song that's playing, whichever changed last: a new song (or its cover coming in) shows its own cover, till the cursor moves
+  assert.match(panel, /const playingArt = \(\) => \(X\.bigFrom === 'playing' && host\.playing\(\)\.art\) \|\| '';/);
+  assert.match(panel, /function spArtSrc\(\) \{\n    const now = playingArt\(\);\n    if \(now\) return now;/, 'the playing song\'s cover first, when it changed last');
+  assert.match(panel, /if \(artSig !== X\.artSig\) \{ const was = X\.artSig; X\.artSig = artSig; if \(was !== undefined && p\.art\) \{ X\.bigFrom = 'playing';/, 'not on the first reading: the tab opens on its collection');
+  assert.match(panel, /X\.bigFrom = 'cursor'; \/\/ \(a collection opened or closed by hand/);
+  assert.match(app, /art: state\.source === 'system' && artSrc\.startsWith\('data:'\) \? artSrc : '',/, 'the system\'s song\'s cover, a data: address only');
+  assert.match(panel, /const id = S\.section === 'spotify' \? spArtSrc\(\) : openAlbum\(\)\?\.cover/);
+  assert.doesNotMatch(spotifyPart, /localStorage|sessionStorage|indexedDB|caches\.|writeFile/);
   assert.match(spotifyPart, /while \(X\.covers\.size > 150\) X\.covers\.delete\(X\.covers\.keys\(\)\.next\(\)\.value\);/);
 });
 
@@ -677,7 +667,7 @@ test('whose it is: Spotify\'s logo (its icon, in the head, white or black by the
   assert.match(panel, /const mark = e\.target\.closest\('\[data-do="onspotify"\]'\), coll = mark && spOpenColl\(\);/);
   assert.match(panel, /sp\.open\(coll\.uri, parseLink\(coll\.uri\)\)/, 'the same way a pasted link goes');
   assert.match(panel, /root\.dataset\.tone = logoTone\(win\.getComputedStyle\(doc\.documentElement\)\.getPropertyValue\('--bg'\)\);/);
-  const rules = css.slice(css.indexOf('/* spotify: its covers as Spotify gives them'), css.indexOf('/* a wide window: the panel down the left'));
+  const rules = css.slice(css.indexOf('/* spotify: the liked tile'), css.indexOf('/* a wide window: the panel down the left'));
   assert.match(rules, /#library \.lib-onspot \.lib-logo \{ flex: none; width: max\(21px, 1\.9em\); height: max\(21px, 1\.9em\); \}/, 'never under the 21 pixels its guidelines ask for');
 });
 

@@ -51,7 +51,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none; }
 
-#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spaghetti, #earth, #spectro, #spectrobox, #scenery, #lanes, #wait, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#cam, #voxcam, #dotcam, #worlds, #worldwords, #chrome, #spaghetti, #earth, #backrooms, #spectro, #spectrobox, #scenery, #lanes, #wait, #vis, #warp, #field, #asciicam, #orb, #punch { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #warp { opacity: .55; }
 #glass { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 #glass[hidden] { display: none; }
@@ -156,20 +156,20 @@ body.cam-cut #cam { z-index: 1; opacity: .92; }
 #voxcam { opacity: .85; } /* (the voxels in the camera's place, under the backgrounds; a room, so solid) */
 #field { opacity: calc(var(--field) * var(--field-k, 1.5) * var(--hush, 1)); } /* --field-k: the strength you pick (A) */
 /* hushed (a raised fist, or Q): the picture dims, while the code mutes itself line by line */
-#worlds, #worldwords, #chrome, #spaghetti, #earth, #spectro, #spectrobox, #scenery, #lanes, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s var(--ease-fade); }
+#worlds, #worldwords, #chrome, #spaghetti, #earth, #backrooms, #spectro, #spectrobox, #scenery, #lanes, #vis, #warp, #field, #asciicam, #orb, #punch { transition: opacity .6s var(--ease-fade); }
 body.hushed { --hush: .3; }
 /* the camera as text (a layer of its own, over the background) stands out more than an ASCII
    background does */
 #asciicam { opacity: calc(var(--field) * 3.2 * var(--hush, 1)); }
 body.hushed #vis, body.hushed #orb, body.hushed #punch { opacity: .3; }
 body.hushed #warp { opacity: .17; }
-body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spaghetti, body.hushed #earth, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery, body.hushed #lanes { opacity: .3; }
+body.hushed #worlds, body.hushed #worldwords, body.hushed #chrome, body.hushed #spaghetti, body.hushed #earth, body.hushed #backrooms, body.hushed #spectro, body.hushed #spectrobox, body.hushed #scenery, body.hushed #lanes { opacity: .3; }
 /* over the worlds (and the chrome, the spaghetti, the spectrogram) the code sits on the ID card's panel
    colour (navy on the blue theme), not the theme's own, which fights the picture's colours */
 body.worlds-on, body.chrome-on, body.spaghetti-on, body.spectro-on { --line-bg: color-mix(in srgb, var(--ink) 70%, transparent); }
 /* the worlds (and the spaghetti, the spectrogram, the scenery, the lanes) over the camera: you show through them
    (with the cut-out you're in front of them) */
-body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spaghetti, body.cam-on:not(.cam-cut) #earth, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery, body.cam-on:not(.cam-cut) #lanes { opacity: .6; }
+body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.cam-on:not(.cam-cut) #spaghetti, body.cam-on:not(.cam-cut) #earth, body.cam-on:not(.cam-cut) #backrooms, body.cam-on:not(.cam-cut) #spectro, body.cam-on:not(.cam-cut) #scenery, body.cam-on:not(.cam-cut) #lanes { opacity: .6; }
 
 /* ---------- code ---------- */
 #code {
@@ -809,23 +809,32 @@ body:has(#desk-front.on) footer, body:has(#storm:not([hidden])) footer { opacity
 #alerts { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; pointer-events: none; }
 #alerts .xp { position: relative; pointer-events: auto; }
 #alerts .xp-ctl i.x { cursor: pointer; }
+#update-download-bar { display: block; width: calc(100% - 32px); height: 18px; margin: 0 16px 16px; accent-color: #2eaa31; }
 
 /* ---------- blue screen ---------- */
 #bsod { position: fixed; inset: 0; z-index: 8; display: none; padding: 11vh 10vw; background: #0078d7; color: #fff; font-family: "Segoe UI", system-ui, sans-serif; }
 #bsod.show { display: block; }
-#bsod .face { font-size: clamp(80px, 11vw, 150px); line-height: 1; margin: 0 0 4vh; }
-#bsod p { font-size: clamp(18px, 2.1vw, 30px); max-width: 960px; margin: 0 0 3vh; line-height: 1.35; }
-#bsod small { display: block; font-size: clamp(13px, 1.1vw, 17px); line-height: 1.6; }
+/* the y2k bug's shatter (y2k.js): the blue screen's last beat cracks it, and it falls away in shards, each a copy of the screen
+   cut to its piece, over the empty desktop */
+.y2k-shatter { position: fixed; inset: 0; z-index: 9; pointer-events: none; overflow: hidden; perspective: 1400px; }
+.y2k-shatter .bsod-shard { position: absolute; inset: 0; padding: 11vh 10vw; background: #0078d7; color: #fff; font-family: "Segoe UI", system-ui, sans-serif; }
+.y2k-shatter .glass { position: absolute; inset: 0; will-change: transform, opacity; filter: drop-shadow(0 0 1.2px rgba(255, 255, 255, .95)) drop-shadow(0 10px 14px rgba(0, 0, 0, .35)); }
+.y2k-shatter svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.y2k-shatter svg path { fill: none; stroke: #fff; stroke-width: 2.2; stroke-linejoin: bevel; filter: drop-shadow(0 0 3px rgba(255, 255, 255, .7)); }
+@media (orientation: portrait) { .y2k-shatter .bsod-shard { padding: 15vh 9vw; } }
+:is(#bsod, .bsod-shard) .face { font-size: clamp(80px, 11vw, 150px); line-height: 1; margin: 0 0 4vh; }
+:is(#bsod, .bsod-shard) p { font-size: clamp(18px, 2.1vw, 30px); max-width: 960px; margin: 0 0 3vh; line-height: 1.35; }
+:is(#bsod, .bsod-shard) small { display: block; font-size: clamp(13px, 1.1vw, 17px); line-height: 1.6; }
 /* its QR code (white, the code in the screen's blue, as the real one's), the small print beside it */
-#bsod .foot { display: flex; gap: clamp(14px, 1.4vw, 22px); align-items: flex-start; margin-top: 2vh; }
-#bsod .qr { flex: none; width: clamp(70px, 6.2vw, 112px); height: auto; color: #0078d7; }
+:is(#bsod, .bsod-shard) .foot { display: flex; gap: clamp(14px, 1.4vw, 22px); align-items: flex-start; margin-top: 2vh; }
+:is(#bsod, .bsod-shard) .qr { flex: none; width: clamp(70px, 6.2vw, 112px); height: auto; color: #0078d7; }
 /* in the 9:16 window: the same screen, sized to the width (so it isn't a small block up in a corner) */
 @media (orientation: portrait) {
-  #bsod { padding: 15vh 9vw; }
-  #bsod .face { font-size: 27vw; }
-  #bsod p { font-size: 5.6vw; margin-bottom: 3.5vh; }
-  #bsod small { font-size: 3.2vw; }
-  #bsod .qr { width: 21vw; }
+  :is(#bsod, .bsod-shard) { padding: 15vh 9vw; }
+  :is(#bsod, .bsod-shard) .face { font-size: 27vw; }
+  :is(#bsod, .bsod-shard) p { font-size: 5.6vw; margin-bottom: 3.5vh; }
+  :is(#bsod, .bsod-shard) small { font-size: 3.2vw; }
+  :is(#bsod, .bsod-shard) .qr { width: 21vw; }
 }
 
 /* fewer flashes (the help's setting, for anyone sensitive to flashing light): the blue screen
@@ -1064,7 +1073,7 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-keys { color: var(--dim); font-size: .83em; letter-spacing: .02em; }
 /* (whole items: the ones that don't fit wrap out of sight, the line never cut mid-word) */
 #library .lib-keys .lib-line { display: flex; flex-wrap: wrap; height: 1.45em; overflow: hidden; white-space: pre; }
-/* spotify: its covers as Spotify gives them (only resized, with rounded corners), its logo (white or black by the background, as its guidelines
+/* spotify: the liked tile, its logo (white or black by the background, as its guidelines
    have it: the one place this block has colours of its own), "on Spotify", and the steps for connecting */
 #library .lib-cover.real { display: grid; place-items: center; overflow: hidden; border-radius: 4px; outline: 0; background: var(--faint); }
 #library .lib-cover.real img { display: block; width: 100%; height: 100%; object-fit: cover; }

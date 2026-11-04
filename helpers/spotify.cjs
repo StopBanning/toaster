@@ -232,7 +232,7 @@ function collection(kind, thing, by, count) {
 // A track the player can start (songs only: a podcast episode in a playlist, a local file or a gap is left out).
 function track(thing) {
   if (!thing || thing.type === 'episode' || thing.is_local || !TRACK_URI.test(thing.uri || '')) return null;
-  return { id: thing.id, name: thing.name || '', by: artists(thing), ms: thing.duration_ms || 0, uri: thing.uri, cover: cover(thing.album?.images) };
+  return { id: thing.id, name: thing.name || '', by: artists(thing), ms: thing.duration_ms || 0, uri: thing.uri, cover: cover(thing.album?.images), big: biggest(thing.album?.images) };
 }
 
 // Spotify's answer in words: what to do next, never a bare status code.

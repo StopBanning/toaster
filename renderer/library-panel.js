@@ -1,6 +1,6 @@
 // The library (G): a full-screen panel over the visuals, in the theme's own colours. Your music (the albums in the folder you chose, the
 // open one's tracks listed and the rest folded below), spotify (a link pasted plays in the Spotify app; connected with your own Client ID,
-// your playlists, saved albums and liked songs, with their covers as Spotify gives them), the radio (the stations you've played, the
+// your playlists, saved albums and liked songs, with both cover looks), the radio (the stations you've played, the
 // latest first) and scenes (the presets and the setups you've saved). The cover of the open album is drawn in characters behind it, golden's way: its light picks
 // each cell's glyph from a ramp. The glyphs are an image used as a mask over the foreground colour, so everything follows the theme,
 // the dynamic one too, with nothing drawn again as its colours ease. The look is the kept still: renderer/style.css, "the library".
@@ -32,7 +32,7 @@ const STATIONS_PAGE = 'https://github.com/StopBanning/toaster/blob/main/docs/rad
 export function createLibraryPanel({ document: doc, window: win = globalThis, root, source, host }) {
   const S = {
     open: false, section: 'music', albums: [], covers: {}, byPath: new Map(), openId: null, cursor: { music: 0, spotify: 0, radio: 0, scenes: 0 }, tracks: 0,
-    sig: '', folder: '', haveData: false, scanning: false, progress: null, scannedAt: 0, error: '', note: '', typing: false, renaming: null, armed: null, nowSig: '', listSig: '', modesSig: '',
+    sig: '', folder: '', haveData: false, scanning: false, progress: null, scannedAt: 0, error: '', note: '', typing: false, renaming: null, armed: null, nowSig: '', listSig: '', modesSig: '', lookSig: undefined,
     artKey: '', artToken: 0, followPlaying: true, // (the open album follows the song that's playing, till you open another yourself)
     onShelf: false, shelfAt: 0, shelfSig: '', // the shelf of albums played lately: the keys on it (↑ from the list's first row), and which tile
     find: null, found: { q: null, sig: '', rows: [], total: 0 }, // find in your music: { q, from } while its line is open (from: the cursor before it)
@@ -93,11 +93,11 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
 
   // ---------------------------------------------------------------- the cover in characters
 
-  const images = new Map(), masks = new Map(), bigKeys = [];
+  const images = new Map(), masks = new Map(), bigKeys = [], smallKeys = [];
   const imageOf = (id) => {
     if (!images.has(id)) {
       const im = new Image();
-      im.src = `data:image/jpeg;base64,${S.covers[id]}`;
+      im.src = id.startsWith('data:') ? id : `data:image/jpeg;base64,${S.covers[id]}`;
       images.set(id, im.decode().then(() => im));
       while (images.size > 40) images.delete(images.keys().next().value); // (kept forty at a time: a library has hundreds)
     }
@@ -132,6 +132,9 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
       if (w > COVER_PX * 2) { // (the big ones are kept ten at a time)
         bigKeys.push(key);
         while (bigKeys.length > 10) { const old = bigKeys.shift(), url = masks.get(old); masks.delete(old); url?.then((u) => URL.revokeObjectURL(u), () => {}); }
+      } else if (id.startsWith('data:')) {
+        smallKeys.push(key);
+        while (smallKeys.length > 150) { const old = smallKeys.shift(), url = masks.get(old); masks.delete(old); url?.then((u) => URL.revokeObjectURL(u), () => {}); }
       }
     }
     return masks.get(key);
@@ -156,9 +159,9 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // big; the glyphs' size follows (a hundred rows or so, whatever the window); a new cover fades in over the old one
   async function paintArt() {
     if (!S.open) return;
-    if (half()) paintBig(); // (the half look's cover follows the open album wherever it changes)
-    const id = S.section === 'spotify' ? null : openAlbum()?.cover || null, token = ++S.artToken; // (no covers in characters for Spotify, and none of another's behind its rows)
-    if (!id || !S.covers[id]) {
+    if (S.section === 'music' && half()) paintBig(); // (the half look's cover follows the open album wherever it changes)
+    const id = S.section === 'spotify' ? spArtSrc() : openAlbum()?.cover || null, token = ++S.artToken;
+    if (!id || (!id.startsWith('data:') && !S.covers[id])) {
       S.artKey = '';
       for (const old of [...parts.art.children]) { old.classList.remove('in'); setTimeout(() => old.remove(), 700); }
       return;
@@ -187,7 +190,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (!a || !id) return '';
     if (!fullCovers.has(a.id) && host.fullCover) {
       fullCovers.set(a.id, Promise.resolve(host.fullCover(a)).catch(() => null).then((url) => {
-        if (url) { fullCovers.set(a.id, url); if (S.open && half() && openAlbum()?.id === a.id) { paintBig(); paintHead(); } }
+        if (url) { fullCovers.set(a.id, url); if (S.open && S.section === 'music' && half() && openAlbum()?.id === a.id) { paintBig(); paintHead(); } }
         return url;
       }));
       while (fullCovers.size > 12) { const [k, v] = fullCovers.entries().next().value; fullCovers.delete(k); if (typeof v === 'string') URL.revokeObjectURL(v); }
@@ -209,13 +212,15 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // ---------------------------------------------------------------- painting
 
   // the half look (golden's: the cover itself, framed, the characters faint around it, the album and its tracks written as code), for
-  // your music only; the full one draws all of it in characters
-  const half = () => S.section === 'music' && host.coverLook?.() === 'photo';
+  // your music and Spotify; the full one draws all of it in characters
+  const coverSection = () => S.section === 'music' || S.section === 'spotify';
+  const half = () => coverSection() && host.coverLook?.() === 'photo';
   function paintLook() {
+    S.lookSig = host.coverLook?.();
     root.classList?.toggle('lib-half', half());
     const b = parts.tabs.querySelector?.('.lib-coverbtn');
     if (!b) return;
-    b.hidden = S.section !== 'music';
+    b.hidden = !coverSection();
     b.textContent = host.coverLook?.() === 'photo' ? 'half ascii' : 'full ascii';
   }
   const paintTabs = () => { paintLook(); for (const b of parts.tabs.querySelectorAll('[data-section]')) { const on = b.dataset.section === S.section; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); } };
@@ -301,7 +306,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // The spotify section (library.js has its rows and its keys, helpers/spotify.cjs in main answers what it asks, through host.spotify): a link
   // pasted plays in the Spotify app, and, in the app, the listener's own library shows once they have connected with their own Client ID. What
   // main says is shown as it is said. Nothing of Spotify's is kept past the app's life (the lists and the covers are in memory), and a cover is
-  // shown as Spotify gives it, only smaller, with rounded corners; Spotify's logo and "on Spotify" say whose it is.
+  // drawn with the library's shared cover look; Spotify's logo and "on Spotify" say whose it is.
   const sp = host.spotify, X = S.sp;
   const spModel = () => ({ links: sp.links(), app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
   const spRows = () => spotifyRows(spModel());
@@ -310,14 +315,16 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   const spBusy = () => X.checking || [...Object.values(X.lists), ...Object.values(X.tracks)].some((l) => l?.loading);
   const logo = () => `<svg class="lib-logo" viewBox="0 0 24 24" role="img" aria-label="Spotify"><path d="${SPOTIFY_ICON}"/></svg>`;
   // a cover box: its picture comes when it is in view (a faint square till then, and where Spotify gave none)
-  const spCover = (url, cls = '') => `<i class="lib-cover real ${cls}"${url ? ` data-sp="${esc(url)}"` : ''}></i>`;
+  const spCover = (url, cls = '') => `<i class="lib-cover ${cls}"${url ? ` data-sp="${esc(url)}"` : ''}><b></b></i>`;
 
   function spHead() {
     const open = spOpenColl();
     if (open) {
       // ("play on Spotify": one of the three its guidelines give a link back to the Spotify app; the liked songs, which have no link, say whose they are)
       const mark = open.uri ? `<button type="button" class="lib-onspot" data-do="onspotify" title="play this in the Spotify app">${logo()}<span class="lib-line">play on Spotify</span></button>` : `<span class="lib-onspot">${logo()}<span class="lib-line">on Spotify</span></span>`;
-      return `${open.kind === 'liked' ? '<i class="lib-cover real liked" aria-hidden="true">♥</i>' : spCover(open.cover)}<div><div class="lib-name lib-line">${esc(open.name)}</div><div class="lib-sub lib-line sp">${esc(collLine(open))}</div></div>${mark}`;
+      const code = half(), tile = open.kind === 'liked' ? '<i class="lib-cover real liked" aria-hidden="true">♥</i>' : spCover(open.cover, code ? 'lib-photo' : '');
+      const name = code ? `x = x.${esc(ident(open.by || 'Spotify'))}(<s>"</s>${esc(cleanTitle(open.name))}<s>"</s>)` : esc(open.name);
+      return `${tile}<div><div class="lib-name lib-line${code ? ' lib-code' : ''}">${name}</div><div class="lib-sub lib-line sp">${code ? '// ' : ''}${esc(collLine(open))}</div></div>${mark}`;
     }
     const sub = !sp.app ? 'web player' : X.status?.connected ? 'connected' : 'not connected';
     return `<i class="lib-cover lib-spot" aria-hidden="true">${logo()}</i><div><div class="lib-name lib-line">spotify</div><div class="lib-sub lib-line sp">${esc(sub)}</div></div>`;
@@ -355,7 +362,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     }
     if (row.kind === 'strack') {
       const t = row.track, on = spPlaying(t, now), by = row.coll.kind === 'album' ? '' : t.by; // (an album's songs are all by its artist)
-      return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : two(row.index + 1)}</span><span class="t">${esc(t.name)}${by ? ` <em>· ${esc(by)}</em>` : ''}</span><span class="d">${fmtDuration(t.ms)}</span></div>`;
+      const title = half() ? `"${two(row.index + 1)} ${esc(t.name)}",` : esc(t.name);
+      return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : half() ? '' : two(row.index + 1)}</span><span class="t">${on && half() ? `<u>${title}</u>` : title}${by ? ` <em>${half() ? '// ' : '· '}${esc(by)}</em>` : ''}</span><span class="d">${fmtDuration(t.ms)}</span></div>`;
     }
     if (row.kind === 'more') {
       const l = row.list === 'tracks' ? (row.coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(row.coll)]) : X.lists[row.list];
@@ -375,22 +383,40 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // a cover is asked for (three at a time) when its row comes into view; what main gives is Spotify's picture as a data: address
   const coverWait = [];
   let coverRunning = 0;
-  function showReal(el, data) {
-    if (el.firstElementChild?.getAttribute('src') === data) return;
-    const im = doc.createElement('img');
-    im.alt = '';
-    im.draggable = false;
-    im.src = data;
-    el.replaceChildren(im);
+  function showSpCover(el, data) {
+    if (!el.querySelector('img')) {
+      const im = doc.createElement('img');
+      im.alt = ''; im.draggable = false; im.src = data; el.append(im);
+    }
+    glyphMask(data, COVER_COLS, COVER_ROWS, COVER_PX, COVER_PX).then((url) => {
+      if (el.isConnected && el.firstElementChild?.tagName === 'B' && X.covers.get(el.dataset.sp) === data)
+        el.firstElementChild.style.setProperty('--mask', `url("${url}")`);
+    }, () => {});
   }
   // The open collection's cover, big, at the right of a wide window (CSS shows it only there): Spotify's biggest picture of it (640 pixels),
-  // asked for once the collection is open, as the rows' are; till it comes (or if it does not), the one its row already has.
+  // asked for once the collection is open, as the rows' are; till it comes (or if it does not), the one its row already has. With the
+  // cursor on one of its songs, that song's own cover instead (its album's: a playlist's mosaic is four other albums), the
+  // collection's staying till the song's comes in.
+  const cursorSong = () => { const row = S.section === 'spotify' ? rows()[cursor()] : null; return row?.kind === 'strack' ? row.track : null; };
+  // And it follows whichever changed last, the song or the cursor: a new song playing shows its own cover (what Spotify or Music
+  // gave for it), till the cursor moves to another row or another collection opens (Colin: "we want album art to update").
+  const playingArt = () => (X.bigFrom === 'playing' && host.playing().art) || '';
+  function spArtSrc() {
+    const now = playingArt();
+    if (now) return now;
+    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll ? cursorSong() : null;
+    const want = song ? song.big || song.cover : coll?.big || coll?.cover;
+    return (want && X.covers.get(want)) || (song?.cover && X.covers.get(song.cover)) || ((coll?.big || coll?.cover) && X.covers.get(coll.big || coll.cover)) || (coll?.cover && X.covers.get(coll.cover));
+  }
   function paintBig() {
-    if (half()) { paintBigMusic(); return; }
+    if (S.section === 'music' && half()) { paintBigMusic(); return; }
     if (S.section === 'music') { parts.big.replaceChildren(); return; }
-    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, want = coll?.big || coll?.cover;
-    if (want && !X.covers.has(want) && !X.coverTried.has(want)) { X.coverTried.add(want); coverWait.push(want); pumpCovers(); }
-    const data = (want && X.covers.get(want)) || (coll?.cover && X.covers.get(coll.cover));
+    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll ? cursorSong() : null;
+    const want = song ? song.big || song.cover : coll?.big || coll?.cover;
+    if (want && !playingArt() && !X.covers.has(want) && !X.coverTried.has(want)) { X.coverTried.add(want); coverWait.push(want); pumpCovers(); }
+    const data = spArtSrc();
+    if (S.section === 'spotify') paintArt();
+    if (!half()) { parts.big.replaceChildren(); return; }
     if (!data) { parts.big.replaceChildren(); return; }
     if (parts.big.firstElementChild?.getAttribute('src') === data) return;
     const im = doc.createElement('img');
@@ -402,7 +428,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   function spCoverOn(el) {
     if (!el.isConnected || !X.status?.connected) return; // (a row seen after it was painted over, or after a disconnect: nothing is asked)
     const url = el.dataset.sp;
-    if (X.covers.has(url)) { showReal(el, X.covers.get(url)); return; }
+    if (X.covers.has(url)) { showSpCover(el, X.covers.get(url)); return; }
     if (X.coverTried.has(url)) return; // (on its way, or it did not come: not asked again till Spotify is disconnected)
     X.coverTried.add(url);
     coverWait.push(url);
@@ -416,7 +442,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
         if (gen !== X.gen || typeof data !== 'string') return;
         X.covers.set(url, data);
         while (X.covers.size > 150) X.covers.delete(X.covers.keys().next().value);
-        for (const el of root.querySelectorAll('[data-sp]')) if (el.dataset.sp === url) showReal(el, data);
+        for (const el of root.querySelectorAll('[data-sp]')) if (el.dataset.sp === url) showSpCover(el, data);
         paintBig();
       }, () => {}).finally(() => { coverRunning--; pumpCovers(); });
     }
@@ -575,6 +601,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     X.open = change.open;
     S.cursor.spotify = 0;
     X.cursorKey = change.at || '';
+    X.bigFrom = 'cursor'; // (a collection opened or closed by hand: its cover, till the next song)
     const coll = spOpenColl();
     if (coll) { X.first = collKey(coll); if (spSongsIn(coll)) spFirst(); else spSongs(coll); }
     spRepaint();
@@ -660,7 +687,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
 
   // the row the cursor is on is outlined (the one playing is the inverted one); in view
   function markCursor(i = cursor(), scroll = true) {
-    if (S.section === 'spotify') X.cursorKey = spotifyKey(rows()[i]);
+    if (S.section === 'spotify') { const key = spotifyKey(rows()[i]); if (key !== X.cursorKey) X.bigFrom = 'cursor'; X.cursorKey = key; paintBig(); }
     for (const el of parts.list.querySelectorAll('.cursor')) el.classList.remove('cursor');
     const el = parts.list.querySelector(`[data-i="${i}"]`);
     el?.classList.add('cursor');
@@ -671,7 +698,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const k = host.key();
     const more = S.section === 'music' ? '←→ fold' : S.section === 'scenes' ? '←→ move' : S.section === 'spotify' ? '←→ open' : '';
     const items = S.find ? ['esc ends find', '↑↓ pick', 'enter plays', 'a click on an album opens it', `${k} library`]
-      : [`${k} library`, 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? [] : ['shift+R repeat', 'shift+S shuffle']), ...(S.section === 'music' ? ['shift+C cover'] : [])];
+      : [`${k} library`, 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? [] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() ? ['shift+C cover'] : [])];
     parts.keys.innerHTML = items.map((t, i) => `<span>${i ? ' · ' : ''}${esc(t)}</span>`).join('');
   }
 
@@ -697,9 +724,13 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   }
   function update() {
     if (!S.open) return;
+    if (S.lookSig !== host.coverLook?.()) { paintAll(); return; } // (a scene or Ctrl+K changed the shared look)
     tickClock();
     const p = host.playing(), nowSig = `${p.id}|${p.ms}|${p.stoppable}`;
     if (nowSig !== S.nowSig) { S.nowSig = nowSig; paintNow(); }
+    // (a new song, or its cover coming in a moment after its title: the spotify tab's big cover goes to it)
+    const artSig = `${p.id}|${(p.art || '').length}`;
+    if (artSig !== X.artSig) { const was = X.artSig; X.artSig = artSig; if (was !== undefined && p.art) { X.bigFrom = 'playing'; if (S.section === 'spotify') paintBig(); } }
     if (modes() !== S.modesSig) paintMeta(); // (changed from Ctrl+K)
     if (JSON.stringify(host.recent?.() || []) !== S.shelfSig) paintShelf(); // (an album played: first on the shelf)
     if (!S.typing && listSig() !== S.listSig) {
@@ -989,7 +1020,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     else if (k === 'Tab') take(() => setSection(nextSection(S.section, e.shiftKey ? -1 : 1)));
     else if (e.shiftKey && k.toLowerCase() === 'r') take(cycleRepeat); // (Shift+R and Shift+S: the queue's modes; R and S stay the page's)
     else if (e.shiftKey && k.toLowerCase() === 's') take(toggleShuffle);
-    else if (e.shiftKey && k.toLowerCase() === 'c' && S.section === 'music') take(toggleCover);
+    else if (e.shiftKey && k.toLowerCase() === 'c' && coverSection()) take(toggleCover);
     else if (scenes && (k === 'Delete' || k === 'Backspace')) take(deleteKey);
     else if (scenes && k === 'F2') take(renameKey);
     // anything else is the page's own: T, Y, V and the rest still work over the library

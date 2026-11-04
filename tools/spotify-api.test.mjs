@@ -61,7 +61,7 @@ test('saved albums and an album\'s tracks; a playlist\'s songs from /items (Spot
     const web = createWebApi({ accessToken: tokens().accessToken, api: f.api });
     assert.deepEqual((await web.list({ list: 'albums' })).items, [{ kind: 'album', id: ALBUM, name: '(III)', by: 'Crystal Castles', count: 12, cover: 'u', big: 'u', uri: `spotify:album:${ALBUM}` }]);
     const tracks = await web.list({ list: 'album', id: ALBUM, offset: 50 });
-    assert.deepEqual(tracks.items[0], { id: '1'.padStart(22, 'T'), name: 'song 1', by: 'a, b', ms: 1000, uri: TRACK(1), cover: '' });
+    assert.deepEqual(tracks.items[0], { id: '1'.padStart(22, 'T'), name: 'song 1', by: 'a, b', ms: 1000, uri: TRACK(1), cover: '', big: '' });
     assert.equal(f.seen[1].query.offset, '50');
     assert.deepEqual((await web.list({ list: 'playlist', id: PLAYLIST })).items.map((t) => t.name), ['song 3', 'song 6']);
   } finally { await f.close(); }

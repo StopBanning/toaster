@@ -12,14 +12,15 @@
 //   churn   how many times a minute the written kick line changes after it first appears
 import fs from 'node:fs';
 import path from 'node:path';
-import { REFS, KICKREF } from './run.mjs';
+import { REFS, KICKREF, KICKEXTRA } from './run.mjs';
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3) : d; };
 const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 const cache = new Map();
 const ref = (kind, key) => {
   const id = kind + ':' + key;
   if (!cache.has(id)) {
-    const file = kind === 'key' ? path.join(REFS, 'downbeat-key/key', key + '.json') : kind === 'truth' ? path.join(REFS, 'gt/truth', key + '.json') : path.join(KICKREF, key + '.json');
+    const file = kind === 'key' ? path.join(REFS, 'downbeat-key/key', key + '.json') : kind === 'truth' ? path.join(REFS, 'gt/truth', key + '.json')
+      : [KICKREF, ...(KICKEXTRA || [])].map((d) => path.join(d, key + '.json')).find((f) => fs.existsSync(f)) || path.join(KICKREF, key + '.json');
     cache.set(id, fs.existsSync(file) ? read(file) : null);
   }
   return cache.get(id);

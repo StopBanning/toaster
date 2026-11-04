@@ -468,6 +468,20 @@ if (mac) {
     serving.requests.push(url.pathname);
     const body = serving.zip, half = body.subarray(0, body.length >> 1);
     if (serving.status !== 200) { res.writeHead(serving.status); res.end('no'); return; }
+    if (serving.mode === 'slow') {
+      res.writeHead(200, { 'Content-Length': body.length });
+      let offset = 0;
+      const send = () => {
+        if (res.destroyed) return;
+        const end = Math.min(body.length, offset + Math.ceil(body.length / 5));
+        res.write(body.subarray(offset, end));
+        offset = end;
+        if (offset === body.length) res.end();
+        else setTimeout(send, 240);
+      };
+      send();
+      return;
+    }
     if (serving.mode === 'whole') { res.writeHead(200, { 'Content-Length': body.length }); res.end(body); return; }
     // (breaking: half the body, then the connection is cut, or, with no way to tell, closed as if that were all)
     if (serving.mode === 'silent') { res.socket.write('HTTP/1.0 200 OK\r\n\r\n'); res.socket.write(half); setTimeout(() => res.socket.end(), 20); return; }
@@ -489,9 +503,9 @@ if (mac) {
   try { update = require('../update.js'); } finally { Module._load = load; }
 }
 
-function releaseOf(zip, { version = '0.4.30', sum = sha(zip), digest = `sha256:${sum}`, mac: withMac = true, win = false } = {}) {
+function releaseOf(zip, { version = '0.4.30', sum = sha(zip), digest = `sha256:${sum}`, mac: withMac = true, win = false, arches = [] } = {}) {
   const asset = (name) => ({ name, browser_download_url: `${base}/dl/${name}`, size: zip.length, ...(digest ? { digest } : {}) });
-  return { tag_name: `v${version}`, html_url: `${base}/page`, draft: false, prerelease: false, assets: [...(withMac ? [asset(`Toaster-${version}-mac-universal.zip`)] : []), ...(win ? [asset(`Toaster-${version}-win-x64.zip`)] : [])] };
+  return { tag_name: `v${version}`, html_url: `${base}/page`, draft: false, prerelease: false, assets: [...(withMac ? [asset(`Toaster-${version}-mac-universal.zip`), ...arches.map((arch) => asset(`Toaster-${version}-mac-${arch}.zip`))] : []), ...(win ? [asset(`Toaster-${version}-win-x64.zip`)] : [])] };
 }
 
 // A fake installed Toaster (0.4.29) in a folder of its own, with a temp folder and a home for the Trash; the world says so.
@@ -535,6 +549,43 @@ async function failsWith(t, expected) {
   assert.deepEqual(fs.readdirSync(t.trash), []);
   return progress;
 }
+
+test('each running Mac architecture chooses its own zip, with universal as the old-release fallback', { skip: !mac }, async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(process, 'arch');
+  try {
+    for (const arch of ['arm64', 'x64']) {
+      Object.defineProperty(process, 'arch', { value: arch });
+      for (const available of [true, false]) {
+        const t = rig(`choose-${arch}-${available}`, { release: { arches: available ? ['arm64', 'x64'] : [arch === 'arm64' ? 'x64' : 'arm64'] } });
+        holdScript();
+        assert.equal((await update.check()).canInstall, true);
+        await withHome(t.home, () => update.install(() => {}));
+        assert.deepEqual(serving.requests, [`/dl/Toaster-0.4.30-mac-${available ? arch : 'universal'}.zip`]);
+      }
+    }
+  } finally { Object.defineProperty(process, 'arch', descriptor); }
+});
+
+test('slow downloads report byte counts in order several times a second, from zero to the full size', { skip: !mac }, async () => {
+  const t = rig('slow-progress');
+  serving.mode = 'slow';
+  holdScript();
+  await update.check();
+  const events = [];
+  await withHome(t.home, () => update.install((p) => events.push({ ...p, at: Date.now() })));
+  assert.equal(events[0].downloaded, 0);
+  assert.equal(events[0].fraction, 0);
+  assert.ok(events.length >= 5, JSON.stringify(events));
+  for (let i = 0; i < events.length; i++) {
+    const p = events[i];
+    assert.equal(p.total, t.zip.length);
+    assert.equal(p.fraction, p.downloaded / p.total);
+    if (i) assert.ok(p.downloaded >= events[i - 1].downloaded);
+    if (i && i < events.length - 1) assert.ok(p.at - events[i - 1].at >= 180, 'throttled to about 5 Hz');
+  }
+  assert.equal(events.at(-1).downloaded, t.zip.length);
+  assert.equal(events.at(-1).fraction, 1);
+});
 
 test('an update on offer: a newer Mac zip with its digest, in a folder the app can replace itself in', { skip: !mac }, async () => {
   const t = rig('offer');
@@ -581,7 +632,7 @@ test('the zip is downloaded with its progress, checked against the digest, unpac
   const progress = [];
   await withHome(t.home, () => update.install((p) => progress.push(p)));
   assert.deepEqual(serving.requests, ['/dl/Toaster-0.4.30-mac-universal.zip']);
-  assert.ok(progress.length > 0 && progress.every((p, i) => i === 0 || p >= progress[i - 1]) && progress.at(-1) === 1, `progress ends at 1: ${progress.at(-1)}`);
+  assert.ok(progress.length > 0 && progress.every((p, i) => i === 0 || p.downloaded >= progress[i - 1].downloaded) && progress.at(-1).fraction === 1, `progress ends at 1: ${progress.at(-1)}`);
   // the new copy is unpacked in a hidden folder beside the app, checked, and the zip is gone
   const stage = path.join(t.apps, '.Toaster-update-0.4.30');
   assert.deepEqual(fs.readdirSync(t.apps).sort(), ['.Toaster-update-0.4.30', 'Toaster.app']);
@@ -684,7 +735,7 @@ test('a connection that drops halfway is reported as that, and nothing is left',
     await update.check();
     serving.mode = mode;
     const progress = await failsWith(t, { message: 'the connection dropped partway through the download' });
-    assert.ok(progress.length > 0 && progress.at(-1) < 1, `${mode}: it was cut partway: ${progress.at(-1)}`);
+    assert.ok(progress.length > 0 && progress.at(-1).fraction < 1, `${mode}: it was cut partway: ${progress.at(-1)}`);
   }
 });
 
@@ -825,4 +876,59 @@ test('the Windows check is as it was: the Windows zip, offered where a folder ca
     Object.defineProperty(process, 'platform', platform);
     process.execPath = execPath;
   }
+});
+
+
+test('Windows downloads send the same ordered byte progress, and dropped connections stay readable', { skip: !mac }, async () => {
+  const dir = folder('win-progress'), exeDir = path.join(dir, 'Toaster-win32-x64');
+  fs.mkdirSync(exeDir);
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform'), execPath = process.execPath;
+  const zip = crypto.randomBytes(200000);
+  try {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    process.execPath = path.join(exeDir, 'Toaster.exe');
+    Object.assign(world, { temp: dir, version: '0.4.29', exe: process.execPath });
+    spawnHook = (cmd, args) => {
+      const child = new EventEmitter();
+      child.unref = () => {};
+      if (cmd.endsWith('tar.exe')) {
+        const fresh = path.join(args.at(-1), 'Toaster-win32-x64');
+        fs.mkdirSync(path.join(fresh, 'resources'), { recursive: true });
+        fs.writeFileSync(path.join(fresh, 'Toaster.exe'), 'fake');
+        fs.writeFileSync(path.join(fresh, 'resources', 'app.asar'), 'fake');
+        setImmediate(() => child.emit('close', 0));
+      } else assert.equal(cmd, process.env.ComSpec || 'cmd.exe');
+      return child; // neither Windows tar nor the swap is run on this Mac
+    };
+    Object.assign(serving, { zip, release: releaseOf(zip, { mac: false, win: true }), mode: 'slow', status: 200, requests: [] });
+    assert.equal((await update.check()).canInstall, true);
+    const events = [];
+    await update.install((p) => events.push(p));
+    assert.deepEqual(serving.requests, ['/dl/Toaster-0.4.30-win-x64.zip']);
+    assert.ok(events.length >= 5);
+    assert.equal(events[0].downloaded, 0);
+    assert.equal(events.at(-1).downloaded, zip.length);
+    assert.equal(events.at(-1).fraction, 1);
+    assert.ok(events.every((p, i) => p.total === zip.length && (!i || p.downloaded >= events[i - 1].downloaded)));
+    serving.mode = 'chunked';
+    await assert.rejects(update.install(() => {}), { message: 'the connection dropped partway through the download' });
+    assert.equal(fs.existsSync(path.join(dir, 'Toaster-update-0.4.30')), false);
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    process.execPath = execPath;
+    spawnHook = null;
+  }
+});
+
+test('a download with no listed size still reports bytes with an unknown total', { skip: !mac }, async () => {
+  const t = rig('unknown-total');
+  delete serving.release.assets[0].size;
+  serving.mode = 'slow';
+  holdScript();
+  await update.check();
+  const events = [];
+  await withHome(t.home, () => update.install((p) => events.push(p)));
+  assert.ok(events.length >= 5);
+  assert.equal(events.at(-1).downloaded, t.zip.length);
+  assert.ok(events.every((p) => p.total === null && p.fraction === null));
 });

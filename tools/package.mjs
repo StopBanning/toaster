@@ -85,12 +85,15 @@ const args = [
 ];
 
 if (platform === 'darwin') {
-  args.push('--arch=universal', '--icon=build/icon.icns', '--extend-info=build/Info.plist', '--app-category=public.app-category.music');
+  args.push('--icon=build/icon.icns', '--extend-info=build/Info.plist', '--app-category=public.app-category.music');
 } else {
-  args.push('--arch=x64', '--icon=build/icon.ico');
+  args.push('--icon=build/icon.ico');
 }
 
-run(process.execPath, [packager, ...args]);
+// Build separate Electron runtimes for smaller automatic updates; keep universal for manual downloads.
+for (const arch of platform === 'darwin' ? ['arm64', 'x64', 'universal'] : ['x64']) {
+  run(process.execPath, [packager, ...args, `--arch=${arch}`]);
+}
 
 // iconutil wants a folder of sizes. Built beside the png, and not shipped on its own:
 // the packager takes the .icns.

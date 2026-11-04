@@ -20,6 +20,7 @@ const EARTH_SUMS = {
   'earth-city-lights': 'c1e4342f92a1d8ca8d722b217f107db4a10dbea36fbd2cacc3d6cd8129ec1cf5',
   'earth-dawn': 'ca3f6b0f8a84aed35a11d5fb6caebbd4eb2b9eec3f65d762d721f41995296a8a',
   'earth-day': '40d0fd820153b5008e1a0bbb8d9b35e5b732bf0f2aa81758b1764c3a39c32672',
+  'backrooms-walk': '3ce8b00f0de2d739ca42114def8644715eeaa57b23e5d00f3dce24f40814ca26', // (the backrooms, V: our own walk, renderer/backrooms.js)
 };
 const EARTH_BASE = process.env.TOASTER_MEDIA_BASE || 'https://toaster.locust.lol/media/';
 // Looks from outside (U, docs/looks-from-shaders.md): the shaders that ship in renderer/looks and the ones in the
@@ -627,8 +628,7 @@ function setUpIpc() {
   // first) and the swap script takes over. Or the release's page, in the browser.
   ipcMain.handle('update:check', () => updates.check().catch(() => null));
   ipcMain.handle('update:install', async () => {
-    let last = -1;
-    await updates.install((p) => { if (p - last >= 0.01 || p >= 1) { last = p; win?.webContents.send('update:progress', p); } });
+    await updates.install((p) => win?.webContents.send('update:progress', p));
     setTimeout(() => win?.close(), 300);
     return true;
   });

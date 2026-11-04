@@ -231,11 +231,11 @@ test('where the queue was, as saved: a track\'s path and the seconds into it, el
 
 // ---------------------------------------------------------------- scenes
 
-const DOMAINS = { visual: ['scenery', 'worlds', 'chrome', 'spaghetti', 'off', 'warp'], theme: ['bluescreen', 'whitescreen', 'dynamic'], blockLook: ['dominoes', 'game', 'blocks'], gameScreens: ['os', 'neon'], sceneryScene: ['auto', 'koi', 'lake'], blocks: true, vertical: true };
-const SETUP = { visual: 'worlds', sceneryScene: 'auto', blocks: true, blockLook: 'game', gameScreens: 'neon', theme: 'dynamic', codeHidden: false, vertical: false };
+const DOMAINS = { visual: ['scenery', 'worlds', 'chrome', 'spaghetti', 'off', 'warp'], theme: ['bluescreen', 'whitescreen', 'dynamic'], blockLook: ['dominoes', 'game', 'blocks'], gameScreens: ['os', 'neon'], sceneryScene: ['auto', 'koi', 'lake'], blocks: true, vertical: true, libCover: ['chars', 'photo'] };
+const SETUP = { visual: 'worlds', sceneryScene: 'auto', blocks: true, blockLook: 'game', gameScreens: 'neon', theme: 'dynamic', codeHidden: false, vertical: false, libCover: 'chars' };
 
-test('a scene is a setup in the shape of the presets: the settings they use and no others', () => {
-  assert.deepEqual([...L.SETUP_KEYS].sort(), ['blockLook', 'blocks', 'codeHidden', 'gameScreens', 'sceneryScene', 'theme', 'vertical', 'visual']);
+test('a scene holds the preset settings and the shared library cover look', () => {
+  assert.deepEqual([...L.SETUP_KEYS].sort(), ['blockLook', 'blocks', 'codeHidden', 'gameScreens', 'libCover', 'sceneryScene', 'theme', 'vertical', 'visual']);
   for (const p of PRESETS) for (const k of Object.keys(p.settings)) assert.ok(L.SETUP_KEYS.includes(k), `${p.id}: ${k}`);
   // from the app's current state, which holds much more
   assert.deepEqual(L.setupOf({ ...SETUP, source: 'file', camera: true, recording: true, volume: 3, syncTrim: 20 }), SETUP);
@@ -294,6 +294,25 @@ test('a saved scene applies as a preset does: through the setters, for the setti
   assert.equal(L.sceneIsOn(scene, current), true);
   assert.equal(L.sceneIsOn(scene, { ...current, theme: 'pink' }), false);
   assert.equal(await applyPreset(scene, current, setters), false, 'again, nothing to change');
+});
+
+test('both cover looks survive a saved scene round trip and restore through the shared setter; older scenes leave the look alone', async () => {
+  for (const libCover of ['chars', 'photo']) {
+    const settings = L.setupOf({ ...SETUP, libCover });
+    const [scene] = L.readScenes(JSON.parse(JSON.stringify(L.saveScene([], settings, 'cover'))), DOMAINS);
+    assert.equal(scene.settings.libCover, libCover);
+    const current = { ...SETUP, libCover: libCover === 'chars' ? 'photo' : 'chars' }, calls = [];
+    const setters = { libCover: (look) => { calls.push(look); current.libCover = look; } };
+    assert.equal(await applyPreset(scene, current, setters), true);
+    assert.deepEqual(calls, [libCover]);
+    assert.equal(L.sceneIsOn(scene, current), true);
+  }
+  const { libCover, ...oldSettings } = SETUP;
+  const [old] = L.readScenes(L.saveScene([], oldSettings, 'old'), DOMAINS);
+  assert.deepEqual(old.settings, oldSettings);
+  assert.equal(await applyPreset(old, { ...oldSettings, libCover: 'photo' }, {}), false);
+  const [bad] = L.readScenes(L.saveScene([], { ...SETUP, libCover: 'other' }, 'bad'), DOMAINS);
+  assert.equal('libCover' in bad.settings, false, 'invalid cover settings are dropped');
 });
 
 test('a scene\'s picture is the scene it shows, or the background\'s own, and the picture is there', () => {

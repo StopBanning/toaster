@@ -72,7 +72,9 @@ async function check() {
   const version = String(rel.tag_name || '').replace(/^v/, ''), current = app.getVersion();
   if (rel.draft || rel.prerelease || !/^\d+(\.\d+)*$/.test(version) || !newer(version, current)) return null;
   const mac = process.platform === 'darwin';
-  const zip = (rel.assets || []).find((a) => a.name === `Toaster-${version}-${mac ? 'mac-universal' : 'win-x64'}.zip`);
+  const assets = rel.assets || [];
+  const asset = (target) => assets.find((a) => a.name === `Toaster-${version}-${target}.zip`);
+  const zip = mac ? asset(`mac-${process.arch}`) || asset('mac-universal') : asset('win-x64');
   const sha = /^sha256:([0-9a-f]{64})$/.exec(zip?.digest || '')?.[1];
   const appDir = path.dirname(process.execPath);
   found = { version, page: String(rel.html_url || `https://github.com/${REPO}/releases/latest`), zip: zip?.browser_download_url, size: zip?.size, sha, appDir };
@@ -105,16 +107,22 @@ function unpack(file, stage) {
 }
 
 // The release's zip, fetched into file and checked as it arrives (the same on both systems): resolves once all of it is on
-// disk and its SHA-256 is the one GitHub lists for it, or throws with why (the file is removed). progress(fraction) as the
+// disk and its SHA-256 is the one GitHub lists for it, or throws with why (the file is removed). progress({ downloaded, total, fraction }) as the
 // zip arrives.
 async function fetchZip(f, file, progress) {
   const download = new AbortController(), hash = crypto.createHash('sha256');
   // A server that stops sending (before the headers or mid-body) would otherwise leave the download
   // waiting forever: with nothing for STALL_MS, it's given up.
-  let stalled = false, watchdog, got = 0;
+  let stalled = false, watchdog, got = 0, last = 0;
+  const total = Number.isSafeInteger(f.size) && f.size > 0 ? f.size : null;
+  const report = () => {
+    last = Date.now();
+    progress({ downloaded: got, total, fraction: total ? Math.min(1, got / total) : null });
+  };
   const alive = () => { clearTimeout(watchdog); watchdog = setTimeout(() => { stalled = true; download.abort(); }, STALL_MS); };
   try {
     alive();
+    report();
     // (GitHub sends a release's download on to its CDN: net.fetch follows that itself; a 'manual'
     // redirect throws in Electron, so only the release's own URL is checked, above)
     const res = await net.fetch(f.zip, { signal: download.signal, headers: { 'User-Agent': `Toaster/${app.getVersion()}` } });
@@ -123,7 +131,7 @@ async function fetchZip(f, file, progress) {
       alive();
       hash.update(chunk);
       got += chunk.length;
-      try { if (f.size) progress(got / f.size); done(null, chunk); } catch (err) { done(err); }
+      try { if (Date.now() - last >= 200) report(); done(null, chunk); } catch (err) { done(err); }
     } });
     // The pipeline observes open, write and finish errors, including while waiting for drain.
     // Destroying its readable cancels the response, so a failed disk never leaves a download running.
@@ -142,6 +150,7 @@ async function fetchZip(f, file, progress) {
     fs.rmSync(file, { force: true });
     throw new Error(short ? 'the download was cut short' : "the download didn't match GitHub's checksum");
   }
+  report();
 }
 
 // What the runtime says when a connection drops is cryptic ("terminated" from Node's fetch, "net::ERR_..." from Electron's):
@@ -157,7 +166,7 @@ const saving = (err) => (err?.syscall && /^E[A-Z]+$/.test(err.code || '') ? new 
 
 // Downloads, checks and unpacks the release found, then hands over to the swap script; resolves
 // once the script is waiting (the caller then closes the window), or throws with why not.
-// progress(fraction) as the zip arrives.
+// progress({ downloaded, total, fraction }) as the zip arrives.
 function install(progress) {
   return process.platform === 'darwin' ? installMac(progress) : installWindows(progress);
 }

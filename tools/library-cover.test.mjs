@@ -1,6 +1,6 @@
 // The library's two cover looks (Colin, Nov 2: "a toggle either full ascii or half ascii like that", after golden's screens): full, the
 // cover all in characters (the kept look, the default), and half, the cover itself in a thin frame with the characters faint around it and
-// the album and its tracks written as code. Shift+C in your music, the button beside find, and Ctrl+K's "library: cover" switch them; the
+// the album and its tracks written as code. Shift+C in your music or Spotify, the button beside find, and Ctrl+K's "library: cover" switch them; the
 // choice is kept with the other settings. The page itself, on a real copy of the app, is tools/library-check.mjs's.
 // Sources are read with LF line endings (a Windows checkout's CRLF would otherwise turn every \n these patterns look for into two characters).
 import fs from 'node:fs';
@@ -19,13 +19,14 @@ test('the look is a setting: full (characters) by default, half only when chosen
   assert.match(app, /id: 'library:cover', name: 'library: cover, full or half ascii'/);
 });
 
-test('Shift+C, in your music only, and the button beside find switch it; the keys line says so', () => {
-  assert.match(panel, /else if \(e\.shiftKey && k\.toLowerCase\(\) === 'c' && S\.section === 'music'\) take\(toggleCover\);/);
+test('Shift+C, in your music and Spotify, and the button beside find switch it; the keys line says so', () => {
+  assert.match(panel, /else if \(e\.shiftKey && k\.toLowerCase\(\) === 'c' && coverSection\(\)\) take\(toggleCover\);/);
   assert.match(panel, /<button type="button" class="lib-coverbtn"/);
   assert.match(panel, /else if \(b\.classList\.contains\('lib-coverbtn'\)\) \{ toggleCover\(\); b\.blur\(\); \}/);
-  assert.match(panel, /b\.hidden = S\.section !== 'music';/);
+  assert.match(panel, /b\.hidden = !coverSection\(\);/);
   assert.match(panel, /\['shift\+C cover'\]/);
-  assert.match(panel, /const half = \(\) => S\.section === 'music' && host\.coverLook\?\.\(\) === 'photo';/, 'the half look is your music\'s; spotify keeps its own covers');
+  assert.match(panel, /const coverSection = \(\) => S\.section === 'music' \|\| S\.section === 'spotify';/);
+  assert.match(panel, /const half = \(\) => coverSection\(\) && host\.coverLook\?\.\(\) === 'photo';/);
 });
 
 test('the half look writes the album and its tracks as code: x = x.Artist("Album"), "01 Title", // m:ss', () => {
@@ -41,7 +42,7 @@ test('the half look\'s cover is the album\'s own at full size (the scan keeps 16
   assert.match(app, /const found = await embeddedCover\(await librarySrc\.file\(t\)\);/);
   assert.match(panel, /return typeof full === 'string' \? full : S\.covers\[id\] \? `data:image\/jpeg;base64,\$\{S\.covers\[id\]\}` : '';/);
   assert.match(panel, /while \(fullCovers\.size > 12\)/, 'a dozen kept at a time, the rest let go');
-  assert.match(panel, /if \(half\(\)\) \{ paintBigMusic\(\); return; \}/);
+  assert.match(panel, /if \(S\.section === 'music' && half\(\)\) \{ paintBigMusic\(\); return; \}/);
 });
 
 test('its colours are the theme\'s: the frame, the gap and the faint ring are tokens, the characters around only fainter', () => {
