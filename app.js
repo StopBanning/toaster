@@ -271,7 +271,7 @@ function loadSettings() {
   state.playerBar = readPlayerBar(state.playerBar); // (and none of these two: the bar on, and out of recordings)
   state.playerRec = readPlayerRec(state.playerRec);
   // (the library's: an older profile has no scenes, and as its stations only the last one played)
-  state.userScenes = readScenes(state.userScenes, { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true, libCover: ['chars', 'photo'] });
+  state.userScenes = readScenes(state.userScenes, { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true, orb: true, libCover: ['chars', 'photo'] });
   state.radioStations = readStations(state.radioStations, state.radio);
   state.spotifyLinks = readLinks(state.spotifyLinks); // (an older profile has none)
   state.queueRepeat = readRepeat(state.queueRepeat); // (an older profile has neither: the album repeats, in its order)
@@ -1105,9 +1105,10 @@ function nextEarthClip(quiet = false) {
   earthTour.at = nowSec(); // (a view picked by hand starts the tour's count over)
   saveSettings();
 }
-// The Earth moves through its views with the song: the view changes as a breakdown starts (it fades through black in the quiet,
-// so the drop lands on a new view at full light), and after 32 bars on one view it moves on at the next bar line anyway. Not
-// in the first 8 bars of a view, and not before the beat is found. (earthTour: false in the settings keeps the view you picked.)
+// The Earth moves through its views with the song: every 8 bars (a phrase) the next view, its fade to black starting on the
+// phrase's last beat so the new view rises on the downbeat; and a new view as a breakdown starts (it fades through black in the
+// quiet, so the drop lands on it at full light). Not before the beat is found. (earthTour: false in the settings keeps the
+// view you picked.)
 const earthTour = { at: -Infinity, quiet: false };
 function tourEarth(t) {
   if (VISUALS[state.visual] !== 'earth' || state.earthTour === false || !eng.tempo.locked || eng.silent) { earthTour.quiet = false; return; }
@@ -1116,9 +1117,9 @@ function tourEarth(t) {
   const quiet = t - (eng.lastKick ?? -99) > 2 * bar && t - (eng.lastDrop ?? -99) > 4 * bar; // (the code's "// breakdown")
   const startsQuiet = quiet && !earthTour.quiet;
   earthTour.quiet = quiet;
-  if (held < 8 * bar) return;
-  const at = eng.placeAt(t), onOne = !!at && at.step === 0 && Math.abs(at.off) < 0.5;
-  if (startsQuiet || (held >= 32 * bar && onOne && !quiet)) nextEarthClip(true);
+  if (held < 7.5 * bar) return;
+  const at = eng.placeAt(t), onLastBeat = !!at && at.step === 12 && Math.abs(at.off) < 0.5;
+  if (startsQuiet || (onLastBeat && !quiet)) nextEarthClip(true);
 }
 // A, while the chrome is on: the collage over it, off and on
 function toggleCollage() {
@@ -2390,6 +2391,8 @@ const presetSetters = {
   codeHidden: (v) => (v === 'beat' ? setCodeHidden(false, true) : setCodeHidden(v)),
   vertical: async (on) => state.vertical === on || (await toggleLayout()),
   libCover: setLibCover,
+  orb: (on) => setOrb(on),
+  glass: (on) => setGlass(on),
 };
 let presetQueue = Promise.resolve();
 function choosePreset(id) {
@@ -2554,6 +2557,7 @@ const paletteEntries = () => [
   })),
   { id: 'looks:folder', name: 'looks folder', aliases: ['shaders', 'hyprland', 'custom looks'], run: () => (window.nc?.looksOpen ? window.nc.looksOpen() : flashStatus('looks from a folder are in the app')) },
   { id: 'looks:reload', name: 'reload looks', aliases: ['shaders'], run: () => loadLooks(true) },
+  { id: 'glass', name: 'the glass blob (on or off)', aliases: ['glass', 'blob', 'liquid', 'lens'], run: () => { setGlass(!state.glass); flashStatus(state.glass ? 'the glass on' : 'the glass off'); } },
   { id: 'code:glass', name: 'code on glass (on or off)', aliases: ['glass', 'liquid glass', 'acrylic', 'plates'], run: () => setGlassPlates(!state.glassPlates) },
   // the Earth's views, by name
   ...EARTH_CLIPS.map((c) => ({
@@ -2833,6 +2837,14 @@ async function makeLibrary() {
         get app() { return !!spotifyBridge(); },
         links: () => state.spotifyLinks,
         open: spotifyOpen,
+        search: (query) => {
+          const nc = spotifyBridge();
+          if (nc) return nc.spotifySearch(query);
+          if (typeof query !== 'string' || !query.trim() || query.trim().length > 256) throw new Error('Enter a Spotify song or artist (up to 256 characters).');
+          const opened = window.open(`https://open.spotify.com/search/${encodeURIComponent(query.trim())}`, '_blank', 'noopener');
+          // noopener may return null even when the tab opened; do not treat that as a failure.
+          return { opened: !!opened };
+        },
         status: () => spotifyBridge().spotifyStatus(),
         connect: (clientId) => spotifyBridge().spotifyConnect(clientId),
         disconnect: () => spotifyBridge().spotifyDisconnect(),

@@ -283,6 +283,8 @@ const DYN = {
   // bar and turning into the next over its last quarter, to land on the one (Thinking Orbs' shapes)
   shapes() {
     const LAYERS = 5, per = N / LAYERS, pos = new Float32Array(N * 3), lit = new Float32Array(N);
+    // The outlines are fixed. Keep their double-precision samples instead of allocating two arrays per dot per frame.
+    const outlines = OUTLINES.map((outline) => Array.from({ length: per }, (_, q) => outline(q / per)));
     return {
       pos, lit,
       step(t, dt, m) {
@@ -291,7 +293,7 @@ const DYN = {
         for (let L = 0; L < LAYERS; L++) {
           const dz = (L - 2) * 0.05, sc = 3.4 * (1 + (L - 2) * 0.015);
           for (let q = 0; q < per; q++) {
-            const f = q / per, A = OUTLINES[k](f), B = OUTLINES[(k + 1) % 3](f), u = (A[0] + (B[0] - A[0]) * mm) * sc, v = -(A[1] + (B[1] - A[1]) * mm) * sc, i = L * per + q;
+            const A = outlines[k][q], B = outlines[(k + 1) % 3][q], u = (A[0] + (B[0] - A[0]) * mm) * sc, v = -(A[1] + (B[1] - A[1]) * mm) * sc, i = L * per + q;
             // where the orb's turn and tilt bring it round to face you
             pos[i * 3] = cy * u + sp * sy * v - cp * sy * dz; pos[i * 3 + 1] = cp * v + sp * dz; pos[i * 3 + 2] = sy * u - sp * cy * v + cp * cy * dz;
             lit[i] = (L === 2 ? 0.3 : 0) + flash;

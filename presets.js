@@ -6,6 +6,8 @@ export const PRESETS = [
     settings: { visual: 'scenery', blocks: true, blockLook: 'dominoes', codeHidden: false, theme: 'bluescreen' } },
   { id: 'visualizer', name: 'Visualizer', picture: 'thumbs/preset-visualizer.webp',
     settings: { visual: 'scenery', sceneryScene: 'auto', codeHidden: true } },
+  { id: 'orb', name: 'Orb', picture: 'thumbs/preset-orb.webp',
+    settings: { visual: 'off', blocks: false, orb: true, codeHidden: false, theme: 'bluescreen' } },
   { id: 'handheld', name: 'Handheld', picture: 'thumbs/preset-handheld.webp',
     settings: { blocks: true, blockLook: 'game', codeHidden: false, gameScreens: 'os' } },
   { id: 'japan', name: 'Japan edition', picture: 'thumbs/preset-japan.webp',

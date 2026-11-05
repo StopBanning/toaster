@@ -652,6 +652,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // the two readings have agreed, and on what (fluxUpdate). better: the drums' last 12 readings
       // since the lock, the tempo of each that a 3:2 tempo fits better, else 0; drift: how far the drums' sure readings
       // running sit off the tempo held, as shares (tempoUpdate)
+      this.phaseHits = [];
       this.tempo = { bpm: 0, shown: 0, P: 0, t0: 0, n0: 0, locked: false, cand: 0, candN: 0, down: 0, downCand: 0, downN: 0, downHeld: 0, half: null, halfCand: 0, halfN: 0, halfOff: 0, halfSeen: false, halved: false, ringTop: -Infinity, renumber: 0, slotCand: 0, slotN: 0, unclearN: 0, clearAt: -10, fbpm: 0, frun: 0, fseen: [], byFlux: false, drumRun: [], agreeN: 0, agreeBpm: 0, better: [], drift: [], heard: [] };
       this.tonalTiming = []; this.timingTemps = []; this.hypotheses = [];
       this.repAt = -1;
@@ -755,6 +756,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       if (!this.tempo.locked) return;
       this.tempo.t0 += gap;
       for (const o of this.onsets) o.t += gap;
+      for (const o of this.phaseHits) o.t += gap;
       this.resetClocks();
     },
 
@@ -1227,6 +1229,12 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // A hit filed: a kick's drop and pump, the beat it fell on, and its place on the voice's line (w: what it counts for there,
     // see place)
     hit(id, t, s, w) {
+      // The parts the detectors actually filed, for the beat's phase only. Timing onsets also
+      // include bass-like attacks and clicks deliberately retained by the tempo estimator.
+      if (id === 'bd' || id === 'sd') {
+        this.phaseHits.push({ t, id });
+        while (this.phaseHits.length && this.phaseHits[0].t < t - 20) this.phaseHits.shift();
+      }
       let drop = false;
       if (id === 'bd') {
         this.pumpKicks.push(t);
@@ -1950,7 +1958,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           // (and the beats a hit's weight that any step needs, 0.5 to start and 0.3 to keep: weighed only against the busiest
           // step, it held all four through a breakdown with the grid long empty, and lowDecide, which reads the line, took the
           // bass notes on its beats for kicks: the kick line back mid-breakdown, and the drop early)
-          v.four = beats[2] >= Math.max(F.beat[k] * mx, k ? 0.3 : 0.5) && beats[2] > F.over[k] * between && beats[3] >= F.fourth[k] * mx;
+          v.four = beats[2] >= Math.max(F.beat[k] * mx, k ? 0.3 : 0.5) && beats[2] >= F.over[k] * between && beats[3] >= F.fourth[k] * mx;
         } else v.four = false;
         for (let s = 0; s < 16; s++) {
           if (v.back) {
@@ -1959,7 +1967,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           }
           if (v.four && s % 4 === 0) { v.on[s] = true; continue; }
           const onAt = v.four ? F.between[0] : v.back ? 0.85 : v.onAt, offAt = v.four ? F.between[1] : v.back ? 0.65 : v.offAt;
-          if (!v.on[s] && g[s] >= Math.max(onAt * mx, 0.5)) v.on[s] = true;
+          const minG = v.four && !v.shown ? 1.2 : 0.5;
+          if (!v.on[s] && g[s] >= Math.max(onAt * mx, minG)) v.on[s] = true;
           else if (v.on[s] && g[s] < Math.max(offAt * mx, 0.3)) v.on[s] = false;
         }
         // An open hat in a gap of the closed hats' run (8ths with an oh on the and of 4) is the run
@@ -1990,7 +1999,11 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           const sig = v.on.join();
           v.sigN = sig === v.sig ? v.sigN + 1 : 0;
           v.sig = sig;
-          const fresh = id === 'bd' && v.stale && (runOf(v.on) === 4 || (!v.shown && v.on.filter(Boolean).length >= 3));
+          const nOn = v.on.filter(Boolean).length;
+          const fresh = id === 'bd' && v.stale && (
+            (runOf(v.on) === 4 && nOn <= 5) ||
+            (!v.shown && nOn >= 3 && nOn <= 4)
+          );
           if ((v.sigN >= v.holdBars || (v.four && !wasFour) || (v.back && !wasBack) || fresh) && v.on.some(Boolean)) {
             v.shown = v.on.slice();
             v.approx = false;
@@ -2940,13 +2953,39 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       }
       let k = 0;
       for (let q = 1; q < 4; q++) if (slots[q] > slots[k]) k = q;
+      // A clear vote from the confirmed kicks can settle an ambiguity left by the broader
+      // timing attacks. Keep the whole short window: a few syncopated recent hits should not
+      // erase the beat those parts have repeated. Sparse or divided evidence changes nothing.
+      const kicks = [0, 0, 0, 0], snares = [0, 0, 0, 0];
+      const kickBeats = Array.from({ length: 4 }, () => new Set());
+      for (const o of this.phaseHits) {
+        if (o.t < t - span) continue;
+        const x = 4 * (o.t - T.t0) / T.P, n = Math.round(x);
+        if (Math.abs(x - n) > 0.35) continue;
+        const q = ((n % 4) + 4) % 4;
+        if (o.id === 'bd') { kicks[q]++; kickBeats[q].add((n - q) / 4); } else snares[q]++;
+      }
+      const kickTotal = kicks.reduce((a, b) => a + b, 0);
+      let kick = 0;
+      for (let q = 1; q < 4; q++) {
+        if (kicks[q] > kicks[kick]) kick = q;
+      }
+      const kickRunner = Math.max(...kicks.filter((_, q) => q !== kick));
+      const snareTotal = snares.reduce((a, b) => a + b, 0), otherSnare = Math.max(...snares.filter((_, q) => q !== kick));
+      const snareAgainst = snareTotal >= 6 && otherSnare >= 0.6 * snareTotal && otherSnare > 1.5 * snares[kick];
+      const clearKick = !snareAgainst && kickTotal >= 8 && kickBeats[kick].size >= 0.4 * span / T.P && kicks[kick] >= 0.6 * kickTotal && kicks[kick] > 1.5 * kickRunner;
+      const chosen = kick;
+      // This evidence resolves the two competing eighths, not quarter-beat latency/swing.
+      // Leave the existing sixteenth corrections (and their timing) alone.
+      const clear = settled && clearKick && (k === 0 || k === 2) && (chosen === 0 || chosen === 2);
+      if (clear) k = chosen;
       const need = !settled ? 1.15 : k === 2 ? 1.5 : 1.33;
       // (only with enough kicks and claps to go on: a stretch without drums proves nothing)
-      if (k && slots[k] > need * slots[0] && slots[0] + slots[1] + slots[2] + slots[3] >= 8) {
+      if (k && (clear || (slots[k] > need * slots[0] && slots[0] + slots[1] + slots[2] + slots[3] >= 8))) {
         T.slotN = T.slotCand === k ? T.slotN + 1 : 1;
         T.slotCand = k;
       } else T.slotN = 0;
-      if (T.slotN >= (settled ? 12 : 4)) {
+      if (T.slotN >= (clear ? 4 : settled ? 12 : 4)) {
         const shift = k === 3 ? -1 : k; // the nearer way round
         T.t0 += (shift * T.P) / 4;
         this.tape?.shift(shift / 4);
