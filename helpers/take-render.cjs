@@ -34,8 +34,29 @@ function outputSize(css, dpr) {
 
 const seconds = (ms) => (ms >= 1000 ? `${+(ms / 1000).toFixed(1)} s` : `${ms} ms`);
 
-function createTakeRender({ BrowserWindow, ipcMain, encoderPage = ENCODER_PAGE, encoderPreload = ENCODER_PRELOAD }) {
-  let current = null, jobs = 0;
+function createTakeRender({ BrowserWindow, ipcMain, encoderPage = ENCODER_PAGE, encoderPreload = ENCODER_PRELOAD, pendingFile, outputRoot }) {
+  let current = null;
+  // Only files this renderer journaled, under its own output folder, can be removed on the next start.
+  const pending = new Set();
+  const ours = (file) => {
+    if (!outputRoot || typeof file !== 'string' || !path.isAbsolute(file) || !file.endsWith('.mp4.part')) return false;
+    const rel = path.relative(path.resolve(outputRoot), file);
+    return rel && rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel);
+  };
+  const savePending = () => {
+    if (!pendingFile) return;
+    fs.mkdirSync(path.dirname(pendingFile), { recursive: true });
+    fs.writeFileSync(pendingFile + '.tmp', JSON.stringify([...pending]));
+    fs.renameSync(pendingFile + '.tmp', pendingFile);
+  };
+  if (pendingFile) {
+    let files = [];
+    try { const saved = JSON.parse(fs.readFileSync(pendingFile, 'utf8')); if (Array.isArray(saved)) files = saved; } catch { /* first start */ }
+    for (const file of files.filter(ours)) {
+      try { fs.rmSync(file, { force: true }); } catch { pending.add(file); }
+    }
+    savePending();
+  }
 
   async function render(job, { onProgress = () => {}, signal } = {}) {
     if (current) throw new Error('a perfect copy is already being made');
@@ -46,7 +67,7 @@ function createTakeRender({ BrowserWindow, ipcMain, encoderPage = ENCODER_PAGE, 
     const part = out + '.part';
     const run = current = { cancel: null };
     const windows = [], listeners = [];
-    let fd = null, failure = null, done = false, renderWc = null, handled = false;
+    let fd = null, failure = null, done = false, renderWc = null, handled = false, renderSession = null;
     // Whatever went wrong first, said once: every wait below ends with it.
     const waiters = new Set();
     const fail = (why) => { if (!failure && !done) { failure = new Error(why); for (const w of waiters) w.reject(failure); } };
@@ -76,6 +97,7 @@ function createTakeRender({ BrowserWindow, ipcMain, encoderPage = ENCODER_PAGE, 
     };
 
     try {
+      if (pendingFile && ours(part)) { pending.add(part); savePending(); }
       fd = fs.openSync(part, 'w');
       // the encoder page
       const enc = hidden({ preload: encoderPreload });
@@ -98,11 +120,14 @@ function createTakeRender({ BrowserWindow, ipcMain, encoderPage = ENCODER_PAGE, 
       const [codecs] = await startedP;
 
       // the render page, at the live page's CSS size and pixel ratio, in a session of its own (its storage starts empty and goes
-      // when the app does: the take's is put back by its preload, and nothing it writes reaches the live app's). Drawn offscreen:
+      // between jobs: the take's is put back by its preload, and nothing it writes reaches the live app's). Drawn offscreen:
       // a window on a screen is captured at its size times the screen's scale (2 on a Retina display, 1.5 at 150%) and can be no
       // bigger than the screen (a 1920-tall take on a 1080p display came out 1041), where offscreen it is its size, everywhere
-      const win = hidden({ preload: job.page.preload, zoomFactor: job.dpr, partition: `take-render-${++jobs}`, offscreen: true, ...job.page.webPreferences }, { width, height });
+      const win = hidden({ preload: job.page.preload, zoomFactor: job.dpr, partition: 'take-render', offscreen: true, ...job.page.webPreferences }, { width, height });
       const wc = renderWc = win.webContents;
+      renderSession = wc.session;
+      // A failed cleanup from a previous job must not let its settings reach this take.
+      await renderSession?.clearStorageData();
       wc.setFrameRate?.(60); // (an offscreen page still runs its frames: the two after each draw, before it's captured)
       // (the take, for the app page in render mode: what the page was like, asked for before the app starts, then the sound)
       listen('take:meta', (e) => { e.returnValue = e.sender === renderWc && take ? take.meta : null; });
@@ -125,7 +150,12 @@ function createTakeRender({ BrowserWindow, ipcMain, encoderPage = ENCODER_PAGE, 
       if (sound) {
         const step = Math.round(sound.sampleRate * SOUND_BLOCK);
         // (copies, not views: a view would send its whole buffer, the whole take's sound, every time)
-        for (let i = 0; i < samples; i += step) encWc.send('take:sound', stretch(i, step));
+        for (let i = 0; i < samples; i += step) {
+          // One second in flight: a slow encoder cannot accumulate the rest of a long recording in its IPC/Promise queue.
+          const heard = next(encWc, 'take:sound-encoded', null, finishMs, 'the sound encoder stopped answering');
+          encWc.send('take:sound', stretch(i, step));
+          await heard;
+        }
       }
 
       // each frame: drawn, captured, sent; at most IN_FLIGHT waiting to be encoded
@@ -164,6 +194,12 @@ function createTakeRender({ BrowserWindow, ipcMain, encoderPage = ENCODER_PAGE, 
       for (const win of windows) if (!win.isDestroyed()) win.destroy();
       if (fd !== null) try { fs.closeSync(fd); } catch { /* already closed */ }
       if (!done) try { fs.rmSync(part, { force: true }); } catch { /* nothing to remove */ }
+      // Reuse one private in-memory session, with no settings or cached data carried between takes.
+      try { await renderSession?.clearStorageData(); await renderSession?.clearCache?.(); } catch { /* the page may have crashed */ }
+      if (pendingFile && (done || !fs.existsSync(part))) {
+        pending.delete(part);
+        try { savePending(); } catch { /* the next start checks whether the partial still exists */ }
+      }
       current = null;
     }
   }

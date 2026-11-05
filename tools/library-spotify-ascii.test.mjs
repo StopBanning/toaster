@@ -133,3 +133,56 @@ test('the big cover follows whichever changed last: a new song playing shows its
     assert.equal(big(), now.art, 'its cover comes in a moment later: then it shows');
   } finally { panel.close(); globalThis.Image = original; }
 });
+
+test('Spotify search submits, pages, plays a result, clears, and ignores an obsolete response', async () => {
+  const parts = {}, events = {}, root = new El(), requests = [], plays = [], handoffs = [], opens = [];
+  root.querySelector = (sel) => (parts[sel] ||= new El());
+  root.querySelectorAll = () => [];
+  let resolveLate;
+  const song = { id: 'A'.repeat(22), uri: `spotify:track:${'A'.repeat(22)}`, name: '<Song>', by: 'Artist', ms: 9000 };
+  const host = {
+    key: () => 'G', blocked: () => false, live: () => false, playing: () => ({}), repeat: () => 'album', shuffle: () => false,
+    scenes: () => ({ presets: [], user: [] }), stations: () => [], say() {}, fail: assert.fail,
+    spotify: { app: true, links: () => [], status: async () => ({ connected: true }),
+      list: async (request) => { requests.push(request); if (request.q === 'empty') return { items: [], total: 0, more: false, next: 10 }; if (request.q === 'error') throw new Error('Spotify asks Toaster to slow down'); if (request.q === 'late') return new Promise((r) => { resolveLate = r; }); return { items: [song], total: 11, more: !request.offset, next: 10 }; },
+      play: async (request) => { plays.push(request); }, open: async (text, link) => { opens.push([text, link?.uri]); },
+      search: async (query) => { handoffs.push(query); if (query === 'cannot open') throw new Error('Could not open Spotify'); },
+    },
+  };
+  const panel = createLibraryPanel({ document: { body: new El(), createElement: () => new El() },
+    window: { navigator: {}, addEventListener: (k, fn) => { events[k] = fn; }, matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ getPropertyValue: () => '' }) },
+    root, source: { kind: 'web', supported: true, start: async () => false, cached: async () => null }, host });
+  const x = panel.state.sp;
+  x.status = { connected: true }; x.at = Date.now(); x.lists = { playlists: { items: [] }, albums: { items: [] }, liked: { items: [] } };
+  const submit = async (value) => { parts['.lib-sp-query'].value = value; parts['.lib-sp-search'].handlers.submit[0]({ preventDefault() {} }); await settle(); };
+  const enter = () => events.keydown({ key: 'Enter', target: {}, preventDefault() {}, stopImmediatePropagation() {} });
+  try {
+    panel.open('spotify'); await settle();
+    assert.equal(parts['.lib-sp-search'].hidden, false);
+    await submit('Artist');
+    assert.deepEqual(requests[0], { list: 'search', q: 'Artist', offset: 0 });
+    assert.match(parts['.lib-list'].innerHTML, /&lt;Song&gt;/);
+    enter(); await settle(); assert.deepEqual(opens[0], [song.uri, song.uri], 'in the app, a searched song is handed to the Spotify app'); assert.equal(plays.length, 0);
+    events.keydown({ key: 'ArrowDown', target: {}, preventDefault() {}, stopImmediatePropagation() {} });
+    enter(); await settle(); assert.equal(requests[1].offset, 10);
+    assert.equal(panel.rows().length, 1, 'the second page brought the same song again: listed once (and no more row)');
+    assert.match(parts['.lib-sp-status'].textContent, /^1 of 11 results$/);
+    await submit('empty'); assert.match(parts['.lib-list'].innerHTML, /No songs found/);
+    await submit('error'); assert.match(parts['.lib-list'].innerHTML, /Search failed/);
+    assert.match(panel.state.sp.error, /slow down/);
+    await submit('late');
+    parts['.lib-sp-clear'].handlers.click[0]();
+    resolveLate({ items: [song], total: 1, more: false, next: 10 }); await settle();
+    assert.ok(panel.rows().every((row) => row.kind !== 'strack'));
+    x.status = { connected: false }; panel.paintAll();
+    assert.equal(parts['.lib-sp-submit'].textContent, 'search in Spotify ↗');
+    const before = requests.length;
+    await submit('Air & Moon');
+    assert.deepEqual(handoffs, ['Air & Moon']);
+    assert.equal(requests.length, before, 'no API request when disconnected');
+    assert.match(parts['.lib-sp-status'].textContent, /Choose a song there/);
+    await submit('cannot open'); assert.match(x.error, /Could not open/);
+    await submit('  '); assert.equal(handoffs.length, 2, 'empty queries do not open anything');
+    panel.open('music'); assert.equal(parts['.lib-sp-search'].hidden, true);
+  } finally { panel.close(); }
+});

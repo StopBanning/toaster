@@ -326,19 +326,19 @@ test('the fake-Spotify switch takes only a loopback address, maps Spotify\'s pic
 
 // ---------------------------------------------------------------- what the page asks main for
 
-test('the page has seven Spotify calls and nothing else, none of them a token, and main has a handler for each and no more', () => {
+test('the page has eight Spotify calls and nothing else, none of them a token, and main has a handler for each and no more', () => {
   const preload = read('preload.js'), main = read('main.js');
   const calls = [...preload.matchAll(/^ {2}(spotify\w+): \(([^)]*)\) => ipcRenderer\.invoke\('(spotify:[a-z]+)'((?:, \w+)*)\),$/gm)].map((m) => [m[1], m[2], m[3], m[4]]);
   assert.deepEqual(calls, [
     ['spotifyStatus', '', 'spotify:status', ''], ['spotifyConnect', 'clientId', 'spotify:connect', ', clientId'], ['spotifyDisconnect', '', 'spotify:disconnect', ''],
-    ['spotifyList', 'request', 'spotify:list', ', request'], ['spotifyPlay', 'request', 'spotify:play', ', request'], ['spotifyOpen', 'text', 'spotify:open', ', text'], ['spotifyCover', 'url', 'spotify:cover', ', url'],
+    ['spotifyList', 'request', 'spotify:list', ', request'], ['spotifyPlay', 'request', 'spotify:play', ', request'], ['spotifyOpen', 'text', 'spotify:open', ', text'], ['spotifySearch', 'query', 'spotify:search', ', query'], ['spotifyCover', 'url', 'spotify:cover', ', url'],
   ]);
   const code = preload.replace(/\/\/[^\n]*/g, '');
-  assert.equal([...code.matchAll(/'spotify:[a-z]+'/g)].length, 7, 'no eighth channel');
+  assert.equal([...code.matchAll(/'spotify:[a-z]+'/g)].length, 8, 'no extra channel');
   assert.doesNotMatch(code, /ipcRenderer\.on\('spotify/, 'nothing pushed to the page');
   assert.doesNotMatch(code.split('\n').filter((l) => /spotify/i.test(l)).join('\n'), /token|safeStorage|secret/i, 'and no word of a token in what it has');
   const handlers = Object.fromEntries([...main.matchAll(/ipcMain\.handle\('(spotify:\w+)', \(([^)]*)\) =>/g)].map((m) => [m[1], m[2]]));
-  assert.deepEqual(handlers, { 'spotify:status': '', 'spotify:connect': '_e, clientId', 'spotify:disconnect': '', 'spotify:list': '_e, request', 'spotify:play': '_e, request', 'spotify:open': '_e, text', 'spotify:cover': '_e, url' });
+  assert.deepEqual(handlers, { 'spotify:status': '', 'spotify:connect': '_e, clientId', 'spotify:disconnect': '', 'spotify:list': '_e, request', 'spotify:play': '_e, request', 'spotify:open': '_e, text', 'spotify:search': '_e, query', 'spotify:cover': '_e, url' });
   const block = main.slice(main.indexOf("ipcMain.handle('spotify:status'"), main.indexOf('\n}\n', main.indexOf("ipcMain.handle('spotify:cover'")));
   assert.doesNotMatch(block, /accessToken|access_token|refresh|safeStorage|\.bin/, 'no handler hands a token or the store over');
   assert.match(block, /spotify\(\)\.web\.list\(plainObject\(request\)\)/);

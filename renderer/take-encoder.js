@@ -12,6 +12,6 @@ api.onStart((job) => then(async () => {
   enc = await createTakeEncoder({ ...job, write: (data, at) => api.write(data, at) });
   api.started({ video: enc.codecs.video.profile, audio: enc.codecs.audio ? (enc.codecs.audio.codec === 'opus' ? 'Opus' : 'AAC') : null, priming: enc.priming });
 }));
-api.onSound((planes) => then(() => enc.addSound(planes)));
+api.onSound((planes) => then(async () => { await enc.addSound(planes); api.soundEncoded(); }));
 api.onFrame((k, width, height, data) => then(async () => { await enc.addFrame({ data, width, height }, k); api.encoded(k); }));
 api.onFinish(() => then(async () => api.finished(await enc.finish())));

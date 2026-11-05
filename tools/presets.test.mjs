@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import { PRESETS, applyPreset } from '../renderer/presets.js';
 
 test("the presets' names, and settings the app knows", () => {
-  assert.deepEqual(PRESETS.map((p) => p.name), ['Live coding', 'Visualizer', 'Handheld', 'Japan edition', 'For TikTok']);
+  assert.deepEqual(PRESETS.map((p) => p.name), ['Live coding', 'Visualizer', 'Orb', 'Handheld', 'Japan edition', 'For TikTok']);
   const app = readFileSync(new URL('../renderer/app.js', import.meta.url), 'utf8');
   const values = {
-    visual: ['scenery'], blockLook: ['dominoes', 'game', 'blocks'], sceneryScene: ['auto'], gameScreens: ['os', 'neon', 'lcd', 'jp'],
+    visual: ['scenery', 'off'], blockLook: ['dominoes', 'game', 'blocks'], sceneryScene: ['auto'], gameScreens: ['os', 'neon', 'lcd', 'jp'],
     theme: ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'],
   };
   for (const p of PRESETS) for (const [k, v] of Object.entries(p.settings)) {

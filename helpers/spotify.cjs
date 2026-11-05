@@ -146,7 +146,10 @@ function tokenStore(file, safeStorage) {
 // once for any number of callers at a time), disconnect() forgets it.
 function createSpotify({ file, safeStorage, openExternal, fetch = globalThis.fetch, now = Date.now, accounts = ACCOUNTS, port = PORT, wait = WAIT }) {
   const store = tokenStore(file, safeStorage);
-  let waiting = null, refreshing = null;
+  let waiting = null, refreshing = null, generation = 0;
+  const checkGeneration = (started) => {
+    if (started !== generation) throw new Error('Spotify connection was stopped or disconnected.');
+  };
   const status = () => {
     const t = store.load();
     return t ? { connected: true, clientId: t.clientId, scope: t.scope } : { connected: false };
@@ -155,6 +158,8 @@ function createSpotify({ file, safeStorage, openExternal, fetch = globalThis.fet
     clientId = String(clientId || '').trim();
     if (!CLIENT_ID.test(clientId)) throw new Error('That isn\'t a Client ID: it\'s 32 letters and digits, on your app\'s page at developer.spotify.com.');
     if (!safeStorage.isEncryptionAvailable()) throw new Error('This system can\'t keep the Spotify sign-in encrypted, so Toaster doesn\'t keep it.');
+    const started = ++generation;
+    refreshing = null;
     waiting?.close();
     const { verifier, challenge, state } = pkce();
     const listener = listenForCode({ state, port, wait });
@@ -164,6 +169,7 @@ function createSpotify({ file, safeStorage, openExternal, fetch = globalThis.fet
       await openExternal(authorizeUrl({ clientId, challenge, state, port: at, accounts }));
       const code = await listener.code;
       const body = await exchange({ clientId, code, verifier, port: at }, { fetch, accounts });
+      checkGeneration(started);
       store.save({ clientId, ...tokensFrom(body, now()) });
       return status();
     } finally {
@@ -176,22 +182,27 @@ function createSpotify({ file, safeStorage, openExternal, fetch = globalThis.fet
     const t = store.load();
     if (!t) throw new Error('Spotify isn\'t connected.');
     if (!force && t.expires - now() > 60 * 1000) return t.access;
+    const started = generation;
     refreshing ||= (async () => {
       try {
         const body = await refresh({ clientId: t.clientId, refreshToken: t.refresh }, { fetch, accounts });
+        checkGeneration(started);
         const next = { clientId: t.clientId, ...tokensFrom(body, now(), t) };
         store.save(next);
         return next.access;
       } catch (err) {
         // (a refresh token Spotify no longer takes, say after the listener removed the app's access: the kept sign-in is
         // no use, so it goes, and the next step is connecting again)
+        checkGeneration(started);
         if (err.oauth === 'invalid_grant') { store.forget(); throw new Error('Spotify wants you to connect again.'); }
         throw err;
-      } finally { refreshing = null; }
+      } finally { if (started === generation) refreshing = null; }
     })();
     return refreshing;
   }
   function disconnect() {
+    generation++;
+    refreshing = null;
     waiting?.close();
     store.forget();
     return status();
@@ -264,6 +275,16 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     return res.status === 204 || res.status === 202 ? null : res.json();
   }
   async function list(request = {}) {
+    if (request.list === 'search') {
+      const q = typeof request.q === 'string' ? request.q.trim() : '';
+      if (!q || q.length > 256) throw new Error('Enter a Spotify song or artist (up to 256 characters).');
+      const offset = request.offset ?? 0;
+      if (!Number.isInteger(offset) || offset < 0 || offset > 1000) throw new Error("That isn't a place in the search results.");
+      const result = await call('GET', '/v1/search', { query: { q, type: 'track', limit: 10, offset } });
+      const page = result.tracks || {};
+      return { items: (page.items || []).map(track).filter(Boolean), total: page.total || 0,
+        more: !!page.next && offset + 10 <= 1000, next: offset + 10 };
+    }
     const kind = LISTS[request.list];
     if (!kind || !Object.hasOwn(LISTS, request.list)) throw new Error('Toaster asks Spotify for your playlists, saved albums and liked songs, and their tracks, nothing else.');
     if (kind.id && !ID.test(request.id || '')) throw new Error('That isn\'t a Spotify id.');
@@ -342,6 +363,17 @@ async function openLink(text, playLink) {
   return link;
 }
 
+// Public search handoff: a fixed Spotify URL, with the query confined to one encoded path segment.
+function searchUrl(query) {
+  if (typeof query !== 'string' || !query.trim() || query.trim().length > 256) throw new Error('Enter a Spotify song or artist (up to 256 characters).');
+  return `https://open.spotify.com/search/${encodeURIComponent(query.trim())}`;
+}
+async function openSearch(query, openExternal) {
+  const url = searchUrl(query);
+  try { await openExternal(url); } catch { throw new Error('Toaster could not open Spotify search. Try again or open Spotify yourself.'); }
+  return { url };
+}
+
 // ---------------------------------------------------------------- covers for the page
 
 // The one server a cover may come from. The page's security policy keeps out pictures from any other, so main fetches the one the page is
@@ -412,5 +444,5 @@ function patient(fetch = globalThis.fetch, ms = 20 * 1000) {
 module.exports = {
   ACCOUNTS, PORT, SCOPES, CLIENT_ID, COVER_HOSTS, NOT_A_LINK, OPEN_WHY,
   pkce, challengeOf, authorizeUrl, listenForCode, exchange, refresh, tokensFrom, tokenStore, createSpotify, createWebApi, cover, biggest,
-  parseLink, openLink, isCoverUrl, pictureType, fetchCover, patient,
+  parseLink, openLink, searchUrl, openSearch, isCoverUrl, pictureType, fetchCover, patient,
 };

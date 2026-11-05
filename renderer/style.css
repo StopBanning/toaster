@@ -1145,3 +1145,8 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
   #library .lib-card .acts { display: flex; }
   #library .lib-card .acts button { min-height: 32px; }
 }
+
+/* Spotify catalog search stays above the list while its results change. */
+#library .lib-sp-search { flex-wrap: wrap; margin: .8em 0; }
+#library .lib-sp-query { flex: 1 1 14em; min-width: 0; background: transparent; color: var(--fg); border: 1px solid currentColor; padding: .4em; font: inherit; }
+#library .lib-sp-status { flex-basis: 100%; font-size: .8em; }

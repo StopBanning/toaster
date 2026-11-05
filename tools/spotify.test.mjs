@@ -196,3 +196,20 @@ test('connecting again stops a sign-in still waiting', async () => {
     assert.equal((await second).connected, true);
   } finally { await accounts.close(); }
 });
+
+test('A10: a refresh finishing after disconnect cannot restore tokens or affect a new connection', async () => {
+  for (const failed of [false, true]) {
+    const file = tmpFile(), store = tokenStore(file, fakeSafe());
+    store.save({ clientId: CLIENT, access: 'old', refresh: 'old-refresh', expires: 0 });
+    let answer;
+    const fetch = () => new Promise((r) => { answer = r; });
+    const s = createSpotify({ file, safeStorage: fakeSafe(), openExternal() {}, fetch });
+    const pending = s.accessToken();
+    s.disconnect();
+    // A later connection must survive even an invalid_grant from the old refresh.
+    if (failed) store.save({ clientId: CLIENT, access: 'new', refresh: 'new-refresh', expires: Date.now() + 3600000 });
+    answer({ ok: !failed, json: async () => failed ? { error: 'invalid_grant' } : { access_token: 'stale', expires_in: 3600 } });
+    await assert.rejects(pending, /stopped|disconnected/);
+    assert.equal(store.load()?.access ?? null, failed ? 'new' : null);
+  }
+});

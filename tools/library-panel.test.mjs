@@ -312,3 +312,28 @@ test('with main\'s own library: a folder chosen while its scan runs stops that s
     assert.deepEqual(panel.state.albums.map((a) => [a.album, a.tracks.length]), [['New Album', 1]]);
   } finally { panel.close(); main.stop(); }
 });
+
+test('C3: changing tracks within an album preserves album rows and replaces only track rows', async () => {
+  const data = tracksIn('fixture', 'Album');
+  let playing = { id: 'one', track: data.tracks[0].path };
+  const source = { kind: 'web', cached: async () => data, scan: async () => data };
+  const f = page(source, { playing: () => playing });
+  try {
+    await f.panel.load();
+    f.panel.open('music');
+    let rebuilt = 0, markup = f.list.innerHTML;
+    Object.defineProperty(f.list, 'innerHTML', { get: () => markup, set: (s) => { rebuilt++; markup = s; } });
+    const changed = new Map();
+    f.list.querySelector = (selector) => {
+      const m = /data-i="(\d+)"/.exec(selector);
+      if (!m) return null;
+      return { classList: { add() {} }, set outerHTML(s) { changed.set(+m[1], s); } };
+    };
+    playing = { id: 'two', track: data.tracks[1].path };
+    f.panel.update();
+    assert.equal(rebuilt, 0, 'album nodes and covers survive the track change');
+    assert.ok([...changed.values()].some((s) => /track on/.test(s) && /Two/.test(s)), 'new track marked as playing');
+    assert.ok([...changed.values()].some((s) => /track"/.test(s) && /One/.test(s)), 'old playing mark cleared');
+    assert.ok([...changed.values()].every((s) => !/class="lib-row album/.test(s)));
+  } finally { f.panel.close(); }
+});

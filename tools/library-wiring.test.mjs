@@ -50,7 +50,7 @@ test('the folder is main\'s, the scenes and the stations are saved with the othe
   assert.ok(!saved.some((k) => /library|folder/i.test(k)), 'the folder is not a page setting: the page could name any, and main\'s is the one it reads');
   assert.match(app, /^  radioStations: \[\],/m);
   assert.match(app, /^  userScenes: \[\],/m);
-  assert.match(app, /state\.userScenes = readScenes\(state\.userScenes, \{ visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: \['auto', \.\.\.scenery\.scenes\], blocks: true, vertical: true, libCover: \['chars', 'photo'\] \}\);/);
+  assert.match(app, /state\.userScenes = readScenes\(state\.userScenes, \{ visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: \['auto', \.\.\.scenery\.scenes\], blocks: true, vertical: true, orb: true, libCover: \['chars', 'photo'\] \}\);/);
   assert.match(app, /state\.radioStations = readStations\(state\.radioStations, state\.radio\);/);
   // and the queue's two modes, read back as they were or as the album in order (an older profile has neither)
   assert.ok(saved.includes('queueRepeat') && saved.includes('queueShuffle'));
@@ -153,7 +153,7 @@ test('the CSS uses the theme\'s colours and no others, and its wide window is th
 test('the panel takes the keys it lists and leaves the rest to the page; typing in its fields is not the page\'s keys', () => {
   const onKey = panel.slice(panel.indexOf('function onKey(e) {'), panel.indexOf("win.addEventListener('keydown', onKey, true);"));
   // the one key with a modifier it takes is Ctrl+F or ⌘F, find; any other is the page's (Ctrl+K and the rest)
-  assert.match(onKey, /if \(!S\.open \|\| host\.blocked\(\)\) return;\s*\/\/[^\n]*\n\s*if \(\(e\.ctrlKey \|\| e\.metaKey\) && !e\.altKey && !e\.shiftKey && e\.key\.toLowerCase\(\) === 'f'\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\); openFind\(\); return; \}\s*if \(e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey\) return;/);
+  assert.match(onKey, /if \(!S\.open \|\| host\.blocked\(\)\) return;\s*if \(e\.target\?\.closest\?\.\('\.lib-sp-search'\)\) return;\s*\/\/[^\n]*\n\s*if \(\(e\.ctrlKey \|\| e\.metaKey\) && !e\.altKey && !e\.shiftKey && e\.key\.toLowerCase\(\) === 'f'\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\); openFind\(\); return; \}\s*if \(e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey\) return;/);
   // find's line: its own keys first, and what is typed in it is not the page's keys
   assert.match(onKey, /if \(e\.target\?\.closest\?\.\('\.lib-find'\)\) \{ findKey\(e\); return; \}/);
   const findKey = panel.slice(panel.indexOf('function findKey(e) {'), panel.indexOf('// an input in the list'));

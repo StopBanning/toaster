@@ -126,3 +126,35 @@ test('a 401 gets one fresh token and one more try; a second 401 says connect aga
     await assert.rejects(web.list({ list: 'liked' }), /connect again/);
   } finally { await f.close(); }
 });
+
+test('catalog search encodes the query, uses ten results and preserves the raw page offset across filtered tracks', async () => {
+  const f = await fakeApi({ 'GET /v1/search': () => [200, { tracks: { total: 21, next: 'next page', items: [
+    { id: ALBUM, uri: `spotify:track:${ALBUM}`, name: 'Song', artists: [{ name: 'Artist' }], duration_ms: 9000 },
+    { uri: 'spotify:local:unavailable', is_local: true },
+  ] } }] });
+  try {
+    const web = createWebApi({ accessToken: tokens().accessToken, api: f.api });
+    const page = await web.list({ list: 'search', q: ' artist:Air & Moon ', offset: 10 });
+    assert.deepEqual(f.seen[0].query, { q: 'artist:Air & Moon', type: 'track', limit: '10', offset: '10' });
+    assert.equal(page.items.length, 1); assert.equal(page.next, 20); assert.equal(page.more, true);
+    for (const request of [{ q: '' }, { q: {} }, { q: 'a'.repeat(257) }, { q: 'air', offset: -1 }, { q: 'air', offset: 1001 }, { q: 'air', offset: 0.5 }]) {
+      await assert.rejects(web.list({ list: 'search', ...request }));
+    }
+    assert.equal(f.seen.length, 1, 'invalid input never reaches Spotify');
+  } finally { await f.close(); }
+});
+
+test('zero-setup search opens only a fixed, encoded Spotify search URL and reports opener failures', async () => {
+  const { searchUrl, openSearch } = createRequire(import.meta.url)('../helpers/spotify.cjs');
+  const opened = [];
+  const query = ' Air & Moon / #? café ';
+  const url = 'https://open.spotify.com/search/Air%20%26%20Moon%20%2F%20%23%3F%20caf%C3%A9';
+  assert.equal(searchUrl(query), url);
+  assert.deepEqual(await openSearch(query, async (address) => opened.push(address)), { url });
+  assert.deepEqual(opened, [url]);
+  for (const bad of [null, {}, [], 42, '', '  ', 'a'.repeat(257)]) {
+    await assert.rejects(openSearch(bad, async () => assert.fail('invalid search opened')));
+  }
+  assert.equal(new URL(searchUrl('https://evil.test/path')).hostname, 'open.spotify.com');
+  await assert.rejects(openSearch('Air', async () => { throw new Error('OS failure'); }), /could not open Spotify search/);
+});

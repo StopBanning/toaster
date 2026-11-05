@@ -55,6 +55,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
       <div class="lib-meta"></div>
       <div class="lib-note lib-line lib-err" role="alert" hidden></div>
       <div class="lib-find" hidden><span class="lib-line">find</span><input type="search" class="lib-q" placeholder="a title, an artist, an album" aria-label="find in your music" autocomplete="off" spellcheck="false"><span class="lib-line lib-count"></span></div>
+      <form class="lib-sp-search lib-find" hidden><input class="lib-sp-query" type="search" maxlength="256" aria-label="Search Spotify songs by title or artist" placeholder="search Spotify: a song or artist" autocomplete="off"><button type="submit" class="lib-sp-submit">search</button><button type="button" class="lib-sp-clear" data-clear-search>clear</button><span class="lib-sp-status" role="status" aria-live="polite"></span></form>
       <div class="lib-shelf" hidden><span class="lib-line">played lately</span><div class="lib-tiles" role="listbox" aria-label="albums played lately"></div></div>
       <div class="lib-list" role="listbox" tabindex="-1"></div>
       <div class="lib-keys"><span class="lib-line"></span></div>
@@ -223,7 +224,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     b.hidden = !coverSection();
     b.textContent = host.coverLook?.() === 'photo' ? 'half ascii' : 'full ascii';
   }
-  const paintTabs = () => { paintLook(); for (const b of parts.tabs.querySelectorAll('[data-section]')) { const on = b.dataset.section === S.section; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); } };
+  const paintTabs = () => { paintSearch(); paintLook(); for (const b of parts.tabs.querySelectorAll('[data-section]')) { const on = b.dataset.section === S.section; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); } };
 
   function paintHead() {
     let html;
@@ -309,8 +310,58 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // drawn with the library's shared cover look; Spotify's logo and "on Spotify" say whose it is.
   const sp = host.spotify, X = S.sp;
   const spModel = () => ({ links: sp.links(), app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
-  const spRows = () => spotifyRows(spModel());
-  const spOpenColl = () => (X.open ? [...(X.lists.playlists?.items || []), ...(X.lists.albums?.items || []), { ...SPOTIFY_LIKED, count: X.lists.liked?.total || 0 }].find((c) => collKey(c) === X.open) || null : null);
+  let search = { q: '', items: [], loading: false, more: false, next: 0, total: 0 }, searchGeneration = 0;
+  const searchForm = q('.lib-sp-search'), searchInput = q('.lib-sp-query'), searchStatus = q('.lib-sp-status');
+  function paintSearch() {
+    searchForm.hidden = S.section !== 'spotify';
+    q('.lib-sp-submit').textContent = X.status?.connected ? 'search' : 'search in Spotify ↗';
+    searchStatus.textContent = search.loading ? 'searching…' : search.q ? `${search.items.length} of ${search.total} results` : X.status?.connected ? '' : 'No connection needed. Results open in Spotify in your browser.';
+  }
+  const spRows = () => search.q ? [
+    ...search.items.map((track, index) => ({ kind: 'strack', group: 'search', coll: { kind: 'search' }, track, index })),
+    ...(search.more ? [{ kind: 'more', group: 'search', list: 'search' }] : []),
+  ] : spotifyRows(spModel());
+  async function searchSpotify(offset = 0) {
+    const query = offset ? search.q : searchInput.value.trim();
+    if (!query) { clearSearch(); return; }
+    if (!X.status?.connected) {
+      X.error = '';
+      try {
+        await sp.search(query);
+        searchStatus.textContent = 'Spotify search opened. Choose a song there.';
+      } catch (err) { X.error = plainError(err); spRepaint(); }
+      return;
+    }
+    if (offset && search.loading) return;
+    const generation = ++searchGeneration, gen = X.gen, hadMore = search.more;
+    search = { ...(offset ? search : { items: [], total: 0 }), q: query, loading: true, more: false, next: offset };
+    X.error = ''; S.cursor.spotify = 0; X.cursorKey = ''; spRepaint();
+    try {
+      const page = await sp.list({ list: 'search', q: query, offset });
+      if (generation !== searchGeneration || gen !== X.gen) return;
+      // (Spotify's search pages overlap, and its total is a guess: a song already listed isn't listed again, and the count is never
+      // fewer than the songs shown; Colin saw one song three times and '20 of 18')
+      const seen = new Set(search.items.map((t) => t.uri)), items = [...search.items, ...page.items.filter((t) => !seen.has(t.uri) && seen.add(t.uri))];
+      search = { q: query, items, total: Math.max(page.total, items.length), more: page.more, next: page.next, loading: false };
+    } catch (err) {
+      if (generation !== searchGeneration || gen !== X.gen) return;
+      search.loading = false; search.more = !!offset && hadMore; X.error = plainError(err);
+      if (/connect again/i.test(X.error)) spClear();
+    }
+    spRepaint();
+  }
+  function clearSearch() {
+    searchGeneration++; search = { q: '', items: [], loading: false, more: false, next: 0, total: 0 };
+    searchInput.value = ''; X.error = ''; X.cursorKey = ''; S.cursor.spotify = 0; spRepaint();
+  }
+  searchForm.addEventListener('submit', (e) => { e.preventDefault(); searchSpotify(); });
+  q('.lib-sp-clear').addEventListener('click', clearSearch);
+  searchForm.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); clearSearch(); searchInput.blur(); }
+    else if (e.key === 'ArrowDown' && search.items.length) { e.preventDefault(); searchInput.blur(); markCursor(); }
+  });
+  const spOpenColl = () => (!search.q && X.open ? [...(X.lists.playlists?.items || []), ...(X.lists.albums?.items || []), { ...SPOTIFY_LIKED, count: X.lists.liked?.total || 0 }].find((c) => collKey(c) === X.open) || null : null);
   const spSongsIn = (coll) => (coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(coll)])?.items?.length > 0;
   const spBusy = () => X.checking || [...Object.values(X.lists), ...Object.values(X.tracks)].some((l) => l?.loading);
   const logo = () => `<svg class="lib-logo" viewBox="0 0 24 24" role="img" aria-label="Spotify"><path d="${SPOTIFY_ICON}"/></svg>`;
@@ -365,6 +416,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
       const title = half() ? `"${two(row.index + 1)} ${esc(t.name)}",` : esc(t.name);
       return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : half() ? '' : two(row.index + 1)}</span><span class="t">${on && half() ? `<u>${title}</u>` : title}${by ? ` <em>${half() ? '// ' : '· '}${esc(by)}</em>` : ''}</span><span class="d">${fmtDuration(t.ms)}</span></div>`;
     }
+    if (row.kind === 'more' && row.list === 'search') return `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t">more results</span></div>`;
     if (row.kind === 'more') {
       const l = row.list === 'tracks' ? (row.coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(row.coll)]) : X.lists[row.list];
       return `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t">${l?.loading ? 'loading…' : 'more'}</span><span class="d">${l?.total ? `${count(l.items.length)} of ${count(l.total)}` : ''}</span></div>`;
@@ -373,6 +425,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   }
   function spList(r, now) {
     let group = null, html = '';
+    if (search.q && !r.length) html = `<div class="lib-note lib-line">${search.loading ? 'searching Spotify…' : X.error ? 'Search failed. Try again.' : 'No songs found. Try another title or artist.'}</div>`;
     r.forEach((row, i) => {
       if (row.group !== group) { group = row.group; html += spGroup(group); }
       html += spRow(row, i, now);
@@ -404,14 +457,14 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   function spArtSrc() {
     const now = playingArt();
     if (now) return now;
-    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll ? cursorSong() : null;
+    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll || search.q ? cursorSong() : null;
     const want = song ? song.big || song.cover : coll?.big || coll?.cover;
     return (want && X.covers.get(want)) || (song?.cover && X.covers.get(song.cover)) || ((coll?.big || coll?.cover) && X.covers.get(coll.big || coll.cover)) || (coll?.cover && X.covers.get(coll.cover));
   }
   function paintBig() {
     if (S.section === 'music' && half()) { paintBigMusic(); return; }
     if (S.section === 'music') { parts.big.replaceChildren(); return; }
-    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll ? cursorSong() : null;
+    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll || search.q ? cursorSong() : null;
     const want = song ? song.big || song.cover : coll?.big || coll?.cover;
     if (want && !playingArt() && !X.covers.has(want) && !X.coverTried.has(want)) { X.coverTried.add(want); coverWait.push(want); pumpCovers(); }
     const data = spArtSrc();
@@ -453,10 +506,11 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   function spRepaint() {
     if (!S.open || S.section !== 'spotify') return;
     if (S.typing) { X.dirty = true; return; }
+    paintSearch();
     S.cursor.spotify = spotifyAt(spRows(), X.cursorKey, S.cursor.spotify);
     paintHead(); paintMeta(); paintList(); paintBig();
   }
-  const spClear = () => { X.status = { connected: false }; X.lists = {}; X.tracks = {}; X.open = null; X.armed = false; X.gen++; X.covers.clear(); X.coverTried.clear(); coverWait.length = 0; };
+  const spClear = () => { X.status = { connected: false }; X.lists = {}; X.tracks = {}; X.open = null; X.armed = false; X.gen++; searchGeneration++; search = { q: '', items: [], loading: false }; searchInput.value = ''; X.covers.clear(); X.coverTried.clear(); coverWait.length = 0; };
   // an error in main's words, shown over the list; one that says Spotify wants a new sign-in takes the lists away, which brings the field for a Client ID back
   function spFail(err) {
     X.error = plainError(err);
@@ -586,11 +640,15 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     spRepaint();
   }
   async function spPlayRow(row) {
+    // (a searched song in the app goes to the Spotify app itself, as a pasted link does: the Web API answers a bare song
+    // request with a yes and then plays nothing, while a song started inside its playlist or album plays; Nov 4, live)
+    if (row.kind === 'strack' && row.coll.kind === 'search') { if (sp.app) await spOpenLink(row.track.uri); else await spSend({ tracks: [row.track.uri] }); return; }
     let request = spotifyPlay(row, X.lists.liked);
     if (!request && row.kind === 'coll' && row.coll.kind === 'liked') { await spLoad('liked'); request = spotifyPlay(row, X.lists.liked); } // (the liked songs weren't in yet)
     if (request) await spSend(request);
   }
   function spMore(row) {
+    if (row.list === 'search') { searchSpotify(search.next); return; }
     const list = row.list === 'tracks' ? (row.coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(row.coll)]) : X.lists[row.list];
     if (!list || list.loading) return;
     if (row.list === 'tracks') spSongs(row.coll, list.next); else spLoad(row.list, list.next);
@@ -735,8 +793,20 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (JSON.stringify(host.recent?.() || []) !== S.shelfSig) paintShelf(); // (an album played: first on the shelf)
     if (!S.typing && listSig() !== S.listSig) {
       if (S.section === 'spotify') { spRepaint(); S.listSig = listSig(); return; }
-      if (S.section === 'music' && p.track) { const a = S.byPath.get(p.track); if (a && S.followPlaying) { S.openId = a.id; paintHead(); paintArt(); paintBig(); } }
-      paintList();
+      const before = S.openId;
+      if (S.section === 'music' && p.track) { const a = S.byPath.get(p.track); if (a && S.followPlaying && a.id !== S.openId) { S.openId = a.id; paintHead(); paintArt(); paintBig(); } }
+      if (S.section === 'music' && before === S.openId) {
+        // The albums and their covers have not changed: only the track marks (and a resumed position) have.
+        const back = resumed(), words = finding() ? findWords(S.find.q) : null;
+        rows().forEach((row, i) => {
+          if (row.kind !== 'track') return;
+          const el = parts.list.querySelector(`[data-i="${i}"]`);
+          if (el) el.outerHTML = words ? foundRow(row, i, p, words) : trackRow(row, i, p, back);
+        });
+        paintShelf();
+        markCursor(cursor(), false);
+        S.listSig = listSig();
+      } else paintList();
     }
   }
 
@@ -838,6 +908,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     closeFind(false);
     S.onShelf = false;
     S.section = id;
+    searchForm.hidden = id !== 'spotify';
     paintTabs(); paintHead(); paintMeta(); paintList(); paintKeys(); paintArt(); paintBig();
     S.listSig = listSig();
     markCursor();
@@ -900,6 +971,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // Find (Ctrl+F, ⌘F on a Mac, or the find button): a line over the list, and what is typed there narrows your music to the albums and the
   // tracks that have every word, as you type. Esc ends it: the list as it was, the cursor where it was.
   function openFind() {
+    if (S.section === 'spotify') { searchInput.focus(); searchInput.select(); return; }
     if (S.section !== 'music') setSection('music');
     if (!S.find) { S.find = { q: '', from: S.cursor.music }; parts.find.hidden = false; paintKeys(); }
     parts.q.focus();
@@ -999,6 +1071,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
 
   function onKey(e) {
     if (!S.open || host.blocked()) return;
+    if (e.target?.closest?.('.lib-sp-search')) return;
     // Ctrl+F or ⌘F: find in your music (over the library, not a browser's own find bar)
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.stopImmediatePropagation(); openFind(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;

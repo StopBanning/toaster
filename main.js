@@ -762,7 +762,7 @@ function setUpIpc() {
     if (!takeKit) {
       const { createTakeStore, checkMeta, checkEnd } = require('./helpers/take-store.cjs');
       const { createTakeRender } = require('./helpers/take-render.cjs');
-      takeKit = { store: createTakeStore({ root: path.join(app.getPath('userData'), 'takes') }), render: createTakeRender({ BrowserWindow, ipcMain }), checkMeta, checkEnd, stems: new Map(), queue: Promise.resolve(), waiting: new Set() };
+      takeKit = { store: createTakeStore({ root: path.join(app.getPath('userData'), 'takes') }), render: createTakeRender({ BrowserWindow, ipcMain, pendingFile: path.join(app.getPath('userData'), 'take-render-pending.json'), outputRoot: videosDir() }), checkMeta, checkEnd, stems: new Map(), queue: Promise.resolve(), waiting: new Set() };
       takeKit.store.prune(0); // (takes left by a run that ended mid-take are never drawn: gone)
     }
     return takeKit;
@@ -891,7 +891,14 @@ function setUpIpc() {
   ipcMain.handle('spotify:disconnect', () => spotify().connection.disconnect());
   ipcMain.handle('spotify:list', (_e, request) => spotify().web.list(plainObject(request)));
   ipcMain.handle('spotify:play', (_e, request) => spotify().web.play(plainObject(request)));
-  ipcMain.handle('spotify:open', (_e, text) => require('./helpers/spotify.cjs').openLink(text, (uri) => player().playLink(uri)));
+  // (the Spotify app comes to the front when it's told to play: Toaster, if it was in front, takes the front back, now and once more
+  // after Spotify's own window has had a moment, so the song plays in the Spotify app behind the visuals; Colin, Nov 4)
+  ipcMain.handle('spotify:open', (_e, text) => {
+    const win = BrowserWindow.fromWebContents(_e.sender), front = !!win?.isFocused();
+    const back = () => { if (front && win && !win.isDestroyed()) { if (process.platform === 'darwin') app.focus({ steal: true }); win.focus(); } };
+    return Promise.resolve().then(() => require('./helpers/spotify.cjs').openLink(text, (uri) => player().playLink(uri))).finally(() => { back(); setTimeout(back, 400); });
+  });
+  ipcMain.handle('spotify:search', (_e, query) => require('./helpers/spotify.cjs').openSearch(query, (url) => shell.openExternal(url)));
   ipcMain.handle('spotify:cover', (_e, url) => require('./helpers/spotify.cjs').fetchCover(url, { fetch: spotify().fetch }));
 }
 

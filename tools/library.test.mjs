@@ -231,11 +231,11 @@ test('where the queue was, as saved: a track\'s path and the seconds into it, el
 
 // ---------------------------------------------------------------- scenes
 
-const DOMAINS = { visual: ['scenery', 'worlds', 'chrome', 'spaghetti', 'off', 'warp'], theme: ['bluescreen', 'whitescreen', 'dynamic'], blockLook: ['dominoes', 'game', 'blocks'], gameScreens: ['os', 'neon'], sceneryScene: ['auto', 'koi', 'lake'], blocks: true, vertical: true, libCover: ['chars', 'photo'] };
-const SETUP = { visual: 'worlds', sceneryScene: 'auto', blocks: true, blockLook: 'game', gameScreens: 'neon', theme: 'dynamic', codeHidden: false, vertical: false, libCover: 'chars' };
+const DOMAINS = { visual: ['scenery', 'worlds', 'chrome', 'spaghetti', 'off', 'warp'], theme: ['bluescreen', 'whitescreen', 'dynamic'], blockLook: ['dominoes', 'game', 'blocks'], gameScreens: ['os', 'neon'], sceneryScene: ['auto', 'koi', 'lake'], blocks: true, orb: true, vertical: true, libCover: ['chars', 'photo'] };
+const SETUP = { visual: 'worlds', sceneryScene: 'auto', blocks: true, blockLook: 'game', gameScreens: 'neon', theme: 'dynamic', codeHidden: false, vertical: false, libCover: 'chars', orb: false };
 
 test('a scene holds the preset settings and the shared library cover look', () => {
-  assert.deepEqual([...L.SETUP_KEYS].sort(), ['blockLook', 'blocks', 'codeHidden', 'gameScreens', 'libCover', 'sceneryScene', 'theme', 'vertical', 'visual']);
+  assert.deepEqual([...L.SETUP_KEYS].sort(), ['blockLook', 'blocks', 'codeHidden', 'gameScreens', 'libCover', 'orb', 'sceneryScene', 'theme', 'vertical', 'visual']);
   for (const p of PRESETS) for (const k of Object.keys(p.settings)) assert.ok(L.SETUP_KEYS.includes(k), `${p.id}: ${k}`);
   // from the app's current state, which holds much more
   assert.deepEqual(L.setupOf({ ...SETUP, source: 'file', camera: true, recording: true, volume: 3, syncTrim: 20 }), SETUP);

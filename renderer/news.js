@@ -4,6 +4,14 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.0', items: [
+    { key: 'G', text: "search Spotify from the library's spotify tab: type a song or an artist, play any result in the Spotify app, and Toaster writes it out and draws it as it plays (with your account connected; without one, the search opens Spotify's own search page)" },
+    { act: 'visual', text: "an Orb preset in the background picker: the orb going through its shapes over the plain blue, with the code" },
+    { key: 'Ctrl+K', text: "the glass blob is back: 'the glass blob' in Ctrl+K turns it on and off" },
+    { act: 'visual', text: "the Earth moves to its next view every 8 bars, the new view coming up on the downbeat" },
+    { key: 'kick', text: "songs that sat half a beat off, with their kicks on the 'and', find the beat" },
+    { key: 'G', text: "the spotify tab keeps your album rows when the song changes" },
+  ] },
   { version: '0.4.32', items: [
     { act: 'visual', text: "a new background, the backrooms: an endless walk through yellow rooms, and the song works the lights: a kick brightens them, a drop blows them out" },
     { act: 'dropfx', text: "the y2k bug's blue screen shatters on its last beat and falls away in glass onto the desktop" },

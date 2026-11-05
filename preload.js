@@ -95,6 +95,7 @@ contextBridge.exposeInMainWorld('nc', {
   spotifyList: (request) => ipcRenderer.invoke('spotify:list', request),
   spotifyPlay: (request) => ipcRenderer.invoke('spotify:play', request),
   spotifyOpen: (text) => ipcRenderer.invoke('spotify:open', text),
+  spotifySearch: (query) => ipcRenderer.invoke('spotify:search', query),
   spotifyCover: (url) => ipcRenderer.invoke('spotify:cover', url),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),

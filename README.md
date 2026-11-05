@@ -102,6 +102,10 @@ The background, code look, card, theme, camera effect and drop-effect
 choices are remembered between launches, and so are the keys and the radio's address; the camera
 always starts off.
 
+### Search Spotify
+
+Open the library (**G**) and choose **spotify**. No setup is needed: type a query and choose **search in Spotify** to open Spotify’s search page in your browser, then pick a song there. Toaster does not automatically start a song or switch its audio source when opening search. With your account connected, enter a song title or artist in the search field and press Enter or click **search**. Click a result, or use Down then Enter, to play it in Spotify. **More results** loads the next ten songs; **clear** restores your collections. Ctrl+F (⌘F on a Mac) focuses Spotify search while that section is open. Only results displayed inside Toaster require the optional Spotify account connection.
+
 ## Backgrounds
 
 V steps through them, best first: the scenery, worlds, chrome, the spaghetti, the spectrogram, cuts, fire, the code rain, off. A changes the scene or
@@ -193,13 +197,21 @@ Toaster makes live visuals for a set: it follows the beat, and the scenes answer
 Everything Toaster hears and sees stays on your machine. The sound is worked out in the app, and the
 camera (off until you press C) is looked at by the system's own face detector (Windows' face
 detector, or the Mac's Vision framework) and by Google's MediaPipe, both running on your machine.
-Nothing is uploaded. It reaches the internet for three things only: GitHub, when it starts, to see
-whether there's a newer Toaster (turn that off in the help, under Updates) and to show the project's
-star count on the header's star button (asked at most every ten minutes), strudel.cc when you
-press O (your browser opens it with the code in the link), and the radio while it plays: its stream
-(from the server at the address you typed) and, for each song, the song's artist and title, sent to
-Apple's iTunes Search to find its cover (with what any web request carries: your IP address and the app's name and
-version); the cover is fetched from Apple's image server.
+Nothing is uploaded. It goes online only for these:
+
+- **Updates and stars:** GitHub, when it starts, to see whether there's a newer Toaster (turn that off in the help, under
+  Updates), and for the project's star count on the header's star button (asked at most every ten minutes).
+- **Strudel:** strudel.cc when you press O (your browser opens it with the code in the link).
+- **The radio,** while it plays: its stream (from the server at the address you typed) and, for each song, the song's
+  artist and title, sent to Apple's iTunes Search to find its cover; the cover is fetched from Apple's image server.
+- **Spotify,** only if you connect your own account: the sign-in at accounts.spotify.com, then Spotify's Web API for your
+  playlists, saved albums and liked songs, the songs you search for, and playing what you pick; covers come from Spotify's
+  image servers. The sign-in's token stays in the app's main process, kept encrypted (with a key from your system's keychain) in Toaster's settings folder, and never
+  reaches the page. Without a connection, a pasted Spotify link just opens in the Spotify app or Spotify's web player.
+- **The Earth and the backrooms:** the first time you pick one, its video (6 to 25 MB) downloads from toaster.locust.lol,
+  is checked against its checksum and kept, so it doesn't download again.
+
+Each of these carries what any web request carries: your IP address and the app's name and version.
 
 The site, toaster.locust.lol, works the same way: your audio never leaves your device. The site counts visits
 anonymously (Cloudflare Web Analytics, no cookies) and asks GitHub for the project's star count.

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('takeEncoder', {
   onFrame: on('take:frame'),
   onFinish: on('take:finish'),
   started: (info) => ipcRenderer.send('take:started', info),
+  soundEncoded: () => ipcRenderer.send('take:sound-encoded'),
   encoded: (k) => ipcRenderer.send('take:encoded', k),
   finished: (info) => ipcRenderer.send('take:finished', info),
   failed: (why) => ipcRenderer.send('take:failed', String(why)),
