@@ -534,6 +534,8 @@ body.vertical #sys { bottom: calc(40px + var(--player-h, 0px)); }
 #menu { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
 #menu[hidden] { display: none; }
 .card { width: min(620px, 100%); border: 2px solid var(--fg); background: var(--bg); padding: 26px; }
+/* Keep the browser source card reachable on short windows and phones in landscape. */
+html.web .card { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
 .card h1 { margin: 0; font-size: 28px; }
 .card .sub { margin: 6px 0 20px; color: var(--dim); }
 .opts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 14px; align-items: center; }
@@ -587,6 +589,8 @@ html.web .card .get { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 
   .key-only { display: none; }
   body.live .menu-close { display: block; margin-top: 14px; padding: 10px 18px; }
   header > button { min-height: 32px; }
+  html.web #menu .opts button, html.web #menu input, html.web #menu .get a { min-height: 44px; }
+  html.web #menu .get a { display: inline-flex; align-items: center; }
 }
 
 /* ---------- the controls panel (controls.js): built only on a screen with no hover ---------- */
