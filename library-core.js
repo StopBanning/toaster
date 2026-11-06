@@ -71,17 +71,17 @@ export const queueText = (line) => line.map((p) => (p.now ? `▶ ${p.text}` : p.
 
 // ---------------------------------------------------------------- scenes
 
-// A scene holds the preset settings (renderer/presets.js) and the library's shared cover look.
-export const SETUP_KEYS = [...new Set([...PRESETS.flatMap((p) => Object.keys(p.settings)), 'libCover'])];
+// Scenes hold the preset settings, shared cover look, effects and Earth settings.
+export const SETUP_KEYS = [...new Set([...PRESETS.flatMap((p) => Object.keys(p.settings)), 'libCover', 'look', 'drop', 'camFx', 'earthClip', 'earthTour', 'glass'])];
 
 // The setup as it is now, in the shape of a preset's settings: `current` is what choosePreset builds in app.js (the settings by name)
 export const setupOf = (current) => Object.fromEntries(SETUP_KEYS.map((k) => [k, current[k]]));
 
-// A scene's settings as saved, kept only where they're ones the app knows: domains gives each setting's values (an array; `true`
-// for a yes or no; the code's setting is also 'beat'). A scene with nothing left is dropped, and an older profile has none.
+// Keep well-formed values for known keys even when their look or view is unavailable.
+// domains gives each setting's values (an array; true for a boolean). Older scenes gain no defaults.
 export function readScenes(saved, domains = {}) {
   if (!Array.isArray(saved)) return [];
-  const ok = (key, v) => (key === 'codeHidden' ? typeof v === 'boolean' || v === 'beat' : domains[key] === true ? typeof v === 'boolean' : Array.isArray(domains[key]) && domains[key].includes(v));
+  const ok = (key, v) => key === 'codeHidden' ? typeof v === 'boolean' || v === 'beat' : domains[key] === true ? typeof v === 'boolean' : Array.isArray(domains[key]) && typeof v === 'string' && v.length > 0 && v.length <= 200;
   const seen = new Set(), out = [];
   for (const s of saved) {
     if (!s || typeof s !== 'object' || typeof s.id !== 'string' || !s.id || seen.has(s.id) || typeof s.name !== 'string' || !s.settings || typeof s.settings !== 'object') continue;
@@ -93,6 +93,20 @@ export function readScenes(saved, domains = {}) {
     if (out.length >= 60) break;
   }
   return out;
+}
+
+// Resolve at the moment a scene is loaded, after custom looks have arrived. Report all
+// unavailable choices together once, leaving the saved scene intact for their return.
+export function sceneForLoad(scene, domains, report = () => {}) {
+  const missing = [], settings = {};
+  for (const [key, value] of Object.entries(scene.settings)) {
+    const ok = key === 'codeHidden' ? typeof value === 'boolean' || value === 'beat'
+      : domains[key] === true ? typeof value === 'boolean' : domains[key]?.includes(value);
+    if (ok) settings[key] = value;
+    else missing.push(`${key}: ${value}`);
+  }
+  if (missing.length) report(`scene: unavailable ${missing.join(', ')} (kept in the saved scene)`);
+  return { ...scene, settings };
 }
 
 const cleanName = (name) => String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);

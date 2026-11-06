@@ -310,20 +310,57 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // drawn with the library's shared cover look; Spotify's logo and "on Spotify" say whose it is.
   const sp = host.spotify, X = S.sp;
   const spModel = () => ({ links: sp.links(), app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
-  let search = { q: '', items: [], loading: false, more: false, next: 0, total: 0 }, searchGeneration = 0;
+  let search = { q: '', items: [], albums: [], artist: null, loading: false, more: false, next: 0, total: 0 }, searchGeneration = 0;
+  // one row per song: Spotify lists the same song more than once (a single and its album's, a re-release), so a song is its title and its
+  // artists, and the best-known of its copies is the one kept (Colin, Nov 5: "songs repeating again")
+  const fold = (v) => String(v || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  const songKey = (t) => `${fold(t.name)}\u0000${fold(t.by)}`;
+  function mergeSongs(old, items) {
+    const out = [...old], at = new Map(out.map((t, i) => [songKey(t), i]));
+    for (const t of items) {
+      const k = songKey(t);
+      if (!at.has(k)) { at.set(k, out.length); out.push(t); } else if ((t.pop || 0) > (out[at.get(k)].pop || 0)) out[at.get(k)] = t;
+    }
+    return out;
+  }
+  // a search that names an artist (the whole query is their name) puts that artist's songs first, best-known first, as Spotify's own does
+  function searchSongs() {
+    const a = search.artist;
+    if (!a || !a.name || fold(a.name) !== fold(search.q)) return search.items;
+    const theirs = (t) => (t.artistIds || []).includes(a.id) || fold(t.by).split(', ').includes(fold(a.name));
+    return [...search.items.filter(theirs).sort((x, y) => (y.pop || 0) - (x.pop || 0)), ...search.items.filter((t) => !theirs(t))];
+  }
   const searchForm = q('.lib-sp-search'), searchInput = q('.lib-sp-query'), searchStatus = q('.lib-sp-status');
   function paintSearch() {
     searchForm.hidden = S.section !== 'spotify';
     q('.lib-sp-submit').textContent = X.status?.connected ? 'search' : 'search in Spotify ↗';
     searchStatus.textContent = search.loading ? 'searching…' : search.q ? `${search.items.length} of ${search.total} results` : X.status?.connected ? '' : 'No connection needed. Results open in Spotify in your browser.';
   }
-  const spRows = () => search.q ? [
-    ...search.items.map((track, index) => ({ kind: 'strack', group: 'search', coll: { kind: 'search' }, track, index })),
-    ...(search.more ? [{ kind: 'more', group: 'search', list: 'search' }] : []),
-  ] : spotifyRows(spModel());
+  function searchRows() {
+    const rows = searchSongs().map((track, index) => ({ kind: 'strack', group: 'search', coll: { kind: 'search' }, track, index }));
+    if (search.more) rows.push({ kind: 'more', group: 'search', list: 'search' });
+    for (const coll of search.albums || []) {
+      rows.push({ kind: 'coll', group: 'searchalbums', coll });
+      if (X.open !== collKey(coll)) continue;
+      const list = X.tracks[collKey(coll)];
+      rows.push(...(list?.items || []).map((track, index) => ({ kind: 'strack', group: 'searchalbums', coll, track, index })));
+      if (list?.more) rows.push({ kind: 'more', group: 'searchalbums', list: 'tracks', coll });
+    }
+    return rows;
+  }
+  const spRows = () => search.q ? searchRows() : spotifyRows(spModel());
   async function searchSpotify(offset = 0) {
     const query = offset ? search.q : searchInput.value.trim();
     if (!query) { clearSearch(); return; }
+    if (offset && search.loading) return;
+    // (taken before any wait: a clear, a newer search or a sign-out while this one waits drops it)
+    const generation = ++searchGeneration, gen = X.gen;
+    // (a search typed while the section is still asking Spotify whether this app is connected waits for the answer: decided before it,
+    // a connected app took the no-account path and opened Spotify's web search in the browser; Nov 5, right after a start)
+    if (sp.app && X.checking && statusWait) {
+      await statusWait;
+      if (generation !== searchGeneration || gen !== X.gen) return;
+    }
     if (!X.status?.connected) {
       X.error = '';
       try {
@@ -332,17 +369,17 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
       } catch (err) { X.error = plainError(err); spRepaint(); }
       return;
     }
-    if (offset && search.loading) return;
-    const generation = ++searchGeneration, gen = X.gen, hadMore = search.more;
-    search = { ...(offset ? search : { items: [], total: 0 }), q: query, loading: true, more: false, next: offset };
+    const hadMore = search.more;
+    search = { ...(offset ? search : { items: [], albums: [], artist: null, total: 0 }), q: query, loading: true, more: false, next: offset };
     X.error = ''; S.cursor.spotify = 0; X.cursorKey = ''; spRepaint();
     try {
       const page = await sp.list({ list: 'search', q: query, offset });
       if (generation !== searchGeneration || gen !== X.gen) return;
       // (Spotify's search pages overlap, and its total is a guess: a song already listed isn't listed again, and the count is never
       // fewer than the songs shown; Colin saw one song three times and '20 of 18')
-      const seen = new Set(search.items.map((t) => t.uri)), items = [...search.items, ...page.items.filter((t) => !seen.has(t.uri) && seen.add(t.uri))];
-      search = { q: query, items, total: Math.max(page.total, items.length), more: page.more, next: page.next, loading: false };
+      const items = mergeSongs(search.items, page.items);
+      search = { q: query, items, albums: offset ? search.albums : (page.albums || []), artist: offset ? search.artist : (page.artist || null),
+        total: Math.max(page.total, items.length), more: page.more, next: page.next, loading: false };
     } catch (err) {
       if (generation !== searchGeneration || gen !== X.gen) return;
       search.loading = false; search.more = !!offset && hadMore; X.error = plainError(err);
@@ -351,7 +388,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     spRepaint();
   }
   function clearSearch() {
-    searchGeneration++; search = { q: '', items: [], loading: false, more: false, next: 0, total: 0 };
+    searchGeneration++; search = { q: '', items: [], albums: [], artist: null, loading: false, more: false, next: 0, total: 0 };
+    if (X.open && !spOpenColl()) X.open = null; // (an album opened from the search folds with it)
     searchInput.value = ''; X.error = ''; X.cursorKey = ''; S.cursor.spotify = 0; spRepaint();
   }
   searchForm.addEventListener('submit', (e) => { e.preventDefault(); searchSpotify(); });
@@ -361,7 +399,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (e.key === 'Escape') { e.preventDefault(); clearSearch(); searchInput.blur(); }
     else if (e.key === 'ArrowDown' && search.items.length) { e.preventDefault(); searchInput.blur(); markCursor(); }
   });
-  const spOpenColl = () => (!search.q && X.open ? [...(X.lists.playlists?.items || []), ...(X.lists.albums?.items || []), { ...SPOTIFY_LIKED, count: X.lists.liked?.total || 0 }].find((c) => collKey(c) === X.open) || null : null);
+  const spOpenColl = () => (!X.open ? null : search.q ? (search.albums || []).find((c) => collKey(c) === X.open) || null
+    : [...(X.lists.playlists?.items || []), ...(X.lists.albums?.items || []), { ...SPOTIFY_LIKED, count: X.lists.liked?.total || 0 }].find((c) => collKey(c) === X.open) || null);
   const spSongsIn = (coll) => (coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(coll)])?.items?.length > 0;
   const spBusy = () => X.checking || [...Object.values(X.lists), ...Object.values(X.tracks)].some((l) => l?.loading);
   const logo = () => `<svg class="lib-logo" viewBox="0 0 24 24" role="img" aria-label="Spotify"><path d="${SPOTIFY_ICON}"/></svg>`;
@@ -392,7 +431,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     return `<div class="lib-note lib-line lib-label">connect your Spotify</div><div class="lib-note lib-line">${esc(SPOTIFY_INTRO)}</div>${SPOTIFY_STEPS.map((t, k) => `<div class="lib-note lib-line lib-step"><span class="n">${k + 1}</span><span>${esc(t).replace(rd, `<b>${rd}</b>`)}</span>${t.includes(SPOTIFY_REDIRECT) ? `<button type="button" class="lib-copy" data-do="copy" data-text="${rd}" title="copy the redirect address">copy</button>` : ''}</div>`).join('')}${X.connecting ? '<div class="lib-note lib-line lib-wait" role="status">waiting for you: Spotify\'s page is open in your browser and asks you to agree (it waits five minutes)</div>' : ''}`;
   }
   // (the liked songs have no line over them: their row says it)
-  const SP_GROUPS = { links: 'pasted links, the latest first', playlists: 'your playlists', albums: 'saved albums' };
+  const SP_GROUPS = { links: 'pasted links, the latest first', playlists: 'your playlists', albums: 'saved albums', search: 'songs', searchalbums: 'albums' };
   const spGroup = (group) => (group === 'connect' ? spSteps() : SP_GROUPS[group] ? `<div class="lib-note lib-line lib-label">${SP_GROUPS[group]}</div>` : '');
   // is this song the one the system is playing (its title, and its artist among this song's)? the strip over the list has it by those names
   function spPlaying(track, now) {
@@ -574,22 +613,26 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   }
   // (the cursor goes to the first of an opened collection's songs: at once if they are in, else when they come)
   function spFirst() {
-    const first = spRows().find((r) => r.kind === 'strack');
+    // (that collection's own: a searched album's songs come after the search's songs, which aren't its)
+    const first = spRows().find((r) => r.kind === 'strack' && r.coll.kind !== 'search' && collKey(r.coll) === X.first);
     if (first) { X.cursorKey = spotifyKey(first); X.first = null; }
   }
   const spLoadAll = () => Promise.all([spLoad('playlists'), spLoad('albums'), spLoad('liked')]);
 
   // the section was shown: whether it is connected, then its lists (kept for a minute: Spotify's metadata is not kept for long)
+  let statusWait = null; // (the check in flight, which a search waits for: see searchSpotify)
   async function spEnter() {
     if (!S.open || S.section !== 'spotify' || !sp.app || X.connecting) return;
     const gen = X.gen;
     X.checking = true;
     spRepaint();
-    try {
-      const status = await sp.status();
-      if (gen !== X.gen) return;
-      X.status = status;
-    } catch (err) { if (gen === X.gen) { X.status = { connected: false }; X.error = plainError(err); } } finally { X.checking = false; }
+    statusWait = (async () => {
+      try {
+        const status = await sp.status();
+        if (gen === X.gen) X.status = status;
+      } catch (err) { if (gen === X.gen) { X.status = { connected: false }; X.error = plainError(err); } } finally { X.checking = false; }
+    })();
+    await statusWait;
     if (gen !== X.gen) return;
     if (X.status.connected && (!X.lists.playlists || Date.now() - X.at > 60000)) spLoadAll();
     else spRepaint();
@@ -669,7 +712,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const r = rows(), cur = cursor(), change = dir > 0 ? spotifyUnfold(r, cur) : spotifyFold(r, cur);
     if (change) spShow(change);
   }
-  const spToggle = (row) => spShow({ open: collKey(row.coll) }); // (a click on a collection opens it; Enter plays it)
+  // (a click on a collection opens it, and on the open one folds it, its row keeping the cursor; Enter plays it)
+  const spToggle = (row) => { const key = collKey(row.coll); spShow(X.open === key ? { open: null, at: `coll:${key}` } : { open: key }); };
   const spCopy = (text) => {
     Promise.resolve().then(() => win.navigator.clipboard.writeText(text)).then(() => host.say('copied'), () => host.say(`could not copy: select it, ${text}`));
   };

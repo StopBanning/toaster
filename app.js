@@ -53,7 +53,7 @@ import { embeddedCover } from './embedded-cover.js';
 import { readTags, songOfFile } from './audio-tags.js';
 // (the library's panel and its two modules, library-panel.js, library-source.js and library.js, are not imported here: they are fetched when
 // it is first opened, see makeLibrary below. library-core.js is what the page has of it from the start.)
-import { lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, readStations, noteStation, sceneIsOn, setupOf, readLinks, noteLink, nameLink, nextRepeat, noteRecent, readRecent, readRepeat, readResume, withShuffle, deleteScene as dropScene, renameScene as nameScene, saveScene as addScene, noteRadioCover, queueSkip, trackLabel } from './library-core.js';
+import { lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, sceneForLoad, readStations, noteStation, sceneIsOn, setupOf, readLinks, noteLink, nameLink, nextRepeat, noteRecent, readRecent, readRepeat, readResume, withShuffle, deleteScene as dropScene, renameScene as nameScene, saveScene as addScene, noteRadioCover, queueSkip, trackLabel } from './library-core.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -187,6 +187,7 @@ const state = {
   visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, glassPlates: true, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
+  stagedTypos: false, // optional theatrical typing mistakes, disabled in recordings
   beatHidden: false, // Z's middle setting: just the beat hidden, the drum lines and their grid (for music with no pulse)
   crt: false, // Y: an old screen over everything (see #tube in the CSS)
   look: 'off', // U: a look over the visuals and under the code (renderer/post.js)
@@ -198,6 +199,7 @@ const state = {
   sceneryTheme: false, // the scenery in the theme's two colours rather than its own (A while it's on)
   sceneryScene: 'auto', // and its scene (A too): auto (a new one each song), or one by name
   spaghettiKind: 'snakes', // the spaghetti's noodles (A while it's on): SPAGHETTI_KINDS
+  earthTour: true,
   earthClip: 'aurora', // the Earth's view (A while it's on): EARTH_CLIPS
   calm: false, // fewer flashes (the help's setting; on at first if Windows' animations are off)
   updates: true, // look for a newer Toaster when it starts (the help's setting)
@@ -226,7 +228,12 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['perfectCopy', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip', 'patternKick', 'earthTour'];
+const SAVED = ['perfectCopy', 'stagedTypos', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip', 'patternKick', 'earthTour'];
+function sceneDomains() {
+  return { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS,
+    sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true, orb: true, libCover: ['chars', 'photo'],
+    look: LOOKS, drop: DROPS, camFx: CAM_FX, earthClip: EARTH_CLIPS, earthTour: true, glass: true };
+}
 function loadSettings() {
   let saved = {};
   try {
@@ -239,6 +246,7 @@ function loadSettings() {
   // fewer flashes: as you set it, or (till you do) as Windows' "Show animations" says
   if (typeof saved.calm !== 'boolean') state.calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
   state.orb = state.orb === true;
+  state.earthTour = state.earthTour !== false;
   // The background is saved by name (older versions saved its number in the list). The orb (and
   // the scenes before it) used to be a background; if that's what was picked, it's the orb on its
   // own: the orb on, the background off.
@@ -271,7 +279,7 @@ function loadSettings() {
   state.playerBar = readPlayerBar(state.playerBar); // (and none of these two: the bar on, and out of recordings)
   state.playerRec = readPlayerRec(state.playerRec);
   // (the library's: an older profile has no scenes, and as its stations only the last one played)
-  state.userScenes = readScenes(state.userScenes, { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS, sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true, orb: true, libCover: ['chars', 'photo'] });
+  state.userScenes = readScenes(state.userScenes, sceneDomains());
   state.radioStations = readStations(state.radioStations, state.radio);
   state.spotifyLinks = readLinks(state.spotifyLinks); // (an older profile has none)
   state.queueRepeat = readRepeat(state.queueRepeat); // (an older profile has neither: the album repeats, in its order)
@@ -290,6 +298,7 @@ function loadSettings() {
   state.beatHidden = state.beatHidden === true && !state.codeHidden;
   state.crt = state.crt === true;
   state.perfectCopy = state.perfectCopy === true;
+  state.stagedTypos = state.stagedTypos === true;
   pendingLook = state.look; // (a look from outside isn't in yet: it's put back once it is, see loadLooks)
   state.look = LOOKS.includes(state.look) ? state.look : 'off';
 }
@@ -1097,7 +1106,7 @@ function nextWorldLook() {
   flashStatus('look: ' + state.worldLook);
   saveSettings();
 }
-// A, while the Earth is on: the next view (the aurora, the northern lights, city lights, dawn, the day side)
+// The tour's next view (the aurora, the northern lights, city lights, dawn, the day side), see tourEarth
 function nextEarthClip(quiet = false) {
   state.earthClip = EARTH_CLIPS[(EARTH_CLIPS.indexOf(state.earthClip) + 1) % EARTH_CLIPS.length];
   earth.setClip(state.earthClip);
@@ -1105,10 +1114,24 @@ function nextEarthClip(quiet = false) {
   earthTour.at = nowSec(); // (a view picked by hand starts the tour's count over)
   saveSettings();
 }
+// A view of the Earth by name, which stays (the tour off), or 'all': every view in turn, a new one every 8 bars (the tour on).
+const earthLabel = () => (state.earthTour !== false ? 'earth (all): a new view every 8 bars' : `earth (${state.earthClip})`);
+function setEarthView(view, say = true) {
+  if (view === 'all') state.earthTour = true;
+  else { state.earthTour = false; state.earthClip = view; earth.setClip(view); }
+  earthTour.at = nowSec();
+  if (say) flashStatus(earthLabel());
+  saveSettings();
+}
+// A, while the Earth is on: the next view, each one staying put, then all of them, then round again
+function nextEarthView() {
+  const order = [...EARTH_CLIPS, 'all'], now = state.earthTour !== false ? 'all' : state.earthClip;
+  setEarthView(order[(order.indexOf(now) + 1) % order.length]);
+}
 // The Earth moves through its views with the song: every 8 bars (a phrase) the next view, its fade to black starting on the
 // phrase's last beat so the new view rises on the downbeat; and a new view as a breakdown starts (it fades through black in the
-// quiet, so the drop lands on it at full light). Not before the beat is found. (earthTour: false in the settings keeps the
-// view you picked.)
+// quiet, so the drop lands on it at full light). Not before the beat is found. Only with "all views" picked (earthTour); a view
+// picked by name stays.
 const earthTour = { at: -Infinity, quiet: false };
 function tourEarth(t) {
   if (VISUALS[state.visual] !== 'earth' || state.earthTour === false || !eng.tempo.locked || eng.silent) { earthTour.quiet = false; return; }
@@ -1327,6 +1350,15 @@ function crtKick() {
   crtKickT?.();
   crtKickT = clock.after(0.06, () => $('tube').classList.remove('kick'));
 }
+
+// Optional staged typing mistakes, under code in the help.
+function setStagedTypos(on) {
+  state.stagedTypos = on;
+  $('staged-typos').checked = on;
+  view.slipsOff = !on || !!rec.mr || clips.on || !!TAKE;
+  saveSettings();
+}
+$('staged-typos').addEventListener('change', (e) => setStagedTypos(e.target.checked));
 
 // Fewer flashes: the help's checkbox (see eng.on.kick, cuts, the takeover and body.calm in the CSS).
 function setCalm(on) {
@@ -2185,7 +2217,7 @@ let footerAt = -Infinity, poolAt = -Infinity, rollAt = -Infinity;
 function codeTick(t) {
   if (t - codeAt >= 0.04 || t < codeAt) {
     codeAt = t;
-    view.slipsOff = !!rec.mr || clips.on || !!TAKE; // (no staged slips in a video: see codeview.js; a perfect copy is one)
+    view.slipsOff = !state.stagedTypos || !!rec.mr || clips.on || !!TAKE; // (no staged slips in a video: see codeview.js; a perfect copy is one)
     const lines = buildLines(eng, { song: currentSong(), source: state.label || 'nothing yet', hushed: state.hushed }, t);
     view.update(lines, t, state.hushed !== hushWas); // a hush goes in at once
     hushWas = state.hushed;
@@ -2385,7 +2417,7 @@ const presetSetters = {
   visual: (name) => setVisual(VISUALS.indexOf(name)),
   sceneryScene: (scene) => { state.sceneryScene = scene; state.sceneryTheme = false; saveSettings(); },
   blocks: setBlocks,
-  blockLook: (look) => { state.blockLook = look; setBlocks(true); },
+  blockLook: (look) => { state.blockLook = look; setBlocks(state.blocks); },
   gameScreens: (screen) => { state.gameScreens = screen; setGameScreens(screen); saveSettings(); },
   theme: (name) => { state.theme = THEMES.indexOf(name); applyTheme(); saveSettings(); },
   codeHidden: (v) => (v === 'beat' ? setCodeHidden(false, true) : setCodeHidden(v)),
@@ -2393,6 +2425,11 @@ const presetSetters = {
   libCover: setLibCover,
   orb: (on) => setOrb(on),
   glass: (on) => setGlass(on),
+  look: (name) => setLook(name, false),
+  drop: (name) => { state.drop = DROPS.indexOf(name); if (name === 'y2k bug') y2k.prepare(); saveSettings(); },
+  camFx: (name) => setCamFx(CAM_FX.indexOf(name), false),
+  earthClip: (name) => { state.earthClip = name; earth.setClip(name); earthTour.at = nowSec(); saveSettings(); },
+  earthTour: (on) => { state.earthTour = on; earthTour.at = nowSec(); saveSettings(); },
 };
 let presetQueue = Promise.resolve();
 function choosePreset(id) {
@@ -2404,8 +2441,13 @@ function choosePreset(id) {
 function runPreset(preset, word) {
   const run = async () => {
     // (with just the beat hidden, a preset's codeHidden: false still means all of the code)
-    const current = { ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme], codeHidden: state.beatHidden ? 'beat' : state.codeHidden };
-    if (await applyPreset(preset, current, presetSetters)) flashStatus(`${word}: ${preset.name.toLowerCase()}`);
+    if (word === 'scene') await looksReady;
+    const current = currentSetup();
+    let warning = '';
+    const load = word === 'scene' ? sceneForLoad(preset, sceneDomains(), (message) => { warning = message; }) : preset;
+    const changed = await applyPreset(load, current, presetSetters);
+    if (warning) flashStatus(warning);
+    else if (changed) flashStatus(`${word}: ${preset.name.toLowerCase()}`);
   };
   presetQueue = presetQueue.then(run, run);
   return presetQueue;
@@ -2421,7 +2463,7 @@ function showVisMenu(open) {
   const tile = (kind, name, label, on) => `<button type="button" role="menuitem" class="tile${on ? ' on' : ''}" data-kind="${kind}" data-name="${name}"><img src="thumbs/${kind}-${name}.webp" alt="" width="160" height="100"><span>${label}</span></button>`;
   const scenes = ['auto', ...scenery.scenes].map((s) => tile('scene', s, s === 'auto' ? 'auto: a new one each song' : (SCENE_NAMES[s] || s).replace(/^the /, ''), now === 'scenery' && !state.sceneryTheme && state.sceneryScene === s));
   const more = V_ROUND.filter((v) => v !== 'scenery').flatMap((v) => (v === 'spaghetti' ? SPAGHETTI_KINDS.map((k) => tile('spaghetti', k, 'spaghetti: ' + k, now === v && state.spaghettiKind === k))
-    : v === 'earth' ? EARTH_CLIPS.map((c) => tile('earth', c.replace(/ /g, '-'), 'the Earth: ' + c, now === v && state.earthClip === c))
+    : v === 'earth' ? [tile('earth', 'all', 'earth (all)', now === v && state.earthTour !== false), ...EARTH_CLIPS.map((c) => tile('earth', c.replace(/ /g, '-'), `earth (${c})`, now === v && state.earthTour === false && state.earthClip === c))]
     : [tile('bg', v, v === 'off' ? 'off: just the code' : visName(v), now === v)]));
   const presets = PRESETS.map((p) => `<button type="button" role="menuitem" class="tile" data-kind="preset" data-name="${p.id}"><img src="${p.picture}" alt="" width="160" height="100"><span>${p.name}</span></button>`);
   visMenu.innerHTML = `<div class="pick-head">presets</div><div class="pick-presets">${presets.join('')}</div><div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div><div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
@@ -2442,11 +2484,9 @@ visMenu.onclick = (e) => {
     setVisual(VISUALS.indexOf('spaghetti'));
     flashStatus('background: spaghetti, ' + b.dataset.name);
   } else if (b.dataset.kind === 'earth') {
-    state.earthClip = b.dataset.name.replace(/-/g, ' ');
-    earth.setClip(state.earthClip);
-    earthTour.at = nowSec();
+    setEarthView(b.dataset.name.replace(/-/g, ' '), false);
     setVisual(VISUALS.indexOf('earth'));
-    flashStatus('the Earth: ' + state.earthClip);
+    flashStatus(earthLabel());
   } else { setVisual(VISUALS.indexOf(b.dataset.name)); flashStatus('background: ' + visName(b.dataset.name)); }
   saveSettings();
   showVisMenu(false); crtStatic(); crtOsd(crtChannel());
@@ -2480,7 +2520,7 @@ const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'library', key: 'g', run: () => toggleLibrary() },
   { id: 'visual', key: 'v', run: () => { setVisual(VISUALS.indexOf(V_ROUND[(V_ROUND.indexOf(VISUALS[state.visual]) + 1) % V_ROUND.length])); flashStatus('background: ' + visName(VISUALS[state.visual])); crtStatic(); crtOsd(crtChannel()); } },
-  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'earth' ? nextEarthClip() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spaghetti' ? nextSpaghetti() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the Earth's view, the chrome's collage, the spaghetti's noodles, the spectrogram's colours or the handheld's screens`)) },
+  { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'earth' ? nextEarthView() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spaghetti' ? nextSpaghetti() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the Earth's view, the chrome's collage, the spaghetti's noodles, the spectrogram's colours or the handheld's screens`)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // R: the orb, its 3D shapes over any background (off the keys in 0.4.23, back in 0.4.26: it was missed)
   { id: 'orb', key: 'r', run: () => { setOrb(!state.orb); flashStatus(state.orb ? 'the orb on' : 'the orb off'); } },
@@ -2561,9 +2601,11 @@ const paletteEntries = () => [
   { id: 'code:glass', name: 'code on glass (on or off)', aliases: ['glass', 'liquid glass', 'acrylic', 'plates'], run: () => setGlassPlates(!state.glassPlates) },
   // the Earth's views, by name
   ...EARTH_CLIPS.map((c) => ({
-    id: 'earth:' + c, name: 'the Earth: ' + c, aliases: ['earth', 'space', 'nasa', ...(c.includes('aurora') || c.includes('northern') ? ['aurora', 'northern lights'] : [])],
-    run: () => { state.earthClip = c; earth.setClip(c); setVisual(VISUALS.indexOf('earth')); flashStatus('the Earth: ' + c); },
+    id: 'earth:' + c, name: `earth (${c})`, aliases: ['earth', 'space', 'nasa', ...(c.includes('aurora') || c.includes('northern') ? ['aurora', 'northern lights'] : [])],
+    run: () => { setEarthView(c, false); setVisual(VISUALS.indexOf('earth')); flashStatus(earthLabel()); },
   })),
+  { id: 'earth:all', name: 'earth (all): a new view every 8 bars', aliases: ['earth', 'the earth', 'earth tour', 'all earth', 'cycle earth', 'nasa', 'space'],
+    run: () => { setEarthView('all', false); setVisual(VISUALS.indexOf('earth')); flashStatus(earthLabel()); } },
   { id: 'vis:backrooms', name: 'the backrooms', aliases: ['backrooms', 'liminal', 'liminal spaces', 'yellow rooms'], run: () => setVisual(VISUALS.indexOf('backrooms')) },
   ...BLOCK_LOOKS.map((look) => ({
     id: 'look:' + look, name: 'code look: ' + ({ game: 'handheld game', blocks: 'punchcard' }[look] || look),
@@ -2771,7 +2813,7 @@ const canRecord = () => !!window.nc?.recSource && typeof MediaRecorder !== 'unde
 // The panel is made, with its modules, when it is first wanted (G, its entries in the footer, the help, Ctrl+K and the touch panel all
 // come to toggleLibrary and libraryPanel below, which is library-core.js's handle for it): the page starts without them.
 let librarySrc = null; // (where its tracks come from: made with the panel, which is the only thing that starts a queue)
-const currentSetup = () => setupOf({ ...state, visual: VISUALS[state.visual], theme: THEMES[state.theme], codeHidden: state.beatHidden ? 'beat' : state.codeHidden });
+const currentSetup = () => setupOf({ ...state, drop: DROPS[state.drop], camFx: CAM_FX[state.camFx], visual: VISUALS[state.visual], theme: THEMES[state.theme], codeHidden: state.beatHidden ? 'beat' : state.codeHidden });
 function saveSetupAsScene() {
   state.userScenes = addScene(state.userScenes, currentSetup());
   const scene = state.userScenes[state.userScenes.length - 1];
@@ -2896,7 +2938,7 @@ const controls = createControls({
     strength: () => {
       const v = VISUALS[state.visual];
       if (state.blocks && state.blockLook === 'game') return `game screens: ${SCREEN_NAMES[state.gameScreens]}`;
-      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spaghetti' ? `noodles: ${state.spaghettiKind}` : v === 'earth' ? state.earthClip : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
+      return v === 'worlds' ? state.worldLook : v === 'chrome' ? `collage ${state.chromeCollage ? 'on' : 'off'}` : v === 'spaghetti' ? `noodles: ${state.spaghettiKind}` : v === 'earth' ? (state.earthTour !== false ? 'all' : state.earthClip) : v === 'spectrogram' ? (state.spectroTheme ? "the theme's colours" : 'rainbow')
         : v === 'scenery' ? state.sceneryScene + (state.sceneryTheme ? ", theme's colours" : '') : STRENGTHS[state.strength][0];
     },
     blocks: () => ({ text: !state.blocks ? 'off' : { blocks: 'punchcard', dominoes: 'dominoes', game: 'handheld game' }[state.blockLook], on: state.blocks }),
@@ -3080,8 +3122,9 @@ setCodeHidden(state.codeHidden, state.beatHidden);
 setCrt(state.crt);
 setLook(state.look, false);
 setGlassPlates(state.glassPlates, false);
-loadLooks();
+const looksReady = loadLooks();
 setCalm(state.calm);
+setStagedTypos(state.stagedTypos);
 setUpdates(state.updates);
 setMirror(state.mirror);
 setPlayerBar(state.playerBar);

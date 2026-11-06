@@ -1,4 +1,4 @@
-// The code view. Types each line in like a person would (with the odd typo, fixed with
+// The code view. Types each line in like a person would (optionally with a typo, fixed with
 // backspace, since a live coder keeps mistakes in the show, and now and then a bracket left out: a red
 // error, then the caret goes back to fix it), lands each change on the next bar line the way
 // ctrl+enter on the downbeat does (the line flashes, the rest of the code with it), and lights up
@@ -87,7 +87,7 @@ const unslid = (text) => text.replace(/slider\(-?[\d.]+/g, 'slider(#');
 const sliderAt = (p) => clamp((parseFloat(p.text.slice(7)) - p.slider[0]) / (p.slider[1] - p.slider[0]), 0, 1).toFixed(3);
 
 export function createCodeView(ids) {
-  let slipsOff = false;
+  let slipsOff = true;
   const lines = Object.fromEntries(ids.map((id) => [id, {
     id, el: document.getElementById('ln-' + id), shown: '', target: '', parts: null, targetParts: null,
     spans: [], want: '', wantSince: 0,
@@ -181,7 +181,7 @@ export function createCodeView(ids) {
       const ch = add[j];
       if (j === slip) continue;
       const near = NEAR[ch.toLowerCase()];
-      if (near && dice() < TYPO_CHANCE) {
+      if (!slipsOff && near && dice() < TYPO_CHANCE) {
         const wrong = near[Math.floor(dice() * near.length)];
         ops.push({ ins: ch === ch.toLowerCase() ? wrong : wrong.toUpperCase() }, 'pause', 'del');
       }
@@ -255,9 +255,10 @@ export function createCodeView(ids) {
     lines,
     get slipsOff() { return slipsOff; },
     set slipsOff(v) {
+      if (v === slipsOff) return;
       slipsOff = v;
-      // A slip already planned or showing when recording starts is dropped and finished normally.
-      if (v && typer.cur?.ops.includes('unerror', typer.cur.i)) {
+      // Cancel planned wrong keys too when the setting turns off or a recording starts.
+      if (v && typer.cur) {
         const L = lines[typer.cur.id];
         if (err) err.hidden = true;
         L.el.classList.remove('slipped');
