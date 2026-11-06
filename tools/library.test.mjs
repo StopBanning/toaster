@@ -231,11 +231,11 @@ test('where the queue was, as saved: a track\'s path and the seconds into it, el
 
 // ---------------------------------------------------------------- scenes
 
-const DOMAINS = { visual: ['scenery', 'worlds', 'chrome', 'spaghetti', 'off', 'warp'], theme: ['bluescreen', 'whitescreen', 'dynamic'], blockLook: ['dominoes', 'game', 'blocks'], gameScreens: ['os', 'neon'], sceneryScene: ['auto', 'koi', 'lake'], blocks: true, orb: true, vertical: true, libCover: ['chars', 'photo'] };
-const SETUP = { visual: 'worlds', sceneryScene: 'auto', blocks: true, blockLook: 'game', gameScreens: 'neon', theme: 'dynamic', codeHidden: false, vertical: false, libCover: 'chars', orb: false };
+const DOMAINS = { visual: ['scenery', 'worlds', 'chrome', 'spaghetti', 'off', 'warp'], theme: ['bluescreen', 'whitescreen', 'dynamic'], blockLook: ['dominoes', 'game', 'blocks'], gameScreens: ['os', 'neon'], sceneryScene: ['auto', 'koi', 'lake'], blocks: true, orb: true, vertical: true, libCover: ['chars', 'photo'], look: ['off', 'trails'], drop: ['off', 'y2k bug'], camFx: ['none', 'glass'], earthClip: ['aurora', 'dawn'], earthTour: true, glass: true };
+const SETUP = { visual: 'worlds', sceneryScene: 'auto', blocks: true, blockLook: 'game', gameScreens: 'neon', theme: 'dynamic', codeHidden: false, vertical: false, libCover: 'chars', orb: false, look: 'trails', drop: 'y2k bug', camFx: 'glass', earthClip: 'dawn', earthTour: false, glass: true };
 
 test('a scene holds the preset settings and the shared library cover look', () => {
-  assert.deepEqual([...L.SETUP_KEYS].sort(), ['blockLook', 'blocks', 'codeHidden', 'gameScreens', 'libCover', 'orb', 'sceneryScene', 'theme', 'vertical', 'visual']);
+  assert.deepEqual([...L.SETUP_KEYS].sort(), ['blockLook', 'blocks', 'codeHidden', 'gameScreens', 'libCover', 'orb', 'sceneryScene', 'theme', 'vertical', 'visual', 'look', 'drop', 'camFx', 'earthClip', 'earthTour', 'glass'].sort());
   for (const p of PRESETS) for (const k of Object.keys(p.settings)) assert.ok(L.SETUP_KEYS.includes(k), `${p.id}: ${k}`);
   // from the app's current state, which holds much more
   assert.deepEqual(L.setupOf({ ...SETUP, source: 'file', camera: true, recording: true, volume: 3, syncTrim: 20 }), SETUP);
@@ -278,8 +278,8 @@ test('scenes are saved with the other settings and come back as they were; an ol
     { id: 's6', name: 'x', settings: null }, null, 7, 'x', [], { id: 's5', name: 'y', settings: { theme: 'terminal' } },
   ];
   const read = L.readScenes(junk, DOMAINS);
-  assert.deepEqual(read.map((s) => s.id), [scenes[0].id, 's9']);
-  assert.deepEqual(read[1].settings, { theme: 'dynamic', codeHidden: 'beat' });
+  assert.deepEqual(read.map((s) => s.id), [scenes[0].id, 's9', 's8', 's5']);
+  assert.deepEqual(read[1].settings, { visual: 'nope', theme: 'dynamic', codeHidden: 'beat' });
   assert.equal(L.readScenes(Array.from({ length: 100 }, (_, i) => ({ id: `s${i}`, name: `n${i}`, settings: SETUP })), DOMAINS).length, 60, 'at most sixty');
   assert.equal(L.readScenes([{ id: 'a', name: 'x'.repeat(100), settings: SETUP }], DOMAINS)[0].name.length, 40);
 });
@@ -312,7 +312,7 @@ test('both cover looks survive a saved scene round trip and restore through the 
   assert.deepEqual(old.settings, oldSettings);
   assert.equal(await applyPreset(old, { ...oldSettings, libCover: 'photo' }, {}), false);
   const [bad] = L.readScenes(L.saveScene([], { ...SETUP, libCover: 'other' }, 'bad'), DOMAINS);
-  assert.equal('libCover' in bad.settings, false, 'invalid cover settings are dropped');
+  assert.equal(bad.settings.libCover, 'other', 'unavailable cover choice is retained');
 });
 
 test('a scene\'s picture is the scene it shows, or the background\'s own, and the picture is there', () => {
@@ -493,4 +493,32 @@ test('the sections go round: your music, spotify, radio, scenes, and back', () =
   assert.deepEqual(L.SECTIONS, [['music', 'your music'], ['spotify', 'spotify'], ['radio', 'radio'], ['scenes', 'scenes']]);
   assert.deepEqual(['music', 'spotify', 'radio', 'scenes', 'music'].map((s) => L.nextSection(s)), ['spotify', 'radio', 'scenes', 'music', 'spotify']);
   assert.deepEqual(['music', 'spotify', 'radio', 'scenes'].map((s) => L.nextSection(s, -1)), ['scenes', 'music', 'spotify', 'radio']);
+});
+
+
+test('every scene key restores, while old scenes leave newly supported settings alone', async () => {
+  const [scene] = L.readScenes(JSON.parse(JSON.stringify(L.saveScene([], L.setupOf(SETUP)))), DOMAINS);
+  assert.deepEqual(scene.settings, SETUP);
+  const current = {}, calls = [];
+  const setters = Object.fromEntries(L.SETUP_KEYS.map(k => [k, v => { calls.push(k); current[k] = v; }]));
+  await applyPreset(L.sceneForLoad(scene, DOMAINS), current, setters);
+  assert.deepEqual(current, SETUP);
+  assert.equal(calls.length, L.SETUP_KEYS.length);
+  const old = { id: 'old', name: 'old', settings: { visual: 'scenery', codeHidden: true } };
+  assert.deepEqual(L.readScenes([old], DOMAINS), [old]);
+  const kept = { ...SETUP };
+  await applyPreset(old, kept, Object.fromEntries(Object.keys(old.settings).map(k => [k, v => { kept[k] = v; }])));
+  assert.deepEqual(kept, { ...SETUP, ...old.settings });
+});
+
+test('a missing custom look survives storage and reports once on load, then restores when available', async () => {
+  const saved = L.saveScene([], { ...SETUP, look: 'custom: evening' });
+  const [scene] = L.readScenes(JSON.parse(JSON.stringify(saved)), DOMAINS), reports = [];
+  const load = L.sceneForLoad(scene, DOMAINS, m => reports.push(m));
+  assert.equal(scene.settings.look, 'custom: evening');
+  assert.equal('look' in load.settings, false);
+  assert.equal(reports.length, 1);
+  assert.match(reports[0], /custom: evening/);
+  assert.deepEqual(L.readScenes(JSON.parse(JSON.stringify([scene])), DOMAINS), [scene]);
+  assert.equal(L.sceneForLoad(scene, { ...DOMAINS, look: [...DOMAINS.look, 'custom: evening'] }).settings.look, 'custom: evening');
 });

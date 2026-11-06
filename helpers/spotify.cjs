@@ -280,10 +280,23 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
       if (!q || q.length > 256) throw new Error('Enter a Spotify song or artist (up to 256 characters).');
       const offset = request.offset ?? 0;
       if (!Number.isInteger(offset) || offset < 0 || offset > 1000) throw new Error("That isn't a place in the search results.");
-      const result = await call('GET', '/v1/search', { query: { q, type: 'track', limit: 10, offset } });
+      // (the first page also asks for albums and artists, as Spotify's own search shows them: the albums to open, and the artist the
+      // query names, whose songs then come first; each song keeps its popularity, so the panel can keep the best-known of a song
+      // Spotify lists twice, a single and its album's)
+      const first = offset === 0;
+      const result = await call('GET', '/v1/search', { query: { q, type: first ? 'track,album,artist' : 'track', limit: 10, offset } });
       const page = result.tracks || {};
-      return { items: (page.items || []).map(track).filter(Boolean), total: page.total || 0,
-        more: !!page.next && offset + 10 <= 1000, next: offset + 10 };
+      const items = (page.items || []).map((t) => {
+        const song = track(t);
+        return song && { ...song, pop: Number.isFinite(t.popularity) ? t.popularity : 0, artistIds: (t.artists || []).map((a) => a.id).filter((id) => ID.test(id || '')) };
+      }).filter(Boolean);
+      const out = { items, total: page.total || 0, more: !!page.next && offset + 10 <= 1000, next: offset + 10 };
+      if (first) {
+        out.albums = ((result.albums || {}).items || []).map((a) => collection('album', a, artists(a), a.total_tracks)).filter(Boolean).slice(0, 6);
+        const a = ((result.artists || {}).items || [])[0];
+        out.artist = a && ID.test(a.id || '') ? { id: a.id, name: a.name || '' } : null;
+      }
+      return out;
     }
     const kind = LISTS[request.list];
     if (!kind || !Object.hasOwn(LISTS, request.list)) throw new Error('Toaster asks Spotify for your playlists, saved albums and liked songs, and their tracks, nothing else.');

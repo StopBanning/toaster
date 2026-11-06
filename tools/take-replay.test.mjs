@@ -114,7 +114,7 @@ test('render mode in the page: the take\'s sample rate, no saving, no source men
   assert.match(app, /document\.body\.classList\.add\('recording'\);/);
   assert.match(app, /const applySetup = \(settings\) => applyPreset\(\{ name: 'take', settings \}, /, 'what changes during a take goes in as a scene of yours does, with no status line');
   assert.match(app, /analysers: \{ fast, mid, slow \}/);
-  assert.match(app, /view\.slipsOff = !!rec\.mr \|\| clips\.on \|\| !!TAKE;/, 'no staged slips in a perfect copy, as in M\'s recordings');
+  assert.match(app, /view\.slipsOff = !state\.stagedTypos \|\| !!rec\.mr \|\| clips\.on \|\| !!TAKE;/, 'no staged slips in a perfect copy, as in M\'s recordings');
   assert.match(app, /for \(const mode of \['vertical', 'mini'\]\) if \(TAKE\[mode\]\) \{ state\[mode\] = true; document\.body\.classList\.add\(mode\); \}/, 'the take\'s layout');
   assert.match(replaySrc, /answerFrom\(\[n\.analysers\.fast, n\.analysers\.mid, n\.analysers\.slow\]/, 'only the engine\'s three analysers are answered from the take');
   assert.doesNotMatch(replaySrc.replace(/\/\/.*$/gm, ''), /AnalyserNode\.prototype|Math\.random|performance\.now|Date\.now/);

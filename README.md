@@ -18,7 +18,7 @@ transcription.
 - **Writes the song as code you can play.** A line for each part, typed the way a live coder
   performs it ([what you'll see in the code](#what-youll-see-in-the-code)). It's real Strudel: press
   **O** and it opens in strudel.cc, ready to play; press **X** for the song so far as Strudel code
-  and as a MIDI file. Pick what plays from your own music or your Spotify playlists (**G**).
+  and as a MIDI file. Pick what plays from your own music, your Spotify playlists, or [search Spotify](#search-spotify) for any song (**G**).
 - **Your camera, worked with your hands.** **C** turns it on. Frame something with your fingers
   and a window opens on it through one of 16 filters; make a circle with your hands and a portal
   opens, your own skull in X-ray first; ✌️ for the next theme, 👍 to record. **K** cuts you out over
@@ -104,7 +104,7 @@ always starts off.
 
 ### Search Spotify
 
-Open the library (**G**) and choose **spotify**. No setup is needed: type a query and choose **search in Spotify** to open Spotify’s search page in your browser, then pick a song there. Toaster does not automatically start a song or switch its audio source when opening search. With your account connected, enter a song title or artist in the search field and press Enter or click **search**. Click a result, or use Down then Enter, to play it in Spotify. **More results** loads the next ten songs; **clear** restores your collections. Ctrl+F (⌘F on a Mac) focuses Spotify search while that section is open. Only results displayed inside Toaster require the optional Spotify account connection.
+Open the library (**G**) and choose **spotify**. No setup is needed: type a query and choose **search in Spotify** to open Spotify’s search page in your browser, then pick a song there. Toaster does not automatically start a song or switch its audio source when opening search. With your account connected, enter a song title or artist in the search field and press Enter or click **search**. Click a result, or use Down then Enter, to play it in Spotify. Each song is listed once (the best-known of Spotify's copies), a search for an artist's name lists their songs first, best known first, and the albums that match come after the songs: → opens one, Enter plays it. **More results** loads the next ten songs; **clear** restores your collections. Ctrl+F (⌘F on a Mac) focuses Spotify search while that section is open. Only results displayed inside Toaster require the optional Spotify account connection.
 
 ## Backgrounds
 

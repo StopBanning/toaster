@@ -689,7 +689,7 @@ test('the page keeps the links with the other settings, names one from the song 
   assert.ok(saved.includes('spotifyLinks'));
   assert.match(app, /^  spotifyLinks: \[\],/m);
   assert.match(app, /state\.spotifyLinks = readLinks\(state\.spotifyLinks\);/);
-  assert.match(app, /import \{ lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, readStations, noteStation, sceneIsOn, setupOf, readLinks, noteLink, nameLink,/, 'from library-core.js, which the page has from the start');
+  assert.match(app, /import \{ lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, sceneForLoad, readStations, noteStation, sceneIsOn, setupOf, readLinks, noteLink, nameLink,/, 'from library-core.js, which the page has from the start');
   // naming: before the early return for a title it has had, so a song that is the same title as before is still looked at; only from Spotify, only for a minute and a half
   assert.match(app, /const key = song \? song\.title\.trim\(\)\.toLowerCase\(\) : '';\s*nameTheLink\(song, key\);\s*if \(!key \|\| key === state\.winKey\) return;/);
   const name = app.slice(app.indexOf('function nameTheLink('), app.indexOf('\n}\n', app.indexOf('function nameTheLink(')) + 3);

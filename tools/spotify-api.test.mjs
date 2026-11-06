@@ -144,6 +144,23 @@ test('catalog search encodes the query, uses ten results and preserves the raw p
   } finally { await f.close(); }
 });
 
+test('the first search page also asks for albums and artists, and each song keeps its popularity and artists', async () => {
+  const f = await fakeApi({ 'GET /v1/search': () => [200, {
+    tracks: { total: 1, next: null, items: [{ id: ALBUM, uri: `spotify:track:${ALBUM}`, name: 'Song', artists: [{ id: ALBUM, name: 'Artist' }, { id: 'nope', name: 'Other' }], duration_ms: 9000, popularity: 77 }] },
+    albums: { items: [{ id: ALBUM, name: 'Album', artists: [{ name: 'Artist' }], images: [], total_tracks: 9 }, { id: 'not an id', name: 'Broken' }] },
+    artists: { items: [{ id: ALBUM, name: 'Artist' }] },
+  }] });
+  try {
+    const web = createWebApi({ accessToken: tokens().accessToken, api: f.api });
+    const page = await web.list({ list: 'search', q: 'artist', offset: 0 });
+    assert.deepEqual(f.seen[0].query, { q: 'artist', type: 'track,album,artist', limit: '10', offset: '0' });
+    assert.equal(page.items[0].pop, 77);
+    assert.deepEqual(page.items[0].artistIds, [ALBUM], 'only real Spotify ids are kept');
+    assert.deepEqual(page.albums.map((a) => [a.kind, a.name, a.by, a.count, a.uri]), [['album', 'Album', 'Artist', 9, `spotify:album:${ALBUM}`]]);
+    assert.deepEqual(page.artist, { id: ALBUM, name: 'Artist' });
+  } finally { await f.close(); }
+});
+
 test('zero-setup search opens only a fixed, encoded Spotify search URL and reports opener failures', async () => {
   const { searchUrl, openSearch } = createRequire(import.meta.url)('../helpers/spotify.cjs');
   const opened = [];

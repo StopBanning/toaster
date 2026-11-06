@@ -7,7 +7,7 @@
 export {
   REPEATS, SETUP_KEYS, defaultSceneName, deleteScene, nameLink, nextRepeat, noteLink, noteRadioCover, noteRecent, noteStation, queueLine, queueNext,
   queueOf, queuePrevious, queueSkip, queueText, readLinks, readRecent, readRepeat, readResume, readScenes, readStations, renameScene, saveScene,
-  sceneIsOn, setupOf, shuffled, trackLabel, withShuffle,
+  sceneForLoad, sceneIsOn, setupOf, shuffled, trackLabel, withShuffle,
 } from './library-core.js';
 
 // ---------------------------------------------------------------- names

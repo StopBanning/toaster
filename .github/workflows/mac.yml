@@ -16,8 +16,8 @@ jobs:
   mac:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -29,20 +29,7 @@ jobs:
           MAC_SIGN_PASSWORD: ${{ secrets.MAC_SIGN_PASSWORD }}
         run: |
           V=$(node -p "require('./package.json').version")
-          ID=- KC=()
-          if [ -n "$MAC_SIGN_P12" ]; then
-            # (a keychain of its own for the run, never the runner's search list; codesign takes it by path. The identity is
-            # self-signed, so untrusted: codesign signs with it all the same, and its requirement names the certificate)
-            K="$RUNNER_TEMP/sign.keychain-db" P="$(uuidgen)"
-            security create-keychain -p "$P" "$K" && security set-keychain-settings -lut 3600 "$K" && security unlock-keychain -p "$P" "$K"
-            echo "$MAC_SIGN_P12" | base64 --decode > "$RUNNER_TEMP/sign.p12"
-            security import "$RUNNER_TEMP/sign.p12" -k "$K" -P "$MAC_SIGN_PASSWORD" -T /usr/bin/codesign >/dev/null
-            security set-key-partition-list -S apple-tool:,apple: -s -k "$P" "$K" >/dev/null
-            rm -f "$RUNNER_TEMP/sign.p12"
-            ID=$(security find-identity -p codesigning "$K" | awk '/"Toaster Self-Signed"/ { print $2; exit }')
-            [ -n "$ID" ] || { echo "MAC_SIGN_P12 holds no 'Toaster Self-Signed' identity"; exit 1; }
-            KC=(--keychain "$K")
-          fi
+          source tools/release/mac-signing.sh
           for ARCH in arm64 x64 universal; do
             APP="dist/Toaster-darwin-$ARCH/Toaster.app"
             codesign --force --deep "${KC[@]}" --sign "$ID" "$APP"
@@ -55,11 +42,11 @@ jobs:
           done
       - name: Start it, and a screenshot 25 s in
         run: |
-          open dist/Toaster-darwin-universal/Toaster.app
+          open dist/Toaster-darwin-universal/Toaster.app --args --use-mock-keychain --user-data-dir="$RUNNER_TEMP/toaster-smoke"
           sleep 25
           pgrep -lx Toaster
           screencapture -x shot.png || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: toaster-mac

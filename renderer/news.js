@@ -4,6 +4,12 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.1', items: [
+    { key: 'G', text: "spotify search lists each song once, puts an artist's own songs first when you search their name, and shows the albums that match (→ opens one)" },
+    { act: 'strength', in: 'the Earth', text: "a view of the Earth you pick stays put; earth (all), the last stop on A and first in the background picker, moves through all five, a new one every 8 bars on the downbeat" },
+    { key: 'G', text: "a saved scene keeps everything you see: the look (U), the drop effect (B), the camera effect (K), the Earth's view and the glass blob too" },
+    { key: '?', text: "the code types without staged mistakes now; tick Staged typing mistakes in the help, under the code, to have the odd slip back" },
+  ] },
   { version: '0.5.0', items: [
     { key: 'G', text: "search Spotify from the library's spotify tab: type a song or an artist, play any result in the Spotify app, and Toaster writes it out and draws it as it plays (with your account connected; without one, the search opens Spotify's own search page)" },
     { act: 'visual', text: "an Orb preset in the background picker: the orb going through its shapes over the plain blue, with the code" },

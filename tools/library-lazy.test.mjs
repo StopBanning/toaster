@@ -58,7 +58,7 @@ test('what the page needs before the panel exists is in library-core.js: the pro
   for (const name of ['readScenes', 'readStations', 'noteStation', 'setupOf', 'saveScene', 'renameScene', 'deleteScene', 'sceneIsOn', 'queueOf', 'queueNext', 'queuePrevious', 'queueLine', 'lazyLibrary']) {
     assert.match(core, new RegExp(`export (const|function) ${name}\\b`), name);
   }
-  assert.match(app, /import \{ lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, readStations, noteStation, sceneIsOn, setupOf, [^}]*\} from '\.\/library-core\.js';/);
+  assert.match(app, /import \{ lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, sceneForLoad, readStations, noteStation, sceneIsOn, setupOf, [^}]*\} from '\.\/library-core\.js';/);
 });
 
 test('library.js still has every name it had (it re-exports the core), so what reads them there keeps working', async () => {

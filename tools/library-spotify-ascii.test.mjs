@@ -186,3 +186,158 @@ test('Spotify search submits, pages, plays a result, clears, and ignores an obso
     panel.open('music'); assert.equal(parts['.lib-sp-search'].hidden, true);
   } finally { panel.close(); }
 });
+
+test('Spotify search lists a song once (its best-known copy), puts the named artist\'s songs first and opens its albums', async () => {
+  const parts = {}, events = {}, root = new El(), requests = [];
+  root.querySelector = (sel) => (parts[sel] ||= new El());
+  root.querySelectorAll = () => [];
+  const id = (c) => c.repeat(22), BJ = id('J');
+  const song = (c, name, by, pop, artistIds = []) => ({ id: id(c), uri: `spotify:track:${id(c)}`, name, by, ms: 9000, pop, artistIds });
+  // (Colin's search, Nov 5: "baby jane" listed Starry Eyed - Sped Up twice and Rod Stewart's Baby Jane twice)
+  const page = { items: [
+    song('a', 'Rival', 'Someone Else', 50),
+    song('b', 'Starry Eyed - Sped Up', 'Baby Jane', 40, [BJ]),
+    song('c', 'Colorway', 'Baby Jane', 70, [BJ]),
+    song('d', 'Starry Eyed - Sped Up', 'Baby Jane', 65, [BJ]),
+    song('e', 'Baby Jane - 2008 Remaster', 'Rod Stewart', 60),
+    song('f', 'baby jane - 2008 remaster', 'Rod Stewart', 30),
+  ], albums: [{ kind: 'album', id: id('A'), name: 'Field Notes', by: 'Baby Jane', count: 2, cover: '', big: '', uri: `spotify:album:${id('A')}` }],
+  artist: { id: BJ, name: 'Baby Jane' }, total: 30, more: false, next: 10 };
+  const albumSongs = { items: [song('g', 'One', 'Baby Jane', 0), song('h', 'Two', 'Baby Jane', 0)], total: 2, more: false };
+  const host = {
+    key: () => 'G', blocked: () => false, live: () => false, playing: () => ({}), repeat: () => 'album', shuffle: () => false,
+    scenes: () => ({ presets: [], user: [] }), stations: () => [], say() {}, fail: assert.fail,
+    spotify: { app: true, links: () => [], status: async () => ({ connected: true }),
+      list: async (request) => { requests.push(request); return request.list === 'album' ? albumSongs : request.q === 'steve lacy the feeling' ? { ...page, artist: { id: BJ, name: 'Baby Jane' } } : page; },
+      play: async () => {}, open: async () => {}, search: async () => assert.fail('no handoff while connected') },
+  };
+  const panel = createLibraryPanel({ document: { body: new El(), createElement: () => new El() },
+    window: { navigator: {}, addEventListener: (k, fn) => { events[k] = fn; }, matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ getPropertyValue: () => '' }) },
+    root, source: { kind: 'web', supported: true, start: async () => false, cached: async () => null }, host });
+  const x = panel.state.sp;
+  x.status = { connected: true }; x.at = Date.now(); x.lists = { playlists: { items: [] }, albums: { items: [] }, liked: { items: [] } };
+  const submit = async (value) => { parts['.lib-sp-query'].value = value; parts['.lib-sp-search'].handlers.submit[0]({ preventDefault() {} }); await settle(); };
+  const key = async (k) => { events.keydown({ key: k, target: {}, preventDefault() {}, stopImmediatePropagation() {} }); await settle(); };
+  const songs = () => panel.rows().filter((r) => r.kind === 'strack' && r.coll.kind === 'search').map((r) => `${r.track.name}|${r.track.pop}`);
+  try {
+    panel.open('spotify'); await settle();
+    await submit('baby jane');
+    assert.deepEqual(songs(), ['Colorway|70', 'Starry Eyed - Sped Up|65', 'Rival|50', 'Baby Jane - 2008 Remaster|60'],
+      'each song once, the better-known copy kept; her songs first, best-known first; the rest in Spotify\'s order');
+    assert.match(parts['.lib-list'].innerHTML, /lib-label">songs</);
+    assert.match(parts['.lib-list'].innerHTML, /lib-label">albums</);
+    await submit('steve lacy the feeling');
+    assert.equal(songs()[0], 'Rival|50', 'a query that isn\'t just the artist\'s name keeps Spotify\'s order');
+    await submit('baby jane');
+    const at = panel.rows().findIndex((r) => r.kind === 'coll' && r.group === 'searchalbums');
+    assert.ok(at > 0, 'the album is listed after the songs');
+    panel.state.cursor.spotify = at;
+    await key('ArrowRight');
+    assert.deepEqual(requests.at(-1), { list: 'album', id: id('A'), offset: 0 });
+    const opened = panel.rows().slice(at + 1).map((r) => [r.kind, r.track?.name]);
+    assert.deepEqual(opened, [['strack', 'One'], ['strack', 'Two']], 'its songs under its row');
+    await key('ArrowLeft');
+    assert.equal(x.open, null);
+    await key('ArrowRight');
+    parts['.lib-sp-clear'].handlers.click[0](); await settle();
+    assert.equal(x.open, null, 'clearing the search folds an album opened from it');
+    assert.ok(panel.rows().every((r) => r.group !== 'searchalbums'));
+  } finally { panel.close(); }
+});
+
+test('a search typed while the section is still asking whether Spotify is connected waits for the answer, not the browser', async () => {
+  const parts = {}, events = {}, root = new El(), requests = [], handoffs = [];
+  root.querySelector = (sel) => (parts[sel] ||= new El());
+  root.querySelectorAll = () => [];
+  let answer;
+  const asked = new Promise((r) => { answer = r; });
+  const host = {
+    key: () => 'G', blocked: () => false, live: () => false, playing: () => ({}), repeat: () => 'album', shuffle: () => false,
+    scenes: () => ({ presets: [], user: [] }), stations: () => [], say() {}, fail: assert.fail,
+    spotify: { app: true, links: () => [], status: () => asked,
+      list: async (request) => { requests.push(request); return { items: [], total: 0, more: false, next: 10 }; },
+      play: async () => {}, open: async () => {}, search: async (query) => { handoffs.push(query); } },
+  };
+  const panel = createLibraryPanel({ document: { body: new El(), createElement: () => new El() },
+    window: { navigator: {}, addEventListener: (k, fn) => { events[k] = fn; }, matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ getPropertyValue: () => '' }) },
+    root, source: { kind: 'web', supported: true, start: async () => false, cached: async () => null }, host });
+  try {
+    panel.open('spotify'); await settle();
+    assert.equal(panel.state.sp.checking, true, 'still asking');
+    parts['.lib-sp-query'].value = 'steve lacy the feeling';
+    parts['.lib-sp-search'].handlers.submit[0]({ preventDefault() {} }); await settle();
+    assert.deepEqual(handoffs, [], 'nothing handed to the browser while the answer is out');
+    answer({ connected: true }); await settle();
+    assert.deepEqual(handoffs, [], 'connected: never the browser');
+    assert.ok(requests.some((r) => r.list === 'search' && r.q === 'steve lacy the feeling'), 'searched inside Toaster');
+  } finally { panel.close(); }
+});
+
+// (from the review of the search change, Nov 5: a searched album's songs come after the search's own songs)
+function searchFixture({ asked = null } = {}) {
+  const parts = {}, events = {}, root = new El(), requests = [], plays = [], handoffs = [];
+  root.querySelector = (sel) => (parts[sel] ||= new El());
+  root.querySelectorAll = () => [];
+  const song = (id, name) => ({ id, uri: `spotify:track:${id}`, name, by: 'Artist', ms: 9000 });
+  const album = { kind: 'album', id: 'album', uri: 'spotify:album:album', name: 'Album', by: 'Artist' };
+  const host = {
+    key: () => 'G', blocked: () => false, live: () => false, playing: () => ({}), repeat: () => 'album', shuffle: () => false,
+    scenes: () => ({ presets: [], user: [] }), stations: () => [], say() {}, fail: assert.fail,
+    spotify: { app: true, links: () => [], status: () => asked || Promise.resolve({ connected: true }),
+      list: async (request) => {
+        requests.push(request);
+        return request.list === 'album' ? { items: [song('album-song', 'Album song')], total: 1, more: false }
+          : { items: [song('result', 'Result')], albums: [album], total: 1, more: false };
+      },
+      play: async (request) => { plays.push(request); }, open: async () => {}, search: async (query) => { handoffs.push(query); } },
+  };
+  const panel = createLibraryPanel({ document: { body: new El(), createElement: () => new El() },
+    window: { navigator: {}, addEventListener: (k, fn) => { events[k] = fn; }, matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ getPropertyValue: () => '' }) },
+    root, source: { kind: 'web', supported: true, start: async () => false, cached: async () => null }, host });
+  const submit = async (query) => { parts['.lib-sp-query'].value = query; parts['.lib-sp-search'].handlers.submit[0]({ preventDefault() {} }); await settle(); };
+  const key = async (k) => { events.keydown({ key: k, target: {}, preventDefault() {}, stopImmediatePropagation() {} }); await settle(); };
+  const click = async (i) => { const el = { dataset: { i: String(i) } }; parts['.lib-list'].handlers.click[0]({ target: { closest: (s) => (s === '[data-i]' ? el : null) } }); await settle(); };
+  return { panel, parts, requests, plays, handoffs, submit, key, click };
+}
+
+test('a searched album opened with → puts the cursor on its own first song, and Enter plays that song in the album', async () => {
+  const f = searchFixture();
+  try {
+    f.panel.open('spotify'); await settle();
+    await f.submit('Artist');
+    f.panel.state.cursor.spotify = f.panel.rows().findIndex((r) => r.kind === 'coll');
+    await f.key('ArrowRight');
+    assert.equal(f.panel.rows()[f.panel.state.cursor.spotify].track.id, 'album-song', 'the album\'s song, not the search\'s first');
+    await f.key('Enter');
+    assert.deepEqual(f.plays[0], { context: 'spotify:album:album', track: 'spotify:track:album-song' });
+  } finally { f.panel.close(); }
+});
+
+test('a click on the open searched album folds it, the cursor staying on its row', async () => {
+  const f = searchFixture();
+  try {
+    f.panel.open('spotify'); await settle();
+    await f.submit('Artist');
+    const i = f.panel.rows().findIndex((r) => r.kind === 'coll');
+    await f.click(i);
+    assert.equal(f.panel.state.sp.open, 'album:album');
+    await f.click(i);
+    assert.equal(f.panel.state.sp.open, null, 'folded');
+    assert.equal(f.panel.rows()[f.panel.state.cursor.spotify].kind, 'coll');
+  } finally { f.panel.close(); }
+});
+
+test('a search cleared while it waits for the connection answer is never sent, connected or not', async () => {
+  for (const status of [{ connected: true }, { connected: false }]) {
+    let answer;
+    const f = searchFixture({ asked: new Promise((r) => { answer = r; }) });
+    try {
+      f.panel.open('spotify'); await settle();
+      await f.submit('old query');
+      f.parts['.lib-sp-clear'].handlers.click[0]();
+      answer(status); await settle();
+      assert.equal(f.requests.filter((r) => r.list === 'search').length, 0, 'no search inside Toaster');
+      assert.deepEqual(f.handoffs, [], 'and none in the browser');
+    } finally { f.panel.close(); }
+  }
+});
