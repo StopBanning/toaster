@@ -2979,13 +2979,28 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // Leave the existing sixteenth corrections (and their timing) alone.
       const clear = settled && clearKick && (k === 0 || k === 2) && (chosen === 0 || chosen === 2);
       if (clear) k = chosen;
+      // The kick back after a break (a drop), on the same 16th next to the beat on 4 beats or more and on no other: the grid
+      // slid a 16th through the breakdown, and a four-on-the-floor kick says where the beat is. It moves at once. (Anyma
+      // "Eternity", Nov 6: the drop's kicks a 16th before each beat for 4 bars; the 16-second vote still held the
+      // breakdown and waited 5.7 s.) Kicks only, not claps; never an 8th (that one has its own checks above).
+      let jump = 0;
+      if (settled && this.kickBackAt != null && t - this.kickBackAt < 6) {
+        const at = [new Set(), new Set(), new Set(), new Set()];
+        for (const o of this.phaseHits) {
+          if (o.id !== 'bd' || o.t < this.kickBackAt - 1.5) continue;
+          const x = 4 * (o.t - T.t0) / T.P, n = Math.round(x);
+          if (Math.abs(x - n) <= 0.35) at[((n % 4) + 4) % 4].add(Math.floor(n / 4));
+        }
+        for (const q of [1, 3]) if (at[q].size >= 4 && at[0].size + at[2].size + at[4 - q].size === 0) jump = q;
+      }
+      if (jump) { k = jump; T.slotN = 0; T.slotCand = jump; }
       const need = !settled ? 1.15 : k === 2 ? 1.5 : 1.33;
       // (only with enough kicks and claps to go on: a stretch without drums proves nothing)
       if (k && (clear || (slots[k] > need * slots[0] && slots[0] + slots[1] + slots[2] + slots[3] >= 8))) {
         T.slotN = T.slotCand === k ? T.slotN + 1 : 1;
         T.slotCand = k;
       } else T.slotN = 0;
-      if (T.slotN >= (clear ? 4 : settled ? 12 : 4)) {
+      if (jump || T.slotN >= (clear ? 4 : settled ? 12 : 4)) {
         const shift = k === 3 ? -1 : k; // the nearer way round
         T.t0 += (shift * T.P) / 4;
         this.tape?.shift(shift / 4);
@@ -3171,7 +3186,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       if (!this.tempo.locked || this.silent || !v.shown?.some(Boolean) || v.tooBusy) return (v.here = false);
       const within = id === 'bd' ? P * 8.5 : Math.max(4.5, P * 12); // (8.5: a kick every two bars still plays)
       const stopWithin = id === 'bd' && v.shown.filter(Boolean).length >= 2 ? P * 5 : within;
+      const was = v.here;
       v.here = v.here ? t - v.last < stopWithin : t - v.last < within && t - v.prev < within;
+      if (id === 'bd' && v.here && !was) this.kickBackAt = t; // (the kick back after a break: see updatePhase)
       return v.here;
     },
     playing(seen, t) {

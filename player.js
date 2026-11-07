@@ -1,3 +1,4 @@
+import { SPOTIFY_ICON, logoTone } from './spotify-brand.js';
 // The player bar: a slim strip along the bottom with the source and the song at its left, a transport with only the
 // buttons the source can really do, a progress bar where the position is known, a status line from the engine (tempo, key,
 // and the bar and beat as Toaster counts them), and at the right end a flag to report a misread (renderer/misread.js). What
@@ -87,6 +88,9 @@ const ICONS = {
   stop: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5h9v9h-9z"/></svg>',
   flag: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h1.5v13H3zM4.5 2.5h8l-2 3 2 3h-8z"/></svg>',
 };
+// Identify the local system player before consulting the account's Connect state.
+export const isSpotifySong = (s) => s.source === 'system' && /^(spotify(?:\.exe)?|com\.spotify\.client)$/i.test(s.app || '') && !!s.song?.title;
+const sameSong = (a, b) => a?.name === b?.title && (!b?.artist || a.by === b.artist);
 const SYSTEM_ACTION = { prev: 'previous', play: 'playpause', next: 'next' };
 const POLL_EVERY = 2; // seconds between asking Music or Spotify where it is (between, the bar counts on by itself)
 const POLL_REFUSED = 60; // ... and between asking one that macOS wouldn't let Toaster ask, in case that's been changed since
@@ -106,6 +110,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     if (kids.length) e.append(...kids);
     return e;
   };
+  root.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target?.tagName === 'BUTTON') e.stopPropagation(); });
   const setText = (e, text) => { if (e.textContent !== text) e.textContent = text; };
   const setHidden = (e, hidden) => { if (e.hidden !== hidden) e.hidden = hidden; };
   const setAttr = (e, name, value) => { if (e.getAttribute(name) !== String(value)) e.setAttribute(name, String(value)); };
@@ -113,6 +118,13 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
 
   const chip = el('span', 'pl-chip'), title = el('b', 'pl-title'), artist = el('span', 'pl-artist'), idle = el('span', 'pl-idle');
   const song = el('span', 'pl-song', title, artist, idle);
+  const spotifyCover = el('img', 'pl-spotify-cover');
+  spotifyCover.alt = ''; spotifyCover.draggable = false; spotifyCover.hidden = true;
+  const spotifyLink = el('button', 'pl-spotify-link');
+  spotifyLink.type = 'button'; spotifyLink.hidden = true;
+  spotifyLink.title = 'Open this song in Spotify'; spotifyLink.setAttribute('aria-label', 'Open this song in Spotify');
+  spotifyLink.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${SPOTIFY_ICON}"/></svg><span>Spotify ↗</span>`;
+  spotifyLink.addEventListener('click', () => { Promise.resolve().then(() => spotifyUri ? nc?.spotifyOpen?.(spotifyUri) : nc?.spotifySearch?.(`${last?.song?.title || ''} ${last?.song?.artist || ''}`.trim())).catch((e) => act.fail?.(e)); });
   // golden's line of what's near ("01 Plague" , ▶ "02 Kerosene" , "03 Wrath of God"): up to four items, each a separator, a mark and
   // its label, made once and filled in as the queue moves
   const nearItems = Array.from({ length: 4 }, () => ({ sep: el('span', 'pl-sep'), mark: el('span', 'pl-mark'), label: el('span', 'pl-label') }));
@@ -147,8 +159,9 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     if (e.detail) misread.blur?.();
     try { act.misread(); } catch (err) { act.fail?.(err); }
   });
-  root.append(el('div', 'pl-id', chip, song, near), transport, progress, status, misread);
+  root.append(el('div', 'pl-id', spotifyCover, spotifyLink, chip, song, near), transport, progress, status, misread);
 
+  let spotify = null, spotifyKey = '', spotifyEpoch = 0, spotifyAsked = -Infinity, spotifyAsking = false, spotifyUri = '', spotifyPhoto = '', coverAsked = '', coverData = '';
   let last = null; // the latest snapshot (update)
   let ctl = controlsFor({}); // and what it gets
   let polled = null, polledKey = '', askedAt = -Infinity, asking = false; // Music's or Spotify's last answer, the song it was for, when it was asked
@@ -159,6 +172,10 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
 
   // how far into the song, and how long it is (seconds), or null where there's no telling
   function where(t) {
+    if (ctl.progress === 'spotify') {
+      if (!spotify || spotify.position === null || !(spotify.duration > 0)) return null;
+      return [Math.min(spotify.duration, spotify.position + (spotify.playing ? Math.max(0, t - spotify.at) : 0)), spotify.duration];
+    }
     if (ctl.progress === 'file') {
       const e = last.el;
       return e && Number.isFinite(e.duration) && e.duration > 0 ? [Math.min(e.currentTime || 0, e.duration), e.duration] : null;
@@ -174,6 +191,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     if (s.source === 'radio' || s.source === 'demo') return true;
     if (s.source !== 'system') return false;
     if (hold && s.t < hold.until) return hold.playing;
+    if (ctl.player === 'spotify-api') return spotify.playing;
     return polled ? polled.playing : !!s.systemPlaying;
   }
   const playIcon = (s) => (!s.source ? 'play' : s.source === 'radio' || s.source === 'demo' ? 'stop' : playing(s) ? 'pause' : 'play');
@@ -196,15 +214,21 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
 
   function update(s) {
     last = s;
+    const mini = isSpotifySong(s), keyNow = mini ? `${s.app}|${s.song.title}|${s.song.artist}` : '';
+    if (keyNow !== spotifyKey) { spotifyKey = keyNow; spotifyEpoch++; spotify = null; spotifyAsked = -Infinity; coverAsked = ''; coverData = ''; }
+    if (mini && s.active && typeof nc?.spotifyPlayback === 'function' && !spotifyAsking && s.t - spotifyAsked >= 3) askSpotify(s.t);
+    const freshSpotify = mini && spotify && s.t - spotify.at < 7 && sameSong(spotify.track, s.song);
     const who = platform === 'darwin' ? macPlayerOf(s.app) : platform === 'win32' && s.session ? 'keys' : null;
     ctl = controlsFor({ source: s.source, stopped: s.stopped, platform, app: s.app, session: !!s.session, bridge, denied: !!who && refused.has(who), queue: typeof act.next === 'function' });
     // Music's or Spotify's own answer: asked every couple of seconds while the bar is up (it counts on by itself in between),
     // and at once for a new song. One macOS won't let Toaster ask is asked once a minute, in case that's been changed.
-    const asked = who === 'music' || who === 'spotify' ? s.source === 'system' && bridge : false;
+    if (freshSpotify) ctl = { buttons: [ ...(spotify.allowed.previous ? ['prev'] : []), ...((spotify.playing ? spotify.allowed.pause : spotify.allowed.resume) ? ['play'] : []), ...(spotify.allowed.next ? ['next'] : []) ], player: 'spotify-api', progress: 'spotify', seek: false };
+    const asked = !freshSpotify && (who === 'music' || who === 'spotify') ? s.source === 'system' && bridge : false;
     const key = asked ? `${who}|${s.song?.title}|${s.song?.artist}` : '';
     if (key !== polledKey) { polledKey = key; polled = null; askedAt = -Infinity; }
     if (asked && s.active && !asking && s.t - askedAt >= (refused.has(who) ? POLL_REFUSED : POLL_EVERY)) ask(who, s.t);
 
+    paintSpotify(s, mini, freshSpotify);
     setData(root, 'source', chipOf(s.source || s.stopped));
     setText(chip, chipOf(s.source || s.stopped));
     chip.classList.toggle('off', !s.source);
@@ -232,6 +256,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
       if (iconOf.get(kind) !== icon) { iconOf.set(kind, icon); b.innerHTML = ICONS[icon]; }
       setData(b, 'state', icon);
       setAttr(b, 'aria-label', label);
+      b.disabled = !!(ctl.player === 'spotify-api' && spotifySending);
       if (b.title !== label) b.title = label;
     }
     paintProgress(where(s.t));
@@ -241,6 +266,41 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     }));
   }
 
+  let spotifySending = false;
+  function askSpotify(t) {
+    const epoch = spotifyEpoch;
+    spotifyAsking = true; spotifyAsked = t;
+    Promise.resolve().then(() => nc.spotifyPlayback()).then((r) => {
+      if (epoch !== spotifyEpoch) return;
+      spotify = r && sameSong(r.track, last.song) ? { ...r, at: last.t } : null;
+      if (!spotify) { coverAsked = ''; coverData = ''; }
+    }).catch(() => { if (epoch === spotifyEpoch) { spotify = null; coverAsked = ''; coverData = ''; spotifyAsked = t + 27; } }).finally(() => { spotifyAsking = false; });
+  }
+  function paintSpotify(s, mini, fresh) {
+    setData(root, 'spotify', mini ? 'true' : 'false');
+    spotifyUri = fresh ? spotify.track.uri : '';
+    setHidden(spotifyLink, !mini);
+    const linkLabel = spotifyUri ? 'Open this song in Spotify' : 'Search Spotify for this song';
+    setAttr(spotifyLink, 'aria-label', linkLabel);
+    if (spotifyLink.title !== linkLabel) spotifyLink.title = linkLabel;
+    setHidden(chip, mini);
+    // Covers cross through the checked main-process fetcher, never directly from a remote image URL.
+    const url = fresh ? spotify.track.cover : '';
+    if (url && url !== coverAsked && typeof nc?.spotifyCover === 'function') {
+      const epoch = spotifyEpoch; coverAsked = url; coverData = '';
+      Promise.resolve().then(() => nc.spotifyCover(url)).then((data) => {
+        if (epoch === spotifyEpoch && url === coverAsked && typeof data === 'string' && data.startsWith('data:image/')) coverData = data;
+      }, () => {});
+    }
+    const data = mini ? (fresh && coverData || (typeof s.art === 'string' && s.art.startsWith('data:image/') ? s.art : '')) : '';
+    setHidden(spotifyCover, !data);
+    if (data !== spotifyPhoto) { spotifyPhoto = data; spotifyCover.src = data; }
+    if (mini) {
+      // Keep Spotify's mark black or white, while the surrounding controls follow the theme.
+      const bg = win.getComputedStyle?.(doc.body)?.getPropertyValue('--bg') || '';
+      spotifyLink.style.color = logoTone(bg) === 'light' ? '#000' : '#fff';
+    }
+  }
   function ask(who, t) {
     asking = true;
     askedAt = t;
@@ -259,8 +319,16 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
 
   async function sendToSystem(kind) {
     const who = ctl.player, s = last;
-    if (!who || !bridge) return;
+    if (!who || !bridge || (who === 'spotify-api' && spotifySending)) return;
     if (kind === 'play') hold = { playing: !playing(s), until: s.t + 2 };
+    if (who === 'spotify-api') {
+      spotifySending = true;
+      try {
+        await nc.spotifyControl({ action: kind === 'play' ? (spotify.playing ? 'pause' : 'resume') : SYSTEM_ACTION[kind], device: spotify.device, uri: spotify.track.uri });
+      } catch (err) { hold = null; act.note?.(err.message || 'Spotify did not answer.'); }
+      finally { spotifySending = false; spotifyAsked = -Infinity; }
+      return;
+    }
     const r = await nc.playerCommand(who, SYSTEM_ACTION[kind]);
     askedAt = -Infinity; // (where it is now, asked at the next update)
     if (r?.ok) return;

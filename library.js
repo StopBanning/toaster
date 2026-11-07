@@ -1,3 +1,4 @@
+export { SPOTIFY_ICON, logoTone } from './spotify-brand.js';
 // The library's logic, as plain functions (renderer/library-panel.js draws it, app.js plays it): the tracks the scan found,
 // grouped into albums (by album artist, else artist, and album; then disc and track number), the queue an album from a track on
 // is, the scenes you save (a setup in the shape of PRESETS) and the stations you've played, the cover as characters (the ramp
@@ -121,8 +122,8 @@ export function agoText(at, now = Date.now()) {
 // songs), the request Enter on a row sends, where the cursor stays when the lists change under it, and the words for connecting. No page
 // and no network in it, so tools/spotify-section.test.mjs runs it all on made-up lists.
 
-export const SPOTIFY_NOT_A_LINK = 'That isn\'t a Spotify link to a song, an album or a playlist. In Spotify choose Share, then Copy link (or Copy Spotify URI), and paste that.';
-const SPOTIFY_LINK = /^spotify:(track|album|playlist):([A-Za-z0-9]{22})$/;
+export const SPOTIFY_NOT_A_LINK = 'That isn\'t a Spotify link to a song, an artist, an album or a playlist. In Spotify choose Share, then Copy link (or Copy Spotify URI), and paste that.';
+const SPOTIFY_LINK = /^spotify:(track|album|playlist|artist):([A-Za-z0-9]{22})$/;
 
 // What was pasted as { kind, id, uri }, or null: an open.spotify.com link to a track, an album or a playlist (with or without https://, a
 // locale's /intl-de/ before the kind, a slash after the id, a ?si=... or #... after that) or the same as a spotify: address. The same rules
@@ -135,7 +136,7 @@ export function parseLink(text) {
     let url = null;
     try { url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `https://${s}`); } catch { /* not a link */ }
     if (url && (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname === 'open.spotify.com' && !url.username && !url.password && !url.port) {
-      m = /^\/(?:intl-[a-z]{2}(?:-[a-z]{2,4})?\/)?(track|album|playlist)\/([A-Za-z0-9]{22})\/?$/.exec(url.pathname);
+      m = /^\/(?:intl-[a-z]{2}(?:-[a-z]{2,4})?\/)?(track|album|playlist|artist)\/([A-Za-z0-9]{22})\/?$/.exec(url.pathname);
     }
   }
   return m ? { kind: m[1], id: m[2], uri: `spotify:${m[1]}:${m[2]}` } : null;
@@ -250,20 +251,10 @@ export const SPOTIFY_STEPS = [
 ];
 
 // Spotify's logo as the one path of its icon (a circle with the three arcs cut out of it), in a 24 by 24 box.
-export const SPOTIFY_ICON = 'M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z';
+
 // Spotify's guidelines have its logo white or black (or its green), never another colour, so the logo is whichever of white and black reads
 // against the page's background, as the CSS gives it (#rrggbb, #rgb or rgb(r, g, b)): 'light' for a light background (the black logo), else 'dark'.
-export function logoTone(css) {
-  const text = String(css || '').trim();
-  let rgb = null;
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text);
-  if (hex) { const h = hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join('') : hex[1]; rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
-  else { const n = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(text); if (n) rgb = [n[1], n[2], n[3]].map(Number); }
-  if (!rgb) return 'dark';
-  const lin = (v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
-  // (white reads on a background up to a luminance of about .18, black above it: where the two contrast ratios are equal)
-  return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]) > 0.18 ? 'light' : 'dark';
-}
+
 
 // What went wrong as main said it (an error from the bridge starts with where it came from, which a listener has no use for)
 export const plainError = (err) => String(err?.message || err).replace(/^Error invoking remote method '[^']*': (Error: )?/, '');
@@ -283,6 +274,67 @@ export function glyphRows(rgba, cols, rows, gamma = 0.9) {
       line += GLYPHS[Math.min(GLYPHS.length - 1, Math.floor(Math.max(0, Math.min(1, light)) ** gamma * GLYPHS.length))];
     }
     out.push(line);
+  }
+  return out;
+}
+
+// The cover in characters, read better (Colin, Nov 6: "improve the full ascii for the album art"). The picture comes in at twice the grid
+// (2cols x 2rows pixels): each cell's light is the mean of its four, stretched to the cover's own range (its darkest and lightest 1.5% cut,
+// so a dim or washed-out cover still uses the whole ramp; a flat one is left alone), and its detail lifted against a blur of itself. On a big
+// grid the strongest edges are drawn as their direction, | / _ \, the way a hand-drawn ASCII picture outlines a face or a logo (a small one
+// keeps the ramp only: at thirty columns the outlines are noise).
+export function coverGlyphs(rgba2, cols, rows, { edges = rows >= 48, gamma = 0.9, lift = 0.6 } = {}) {
+  if (!cols || !rows) return [];
+  const W2 = cols * 2, H2 = rows * 2, n2 = W2 * H2;
+  const L2 = new Float32Array(n2);
+  for (let i = 0; i < n2; i++) L2[i] = ((0.2126 * rgba2[i * 4] + 0.7152 * rgba2[i * 4 + 1] + 0.0722 * rgba2[i * 4 + 2]) / 255) * (rgba2[i * 4 + 3] / 255);
+  const sorted = Float32Array.from(L2).sort();
+  const lo = sorted[Math.floor(0.015 * (n2 - 1))], hi = sorted[Math.ceil(0.985 * (n2 - 1))];
+  if (hi - lo > 0.08) for (let i = 0; i < n2; i++) L2[i] = Math.min(1, Math.max(0, (L2[i] - lo) / (hi - lo)));
+  const n = cols * rows, L = new Float32Array(n);
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const a = 2 * y * W2 + 2 * x;
+    L[y * cols + x] = (L2[a] + L2[a + 1] + L2[a + W2] + L2[a + W2 + 1]) / 4;
+  }
+  if (lift) {
+    const B = boxBlur(boxBlur(L, cols, rows, 2), cols, rows, 2); // (two box blurs: about a gaussian two cells wide)
+    for (let i = 0; i < n; i++) L[i] = Math.min(1, Math.max(0, L[i] + lift * (L[i] - B[i])));
+  }
+  const cells = Array.from({ length: rows }, (_, y) => Array.from({ length: cols }, (_, x) =>
+    GLYPHS[Math.min(GLYPHS.length - 1, Math.floor(L[y * cols + x] ** gamma * GLYPHS.length))]));
+  if (edges) {
+    // Sobel on the twice-size light, summed into each cell; a cell is 0.6 as wide as it is tall, so a step across counts 0.6 as far
+    const gx = new Float32Array(n), gy = new Float32Array(n);
+    const at = (x, y) => L2[Math.min(H2 - 1, Math.max(0, y)) * W2 + Math.min(W2 - 1, Math.max(0, x))];
+    for (let y = 0; y < H2; y++) for (let x = 0; x < W2; x++) {
+      const sx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
+      const sy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
+      const c = (y >> 1) * cols + (x >> 1);
+      gx[c] += sx / 4; gy[c] += sy / 4;
+    }
+    const mag = new Float32Array(n);
+    for (let i = 0; i < n; i++) mag[i] = Math.hypot(gx[i], gy[i]);
+    const ms = Float32Array.from(mag).sort(), threshold = Math.max(0.35, ms[Math.floor(0.9 * (n - 1))]); // (the strongest tenth, and only real edges)
+    for (let i = 0; i < n; i++) {
+      if (mag[i] < threshold) continue;
+      const a = (Math.atan2(gy[i] * 0.6, gx[i]) * 180 / Math.PI + 180) % 180; // the light's direction; the edge runs across it
+      cells[Math.floor(i / cols)][i % cols] = a < 22.5 || a >= 157.5 ? '|' : a < 67.5 ? '/' : a < 112.5 ? '_' : '\\';
+    }
+  }
+  return cells.map((r) => r.join(''));
+}
+// a box blur of a cols x rows grid, r cells each way (the edges held), across then down
+function boxBlur(src, cols, rows, r) {
+  const tmp = new Float32Array(src.length), out = new Float32Array(src.length), k = 2 * r + 1;
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    let s = 0;
+    for (let d = -r; d <= r; d++) s += src[y * cols + Math.min(cols - 1, Math.max(0, x + d))];
+    tmp[y * cols + x] = s / k;
+  }
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    let s = 0;
+    for (let d = -r; d <= r; d++) s += tmp[Math.min(rows - 1, Math.max(0, y + d)) * cols + x];
+    out[y * cols + x] = s / k;
   }
   return out;
 }

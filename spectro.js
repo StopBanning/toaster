@@ -32,6 +32,7 @@ const MAPS = {
   pink: ['#000000', '#3a0026', '#a3156b', '#ff5cbf', '#fff0f8'],
   whitescreen: ['#ffffff', '#c9d4ff', '#5a7dff', '#1c2a8a', '#000000'],
   softclub: ['#dde6ee', '#b4cbdd', '#6f9cc0', '#2f5f86', '#16283a'],
+  fall2003: ['#000000', '#3a1a08', '#a5501f', '#ee8a3c', '#fbe7c4'],
 };
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
 const css = (c, a) => `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;

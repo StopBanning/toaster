@@ -69,7 +69,7 @@ const visName = (v) => V_NAME[v] || v;
 const ON_VIS = ['tunnel', 'spiral', 'pitchwheel', 'cuts', 'fire']; // the backgrounds drawn on the #vis canvas
 const FIELD_VIS = ['spectrum', 'rain', 'scope']; // and the ones drawn as ASCII, on #field
 // (the last, dynamic, has no colours of its own: they're the song's cover's, see the dynamic theme below)
-const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub']; // (kept by its place in this list: a new one goes last)
+const THEMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub', 'fall2003']; // (kept by its place in this list: a new one goes last)
 const DROPS = ['xp takeover', 'y2k bug', 'blue screen', 'not responding', 'off'];
 // The camera's effects (K): none, just you over the visuals, slit-scan, datamosh, windows, glass,
 // dots, voxels.
@@ -1853,6 +1853,7 @@ function updatePlayer(t) {
     app: state.winSong?.app || '', session: !!state.winSong, systemPlaying: !!state.winPlaying, el: state.el,
     tempo: eng.tempo, key: eng.key ? `${NOTES[eng.key.root]} ${eng.key.mode}` : '', at: eng.placeAt(t),
     near: liveQueue() ? queueLine(liveQueue()) : null,
+    art: state.source === 'system' && artSrc.startsWith('data:') ? artSrc : '',
   });
 }
 
@@ -2892,7 +2893,9 @@ async function makeLibrary() {
         disconnect: () => spotifyBridge().spotifyDisconnect(),
         list: (request) => spotifyBridge().spotifyList(request),
         play: spotifyPlay,
+        prepareVideo: () => { stopPlayback(); hearSystem(); },
         cover: (url) => spotifyBridge().spotifyCover(url),
+        dashboard: () => (window.nc?.spotifyDashboard ? window.nc.spotifyDashboard() : window.open('https://developer.spotify.com/dashboard', '_blank', 'noopener')),
       },
       stations: () => state.radioStations,
       playStation: (url) => useRadio(url).catch(showError),
