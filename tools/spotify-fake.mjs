@@ -45,7 +45,9 @@ export const PLAYLISTS = [
 export const LIKED = [['(III)', 'Kerosene'], ['Homogenic', 'Jóga'], ['Lonerism', 'Elephant'], ['Homework', 'Da Funk'], ['TRON: Legacy', 'Derezzed'], ['(III)', 'Plague'], ['Lonerism', 'Endors Toi'], ['Homogenic', 'Hunter'], ['Homework', 'Around the World'], ['(III)', 'Telepath'], ['TRON: Legacy', 'Adagio for TRON'], ['Lonerism', 'Be Above It']].map(([a, t]) => song(a, t));
 
 // ---------------------------------------------------------------- the Web API's shapes
-const artistsOf = (name) => name.split(' & ').map((n) => ({ name: n }));
+const artistsOf = (name) => name.split(' & ').map((n) => ({ id: idOf(`artist:${n}`), name: n }));
+const artistOf = (name) => ({ id: idOf(`artist:${name}`), name, uri: `spotify:artist:${idOf(`artist:${name}`)}`, images: imagesOf(ALBUMS.find((a) => a.artist === name)?.key || name), genres: ['electronic'] });
+const albumOf = (a) => ({ id: a.id, name: a.name, uri: `spotify:album:${a.id}`, album_type: 'album', artists: artistsOf(a.artist), total_tracks: a.tracks.length, images: imagesOf(a.key), release_date: '2012-11-12', release_date_precision: 'day' });
 const trackOf = (t, cover = true) => ({ id: t.id, name: t.title, uri: `spotify:track:${t.id}`, type: 'track', is_local: false, duration_ms: t.ms, artists: artistsOf(t.artist), ...(cover ? { album: { name: t.album, images: imagesOf(t.albumKey) } } : {}) });
 const page = (all, url) => {
   const offset = Number(url.searchParams.get('offset') || 0), limit = Math.min(50, Number(url.searchParams.get('limit') || 50));
@@ -65,6 +67,7 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
     hold: false, // the sign-in page does not agree at once: it waits (as it does for a listener reading it), and `lastAuthorize` says what was asked
     drop: 0, // the next n Web API calls get no answer at all: the connection is cut (a network that is gone)
     lastAuthorize: null, // { state, redirect } of the last sign-in page asked for
+    playbackTrack: LIKED[0], playbackPlaying: true, playbackPosition: 92000, playbackActions: {},
     tokens: 0, // access tokens given so far: the one in force is fake-access-<this>
   };
   const seen = [], challenges = new Map();
@@ -132,9 +135,44 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
         const a = ALBUMS.find((x) => x.id === hit[1]);
         return a ? ok(page(a.tracks.map((t) => trackOf(t, false)), url)) : send(res, 404, { error: { status: 404, message: 'Not found.' } });
       }
+      if (req.method === 'GET' && url.pathname === '/v1/search') {
+        const query = url.searchParams.get('q') || '';
+        const filter = /^artist:"(.*)"$/.exec(query);
+        const needle = (filter ? filter[1] : query).toLowerCase();
+        const names = [...new Set(ALBUMS.map((a) => a.artist))].filter((n) => n.toLowerCase().includes(needle));
+        const songs = ALBUMS.flatMap((a) => a.tracks).filter((t) => filter ? t.artist.toLowerCase() === needle : `${t.title} ${t.artist}`.toLowerCase().includes(needle));
+        const result = (items) => { const p = page(items, url); return { ...p, next: p.offset + p.limit < p.total ? 'next-page' : null }; };
+        return ok({ tracks: result(songs.map((t) => trackOf(t))), artists: result(names.map(artistOf)), albums: result(ALBUMS.filter((a) => `${a.name} ${a.artist}`.toLowerCase().includes(needle)).map(albumOf)) });
+      }
+      if (req.method === 'GET' && (hit = /^\/v1\/artists\/([A-Za-z0-9]{22})$/.exec(url.pathname))) {
+        const name = ALBUMS.map((a) => a.artist).find((n) => idOf(`artist:${n}`) === hit[1]);
+        return name ? ok(artistOf(name)) : send(res, 404, { error: { status: 404, message: 'Not found.' } });
+      }
+      if (req.method === 'GET' && (hit = /^\/v1\/artists\/([A-Za-z0-9]{22})\/albums$/.exec(url.pathname))) {
+        const group = url.searchParams.get('include_groups');
+        // Fixture membership is explicit: album_group is intentionally absent, as in Development Mode.
+        const all = ALBUMS.filter((a) => idOf(`artist:${a.artist}`) === hit[1]);
+        const releases = group === 'album' ? all : group === 'single' ? all.slice(0, 1).map((a) => ({ ...a, name: `${a.name} — single` })) : group === 'appears_on' ? all.slice(0, 1) : [];
+        const p = page(releases.map(albumOf), url);
+        return ok({ ...p, next: p.offset + p.limit < p.total ? 'next-page' : null });
+      }
+      if (req.method === 'GET' && (hit = /^\/v1\/albums\/([A-Za-z0-9]{22})$/.exec(url.pathname))) {
+        const a = ALBUMS.find((a) => a.id === hit[1]);
+        return a ? ok({ ...albumOf(a), tracks: page(a.tracks.map((t) => trackOf(t, false)), url) }) : send(res, 404, { error: { status: 404, message: 'Not found.' } });
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/me/player') {
+        if (!state.playbackTrack || !state.devices.some((d) => d.is_active)) return send(res, 204, null);
+        return ok({ device: state.devices.find((d) => d.is_active), is_playing: state.playbackPlaying, progress_ms: state.playbackPosition, item: trackOf(state.playbackTrack), actions: state.playbackActions });
+      }
+      if (req.method === 'PUT' && url.pathname === '/v1/me/player/pause') { state.playbackPlaying = false; return send(res, 204, null); }
+      if (req.method === 'POST' && ['/v1/me/player/next', '/v1/me/player/previous'].includes(url.pathname)) {
+        const step = url.pathname.endsWith('next') ? 1 : -1, at = LIKED.indexOf(state.playbackTrack);
+        state.playbackTrack = LIKED[(at + step + LIKED.length) % LIKED.length]; state.playbackPosition = 0; return send(res, 204, null);
+      }
       if (req.method === 'GET' && url.pathname === '/v1/me/player/devices') return ok({ devices: state.devices });
       if (req.method === 'PUT' && url.pathname === '/v1/me/player/play') {
         if (state.playFails) return send(res, state.playFails.status, { error: { status: state.playFails.status, message: state.playFails.message || 'refused', reason: state.playFails.reason } });
+        state.playbackPlaying = true;
         return send(res, 204, null);
       }
       return send(res, 404, { error: { status: 404, message: 'no such address' } });

@@ -980,10 +980,10 @@ if (phase === 'main') {
     expect('the one row is the field for a link: no steps, no Client ID, nothing to sign in to', JSON.stringify(await dom(`[...root.querySelectorAll('.lib-row')].map((r) => r.querySelector('input')?.dataset.field || r.textContent)`)) === '["link"]' && (await dom(`root.querySelectorAll('.lib-step').length`)) === 0);
     await key('Home'); await key('Enter');
     expect('Enter goes into the field', (await ev('document.activeElement && document.activeElement.dataset.field')) === 'link');
-    await send('Input.insertText', { text: 'https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb' });
+    await send('Input.insertText', { text: 'https://open.spotify.com/show/4Z8W4fKeB5YxbusRsdQVPb' });   // (a show: since 0.5.2 an artist is a link)
     await key('Enter');
     await sleep(300);
-    expect('an artist\'s link is no link, said in words with nothing handed on', /^That isn't a Spotify link to a song, an album or a playlist/.test(await dom(`root.querySelector('.lib-err')?.textContent || ''`)) && (await dom(`window.__browserPanel.opened.length`)) === 0);
+    expect('a show\'s link is no link, said in words with nothing handed on', /^That isn't a Spotify link to a song, an artist, an album or a playlist/.test(await dom(`root.querySelector('.lib-err')?.textContent || ''`)) && (await dom(`window.__browserPanel.opened.length`)) === 0);
     const album = ALBUMS[0];
     await key('Enter'); await sleep(80);
     await send('Input.insertText', { text: `https://open.spotify.com/album/${album.id}?si=ab12` });
@@ -1573,7 +1573,7 @@ if (phase === 'web') {
     expect('the section is the field for a link and nothing else, with no steps', rows.length === 1 && rows[0].field === 'link' && (await ev(`document.querySelectorAll('#library .lib-step').length`)) === 0, rows);
     const h = await head();
     expect('the head says it is the web player, the line says in a new tab', h.name === 'spotify' && h.sub === 'web player' && /opens in Spotify's web player, in a new tab/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)), h);
-    await key('Home'); await spType('open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb');
+    await key('Home'); await spType('open.spotify.com/show/4Z8W4fKeB5YxbusRsdQVPb');   // (a show: since 0.5.2 an artist is a link)
     await sleep(300);
     expect('no link is no tab: it is said in words, and nothing was opened', /^That isn't a Spotify link/.test(await spError()) && (await ev('window.__opened.length')) === 0, await spError());
     const album = ALBUMS[0];

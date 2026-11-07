@@ -93,10 +93,13 @@ contextBridge.exposeInMainWorld('nc', {
   spotifyConnect: (clientId) => ipcRenderer.invoke('spotify:connect', clientId),
   spotifyDisconnect: () => ipcRenderer.invoke('spotify:disconnect'),
   spotifyList: (request) => ipcRenderer.invoke('spotify:list', request),
+  spotifyPlayback: () => ipcRenderer.invoke('spotify:playback'),
+  spotifyControl: (request) => ipcRenderer.invoke('spotify:control', request),
   spotifyPlay: (request) => ipcRenderer.invoke('spotify:play', request),
   spotifyOpen: (text) => ipcRenderer.invoke('spotify:open', text),
   spotifySearch: (query) => ipcRenderer.invoke('spotify:search', query),
   spotifyCover: (url) => ipcRenderer.invoke('spotify:cover', url),
+  spotifyDashboard: () => ipcRenderer.invoke('spotify:dashboard'),
   // The hand log (Ctrl+Shift+H): numbers only, into the settings folder.
   handLogStart: () => ipcRenderer.invoke('handlog:start'),
   handLogAdd: (text) => ipcRenderer.invoke('handlog:add', text),

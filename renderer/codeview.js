@@ -92,7 +92,7 @@ export function createCodeView(ids) {
     id, el: document.getElementById('ln-' + id), shown: '', target: '', parts: null, targetParts: null,
     spans: [], want: '', wantSince: 0,
   }]));
-  const typer = { queue: [], cur: null, next: 0 };
+  const typer = { queue: [], cur: null, next: 0, held: null }; // (held: a line's typing paused for a mute or unmute)
   // The dice of the typing (its slips, its wrong keys, how long it pauses): a stream of the song's own (clock.rng),
   // started again with each new song (clear), so the same ticks type the same code, the same mistakes, at the same moments.
   let dice = clock.rng('typing', 0);
@@ -118,7 +118,7 @@ export function createCodeView(ids) {
 
   // A slider moved: the number slides from where it is to the new value over most of a second,
   // eased, like dragging it; nothing is typed.
-  const typing = (L) => typer.cur?.id === L.id || typer.queue.includes(L.id);
+  const typing = (L) => typer.cur?.id === L.id || typer.held?.cur.id === L.id || typer.queue.includes(L.id);
   function slide(L, parts, t) {
     const from = L.glide ? L.glide.now : values(L.parts || []), to = values(parts);
     L.target = L.want = parts.map((p) => p.text).join('');
@@ -154,13 +154,13 @@ export function createCodeView(ids) {
     L.glide = null; // typed from wherever a slide had got to
     L.target = parts.map((p) => p.text).join('');
     L.targetParts = parts;
-    if (L.shown !== L.target && typer.cur?.id !== L.id && !typer.queue.includes(L.id)) typer.queue.push(L.id);
+    if (L.shown !== L.target && typer.cur?.id !== L.id && typer.held?.cur.id !== L.id && !typer.queue.includes(L.id)) typer.queue.push(L.id);
   }
 
   // Backspace over what changed, then type the new text, now and then hitting a wrong key first.
   function plan(L) {
     const a = L.shown, b = L.target;
-    if (toggles(L)) return { id: L.id, caret: muted(b) ? 0 : 1, ops: [muted(b) ? { ins: '_' } : 'del'], i: 0, delay: 34 };
+    if (toggles(L)) return { id: L.id, caret: muted(b) ? 0 : 1, ops: [muted(b) ? { ins: '_' } : 'del'], i: 0, delay: 34, toggle: true };
     let p = 0;
     while (p < a.length && p < b.length && a[p] === b[p]) p++;
     let s = 0;
@@ -258,6 +258,14 @@ export function createCodeView(ids) {
       if (v === slipsOff) return;
       slipsOff = v;
       // Cancel planned wrong keys too when the setting turns off or a recording starts.
+      if (v && typer.held) {
+        const H = lines[typer.held.cur.id];
+        if (err) err.hidden = true;
+        H.el.classList.remove('slipped');
+        if (!typer.queue.includes(H.id)) typer.queue.unshift(H.id);
+        typer.held = null;
+        render(H);
+      }
       if (v && typer.cur) {
         const L = lines[typer.cur.id];
         if (err) err.hidden = true;
@@ -279,12 +287,29 @@ export function createCodeView(ids) {
         // only a slider moved, on a line that's typed in: it slides there
         if (L.target && text.includes('slider(') && unslid(text) === unslid(L.target) && (L.shown === L.target || L.glide) && !typing(L)) { slide(L, wanted[id], t); continue; }
         if (text !== L.want) { L.want = text; L.wantSince = t; }
-        const hold = now || id === 'title' || id === 'tempo' || !L.target ? 0 : 0.7;
+        // (a part coming back, its line just unmuted with nothing else changed, goes in at once too: the engine has already
+        // waited for its second hit, and the 0.7 s more put a drop's kick in a beat or two late)
+        const back = L.target === '_' + text;
+        const hold = now || back || id === 'title' || id === 'tempo' || !L.target ? 0 : 0.7;
         if (t - L.wantSince >= hold) setTarget(L, wanted[id]);
       }
     },
 
     step(t) {
+      // A mute or unmute doesn't wait for the line being typed (a long one, or a slip's pause before its fix): its _ goes
+      // in at once and that line's typing picks up after it. (A drop's kick waited ~1.4 s behind the bass line's retyping
+      // and its slip, though the engine had it back on the drop's second kick: Garrix "Animals", Nov 6.)
+      if (typer.cur && !typer.cur.toggle && !typer.held) {
+        const i = typer.queue.findIndex((q) => toggles(lines[q]));
+        if (i >= 0) {
+          const L = lines[typer.queue.splice(i, 1)[0]];
+          typer.held = { cur: typer.cur, next: typer.next };
+          typer.cur = plan(L);
+          typer.next = t + 0.05;
+          render(lines[typer.held.cur.id]); // (its caret goes: one caret on screen, where the typing is)
+          return;
+        }
+      }
       if (t < typer.next) return;
       if (!typer.cur) {
         // mutes and unmutes first, then lines with something heard in them (the song, tempo and
@@ -307,9 +332,18 @@ export function createCodeView(ids) {
         // it changed while we typed: again, after the lines waiting (first, it could keep the
         // others waiting for good: a line that changes every bar on a song with a lot going on),
         // drawn without its caret meanwhile (one caret on screen, where the typing is)
-        if (L.shown !== L.target) { typer.queue.push(L.id); render(L); }
+        // a part back with a new pattern: its line goes on straight after the _ (sent to the back of the queue, the old
+        // pattern stood there live while a drop's other lines were retyped: deadmau5 "Strobe", 5 s on the wrong kick)
+        if (c.toggle && L.shown !== L.target) { typer.cur = plan(L); typer.next = t + 0.05; render(L); return; }
+        if (L.shown !== L.target) { if (!typer.queue.includes(L.id)) typer.queue.push(L.id); render(L); }
         else finish(L);
         typer.next = t + 0.05;
+        if (typer.held) {
+          typer.cur = typer.held.cur;
+          typer.next = Math.max(typer.next, typer.held.next);
+          typer.held = null;
+          render(lines[typer.cur.id]);
+        }
         return;
       }
       if (op === 'del') {
@@ -388,6 +422,7 @@ export function createCodeView(ids) {
       dice = clock.rng('typing', 0);
       typer.queue.length = 0;
       typer.cur = null;
+      typer.held = null;
       typer.next = 0; // (typing starts at once, on whatever time the clock is at: a render's starts from its own)
       landing.clear();
       if (err) err.hidden = true;

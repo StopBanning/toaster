@@ -791,3 +791,44 @@ test('osascript is in helpers/player.cjs and the media keys in helpers/mediakeys
 test('macOS is told why Toaster asks Music and Spotify, for the one-time Automation prompt', () => {
   assert.match(plist, /<key>NSAppleEventsUsageDescription<\/key>\s*<string>[^<]*Music or Spotify[^<]*<\/string>/);
 });
+
+// Spotify mini player: the native song identifies what's local; Connect state only enriches a matching song.
+test('Spotify mini player follows the local song, uses checked cover data and API timing, and hides restricted buttons', async () => {
+  const p = page({ platform: 'win32' }), asked = [], cover = 'data:image/png;base64,YQ==';
+  const spotify = { track: { name: 'Kerosene', by: 'Crystal Castles', uri: 'spotify:track:' + 'k'.repeat(22), cover: 'https://i.scdn.co/test' }, position: 92, duration: 192, playing: true, device: 'desktop', allowed: { pause: true, resume: true, next: true, previous: false } };
+  p.nc.spotifyPlayback = async () => { asked.push('state'); return spotify; };
+  p.nc.spotifyCover = async (url) => { asked.push(['cover', url]); return cover; };
+  p.nc.spotifyControl = async (r) => { asked.push(r); return { ok: true }; };
+  p.nc.spotifyOpen = async (uri) => asked.push(['open', uri]);
+  const s = snap({ t: 10, source: 'system', app: 'Spotify', session: true, song: { title: 'Kerosene', artist: 'Crystal Castles' } });
+  p.bar.update(s); await flush(); p.bar.update(s); await flush(); p.bar.update({ ...s, t: 11 });
+  assert.equal(p.root.dataset.spotify, 'true'); assert.equal(p.part('pl-spotify-cover').src, cover);
+  assert.equal(p.text('pl-pos'), '1:33'); assert.equal(p.text('pl-len'), '3:12');
+  assert.equal(p.bar.controls.seek, false); assert.equal(p.bar.controls.player, 'spotify-api');
+  assert.deepEqual(p.buttons(), ['play', 'next']);
+  p.part('pl-play').fire('click'); p.part('pl-play').fire('click');
+  p.bar.update({ ...s, t: 11.1 });
+  assert.equal(p.part('pl-play').dataset.state, 'play', 'a second click during the pending pause does not flip the optimistic state');
+  await flush();
+  assert.equal(asked.filter((r) => r.action === 'pause').length, 1);
+  assert.ok(asked.some((r) => r.action === 'pause' && r.device === 'desktop' && r.uri === spotify.track.uri));
+  p.part('pl-spotify-link').fire('click'); await flush(); assert.ok(asked.some((r) => Array.isArray(r) && r[0] === 'open'));
+  p.bar.update(snap({ t: 12, source: 'file', song: { title: 'Local', artist: 'Someone' }, el: audio() }));
+  assert.equal(p.root.dataset.spotify, 'false'); assert.equal(p.part('pl-spotify-cover').hidden, true); assert.equal(p.part('pl-spotify-link').hidden, true);
+});
+
+test('Spotify mini player ignores foreign songs and late replies, and does not poll while the bar is away', async () => {
+  const p = page(), asks = [];
+  let resolve;
+  p.nc.spotifyPlayback = () => { asks.push('state'); return new Promise((r) => resolve = r); };
+  const s = snap({ source: 'system', app: 'Spotify', song: { title: 'Local song', artist: 'Local artist' }, t: 10 });
+  p.bar.update({ ...s, active: false }); await flush(); assert.equal(asks.length, 0);
+  p.bar.update(s); await flush();
+  p.bar.update(snap({ source: 'system', app: 'Music', song: { title: 'Music song' }, t: 11 }));
+  resolve({ track: { name: 'Local song', by: 'Local artist' } }); await flush();
+  assert.equal(p.root.dataset.spotify, 'false'); assert.equal(p.text('pl-title'), 'Music song');
+  p.nc.spotifyPlayback = async () => ({ track: { name: 'Phone song', by: 'Other person' }, position: 100, duration: 200, playing: true });
+  p.bar.update({ ...s, t: 12 }); await flush(); p.bar.update({ ...s, t: 13 });
+  assert.notEqual(p.bar.controls.player, 'spotify-api', 'a different Connect song never takes over');
+  assert.equal(p.part('pl-spotify-cover').hidden, true);
+});

@@ -1,0 +1,221 @@
+{
+  "passed": true,
+  "errors": [],
+  "interceptedRemoteRequests": [
+    "https://open.spotify.com/embed/track/9BQVZ7Lt9JFQqKC9n3SELd"
+  ],
+  "fakeApiRequests": [
+    {
+      "method": "GET",
+      "path": "/v1/me/playlists",
+      "query": {
+        "limit": "50",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/me/albums",
+      "query": {
+        "limit": "50",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/me/tracks",
+      "query": {
+        "limit": "50",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search",
+      "query": {
+        "q": "Daft Punk",
+        "type": "track,album,artist",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD",
+      "query": {},
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search",
+      "query": {
+        "q": "artist:\"Daft Punk\"",
+        "type": "track",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "album",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "single",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "appears_on",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "compilation",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/albums/92QGxsC7JPE1Px5ZwU39JL",
+      "query": {},
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/albums/92QGxsC7JPE1Px5ZwU39JL/tracks",
+      "query": {
+        "limit": "50",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/me/player/devices",
+      "query": {},
+      "body": null
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/me/player/play",
+      "query": {
+        "device_id": "fake-device-1"
+      },
+      "body": {
+        "context_uri": "spotify:album:92QGxsC7JPE1Px5ZwU39JL",
+        "offset": {
+          "uri": "spotify:track:9BQVZ7Lt9JFQqKC9n3SELd"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD",
+      "query": {},
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search",
+      "query": {
+        "q": "artist:\"Daft Punk\"",
+        "type": "track",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "album",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "single",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "appears_on",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/artists/7ej649UHjMyF5aGXMaQBOD/albums",
+      "query": {
+        "include_groups": "compilation",
+        "limit": "10",
+        "offset": "0"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/me/player",
+      "query": {},
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/me/player",
+      "query": {},
+      "body": null
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/me/player/pause",
+      "query": {
+        "device_id": "fake-device-1"
+      },
+      "body": null
+    },
+    {
+      "method": "GET",
+      "path": "/v1/me/player",
+      "query": {},
+      "body": null
+    }
+  ]
+}

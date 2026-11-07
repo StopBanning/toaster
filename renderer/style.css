@@ -38,6 +38,12 @@
 :root[data-theme="softclub"] body { background: radial-gradient(ellipse 90% 75% at 70% 25%, #eef3f7, #dde6ee 55%, #d4dee8); }
 :root[data-theme="softclub"] #library .lib-clock, :root[data-theme="softclub"] #library .lib-name, :root[data-theme="softclub"] #library .lib-now .title,
 :root[data-theme="softclub"] #ln-title { text-shadow: 0 0 14px rgba(110, 170, 215, .5); }
+/* fall2003: a bedroom on an autumn night in 2003, warm and dim: cream ink on walnut, pumpkin orange for what's lit, a desk lamp's
+   glow pooled at the top left (13:1 for the text; --dim 5.4:1, 5.1:1 on the glow; the accent 7.2:1, 6.5:1 on the glow) */
+:root[data-theme="fall2003"] { --bg:#1d130c; --fg:#f1d9ad; --ink:#000; --dim:rgba(241,217,173,.6); --faint:rgba(241,217,173,.12); --hl-bg:rgba(238,138,60,.22); --line-bg:rgba(29,19,12,.62); --accent:#ee8a3c; --accent-text:#ee8a3c; }
+:root[data-theme="fall2003"] body { background: radial-gradient(ellipse 90% 75% at 28% 18%, #2c1c10, #1d130c 55%, #150d08); }
+:root[data-theme="fall2003"] #library .lib-clock, :root[data-theme="fall2003"] #library .lib-name, :root[data-theme="fall2003"] #library .lib-now .title,
+:root[data-theme="fall2003"] #ln-title { text-shadow: 0 0 14px rgba(238, 138, 60, .45); }
 /* The page's motion, on Hyprland's tuned curves: its easeOutQuint for things settling, almostLinear for fades, quick
    for snaps, and its "easy" spring (mass 1, stiffness 238.1, damping 24.2: a 2% overshoot, settled by a quarter
    second) for things that pop up, sampled into linear(). (After the themes: the first :root is bluescreen's colours,
@@ -922,6 +928,21 @@ body.clean #first-run-hint, body.vertical #first-run-hint, body.mini #first-run-
 /* (the header stays solid while the picker is open, even where it fades on a touch screen) */
 header:has(#vis-menu:not([hidden])) { opacity: 1 !important; }
 
+/* The Spotify mini player lives in the existing bar; W keeps its visual canvas. */
+body.player-bar:has(#player[data-spotify="true"]) { --player-h: 64px; }
+body.player-bar #player[data-spotify="true"] { height: 64px; }
+#player .pl-spotify-cover { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; flex: none; }
+#player .pl-spotify-link { display: flex; flex-direction: column; align-items: center; gap: 3px; border: 0; background: transparent; padding: 2px; font: inherit; font-size: 10px; cursor: pointer; }
+#player .pl-spotify-link svg { width: 21px; height: 21px; fill: currentColor; }
+#player[data-spotify="true"] .pl-song { display: flex; flex-direction: column; gap: 4px; }
+#player[data-spotify="true"] .pl-title, #player[data-spotify="true"] .pl-artist { overflow: hidden; text-overflow: ellipsis; }
+#player .pl-btn:disabled { opacity: .4; cursor: wait; }
+@media (max-width: 899px) {
+  body.player-bar:has(#player[data-spotify="true"]) { --player-h: 100px; }
+  body.player-bar #player[data-spotify="true"] { height: 100px; }
+}
+body.player-bar.clean:has(#player[data-spotify="true"]), body.player-bar.mini:has(#player[data-spotify="true"]), body.player-bar.recording:not(.player-rec):has(#player[data-spotify="true"]), body.widget:has(#player[data-spotify="true"]) { --player-h: 0px; }
+
 /* ---------- the library (G; library-panel.js): your music, the radio and scenes, full screen over the visuals ---------- */
 /* The kept look: the cover of the open album in characters (golden's ramp) in the foreground colour, behind rows on the theme's line
    background. Everything is in em of --lib-fs, the type of its track rows (12 px in the 9:16 still, 17 in the desktop one), and every
@@ -1150,3 +1171,37 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-sp-search { flex-wrap: wrap; margin: .8em 0; }
 #library .lib-sp-query { flex: 1 1 14em; min-width: 0; background: transparent; color: var(--fg); border: 1px solid currentColor; padding: .4em; font: inherit; }
 #library .lib-sp-status { flex-basis: 100%; font-size: .8em; }
+
+/* Spotify's player stays in its own sandbox; the library retains a close control. */
+#library .lib-sp-action { font: inherit; font-size: .75em; color: var(--fg); background: transparent; border: 1px solid var(--faint); padding: .3em .5em; cursor: pointer; flex: none; }
+/* a song's artists read as part of its line, links only on a look (Nov 6, for the layman); ▶ preview shows on the picked or hovered song only */
+#library .lib-sp-action.lib-sp-name { font-size: inherit; border: 0; padding: 0; margin: 0; color: inherit; text-decoration: none; }
+#library .lib-sp-action.lib-sp-name:hover, #library .lib-sp-action.lib-sp-name:focus-visible { text-decoration: underline; text-underline-offset: .2em; }
+#library .lib-row.track.sp .lib-sp-watch { visibility: hidden; margin-right: .6em; }
+#library .lib-row.track.sp.cursor .lib-sp-watch, #library .lib-row.track.sp:hover .lib-sp-watch, #library .lib-sp-watch:focus-visible { visibility: visible; }
+#library .lib-video { position: absolute; z-index: 20; inset: 1em; margin: auto; width: min(850px, calc(100% - 2em)); height: fit-content; max-height: calc(100% - 4em); overflow: auto; padding: 1em; box-sizing: border-box; background: var(--bg); color: var(--fg); border: 1px solid var(--fg); box-shadow: 0 0 0 100vmax var(--bg); font-size: var(--lib-fs); }
+#library .lib-video h2 { font: inherit; font-size: 1.5em; font-weight: 700; margin: 0; }
+#library .lib-video-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1em; flex-wrap: wrap; }
+#library .lib-video-by { margin: .2em 0 0; opacity: .75; }
+#library .lib-video-actions { display: flex; flex-wrap: wrap; }
+#library .lib-video-note { margin: .6em 0 0; font-size: .8em; opacity: .6; }
+#library .lib-video p { line-height: 1.5; }
+#library .lib-video button { font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--fg); padding: .5em; margin: .3em; cursor: pointer; }
+#library .lib-video iframe { display: block; width: 100%; height: clamp(300px, 58vh, 560px); border: 0; border-radius: 12px; margin-top: .8em; }
+#library .lib-video-slot:empty { height: clamp(300px, 58vh, 560px); margin-top: .8em; border: 1px dashed var(--faint); border-radius: 12px; }
+
+#library .lib-cover.original { border-radius: 4px; overflow: hidden; }
+#library .lib-cover.original > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+#library .lib-cover.original > b { display: none; }
+#library.lib-artist .lib-head .lib-cover.original { width: 6em; height: 6em; flex: none; }
+
+#library .lib-artist-nav { grid-template-columns: minmax(0, 1fr) auto; min-height: 2em; gap: .5em; }
+#library .lib-artist-nav > .lib-logo { width: 21px; height: 21px; }
+#library .lib-artist-nav > span { white-space: nowrap; }
+#library .lib-row.track.sp .t { white-space: normal; }
+#library .lib-row.track.sp .d { text-align: right; padding-left: .5em; }
+#library .lib-row.track.sp .lib-sp-action { margin: .1em; }
+
+#library.lib-spotify .lib-keys .lib-line { height: auto; max-height: 3em; }
+
+#library .lib-video::before { content: ''; position: fixed; inset: 0; z-index: -1; background: var(--bg); }

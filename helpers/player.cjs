@@ -64,7 +64,7 @@ function parseNowPlaying(output) {
 // is already running, a bare "tell application" here is wanted (AppleScript launches Spotify if it isn't running, in the background,
 // and plays the track, album or playlist the address names). The address is checked here too, so nothing but spotify:<kind>:<22
 // characters> is ever in the script, whoever calls this.
-const LINK_URI = /^spotify:(track|album|playlist):[A-Za-z0-9]{22}$/;
+const LINK_URI = /^spotify:(track|album|playlist|artist):[A-Za-z0-9]{22}$/;
 function macPlayLink(uri) {
   if (typeof uri !== 'string' || !LINK_URI.test(uri)) throw new Error('not a Spotify address');
   return `tell application "Spotify" to play track "${uri}"`;

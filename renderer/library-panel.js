@@ -8,10 +8,11 @@
 // the stations and the scenes are app.js's, through `host`.
 import {
   SECTIONS, SPOTIFY_ICON, SPOTIFY_INTRO, SPOTIFY_LIKED, SPOTIFY_NOT_A_LINK, SPOTIFY_REDIRECT, SPOTIFY_STEPS, addPage, agoText, albumLine, collKey,
-  collLine, findMarks, findRows, findWords, fmtDuration, fold, folderLabel, glyphRows, groupAlbums, keepCursor, linkParts, logoTone, makeTrack,
+  collLine, coverGlyphs, findMarks, findRows, findWords, fmtDuration, fold, folderLabel, groupAlbums, keepCursor, linkParts, logoTone, makeTrack,
   moveCursor, musicRows, nextRepeat, nextSection, parseLink, plainError, scenePicture, spotifyAt, spotifyFold, spotifyKey, spotifyPlay, spotifyRows,
   spotifyUnfold, stationParts, unfold,
 } from './library.js';
+import { createSpotifyVideo } from './spotify-video.js';
 import { cleanTitle, ident } from './codegen.js';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -104,21 +105,22 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     }
     return images.get(id);
   };
-  // A cover as an image of white glyphs on nothing, cols x rows of them on w x h pixels (the cover's middle, cut to that shape, one
-  // light to a cell): a URL for CSS to use as a mask. Kept by what it's for, so an album shown again is no work.
+  // A cover as an image of white glyphs on nothing, cols x rows of them on w x h pixels (the cover's middle, cut to that shape, read at
+  // twice the grid for coverGlyphs): a URL for CSS to use as a mask. Kept by what it's for, so an album shown again is no work.
   function glyphMask(id, cols, rows, w, h) {
     const key = [id, cols, rows, w, h].join('|');
     if (!masks.has(key)) {
       masks.set(key, (async () => {
         const im = await imageOf(id);
         const small = doc.createElement('canvas');
-        small.width = cols;
-        small.height = rows;
+        small.width = cols * 2;
+        small.height = rows * 2;
         const g = small.getContext('2d', { willReadFrequently: true });
+        g.imageSmoothingQuality = 'high';
         const aspect = (cols * 0.6) / rows, wider = im.naturalWidth / im.naturalHeight > aspect;
         const sw = wider ? im.naturalHeight * aspect : im.naturalWidth, sh = wider ? im.naturalHeight : im.naturalWidth / aspect;
-        g.drawImage(im, (im.naturalWidth - sw) / 2, (im.naturalHeight - sh) / 2, sw, sh, 0, 0, cols, rows);
-        const lines = glyphRows(g.getImageData(0, 0, cols, rows).data, cols, rows);
+        g.drawImage(im, (im.naturalWidth - sw) / 2, (im.naturalHeight - sh) / 2, sw, sh, 0, 0, cols * 2, rows * 2);
+        const lines = coverGlyphs(g.getImageData(0, 0, cols * 2, rows * 2).data, cols, rows);
         const out = doc.createElement('canvas');
         out.width = w;
         out.height = h;
@@ -215,13 +217,15 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // the half look (golden's: the cover itself, framed, the characters faint around it, the album and its tracks written as code), for
   // your music and Spotify; the full one draws all of it in characters
   const coverSection = () => S.section === 'music' || S.section === 'spotify';
-  const half = () => coverSection() && host.coverLook?.() === 'photo';
+  const half = () => !(S.section === 'spotify' && S.sp.artist) && coverSection() && host.coverLook?.() === 'photo';
   function paintLook() {
     S.lookSig = host.coverLook?.();
+    root.classList.toggle('lib-spotify', S.section === 'spotify');
+    root.classList.toggle('lib-artist', S.section === 'spotify' && !!S.sp.artist);
     root.classList?.toggle('lib-half', half());
     const b = parts.tabs.querySelector?.('.lib-coverbtn');
     if (!b) return;
-    b.hidden = !coverSection();
+    b.hidden = !coverSection() || (S.section === 'spotify' && !!S.sp.artist);
     b.textContent = host.coverLook?.() === 'photo' ? 'half ascii' : 'full ascii';
   }
   const paintTabs = () => { paintSearch(); paintLook(); for (const b of parts.tabs.querySelectorAll('[data-section]')) { const on = b.dataset.section === S.section; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); } };
@@ -250,7 +254,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   function paintNow() {
     const p = host.playing();
     parts.now.hidden = !p.title;
-    parts.now.innerHTML = p.title ? `<div class="t"><div class="title">${esc(p.title)}</div><div class="by">${esc(p.artist || '')}${p.ms ? `  ${fmtDuration(p.ms)}` : ''}</div></div>${p.stoppable ? '<button type="button" class="stop" aria-label="stop" title="stop"><i></i></button>' : ''}` : '';
+    parts.now.innerHTML = p.title ? `<div class="t"><div class="title">${esc(p.title)}</div><div class="by">${S.section === 'spotify' && p.artist ? `<button type="button" class="lib-sp-action" data-now-artist>${esc(p.artist)} →</button>` : esc(p.artist || '')}${p.ms ? `  ${fmtDuration(p.ms)}` : ''}</div></div>${p.stoppable ? '<button type="button" class="stop" aria-label="stop" title="stop"><i></i></button>' : ''}` : '';
   }
 
   const count = (n) => Number(n).toLocaleString('en-US');
@@ -309,6 +313,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // main says is shown as it is said. Nothing of Spotify's is kept past the app's life (the lists and the covers are in memory), and a cover is
   // drawn with the library's shared cover look; Spotify's logo and "on Spotify" say whose it is.
   const sp = host.spotify, X = S.sp;
+  const video = createSpotifyVideo({ document: doc, root, beforeLoad: () => sp.prepareVideo?.(), openSpotify: (uri) => spOpenLink(uri) });
+  const spVideo = (row) => { if (row?.kind === 'strack') video.open(row.track); else host.say('pick a Spotify song, then V for its player'); };
   const spModel = () => ({ links: sp.links(), app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
   let search = { q: '', items: [], albums: [], artist: null, loading: false, more: false, next: 0, total: 0 }, searchGeneration = 0;
   // one row per song: Spotify lists the same song more than once (a single and its album's, a re-release), so a song is its title and its
@@ -332,12 +338,13 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   }
   const searchForm = q('.lib-sp-search'), searchInput = q('.lib-sp-query'), searchStatus = q('.lib-sp-status');
   function paintSearch() {
-    searchForm.hidden = S.section !== 'spotify';
+    searchForm.hidden = S.section !== 'spotify' || !!X.artist;
     q('.lib-sp-submit').textContent = X.status?.connected ? 'search' : 'search in Spotify ↗';
     searchStatus.textContent = search.loading ? 'searching…' : search.q ? `${search.items.length} of ${search.total} results` : X.status?.connected ? '' : 'No connection needed. Results open in Spotify in your browser.';
   }
   function searchRows() {
     const rows = searchSongs().map((track, index) => ({ kind: 'strack', group: 'search', coll: { kind: 'search' }, track, index }));
+    if (search.artist) rows.unshift({ kind: 'artist', group: 'artists', artist: search.artist });
     if (search.more) rows.push({ kind: 'more', group: 'search', list: 'search' });
     for (const coll of search.albums || []) {
       rows.push({ kind: 'coll', group: 'searchalbums', coll });
@@ -348,7 +355,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     }
     return rows;
   }
-  const spRows = () => search.q ? searchRows() : spotifyRows(spModel());
+  const spRows = () => X.artist ? artistRows() : search.q ? searchRows() : spotifyRows(spModel());
   async function searchSpotify(offset = 0) {
     const query = offset ? search.q : searchInput.value.trim();
     if (!query) { clearSearch(); return; }
@@ -399,7 +406,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (e.key === 'Escape') { e.preventDefault(); clearSearch(); searchInput.blur(); }
     else if (e.key === 'ArrowDown' && search.items.length) { e.preventDefault(); searchInput.blur(); markCursor(); }
   });
-  const spOpenColl = () => (!X.open ? null : search.q ? (search.albums || []).find((c) => collKey(c) === X.open) || null
+  const spOpenColl = () => (!X.open ? null : X.artist ? Object.values(X.artist.releases || {}).flatMap((p) => p.items || []).find((c) => collKey(c) === X.open) || null : search.q ? (search.albums || []).find((c) => collKey(c) === X.open) || null
     : [...(X.lists.playlists?.items || []), ...(X.lists.albums?.items || []), { ...SPOTIFY_LIKED, count: X.lists.liked?.total || 0 }].find((c) => collKey(c) === X.open) || null);
   const spSongsIn = (coll) => (coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(coll)])?.items?.length > 0;
   const spBusy = () => X.checking || [...Object.values(X.lists), ...Object.values(X.tracks)].some((l) => l?.loading);
@@ -409,12 +416,13 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
 
   function spHead() {
     const open = spOpenColl();
+    if (X.artist && !open) return `${spCover(X.artist.cover, half() ? 'lib-photo' : '')}<div><div class="lib-name lib-line">${esc(X.artist.name || 'artist')}</div><div class="lib-sub lib-line">${esc(X.artist.loading ? 'loading…' : X.artist.genres?.join(' · ') || '')}</div></div>${X.artist.uri ? `<button type="button" class="lib-onspot" data-do="artistspotify">${logo()}<span>Open Spotify</span></button>` : ''}`;
     if (open) {
       // ("play on Spotify": one of the three its guidelines give a link back to the Spotify app; the liked songs, which have no link, say whose they are)
       const mark = open.uri ? `<button type="button" class="lib-onspot" data-do="onspotify" title="play this in the Spotify app">${logo()}<span class="lib-line">play on Spotify</span></button>` : `<span class="lib-onspot">${logo()}<span class="lib-line">on Spotify</span></span>`;
       const code = half(), tile = open.kind === 'liked' ? '<i class="lib-cover real liked" aria-hidden="true">♥</i>' : spCover(open.cover, code ? 'lib-photo' : '');
       const name = code ? `x = x.${esc(ident(open.by || 'Spotify'))}(<s>"</s>${esc(cleanTitle(open.name))}<s>"</s>)` : esc(open.name);
-      return `${tile}<div><div class="lib-name lib-line${code ? ' lib-code' : ''}">${name}</div><div class="lib-sub lib-line sp">${code ? '// ' : ''}${esc(collLine(open))}</div></div>${mark}`;
+      return `${tile}<div><div class="lib-name lib-line${code ? ' lib-code' : ''}">${name}</div><div class="lib-sub lib-line sp">${code ? '// ' : ''}${esc(collLine(open))}${X.albumInfo?.[open.id]?.year || open.year ? ` · ${esc(X.albumInfo?.[open.id]?.year || open.year)}` : ''}</div></div>${mark}`;
     }
     const sub = !sp.app ? 'web player' : X.status?.connected ? 'connected' : 'not connected';
     return `<i class="lib-cover lib-spot" aria-hidden="true">${logo()}</i><div><div class="lib-name lib-line">spotify</div><div class="lib-sub lib-line sp">${esc(sub)}</div></div>`;
@@ -428,18 +436,30 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // the five steps and the field for a Client ID, which is all there is to see until the listener has connected
   function spSteps() {
     const rd = esc(SPOTIFY_REDIRECT);
-    return `<div class="lib-note lib-line lib-label">connect your Spotify</div><div class="lib-note lib-line">${esc(SPOTIFY_INTRO)}</div>${SPOTIFY_STEPS.map((t, k) => `<div class="lib-note lib-line lib-step"><span class="n">${k + 1}</span><span>${esc(t).replace(rd, `<b>${rd}</b>`)}</span>${t.includes(SPOTIFY_REDIRECT) ? `<button type="button" class="lib-copy" data-do="copy" data-text="${rd}" title="copy the redirect address">copy</button>` : ''}</div>`).join('')}${X.connecting ? '<div class="lib-note lib-line lib-wait" role="status">waiting for you: Spotify\'s page is open in your browser and asks you to agree (it waits five minutes)</div>' : ''}`;
+    return `<div class="lib-note lib-line lib-label">connect your Spotify</div><div class="lib-note lib-line">${esc(SPOTIFY_INTRO)}</div>${SPOTIFY_STEPS.map((t, k) => `<div class="lib-note lib-line lib-step"><span class="n">${k + 1}</span><span>${esc(t).replace(rd, `<b>${rd}</b>`)}</span>${t.includes(SPOTIFY_REDIRECT) ? `<button type="button" class="lib-copy" data-do="copy" data-text="${rd}" title="copy the redirect address">copy</button>` : k === 0 && sp.dashboard ? '<button type="button" class="lib-copy" data-do="dashboard" title="open Spotify\'s developer dashboard in your browser">open</button>' : ''}</div>`).join('')}${X.connecting ? '<div class="lib-note lib-line lib-wait" role="status">waiting for you: Spotify\'s page is open in your browser and asks you to agree (it waits five minutes)</div>' : ''}`;
   }
   // (the liked songs have no line over them: their row says it)
-  const SP_GROUPS = { links: 'pasted links, the latest first', playlists: 'your playlists', albums: 'saved albums', search: 'songs', searchalbums: 'albums' };
+  const SP_GROUPS = { links: 'pasted links, the latest first', playlists: 'your playlists', albums: 'saved albums', search: 'songs', searchalbums: 'albums', artists: 'artists', artistsongs: 'songs', artistalbum: 'albums', artistsingle: 'singles and EPs', artistappears_on: 'appears on', artistcompilation: 'compilations' };
   const spGroup = (group) => (group === 'connect' ? spSteps() : SP_GROUPS[group] ? `<div class="lib-note lib-line lib-label">${SP_GROUPS[group]}</div>` : '');
   // is this song the one the system is playing (its title, and its artist among this song's)? the strip over the list has it by those names
   function spPlaying(track, now) {
     const low = (v) => String(v || '').toLowerCase();
     return !!now.title && !now.track && !now.radio && low(now.title) === low(track.name) && (!now.artist || low(track.by).includes(low(now.artist).split(',')[0].trim()));
   }
+  // a song's artists, each a link to their page, in the song's own line (on an artist's page, everyone but that artist: every row would say it)
+  function spNames(t, code, coll) {
+    const albumBy = coll?.kind === 'album' ? String(coll.by || '').toLowerCase().split(', ') : []; // (an album's songs: only the guests)
+    const names = (t.artistRefs || []).filter((a) => (!X.artist || a.id !== X.artist.id) && !albumBy.includes(String(a.name || '').toLowerCase()))
+      .map((a) => `<button type="button" class="lib-sp-action lib-sp-name" data-do="artist" data-artist-id="${esc(a.id)}" data-artist-name="${esc(a.name)}" title="${esc(a.name)}: their page (A)">${esc(a.name)}</button>`).join(', ');
+    return names ? ` <em class="lib-sp-by">${code ? '// ' : '· '}${names}</em>` : '';
+  }
   function spRow(row, i, now) {
     const field = (name, hint, label, value) => `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t"><input type="text" class="lib-address" data-field="${name}" placeholder="${hint}" value="${esc(value)}" aria-label="${label}" autocomplete="off" spellcheck="false"></span><span class="d"></span></div>`;
+    if (row.kind === 'back') return `<div class="lib-row sp lib-artist-nav" data-i="${i}" role="option"><span>← back · Esc</span></div>`;
+    if (row.kind === 'artist') return `<div class="lib-row sp lib-artist-nav" data-i="${i}" role="option"><span class="t">${esc(row.artist.name)}</span><span>artist →</span></div>`;
+    if (row.kind === 'artistplay') return `<div class="lib-row sp lib-artist-nav" data-i="${i}" role="option"><span class="t">Play artist on Spotify</span>${logo()}</div>`;
+    if (row.kind === 'artistmore') return `<div class="lib-row sp lib-artist-nav" data-i="${i}" role="option"><span class="t">${X.artist.releases?.[row.releaseGroup]?.loading ? 'loading…' : 'more releases'}</span></div>`;
+    if (row.kind === 'artistlink') return `<div class="lib-row sp lib-artist-nav" data-i="${i}" role="option"><span class="t">Keep exploring on Spotify</span>${logo()}</div>`;
     if (row.kind === 'link') return field('link', 'paste a Spotify link, then enter', 'a Spotify link', X.draft.link);
     if (row.kind === 'client') return field('client', 'paste your Client ID, then enter', 'your Spotify Client ID', X.draft.client);
     if (row.kind === 'saved') {
@@ -448,12 +468,12 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     }
     if (row.kind === 'coll') {
       const c = row.coll, open = X.open === collKey(c);
-      return `<div class="lib-row album sp${open ? ' open' : ''}" data-i="${i}" role="option" aria-expanded="${open}">${c.kind === 'liked' ? '<i class="lib-cover real small liked" aria-hidden="true">♥</i>' : spCover(c.cover, 'small')}<span class="t"><b>${esc(c.name)}</b>${c.by ? ` <em>· ${esc(c.by)}</em>` : ''}</span><span class="d">${c.count ? count(c.count) : ''}</span></div>`;
+      return `<div class="lib-row album sp${open ? ' open' : ''}" data-i="${i}" role="option" aria-expanded="${open}">${c.kind === 'liked' ? '<i class="lib-cover real small liked" aria-hidden="true">♥</i>' : spCover(c.cover, 'small')}<span class="t"><b>${esc(c.name)}</b>${c.by ? ` <em>· ${esc(c.by)}</em>` : ''}</span><span class="d">${[c.year, c.count ? count(c.count) : ''].filter(Boolean).join(' · ')}</span></div>`;
     }
     if (row.kind === 'strack') {
       const t = row.track, on = spPlaying(t, now), by = row.coll.kind === 'album' ? '' : t.by; // (an album's songs are all by its artist)
       const title = half() ? `"${two(row.index + 1)} ${esc(t.name)}",` : esc(t.name);
-      return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : half() ? '' : two(row.index + 1)}</span><span class="t">${on && half() ? `<u>${title}</u>` : title}${by ? ` <em>${half() ? '// ' : '· '}${esc(by)}</em>` : ''}</span><span class="d">${fmtDuration(t.ms)}</span></div>`;
+      return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : half() ? '' : two(row.index + 1)}</span><span class="t">${on && half() ? `<u>${title}</u>` : title}${by && !t.artistRefs?.length ? ` <em>${half() ? '// ' : '· '}${esc(by)}</em>` : ''}${spNames(t, half(), row.coll)}</span><span class="d"><button type="button" class="lib-sp-action lib-sp-watch" data-do="video" title="Spotify's 30-second preview, right here (V)">▶ preview</button> ${fmtDuration(t.ms)}</span></div>`;
     }
     if (row.kind === 'more' && row.list === 'search') return `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t">more results</span></div>`;
     if (row.kind === 'more') {
@@ -463,7 +483,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     return `<div class="lib-row add sp${X.armed ? ' armed' : ''}" data-i="${i}" role="option"><span class="n">–</span><span class="t">${X.armed ? 'sure? enter again to disconnect' : 'disconnect: forget this connection'}</span><span class="d"></span></div>`;
   }
   function spList(r, now) {
-    let group = null, html = '';
+    let group = null, html = X.artist?.loading ? '<div class="lib-note" role="status">loading artist…</div>' : '';
     if (search.q && !r.length) html = `<div class="lib-note lib-line">${search.loading ? 'searching Spotify…' : X.error ? 'Search failed. Try again.' : 'No songs found. Try another title or artist.'}</div>`;
     r.forEach((row, i) => {
       if (row.group !== group) { group = row.group; html += spGroup(group); }
@@ -480,6 +500,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
       const im = doc.createElement('img');
       im.alt = ''; im.draggable = false; im.src = data; el.append(im);
     }
+    if (el.classList.contains('original')) return;
     glyphMask(data, COVER_COLS, COVER_ROWS, COVER_PX, COVER_PX).then((url) => {
       if (el.isConnected && el.firstElementChild?.tagName === 'B' && X.covers.get(el.dataset.sp) === data)
         el.firstElementChild.style.setProperty('--mask', `url("${url}")`);
@@ -494,6 +515,10 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // gave for it), till the cursor moves to another row or another collection opens (Colin: "we want album art to update").
   const playingArt = () => (X.bigFrom === 'playing' && host.playing().art) || '';
   function spArtSrc() {
+    if (X.artist) {
+      const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = cursorSong(), want = song ? song.big || song.cover : coll?.big || coll?.cover;
+      return (want && X.covers.get(want)) || (X.artist.cover && X.covers.get(X.artist.cover)) || null;
+    }
     const now = playingArt();
     if (now) return now;
     const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll || search.q ? cursorSong() : null;
@@ -504,7 +529,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (S.section === 'music' && half()) { paintBigMusic(); return; }
     if (S.section === 'music') { parts.big.replaceChildren(); return; }
     const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll || search.q ? cursorSong() : null;
-    const want = song ? song.big || song.cover : coll?.big || coll?.cover;
+    const want = (song ? song.big || song.cover : coll?.big || coll?.cover) || (X.artist && !coll ? X.artist.cover : null);
     if (want && !playingArt() && !X.covers.has(want) && !X.coverTried.has(want)) { X.coverTried.add(want); coverWait.push(want); pumpCovers(); }
     const data = spArtSrc();
     if (S.section === 'spotify') paintArt();
@@ -545,11 +570,12 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   function spRepaint() {
     if (!S.open || S.section !== 'spotify') return;
     if (S.typing) { X.dirty = true; return; }
+    root.classList.toggle('lib-artist', !!X.artist); paintLook(); paintKeys();
     paintSearch();
     S.cursor.spotify = spotifyAt(spRows(), X.cursorKey, S.cursor.spotify);
     paintHead(); paintMeta(); paintList(); paintBig();
   }
-  const spClear = () => { X.status = { connected: false }; X.lists = {}; X.tracks = {}; X.open = null; X.armed = false; X.gen++; searchGeneration++; search = { q: '', items: [], loading: false }; searchInput.value = ''; X.covers.clear(); X.coverTried.clear(); coverWait.length = 0; };
+  const spClear = () => { video.close(); X.artist = null; artistGeneration++; X.artistBack = null; X.albumInfo = {}; X.status = { connected: false }; X.lists = {}; X.tracks = {}; X.open = null; X.armed = false; X.gen++; searchGeneration++; search = { q: '', items: [], loading: false }; searchInput.value = ''; X.covers.clear(); X.coverTried.clear(); coverWait.length = 0; };
   // an error in main's words, shown over the list; one that says Spotify wants a new sign-in takes the lists away, which brings the field for a Client ID back
   function spFail(err) {
     X.error = plainError(err);
@@ -667,6 +693,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     X.error = '';
     try {
       const link = parseLink(text);
+      if (link?.kind === 'artist' && X.status?.connected) { await openArtist(link); X.draft.link = ''; return; }
       if (!sp.app && !link) throw new Error(SPOTIFY_NOT_A_LINK);
       await sp.open(text, link);
       X.draft.link = '';
@@ -704,12 +731,15 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     X.cursorKey = change.at || '';
     X.bigFrom = 'cursor'; // (a collection opened or closed by hand: its cover, till the next song)
     const coll = spOpenColl();
+    if (coll?.kind === 'album') loadAlbumInfo(coll);
     if (coll) { X.first = collKey(coll); if (spSongsIn(coll)) spFirst(); else spSongs(coll); }
     spRepaint();
     markCursor();
   }
   function spSide(dir) {
     const r = rows(), cur = cursor(), change = dir > 0 ? spotifyUnfold(r, cur) : spotifyFold(r, cur);
+    if (dir > 0 && r[cur]?.kind === 'artist') { openArtist(r[cur].artist); return; }
+    if (dir < 0 && X.artist && !X.open) { artistBack(); return; }
     if (change) spShow(change);
   }
   // (a click on a collection opens it, and on the open one folds it, its row keeping the cursor; Enter plays it)
@@ -717,6 +747,93 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   const spCopy = (text) => {
     Promise.resolve().then(() => win.navigator.clipboard.writeText(text)).then(() => host.say('copied'), () => host.say(`could not copy: select it, ${text}`));
   };
+
+
+  let artistGeneration = 0;
+  const releaseGroups = ['album', 'single', 'appears_on', 'compilation'];
+  async function spOpenLinkExternal(uri) {
+    try { await sp.open(uri, parseLink(uri)); host.say('on Spotify'); } catch (err) { spFail(err); }
+  }
+  function artistRows() {
+    const a = X.artist, rows = [{ kind: 'back' }];
+    if (a.choices) return [...rows, ...a.choices.map((artist) => ({ kind: 'artist', group: 'artists', artist }))];
+    if (a.loading) return rows;
+    if (a.uri) rows.push({ kind: 'artistplay' });
+    rows.push(...(a.songs || []).map((track, index) => ({ kind: 'strack', group: 'artistsongs', coll: { kind: 'search' }, track, index })));
+    for (const group of releaseGroups) {
+      const page = a.releases?.[group];
+      for (const coll of page?.items || []) {
+        rows.push({ kind: 'coll', group: 'artist' + group, coll });
+        if (X.open !== collKey(coll)) continue;
+        const tracks = X.tracks[collKey(coll)];
+        rows.push(...(tracks?.items || []).map((track, index) => ({ kind: 'strack', group: 'artist' + group, coll, track, index })));
+        if (tracks?.more) rows.push({ kind: 'more', list: 'tracks', coll, group: 'artist' + group });
+      }
+      if (page?.more && page.items.length < 20) rows.push({ kind: 'artistmore', releaseGroup: group, group: 'artist' + group });
+    }
+    if (a.uri) rows.push({ kind: 'artistlink' });
+    return rows;
+  }
+  function saveArtistBack() {
+    if (!X.artistBack) X.artistBack = { open: X.open, cursor: S.cursor.spotify, cursorKey: X.cursorKey, scroll: parts.list.scrollTop };
+  }
+  function artistBack() {
+    if (!X.artist) return;
+    artistGeneration++; video.close();
+    const back = X.artistBack;
+    X.artist = null; X.artistBack = null; X.error = ''; X.open = back?.open || null;
+    X.cursorKey = back?.cursorKey || ''; S.cursor.spotify = back?.cursor || 0;
+    spRepaint(); parts.list.scrollTop = back?.scroll || 0;
+    parts.list.focus();
+  }
+  async function openArtist(artist) {
+    if (!/^[A-Za-z0-9]{22}$/.test(artist?.id || '')) return;
+    saveArtistBack(); video.close();
+    const generation = ++artistGeneration, gen = X.gen;
+    X.artist = { id: artist.id, uri: `spotify:artist:${artist.id}`, name: artist.name || '', loading: true, releases: {} };
+    X.open = null; X.cursorKey = ''; S.cursor.spotify = 0; X.error = ''; spRepaint();
+    try {
+      const data = await sp.list({ list: 'artist', id: artist.id });
+      if (gen !== X.gen || generation !== artistGeneration) return;
+      X.artist = { ...data, releases: {}, loading: false };
+      spRepaint();
+      await Promise.all(releaseGroups.map((group) => loadArtistReleases(group)));
+    } catch (err) { if (gen === X.gen && generation === artistGeneration) { X.artist.loading = false; spFail(err); } }
+  }
+  async function loadArtistReleases(group, offset = 0) {
+    const a = X.artist, gen = X.gen, generation = artistGeneration;
+    if (!a?.id || a.releases[group]?.loading) return;
+    const old = a.releases[group];
+    a.releases[group] = { ...old, loading: true }; spRepaint();
+    try {
+      const page = await sp.list({ list: 'artist-releases', id: a.id, group, offset });
+      if (gen !== X.gen || generation !== artistGeneration) return;
+      a.releases[group] = { ...page, items: [...(offset ? old?.items || [] : []), ...page.items].filter((c, i, all) => all.findIndex((x) => x.id === c.id) === i).slice(0, 20), loading: false };
+    } catch (err) { if (gen !== X.gen || generation !== artistGeneration) return; a.releases[group] = { ...old, loading: false }; X.error = plainError(err); }
+    spRepaint();
+  }
+  async function artistByName(name) {
+    if (!name) return;
+    if (!X.status?.connected) { host.say('connect Spotify to open artist pages'); return; }
+    saveArtistBack();
+    const generation = ++artistGeneration, gen = X.gen;
+    X.artist = { name, loading: true, releases: {} }; X.open = null; X.cursorKey = ''; S.cursor.spotify = 0; spRepaint();
+    try {
+      const page = await sp.list({ list: 'search', q: name, offset: 0 });
+      if (gen !== X.gen || generation !== artistGeneration) return;
+      if (!page.artist || fold(page.artist.name) !== fold(name)) throw new Error('No matching artist found. Try searching their name.');
+      await openArtist(page.artist);
+    } catch (err) { if (gen === X.gen && generation === artistGeneration) { X.artist.loading = false; spFail(err); } }
+  }
+  async function loadAlbumInfo(coll) {
+    if (X.albumInfo?.[coll.id]) return;
+    const gen = X.gen;
+    try {
+      const info = await sp.list({ list: 'album-info', id: coll.id });
+      if (gen !== X.gen) return;
+      (X.albumInfo ||= {})[coll.id] = info; spRepaint();
+    } catch { /* Tracks still work if an optional album header cannot be read. */ }
+  }
 
   // find's rows: an album as the list has it, a track with its artist and album; the words typed marked wherever they are
   function marked(text, words) {
@@ -800,7 +917,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const k = host.key();
     const more = S.section === 'music' ? '←→ fold' : S.section === 'scenes' ? '←→ move' : S.section === 'spotify' ? '←→ open' : '';
     const items = S.find ? ['esc ends find', '↑↓ pick', 'enter plays', 'a click on an album opens it', `${k} library`]
-      : [`${k} library`, 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? [] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() ? ['shift+C cover'] : [])];
+      : [`${k} library`, S.section === 'spotify' && X.artist ? 'esc back' : 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? ['A artist', 'V preview', ...(X.artist ? ['esc back'] : [])] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() && !(S.section === 'spotify' && X.artist) ? ['shift+C cover'] : [])];
     parts.keys.innerHTML = items.map((t, i) => `<span>${i ? ' · ' : ''}${esc(t)}</span>`).join('');
   }
 
@@ -948,6 +1065,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
 
   function setSection(id) {
     if (id === S.section) return;
+    video.close();
     finishInput(false);
     closeFind(false);
     S.onShelf = false;
@@ -985,7 +1103,11 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const row = rows()[cursor()];
     if (!row) return;
     try {
-      if (row.kind === 'track') { const back = resumed(); host.play(row.album, row.index, back && back.album === row.album && back.index === row.index ? back.at : 0); }
+      if (row.kind === 'back') artistBack();
+      else if (row.kind === 'artist') openArtist(row.artist);
+      else if (row.kind === 'artistplay' || row.kind === 'artistlink') spOpenLinkExternal(X.artist.uri);
+      else if (row.kind === 'artistmore') loadArtistReleases(row.releaseGroup, X.artist.releases[row.releaseGroup]?.next || 0);
+      else if (row.kind === 'track') { const back = resumed(); host.play(row.album, row.index, back && back.album === row.album && back.index === row.index ? back.at : 0); }
       else if (row.kind === 'album') {
         S.openId = row.album.id;
         S.cursor.music = 0;
@@ -1055,6 +1177,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (k === 'Escape') take(() => closeFind());
     else if (k === 'ArrowDown' || k === 'ArrowUp') take(() => move(k === 'ArrowDown' ? 1 : -1));
     else if (k === 'PageDown' || k === 'PageUp') take(() => move(k === 'PageDown' ? 8 : -8));
+    else if (S.section === 'spotify' && k.toLowerCase() === 'a') take(() => { const r = rows()[cursor()]; if (r?.kind === 'artist') openArtist(r.artist); else if (r?.track?.artistRefs?.[0]) openArtist(r.track.artistRefs[0]); else if (r?.track?.by) artistByName(r.track.by); });
+    else if (S.section === 'spotify' && k.toLowerCase() === 'v') take(() => spVideo(rows()[cursor()]));
     else if (k === 'Enter') take(() => { if (!e.repeat) activate(); });
     else if (k === 'Tab') take(() => setSection(nextSection(S.section, e.shiftKey ? -1 : 1)));
     else e.stopPropagation();
@@ -1115,6 +1239,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
 
   function onKey(e) {
     if (!S.open || host.blocked()) return;
+    if (video.isOpen) { video.key(e); e.stopImmediatePropagation(); return; }
     if (e.target?.closest?.('.lib-sp-search')) return;
     // Ctrl+F or ⌘F: find in your music (over the library, not a browser's own find bar)
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.stopImmediatePropagation(); openFind(); return; }
@@ -1128,16 +1253,18 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     }
     const k = e.key, take = (fn) => { e.preventDefault(); e.stopImmediatePropagation(); fn(); };
     const scenes = S.section === 'scenes';
-    if (k === 'Escape') take(S.find ? () => closeFind() : close); // (with find's line open, Esc ends find first)
+    if (k === 'Escape') take(S.section === 'spotify' && X.artist ? artistBack : S.find ? () => closeFind() : close); // (with find's line open, Esc ends find first)
     else if (k === 'ArrowDown' || k === 'ArrowUp') take(() => move((k === 'ArrowDown' ? 1 : -1) * (scenes ? columns() : 1)));
     else if (k === 'ArrowRight' || k === 'ArrowLeft') take(() => side(k === 'ArrowRight' ? 1 : -1));
     else if (k === 'Home' || k === 'End') take(() => { if (S.onShelf) { S.onShelf = false; paintShelf(); } move(k === 'Home' ? -1e9 : 1e9); });
     else if (k === 'PageDown' || k === 'PageUp') take(() => move((k === 'PageDown' ? 1 : -1) * 8 * (scenes ? columns() : 1)));
+    else if (S.section === 'spotify' && k.toLowerCase() === 'a') take(() => { const r = rows()[cursor()]; if (r?.kind === 'artist') openArtist(r.artist); else if (r?.track?.artistRefs?.[0]) openArtist(r.track.artistRefs[0]); else if (r?.track?.by) artistByName(r.track.by); });
+    else if (S.section === 'spotify' && k.toLowerCase() === 'v') take(() => spVideo(rows()[cursor()]));
     else if (k === 'Enter') take(() => { if (!e.repeat) activate(); });
     else if (k === 'Tab') take(() => setSection(nextSection(S.section, e.shiftKey ? -1 : 1)));
     else if (e.shiftKey && k.toLowerCase() === 'r') take(cycleRepeat); // (Shift+R and Shift+S: the queue's modes; R and S stay the page's)
     else if (e.shiftKey && k.toLowerCase() === 's') take(toggleShuffle);
-    else if (e.shiftKey && k.toLowerCase() === 'c' && coverSection()) take(toggleCover);
+    else if (e.shiftKey && k.toLowerCase() === 'c' && coverSection() && !(S.section === 'spotify' && X.artist)) take(toggleCover);
     else if (scenes && (k === 'Delete' || k === 'Backspace')) take(deleteKey);
     else if (scenes && k === 'F2') take(renameKey);
     // anything else is the page's own: T, Y, V and the rest still work over the library
@@ -1158,9 +1285,10 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (m) { if (m.dataset.do === 'repeat') cycleRepeat(); else toggleShuffle(); m.blur(); return; }
     if (e.target.closest('.lib-folder') && S.section === 'music' && !S.scanning) choose();
   });
-  parts.now.addEventListener('click', (e) => { if (e.target.closest('.stop')) host.stop(); });
+  parts.now.addEventListener('click', (e) => { if (e.target.closest('[data-now-artist]')) artistByName(host.playing().artist); else if (e.target.closest('.stop')) host.stop(); });
   // "on Spotify" over an open collection plays it in the Spotify app (the link back to Spotify that its guidelines ask for)
   parts.head.addEventListener('click', (e) => {
+    if (e.target.closest('[data-do="artistspotify"]')) { spOpenLinkExternal(X.artist.uri); return; }
     const mark = e.target.closest('[data-do="onspotify"]'), coll = mark && spOpenColl();
     if (coll?.uri) { mark.blur(); sp.open(coll.uri, parseLink(coll.uri)).then(() => host.say('on Spotify'), (err) => { X.error = plainError(err); spRepaint(); }); }
   });
@@ -1170,11 +1298,16 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (e.target.closest('.lib-stations')) { if (host.openStations) { e.preventDefault(); host.openStations(); } return; }
     const copy = e.target.closest('[data-do="copy"]');
     if (copy) { copy.blur(); spCopy(copy.dataset.text); return; }
+    const dash = e.target.closest('[data-do="dashboard"]');   // (step 1's page, opened for the listener: one less address to type)
+    if (dash) { dash.blur(); Promise.resolve().then(() => sp.dashboard()).catch((err) => { X.error = plainError(err); spRepaint(); }); return; }
     const el = e.target.closest('[data-i]');
     if (!el) return;
     S.cursor[S.section] = Number(el.dataset.i);
     markCursor(S.cursor[S.section], false);
     const act = e.target.closest('[data-do]')?.dataset.do, row = rows()[S.cursor[S.section]];
+    if (act === 'artist') { const b = e.target.closest('[data-artist-id]'); openArtist({ id: b.dataset.artistId, name: b.dataset.artistName }); return; }
+    if (act === 'artist-name') { artistByName(e.target.closest('[data-name]').dataset.name); return; }
+    if (act === 'video') { spVideo(row); return; }
     if (act === 'rename') { renameKey(); return; }
     if (act === 'delete') { if (row?.kind === 'scene') askDelete(row.scene.id); return; }
     if (row?.kind === 'album') { if (finding()) openFromFind(row.album); else side(1); } // (a click on a folded album opens it; Enter plays it)
@@ -1218,6 +1351,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (!S.open) return;
     finishInput(false);
     closeFind(false);
+    video.close();
     S.open = false;
     clearInterval(clockTimer);
     root.hidden = true;

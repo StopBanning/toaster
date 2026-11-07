@@ -243,7 +243,8 @@ function collection(kind, thing, by, count) {
 // A track the player can start (songs only: a podcast episode in a playlist, a local file or a gap is left out).
 function track(thing) {
   if (!thing || thing.type === 'episode' || thing.is_local || !TRACK_URI.test(thing.uri || '')) return null;
-  return { id: thing.id, name: thing.name || '', by: artists(thing), ms: thing.duration_ms || 0, uri: thing.uri, cover: cover(thing.album?.images), big: biggest(thing.album?.images) };
+  const refs = (thing.artists || []).filter((a) => ID.test(a.id || '')).map((a) => ({ id: a.id, name: a.name || '' }));
+  return { ...(refs.length ? { artistRefs: refs } : {}), id: thing.id, name: thing.name || '', by: artists(thing), ms: thing.duration_ms || 0, uri: thing.uri, cover: cover(thing.album?.images), big: biggest(thing.album?.images) };
 }
 
 // Spotify's answer in words: what to do next, never a bare status code.
@@ -275,13 +276,32 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     return res.status === 204 || res.status === 202 ? null : res.json();
   }
   async function list(request = {}) {
+    if (request.list === 'artist' || request.list === 'artist-releases' || request.list === 'album-info') {
+      if (!ID.test(request.id || '')) throw new Error("That isn't a Spotify id.");
+      if (request.list === 'album-info') {
+        const a = await call('GET', `/v1/albums/${request.id}`);
+        return { ...collection('album', a, artists(a), a.total_tracks), year: String(a.release_date || '').slice(0, 4) };
+      }
+      if (request.list === 'artist-releases') {
+        const group = request.group, offset = request.offset ?? 0;
+        if (!['album', 'single', 'appears_on', 'compilation'].includes(group)) throw new Error('Choose albums, singles, appearances or compilations.');
+        if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new Error("That isn't a place in the list.");
+        const page = await call('GET', `/v1/artists/${request.id}/albums`, { query: { include_groups: group, limit: 10, offset } });
+        return { items: (page.items || []).map((a) => ({ ...collection('album', a, artists(a), a.total_tracks), year: String(a.release_date || '').slice(0, 4) })).filter((a) => a.id), total: page.total || 0, more: !!page.next, next: offset + 10 };
+      }
+      const a = await call('GET', `/v1/artists/${request.id}`);
+      // Development Mode removed top-tracks. Search order is not a popularity chart.
+      const result = await call('GET', '/v1/search', { query: { q: `artist:"${String(a.name || '').replace(/["\\]/g, ' ')}"`, type: 'track', limit: 10, offset: 0 } });
+      return { id: request.id, name: a.name || '', uri: `spotify:artist:${request.id}`, cover: cover(a.images), genres: Array.isArray(a.genres) ? a.genres.filter((g) => typeof g === 'string') : [],
+        songs: (result.tracks?.items || []).filter((t) => (t.artists || []).some((x) => x.id === request.id)).map(track).filter(Boolean) };
+    }
     if (request.list === 'search') {
       const q = typeof request.q === 'string' ? request.q.trim() : '';
       if (!q || q.length > 256) throw new Error('Enter a Spotify song or artist (up to 256 characters).');
       const offset = request.offset ?? 0;
       if (!Number.isInteger(offset) || offset < 0 || offset > 1000) throw new Error("That isn't a place in the search results.");
       // (the first page also asks for albums and artists, as Spotify's own search shows them: the albums to open, and the artist the
-      // query names, whose songs then come first; each song keeps its popularity, so the panel can keep the best-known of a song
+      // query names, whose songs then come first. Development Mode omits popularity; zero preserves Spotify's result order for copies of a song
       // Spotify lists twice, a single and its album's)
       const first = offset === 0;
       const result = await call('GET', '/v1/search', { query: { q, type: first ? 'track,album,artist' : 'track', limit: 10, offset } });
@@ -332,12 +352,36 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     await call('PUT', '/v1/me/player/play', { query: { device_id: device.id }, body });
     return { device: device.name || '' };
   }
-  return { list, play };
+  // Only the current song, its timing and allowed transport cross the process boundary.
+  async function playback() {
+    const r = await call('GET', '/v1/me/player');
+    const song = r?.item?.type === 'track' ? track(r.item) : null;
+    if (!song || String(r.device?.type || '').toLowerCase() !== 'computer' || !r.device?.is_active || typeof r.device.id !== 'string') return null;
+    const denied = r.actions?.disallows || r.actions || {};
+    const restricted = !!r.device.is_restricted;
+    return { track: song, device: r.device.id, playing: r.is_playing === true,
+      position: Number.isFinite(r.progress_ms) && r.progress_ms >= 0 ? r.progress_ms / 1000 : null,
+      duration: song.ms / 1000,
+      allowed: { pause: !restricted && !denied.pausing, resume: !restricted && !denied.resuming,
+        next: !restricted && !denied.skipping_next, previous: !restricted && !denied.skipping_prev } };
+  }
+  async function control(request = {}) {
+    const routes = { pause: ['PUT', 'pause'], resume: ['PUT', 'play'], next: ['POST', 'next'], previous: ['POST', 'previous'] };
+    if (!Object.hasOwn(routes, request.action) || !TRACK_URI.test(request.uri || '') || typeof request.device !== 'string' || !request.device || request.device.length > 256)
+      throw new Error('Choose a Spotify player button.');
+    const now = await playback();
+    if (!now || now.device !== request.device || now.track.uri !== request.uri) throw new Error('Spotify changed songs or devices. Try the button again.');
+    if (!now.allowed[request.action]) throw new Error('Spotify does not allow that button right now.');
+    const [method, route] = routes[request.action];
+    await call(method, `/v1/me/player/${route}`, { query: { device_id: now.device } });
+    return { ok: true };
+  }
+  return { list, play, playback, control };
 }
 
 // ---------------------------------------------------------------- the first tier: a pasted link (no sign-in, no Web API)
 
-const NOT_A_LINK = 'That isn\'t a Spotify link to a song, an album or a playlist. In Spotify choose Share, then Copy link (or Copy Spotify URI), and paste that.';
+const NOT_A_LINK = 'That isn\'t a Spotify link to a song, an artist, an album or a playlist. In Spotify choose Share, then Copy link (or Copy Spotify URI), and paste that.';
 
 // What a listener pasted, as { kind, id, uri }: an open.spotify.com link to a track, an album or a playlist (with or without https://, a
 // locale's /intl-de/ before the kind, a slash after the id, and a ?si=... or #... after that), or the same as a spotify: address. The uri
@@ -346,13 +390,13 @@ const NOT_A_LINK = 'That isn\'t a Spotify link to a song, an album or a playlist
 function parseLink(text) {
   const s = typeof text === 'string' ? text.trim() : '';
   let kind = null, id = null;
-  const address = /^spotify:(track|album|playlist):([A-Za-z0-9]{22})$/.exec(s);
+  const address = /^spotify:(track|album|playlist|artist):([A-Za-z0-9]{22})$/.exec(s);
   if (address) [, kind, id] = address;
   else if (s && s.length < 600) {
     let url = null;
     try { url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `https://${s}`); } catch { /* not a link */ }
     if (url && (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname === 'open.spotify.com' && !url.username && !url.password && !url.port) {
-      const m = /^\/(?:intl-[a-z]{2}(?:-[a-z]{2,4})?\/)?(track|album|playlist)\/([A-Za-z0-9]{22})\/?$/.exec(url.pathname);
+      const m = /^\/(?:intl-[a-z]{2}(?:-[a-z]{2,4})?\/)?(track|album|playlist|artist)\/([A-Za-z0-9]{22})\/?$/.exec(url.pathname);
       if (m) [, kind, id] = m;
     }
   }

@@ -134,7 +134,7 @@ function catalogue(c) {
   add('code-none', { visual: 'scenery', scene: 'lake', code: 'none' });
   add('code-beat', { visual: 'scenery', scene: 'lake', code: 'beat' });
   add('code-all', { visual: 'off' });
-  for (const th of ['blackscreen', 'terminal', 'pink', 'whitescreen', 'softclub']) add(`theme-${th}`, { visual: 'scenery', scene: 'lake', theme: th });
+  for (const th of ['blackscreen', 'terminal', 'pink', 'whitescreen', 'softclub', 'fall2003']) add(`theme-${th}`, { visual: 'scenery', scene: 'lake', theme: th });
   // the post looks (stream E: F cycles them): whatever the app lists in __nc.postLooks, each over the lake and over the dominoes
   for (const p of c.postLooks || []) { add(`post-${p}`, { visual: 'scenery', scene: 'lake', post: p }); add(`post-${p}-dominoes`, { visual: 'off', blocks: 'dominoes', post: p }); }
   add('crt', { visual: 'off', crt: true });

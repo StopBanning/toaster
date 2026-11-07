@@ -72,7 +72,7 @@ const log = (...a) => console.log(...a);
 // ---------------------------------------------------------------- what the page should show
 
 const css = fs.readFileSync(path.join(root, 'renderer', 'style.css'), 'utf8');
-const NAMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub'];
+const NAMES = ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub', 'fall2003'];
 const norm = (v) => (/^#[0-9a-f]{3}$/i.test(v) ? '#' + [...v.slice(1)].map((c) => c + c).join('') : v.replace(/\s+/g, '')).toLowerCase();
 const fixed = Object.fromEntries(NAMES.slice(0, 5).map((name) => {
   const block = name === 'bluescreen' ? css.match(/:root \{([^}]*)\}/)[1] : css.match(new RegExp(`:root\\[data-theme="${name}"\\] \\{([^}]*)\\}`))[1];

@@ -117,7 +117,7 @@ test('the queue: the track\'s attach takes it, so the buttons and the names hold
 
 test('the page keeps its security policy, and the library has its place in it: over the alerts, under the notices, a click in it is not a click on the koi\'s water', () => {
   const csp = html.match(/http-equiv="Content-Security-Policy" content="([^"]*)"/)[1];
-  assert.equal(csp, "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream: http: https:", 'unchanged: a cover is a data: image, a mask a blob:, a track a blob:');
+  assert.equal(csp, "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; frame-src https://open.spotify.com/embed/track/; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream: http: https:", 'only Spotify track embeds are added; image and script origins stay local');
   assert.ok(html.indexOf('<div id="library" hidden></div>') > html.indexOf('<canvas id="storm"') && html.indexOf('<div id="library" hidden></div>') < html.indexOf('<div id="alerts"></div>'));
   assert.match(app, /#player, #alerts, #notice, #err, #card, #library'\)/);
   assert.match(libraryCss, /#library \{\s*position: fixed; inset: 0; z-index: 4;/);
@@ -154,13 +154,13 @@ test('the CSS uses the theme\'s colours and no others, and its wide window is th
 test('the panel takes the keys it lists and leaves the rest to the page; typing in its fields is not the page\'s keys', () => {
   const onKey = panel.slice(panel.indexOf('function onKey(e) {'), panel.indexOf("win.addEventListener('keydown', onKey, true);"));
   // the one key with a modifier it takes is Ctrl+F or ⌘F, find; any other is the page's (Ctrl+K and the rest)
-  assert.match(onKey, /if \(!S\.open \|\| host\.blocked\(\)\) return;\s*if \(e\.target\?\.closest\?\.\('\.lib-sp-search'\)\) return;\s*\/\/[^\n]*\n\s*if \(\(e\.ctrlKey \|\| e\.metaKey\) && !e\.altKey && !e\.shiftKey && e\.key\.toLowerCase\(\) === 'f'\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\); openFind\(\); return; \}\s*if \(e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey\) return;/);
+  assert.match(onKey, /if \(!S\.open \|\| host\.blocked\(\)\) return;\s*if \(video\.isOpen\) \{ video\.key\(e\); e\.stopImmediatePropagation\(\); return; \}\s*if \(e\.target\?\.closest\?\.\('\.lib-sp-search'\)\) return;\s*\/\/[^\n]*\n\s*if \(\(e\.ctrlKey \|\| e\.metaKey\) && !e\.altKey && !e\.shiftKey && e\.key\.toLowerCase\(\) === 'f'\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\); openFind\(\); return; \}\s*if \(e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey\) return;/);
   // find's line: its own keys first, and what is typed in it is not the page's keys
   assert.match(onKey, /if \(e\.target\?\.closest\?\.\('\.lib-find'\)\) \{ findKey\(e\); return; \}/);
   const findKey = panel.slice(panel.indexOf('function findKey(e) {'), panel.indexOf('// an input in the list'));
   for (const k of ["'Escape'", "'ArrowDown'", "'ArrowUp'", "'PageDown'", "'PageUp'", "'Enter'", "'Tab'"]) assert.ok(findKey.includes(k), `find's ${k}`);
   assert.match(findKey, /else e\.stopPropagation\(\);\s*\}/);
-  assert.match(onKey, /if \(k === 'Escape'\) take\(S\.find \? \(\) => closeFind\(\) : close\);/, 'with find open, Esc ends find before it closes the library');
+  assert.match(onKey, /if \(k === 'Escape'\) take\(S\.section === 'spotify' && X\.artist \? artistBack : S\.find \? \(\) => closeFind\(\) : close\);/, 'with find open, Esc ends find before it closes the library');
   for (const k of ["'Escape'", "'ArrowDown'", "'ArrowUp'", "'ArrowRight'", "'ArrowLeft'", "'Home'", "'End'", "'PageDown'", "'PageUp'", "'Enter'", "'Tab'", "'Delete'", "'Backspace'", "'F2'"]) assert.ok(onKey.includes(k), k);
   assert.match(onKey, /else e\.stopPropagation\(\); \/\/ \(typed into the field: not the page's keys\)/);
   assert.match(onKey, /anything else is the page's own/);

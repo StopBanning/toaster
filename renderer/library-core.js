@@ -161,7 +161,7 @@ export function noteRadioCover(covers, key, cover, max = MAX_RADIO_COVERS) {
 // ---------------------------------------------------------------- the spotify section's pasted links
 
 const MAX_LINKS = 30;
-const LINK_URI = /^spotify:(track|album|playlist):[A-Za-z0-9]{22}$/;
+const LINK_URI = /^spotify:(track|album|playlist|artist):[A-Za-z0-9]{22}$/;
 // The links pasted, as saved, most recently played first: { uri (spotify:<track|album|playlist>:<id>), at } and, once the player has shown
 // what it started on, title and artist. One that isn't a Spotify address of those three kinds is dropped, as a repeat is.
 export function readLinks(saved) {

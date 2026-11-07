@@ -36,15 +36,17 @@ const GOOD = [
   [`spotify:track:${ID.track}`, 'track', ID.track],
   [`spotify:album:${ID.album}`, 'album', ID.album],
   [`spotify:playlist:${ID.playlist}`, 'playlist', ID.playlist],
+  [`https://open.spotify.com/artist/${ID.track}?si=x`, 'artist', ID.track],
+  [`spotify:artist:${ID.track}`, 'artist', ID.track],
 ];
 const BAD = [
-  `https://open.spotify.com/artist/${ID.track}`, `https://open.spotify.com/show/${ID.track}`, `https://open.spotify.com/episode/${ID.track}`, `https://open.spotify.com/user/colin`,
+  `https://open.spotify.com/show/${ID.track}`, `https://open.spotify.com/episode/${ID.track}`, `https://open.spotify.com/user/colin`,
   `https://open.spotify.com/embed/track/${ID.track}`, `https://open.spotify.com/track/${ID.track.slice(1)}`, `https://open.spotify.com/track/${ID.track}x`,
   `https://open.spotify.com/track/${ID.track.slice(1)}-`, `https://open.spotify.com/track/${ID.track.slice(1)}_`, 'https://open.spotify.com/track/', 'https://open.spotify.com/', 'https://open.spotify.com',
   `https://open.spotify.com.evil.com/track/${ID.track}`, `https://evil.com/open.spotify.com/track/${ID.track}`, `https://open.spotify.com@evil.com/track/${ID.track}`,
   `https://user:pw@open.spotify.com/track/${ID.track}`, `https://open.spotify.com:8443/track/${ID.track}`, `https://open.spotify.com./track/${ID.track}`, `https://www.open.spotify.com/track/${ID.track}`,
   `https://spotify.com/track/${ID.track}`, `https://spotify.link/${ID.track}`, `ftp://open.spotify.com/track/${ID.track}`, `javascript:alert('open.spotify.com/track/${ID.track}')`,
-  `file:///open.spotify.com/track/${ID.track}`, `data:text/html,open.spotify.com/track/${ID.track}`, `spotify:artist:${ID.track}`, `spotify:user:colin:playlist:${ID.playlist}`,
+  `file:///open.spotify.com/track/${ID.track}`, `data:text/html,open.spotify.com/track/${ID.track}`, `spotify:show:${ID.track}`, `spotify:user:colin:playlist:${ID.playlist}`,
   `spotify:track:${ID.track}:play`, `SPOTIFY:track:${ID.track}`, `spotify:track:${ID.track.slice(1)}`, `spotify:track:${ID.track}x`, `spotify:track:${ID.track} spotify:album:${ID.album}`,
   `https://open.spotify.com/track/${ID.track} https://open.spotify.com/album/${ID.album}`, `open.spotify.com/track/${ID.track}"; do shell script "x`, 'play something', '', '   ',
   `https://open.spotify.com/${'a'.repeat(700)}`, null, undefined, 42, {}, [], [`spotify:track:${ID.track}`], true,
@@ -60,7 +62,7 @@ test('a pasted link is a track, an album or a playlist, as open.spotify.com or a
 
 test('anything else is refused in words: other kinds, other hosts (with the tricks), another place for the id, another scheme', () => {
   for (const text of BAD) {
-    assert.throws(() => S.parseLink(text), /That isn't a Spotify link to a song, an album or a playlist/, JSON.stringify(text));
+    assert.throws(() => S.parseLink(text), /That isn't a Spotify link to a song, an artist, an album or a playlist/, JSON.stringify(text));
     assert.equal(L.parseLink(text), null, `the page too: ${JSON.stringify(text)}`);
   }
   assert.equal(S.NOT_A_LINK, L.SPOTIFY_NOT_A_LINK, 'the words are the same where the page says them (a browser has no main)');
@@ -103,7 +105,7 @@ test('only a spotify: address of a track, album or playlist reaches the script o
   const run = async (file, args) => { sent.push([file, ...args]); return ''; };
   const open = async (u) => { opened.push(u); };
   const mac = P.createPlayerControl({ platform: 'darwin', run, open }), win = P.createPlayerControl({ platform: 'win32', run, open });
-  for (const bad of [`https://open.spotify.com/track/${ID.track}`, `spotify:artist:${ID.track}`, `spotify:track:${ID.track.slice(1)}`, `spotify:track:${ID.track}" & (do shell script "touch /tmp/x") & "`,
+  for (const bad of [`https://open.spotify.com/track/${ID.track}`, `spotify:show:${ID.track}`, `spotify:track:${ID.track.slice(1)}`, `spotify:track:${ID.track}" & (do shell script "touch /tmp/x") & "`,
     `spotify:track:${ID.track}\n`, ` spotify:track:${ID.track}`, `spotify:track:${ID.track}"`, 'spotify:track:', '', null, undefined, 7, {}, [`spotify:track:${ID.track}`]]) {
     assert.deepEqual(await mac.playLink(bad), { ok: false, why: 'unsupported' }, JSON.stringify(bad));
     assert.deepEqual(await win.playLink(bad), { ok: false, why: 'unsupported' }, JSON.stringify(bad));
@@ -326,19 +328,19 @@ test('the fake-Spotify switch takes only a loopback address, maps Spotify\'s pic
 
 // ---------------------------------------------------------------- what the page asks main for
 
-test('the page has eight Spotify calls and nothing else, none of them a token, and main has a handler for each and no more', () => {
+test('the page has eleven Spotify calls and nothing else, none of them a token, and main has a handler for each and no more', () => {
   const preload = read('preload.js'), main = read('main.js');
   const calls = [...preload.matchAll(/^ {2}(spotify\w+): \(([^)]*)\) => ipcRenderer\.invoke\('(spotify:[a-z]+)'((?:, \w+)*)\),$/gm)].map((m) => [m[1], m[2], m[3], m[4]]);
   assert.deepEqual(calls, [
     ['spotifyStatus', '', 'spotify:status', ''], ['spotifyConnect', 'clientId', 'spotify:connect', ', clientId'], ['spotifyDisconnect', '', 'spotify:disconnect', ''],
-    ['spotifyList', 'request', 'spotify:list', ', request'], ['spotifyPlay', 'request', 'spotify:play', ', request'], ['spotifyOpen', 'text', 'spotify:open', ', text'], ['spotifySearch', 'query', 'spotify:search', ', query'], ['spotifyCover', 'url', 'spotify:cover', ', url'],
+    ['spotifyList', 'request', 'spotify:list', ', request'], ['spotifyPlayback', '', 'spotify:playback', ''], ['spotifyControl', 'request', 'spotify:control', ', request'], ['spotifyPlay', 'request', 'spotify:play', ', request'], ['spotifyOpen', 'text', 'spotify:open', ', text'], ['spotifySearch', 'query', 'spotify:search', ', query'], ['spotifyCover', 'url', 'spotify:cover', ', url'], ['spotifyDashboard', '', 'spotify:dashboard', ''],
   ]);
   const code = preload.replace(/\/\/[^\n]*/g, '');
-  assert.equal([...code.matchAll(/'spotify:[a-z]+'/g)].length, 8, 'no extra channel');
+  assert.equal([...code.matchAll(/'spotify:[a-z]+'/g)].length, 11, 'no extra channel');
   assert.doesNotMatch(code, /ipcRenderer\.on\('spotify/, 'nothing pushed to the page');
   assert.doesNotMatch(code.split('\n').filter((l) => /spotify/i.test(l)).join('\n'), /token|safeStorage|secret/i, 'and no word of a token in what it has');
   const handlers = Object.fromEntries([...main.matchAll(/ipcMain\.handle\('(spotify:\w+)', \(([^)]*)\) =>/g)].map((m) => [m[1], m[2]]));
-  assert.deepEqual(handlers, { 'spotify:status': '', 'spotify:connect': '_e, clientId', 'spotify:disconnect': '', 'spotify:list': '_e, request', 'spotify:play': '_e, request', 'spotify:open': '_e, text', 'spotify:search': '_e, query', 'spotify:cover': '_e, url' });
+  assert.deepEqual(handlers, { 'spotify:status': '', 'spotify:connect': '_e, clientId', 'spotify:disconnect': '', 'spotify:list': '_e, request', 'spotify:playback': '', 'spotify:control': '_e, request', 'spotify:play': '_e, request', 'spotify:open': '_e, text', 'spotify:search': '_e, query', 'spotify:cover': '_e, url', 'spotify:dashboard': '' });
   const block = main.slice(main.indexOf("ipcMain.handle('spotify:status'"), main.indexOf('\n}\n', main.indexOf("ipcMain.handle('spotify:cover'")));
   assert.doesNotMatch(block, /accessToken|access_token|refresh|safeStorage|\.bin/, 'no handler hands a token or the store over');
   assert.match(block, /spotify\(\)\.web\.list\(plainObject\(request\)\)/);
@@ -543,11 +545,11 @@ test('pages of a list add on: the first replaces, a later one adds, a collection
   assert.deepEqual(L.addPage(null, { items: [], total: undefined, more: undefined }, 0), { items: [], total: 0, more: false, next: 50 });
 });
 
-test('the links pasted are kept as the radio\'s stations are: the latest first, once each, only Spotify\'s three kinds, named once the player has shown the song', () => {
+test('the links pasted are kept as the radio\'s stations are: the latest first, once each, only Spotify\'s four kinds, named once the player has shown the song', () => {
   const a = `spotify:album:${ID.album}`, t = `spotify:track:${ID.track}`, p = `spotify:playlist:${ID.playlist}`;
   assert.deepEqual(L.readLinks([saved(t, 1), saved(a, 3), saved(p, 2)]).map((l) => l.uri), [a, p, t], 'the latest first');
   assert.deepEqual(L.readLinks([saved(a, 1), saved(a, 9)]).map((l) => l.at), [1], 'once each');
-  for (const junk of [null, undefined, 'x', 5, {}, [null], [{}], [{ uri: 5 }], [{ uri: `spotify:artist:${ID.album}` }], [{ uri: 'https://open.spotify.com/track/' + ID.track }], [{ uri: `spotify:track:${ID.track}x` }]]) assert.deepEqual(L.readLinks(junk), [], JSON.stringify(junk));
+  for (const junk of [null, undefined, 'x', 5, {}, [null], [{}], [{ uri: 5 }], [{ uri: `spotify:show:${ID.album}` }], [{ uri: 'https://open.spotify.com/track/' + ID.track }], [{ uri: `spotify:track:${ID.track}x` }]]) assert.deepEqual(L.readLinks(junk), [], JSON.stringify(junk));
   assert.deepEqual(L.readLinks([{ uri: a }]), [{ uri: a, at: 0 }], 'one with no time is from before');
   assert.deepEqual(L.readLinks([{ uri: a, at: 1, title: '  Kerosene ', artist: 'Crystal   Castles' }]), [{ uri: a, at: 1, title: 'Kerosene', artist: 'Crystal Castles' }]);
   assert.deepEqual(L.readLinks([{ uri: a, at: 1, title: '', artist: 'x' }]), [{ uri: a, at: 1 }], 'an artist without a title is no name');
@@ -606,10 +608,11 @@ test('the spotify tab comes after your music, and the section is in every place 
   assert.match(panel, /else if \(row\?\.kind === 'coll'\) spToggle\(row\);/, 'a click opens a collection, as it opens an album');
   // the keys the others have, said as they go: the arrows open, and the queue's two modes are not offered
   assert.match(panel, /S\.section === 'spotify' \? '←→ open' : ''/);
-  assert.match(panel, /\.\.\.\(S\.section === 'spotify' \? \[\] : \['shift\+R repeat', 'shift\+S shuffle'\]\)/);
+  assert.match(panel, /'V preview'/);
   // the onKey is as it was: nothing of the spotify section takes a key of its own that the others don't
   const onKey = panel.slice(panel.indexOf('function onKey(e) {'), panel.indexOf("win.addEventListener('keydown', onKey, true);"));
-  assert.doesNotMatch(onKey, /spotify|sp[A-Z]/);
+  assert.match(onKey, /spVideo\(rows\(\)\[cursor\(\)\]\)/);
+  assert.match(onKey, /artistBack/);
 });
 
 test('what main says is shown as it is said, over the list; nothing is repainted while a field is typed in; two fields, the right one is the one finished', () => {
@@ -618,7 +621,7 @@ test('what main says is shown as it is said, over the list; nothing is repainted
   // in its own place under the line, not at the top of the list, where a list scrolled down to the song that was refused would hide it
   assert.match(panel, /<div class="lib-meta"><\/div>\s*<div class="lib-note lib-line lib-err" role="alert" hidden><\/div>\s*<div class="lib-find"/);
   assert.match(panel, /parts\.err\.textContent = S\.section === 'spotify' \? X\.error : '';\s*parts\.err\.hidden = !parts\.err\.textContent;/, 'as text (main\'s words, never markup), and only on this tab');
-  assert.match(spotifyPart, /let group = null, html = '';/, 'and not in the list');
+  assert.match(spotifyPart, /let group = null, html = X\.artist\?\.loading/, 'loading status is separate from error text');
   // it stands till the next thing asked, which takes it away: a list's page and a collection's songs as a play does
   assert.match(spotifyPart, /async function spLoad\(name, offset = 0\) \{\s*const gen = X\.gen, old = X\.lists\[name\];\s*X\.error = '';/);
   assert.match(spotifyPart, /const gen = X\.gen, key = collKey\(coll\), old = X\.tracks\[key\];\s*X\.error = '';/);
@@ -650,7 +653,7 @@ test('Spotify covers share the library glyph renderer, with data from main and c
   assert.match(panel, /if \(S\.section === 'spotify'\) \{ const key = spotifyKey\(rows\(\)\[i\]\); if \(key !== X\.cursorKey\) X\.bigFrom = 'cursor'; X\.cursorKey = key; paintBig\(\); \}/, 'the big cover follows the cursor, once it moves');
   // and the song that's playing, whichever changed last: a new song (or its cover coming in) shows its own cover, till the cursor moves
   assert.match(panel, /const playingArt = \(\) => \(X\.bigFrom === 'playing' && host\.playing\(\)\.art\) \|\| '';/);
-  assert.match(panel, /function spArtSrc\(\) \{\n    const now = playingArt\(\);\n    if \(now\) return now;/, 'the playing song\'s cover first, when it changed last');
+  assert.match(panel, /function spArtSrc\(\) \{\n    if \(X\.artist\) \{\n[^]*?return \(want && X\.covers\.get\(want\)\) \|\| \(X\.artist\.cover && X\.covers\.get\(X\.artist\.cover\)\) \|\| null;\n    \}\n    const now = playingArt\(\);\n    if \(now\) return now;/, 'an artist\'s page: the song or album under the cursor, else the artist; elsewhere the playing song\'s cover first, when it changed last');
   assert.match(panel, /if \(artSig !== X\.artSig\) \{ const was = X\.artSig; X\.artSig = artSig; if \(was !== undefined && p\.art\) \{ X\.bigFrom = 'playing';/, 'not on the first reading: the tab opens on its collection');
   assert.match(panel, /X\.bigFrom = 'cursor'; \/\/ \(a collection opened or closed by hand/);
   assert.match(app, /art: state\.source === 'system' && artSrc\.startsWith\('data:'\) \? artSrc : '',/, 'the system\'s song\'s cover, a data: address only');
@@ -678,6 +681,10 @@ test('the steps to connect are drawn from library.js\'s five, with the redirect 
   assert.match(spotifyPart, /field\('client', 'paste your Client ID, then enter', 'your Spotify Client ID', X\.draft\.client\)/);
   assert.match(spotifyPart, /field\('link', 'paste a Spotify link, then enter', 'a Spotify link', X\.draft\.link\)/);
   assert.match(spotifyPart, /win\.navigator\.clipboard\.writeText\(text\)/);
+  assert.match(spotifyPart, /k === 0 && sp\.dashboard \? '<button type="button" class="lib-copy" data-do="dashboard"/, 'step 1 opens the dashboard for you');
+  assert.match(panel, /if \(dash\) \{ dash\.blur\(\); Promise\.resolve\(\)\.then\(\(\) => sp\.dashboard\(\)\)/);
+  const main = fs.readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+  assert.match(main, /ipcMain\.handle\('spotify:dashboard', \(\) => shell\.openExternal\('https:\/\/developer\.spotify\.com\/dashboard'\)\);/, 'that one address, nothing passed in');
 });
 
 test('Ctrl+K opens the library on spotify, as it opens it on find: "library: spotify", in the full window only', () => {
@@ -707,5 +714,6 @@ test('the page keeps the links with the other settings, names one from the song 
   // the page's security policy is as it was: a cover is a data: image, so none from another server is allowed
   const csp = read('renderer/index.html').match(/http-equiv="Content-Security-Policy" content="([^"]*)"/)[1];
   assert.match(csp, /img-src 'self' data: blob:;/);
-  assert.doesNotMatch(csp, /scdn|spotify/);
+  assert.match(csp, /frame-src https:\/\/open\.spotify\.com\/embed\/track\/;/);
+  assert.doesNotMatch(csp, /img-src[^;]*(?:scdn|spotify)/);
 });

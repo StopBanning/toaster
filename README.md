@@ -104,7 +104,13 @@ always starts off.
 
 ### Search Spotify
 
-Open the library (**G**) and choose **spotify**. No setup is needed: type a query and choose **search in Spotify** to open Spotify’s search page in your browser, then pick a song there. Toaster does not automatically start a song or switch its audio source when opening search. With your account connected, enter a song title or artist in the search field and press Enter or click **search**. Click a result, or use Down then Enter, to play it in Spotify. Each song is listed once (the best-known of Spotify's copies), a search for an artist's name lists their songs first, best known first, and the albums that match come after the songs: → opens one, Enter plays it. **More results** loads the next ten songs; **clear** restores your collections. Ctrl+F (⌘F on a Mac) focuses Spotify search while that section is open. Only results displayed inside Toaster require the optional Spotify account connection.
+Open the library (**G**) and choose **spotify**. No setup is needed: type a query and choose **search in Spotify** to open Spotify’s search page in your browser, then pick a song there. Toaster does not automatically start a song or switch its audio source when opening search. With your account connected, enter a song title or artist in the search field and press Enter or click **search**. Click a result, or use Down then Enter, to play it in Spotify. Each song is listed once, keeping Spotify's first result when popularity is unavailable. A search for an artist's name lists their songs first, and the albums that match come after the songs: → opens one, Enter plays it. **More results** loads the next ten songs; **clear** restores your collections. Ctrl+F (⌘F on a Mac) focuses Spotify search while that section is open. Only results displayed inside Toaster require the optional Spotify account connection.
+
+Open the artist result, choose an artist beside a song, or press **A** on a song to see their page. You can also choose the artist in the now-playing strip or paste an artist link. Albums, singles and EPs, appearances and compilations open with **→**; Enter plays a song inside its album. Artist songs come from Spotify search, rather than its unavailable top-tracks list. **Esc** returns to your previous list and cursor. Artist pages show Spotify's original pictures; album headers show the year when supplied. **Open Spotify** keeps exploring in Spotify's app.
+
+When the system's player is Spotify, the player bar becomes a compact Spotify player: cover, title and artist, play/pause, back and next, and timing when available. Tab to a button and press Space or Enter to use it. With your account connected, it reads the current song's position and available buttons from Spotify; without a connection it keeps the native controls. Progress is read-only. The Spotify mark opens the song, or searches for it when only the system's song name is known. It follows the theme and the player bar's hide and recording settings. **W** keeps its existing small visual panel.
+
+On a Spotify song, choose **▶ preview** or press **V** and Spotify's own player opens inside Toaster with a 30-second preview of the song. **open in Spotify** plays the whole song, and its music video when it has one, in the Spotify app (Spotify's full songs and videos need DRM that Toaster's app doesn't include). **Esc** closes it. It needs an internet connection; pause any other player first.
 
 ## Backgrounds
 
@@ -205,9 +211,10 @@ Nothing is uploaded. It goes online only for these:
 - **The radio,** while it plays: its stream (from the server at the address you typed) and, for each song, the song's
   artist and title, sent to Apple's iTunes Search to find its cover; the cover is fetched from Apple's image server.
 - **Spotify,** only if you connect your own account: the sign-in at accounts.spotify.com, then Spotify's Web API for your
-  playlists, saved albums and liked songs, the songs you search for, and playing what you pick; covers come from Spotify's
+  playlists, saved albums and liked songs, the songs and artists you search for, artist pages and releases, album details, the current song and its position and allowed controls while Spotify is the system player, and playing what you pick; covers come from Spotify's
   image servers. The sign-in's token stays in the app's main process, kept encrypted (with a key from your system's keychain) in Toaster's settings folder, and never
   reaches the page. Without a connection, a pasted Spotify link just opens in the Spotify app or Spotify's web player.
+- **Spotify's embedded player,** when you choose **▶ preview** (or **V**): the Spotify frame connects directly to Spotify and its media services. Spotify may use cookies and its own sign-in, separately from Toaster's optional library connection. Toaster does not pass that connection's tokens to the frame. Closing the player removes it.
 - **The Earth and the backrooms:** the first time you pick one, its video (6 to 25 MB) downloads from toaster.locust.lol,
   is checked against its checksum and kept, so it doesn't download again.
 

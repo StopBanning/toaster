@@ -890,6 +890,8 @@ function setUpIpc() {
   ipcMain.handle('spotify:connect', (_e, clientId) => spotify().connection.connect(clientId));
   ipcMain.handle('spotify:disconnect', () => spotify().connection.disconnect());
   ipcMain.handle('spotify:list', (_e, request) => spotify().web.list(plainObject(request)));
+  ipcMain.handle('spotify:playback', () => spotify().connection.status().connected ? spotify().web.playback() : null);
+  ipcMain.handle('spotify:control', (_e, request) => spotify().web.control(plainObject(request)));
   ipcMain.handle('spotify:play', (_e, request) => spotify().web.play(plainObject(request)));
   // (the Spotify app comes to the front when it's told to play: Toaster, if it was in front, takes the front back, now and once more
   // after Spotify's own window has had a moment, so the song plays in the Spotify app behind the visuals; Colin, Nov 4)
@@ -900,6 +902,9 @@ function setUpIpc() {
   });
   ipcMain.handle('spotify:search', (_e, query) => require('./helpers/spotify.cjs').openSearch(query, (url) => shell.openExternal(url)));
   ipcMain.handle('spotify:cover', (_e, url) => require('./helpers/spotify.cjs').fetchCover(url, { fetch: spotify().fetch }));
+  // (connecting, step 1: Spotify's developer dashboard, where a listener makes the free app whose Client ID Toaster asks for;
+  // this one address and no other, so a layman doesn't have to type it)
+  ipcMain.handle('spotify:dashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 }
 
 function stamp(d = new Date()) {

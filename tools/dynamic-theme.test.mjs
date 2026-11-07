@@ -13,8 +13,8 @@ const app = read('app.js'), html = read('index.html'), css = read('style.css'), 
 const THEMES = JSON.parse(app.match(/const THEMES = (\[[^\]]*\]);/)[1].replace(/'/g, '"'));
 const body = (name) => app.slice(app.indexOf(`function ${name}(`), app.indexOf('\n}\n', app.indexOf(`function ${name}(`)) + 3);
 
-test('the themes: the five it had, in their order, dynamic after whitescreen, and softclub last (a theme is kept by its place)', () => {
-  assert.deepEqual(THEMES, ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub']);
+test('the themes: the five it had, in their order, dynamic after whitescreen, then softclub and fall2003 (a theme is kept by its place)', () => {
+  assert.deepEqual(THEMES, ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen', 'dynamic', 'softclub', 'fall2003']);
 });
 
 test('the help\'s T row lists the themes, all of them, in order; Ctrl+K has each as "theme: name"', () => {
@@ -36,8 +36,8 @@ test('it is saved with the others, by its place in the list; an older profile (0
   assert.match(app, /if \(!\(state\.theme in THEMES\)\) state\.theme = 0;/);
   for (let saved = 0; saved <= 4; saved++) assert.ok(saved in THEMES && THEMES[saved] === ['bluescreen', 'blackscreen', 'terminal', 'pink', 'whitescreen'][saved], `profile with theme ${saved}`);
   assert.equal(THEMES[5], 'dynamic', 'a profile on the dynamic theme stays on it');
-  assert.ok(6 in THEMES);
-  for (const junk of [7, -1, 1.5, 'x', null, undefined]) assert.ok(!(junk in THEMES), `${junk} is no theme: bluescreen`);
+  assert.ok(6 in THEMES && 7 in THEMES);
+  for (const junk of [8, -1, 1.5, 'x', null, undefined]) assert.ok(!(junk in THEMES), `${junk} is no theme: bluescreen`);
   // nothing else about the dynamic theme is saved: its colours are the cover's, and the cover isn't kept
   assert.doesNotMatch(app.match(/const SAVED = \[[^\]]*\]/)[0], /dynamic|cover|palette/);
 });

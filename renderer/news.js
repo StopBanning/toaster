@@ -4,6 +4,16 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.2', items: [
+    { key: 'kick', text: "after a drop the kick line unmutes with the first kicks: it no longer waits behind the line being typed" },
+    { key: 'kick', text: "when the kick comes back a 16th off the beat after a breakdown, the beat moves to it at once instead of a few bars later" },
+    { key: 'G', text: "the cover in characters (shift+C) reads better: each cover uses its whole range from dark to light, its detail stands out, and the big cover outlines faces and logos with | / _ \\ the way a hand-drawn ascii picture does" },
+    { key: 'G', text: "the spotify tab has artist pages: pick an artist (A) to see their songs and albums, their picture drawn in characters like your music's covers (esc goes back)" },
+    { key: 'G', text: "▶ preview (V) opens Spotify's own player inside Toaster with the song and artist on top: a 30-second preview, so the whole song and its video play in the Spotify app" },
+    { act: 'visual', text: "while Spotify plays on this computer, the player bar shows a small Spotify player: the cover, the song, its progress, and play, pause, next and back" },
+    { key: 'G', text: "connecting spotify, step 1 has an open button that takes you to Spotify's developer dashboard" },
+    { act: 'theme', text: "an eighth theme, fall 2003: cream on walnut, pumpkin orange for what's lit, a desk lamp's glow in the corner" },
+  ] },
   { version: '0.5.1', items: [
     { key: 'G', text: "spotify search lists each song once, puts an artist's own songs first when you search their name, and shows the albums that match (→ opens one)" },
     { act: 'strength', in: 'the Earth', text: "a view of the Earth you pick stays put; earth (all), the last stop on A and first in the background picker, moves through all five, a new one every 8 bars on the downbeat" },

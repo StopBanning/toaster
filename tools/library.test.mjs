@@ -407,6 +407,54 @@ test('the cover as characters: black is empty, white is the densest, light picks
   assert.deepEqual(L.glyphRows(new Uint8ClampedArray(0), 0, 0), []);
 });
 
+// a picture at twice a cols x rows grid (what coverGlyphs reads), from a function of where each pixel is (0..1 across and down) to its grey
+const picture = (cols, rows, grey) => Uint8ClampedArray.from(Array.from({ length: cols * 2 * rows * 2 }, (_, i) => {
+  const x = (i % (cols * 2)) / (cols * 2 - 1), y = Math.floor(i / (cols * 2)) / (rows * 2 - 1), v = Math.round(grey(x, y));
+  return [v, v, v, 255];
+}).flat());
+const level = (ch) => L.GLYPHS.indexOf(ch);
+const count = (s, ch) => s.split(ch).length - 1;
+
+test('the cover read better: a dim cover is stretched to the whole ramp, a flat one is left alone, small grids get no outlines', () => {
+  // a dim, flat-looking cover (greys 90 to 130 only) still runs from empty to the densest glyph, dark to light, never back
+  const dim = L.coverGlyphs(picture(40, 4, (x) => 90 + 40 * x), 40, 4, { lift: 0 });
+  const levels = [...dim[1]].map(level);
+  assert.equal(levels[0], 0, 'the darkest of it is empty');
+  assert.equal(levels.at(-1), L.GLYPHS.length - 1, 'the lightest of it is the densest glyph');
+  assert.ok(levels.every((v, i) => !i || v >= levels[i - 1]), 'a ramp stays a ramp');
+  // the old way gave that same cover only the middle of the ramp
+  const old = L.glyphRows(Uint8ClampedArray.from(Array.from({ length: 40 }, (_, x) => { const v = Math.round(90 + (40 * x) / 39); return [v, v, v, 255]; }).flat()), 40, 1)[0];
+  assert.ok([...old].every((c) => level(c) > 0 && level(c) < L.GLYPHS.length - 1));
+  // one grey all over isn't stretched into noise: every cell the same glyph, the one its light picks
+  const flat = L.coverGlyphs(picture(20, 6, () => 128), 20, 6);
+  assert.equal(new Set(flat.join('')).size, 1);
+  assert.equal(flat[0][0], L.glyphRows(Uint8ClampedArray.from([128, 128, 128, 255]), 1, 1)[0]);
+  // a small grid (the list's covers) never draws outlines, even across a hard edge
+  const small = L.coverGlyphs(picture(30, 18, (x) => (x < 0.5 ? 0 : 255)), 30, 18);
+  assert.ok(!/[|/_\\]/.test(small.join('')));
+  assert.equal(small.length, 18);
+  assert.ok(small.every((r) => r.length === 30));
+  assert.deepEqual(L.coverGlyphs(new Uint8ClampedArray(0), 0, 0), []);
+});
+
+test('the cover read better: on a big grid a hard edge is drawn as its direction, the fill stays the ramp', () => {
+  const cols = 60, rows = 50;
+  // dark left half, light right: an up-and-down edge, drawn | down the middle; the halves keep their fill
+  const v = L.coverGlyphs(picture(cols, rows, (x) => (x < 0.5 ? 20 : 235)), cols, rows);
+  assert.ok(v.every((r) => r.slice(cols / 2 - 2, cols / 2 + 2).includes('|')), 'each row has a | at the edge');
+  assert.ok(v.every((r) => r[2] === ' ' && r[cols - 3] === '@'), 'dark stays empty, light stays dense');
+  assert.ok(!/[/_\\]/.test(v.join('')), 'no other direction on a straight up-and-down edge');
+  // dark top, light bottom: a level edge, drawn _
+  const h = L.coverGlyphs(picture(cols, rows, (x, y) => (y < 0.5 ? 20 : 235)), cols, rows);
+  assert.ok(h.slice(rows / 2 - 2, rows / 2 + 2).join('').includes('_'));
+  assert.ok(!/[|/\\]/.test(h.join('')));
+  // dark above a line rising from bottom left to top right reads /; dark below one falling from top left to bottom right reads \
+  const up = L.coverGlyphs(picture(cols, rows, (x, y) => (y < 1 - x ? 20 : 235)), cols, rows).join('');
+  const down = L.coverGlyphs(picture(cols, rows, (x, y) => (y > x ? 20 : 235)), cols, rows).join('');
+  assert.ok(count(up, '/') > 4 * count(up, '\\'), 'a rising edge reads /');
+  assert.ok(count(down, '\\') > 4 * count(down, '/'), 'a falling edge reads \\');
+});
+
 // ---------------------------------------------------------------- find
 
 test('find compares text in lower case without accents, and knows where each character came from', () => {
