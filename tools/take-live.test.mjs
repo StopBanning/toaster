@@ -22,7 +22,7 @@ const app = read('renderer/app.js'), main = read('main.js'), preload = read('pre
 const RUNNER = process.env.GITHUB_ACTIONS === 'true' && process.platform === 'win32' && "GitHub's Windows runner: no audio device, no GPU";
 
 test('the setting and the wiring: saved, off by default, Ctrl+K, the tap before M\'s delay, the files in a test copy\'s own folder', () => {
-  assert.match(app, /const SAVED = \['perfectCopy', /);
+  assert.match(app, /const SAVED = \[[^\]]*'perfectCopy', /);
   assert.match(app, /state\.perfectCopy = state\.perfectCopy === true;/, 'off unless turned on');
   assert.match(app, /\{ id: 'perfect-copy', name: `perfect copy: \$\{state\.perfectCopy \? 'off' : 'on'\}/);
   assert.match(app, /  mr\.start\(1000\);\n  takeBegin\(\)\.catch\(/, 'the take begins as the recorder starts');

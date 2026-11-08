@@ -151,7 +151,7 @@ body.tube-on.jolt > :not(#tube):not(dialog) { animation: tube-jolt .36s steps(1)
 @keyframes tube-jolt { 0% { transform: translateY(-1.6%) scale(1.045); } 18% { transform: translateY(1%) scale(1.04) skewX(-.5deg); } 36% { transform: translateY(-.4%) scale(1.02); } 54%, 100% { transform: none; } }
 /* the finger frame, portals and big eyes: over the ID card too (in the vertical layout the card sits where the
    camera is, and they went behind it), under the drop effect's pop-ups (#desk-front, later in the page) */
-#segcam, #lens, #portal { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
+#segcam, #lens, #portal, #handpoints { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
 /* a portal filling the picture, or the camera's glass effect (K), goes behind the code, in place of
    the background */
 body.portal-full #portal { z-index: 1; }

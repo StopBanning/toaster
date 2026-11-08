@@ -372,11 +372,20 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     const routes = { pause: ['PUT', 'pause'], resume: ['PUT', 'play'], next: ['POST', 'next'], previous: ['POST', 'previous'] };
     if (!Object.hasOwn(routes, request.action) || !TRACK_URI.test(request.uri || '') || typeof request.device !== 'string' || !request.device || request.device.length > 256)
       throw new Error('Choose a Spotify player button.');
+    // (the button acts on what Spotify is playing on this computer now, not only on the song and device the bar last showed: those
+    // are a poll old, and a song that ended, a Spotify restart (a new device id) or a moment's idle made every press an error box
+    // ("Spotify changed songs or devices", Colin, Nov 8). The page's device is used only when nothing is active here any more.)
     const now = await playback();
-    if (!now || now.device !== request.device || now.track.uri !== request.uri) throw new Error('Spotify changed songs or devices. Try the button again.');
-    if (!now.allowed[request.action]) throw new Error('Spotify does not allow that button right now.');
+    if (!now && request.action === 'pause') return { ok: true }; // (nothing playing here: already paused)
+    if (now && ((request.action === 'pause' && !now.playing) || (request.action === 'resume' && now.playing))) return { ok: true }; // (already so)
+    if (now && !now.allowed[request.action]) throw new Error('Spotify does not allow that button right now.');
     const [method, route] = routes[request.action];
-    await call(method, `/v1/me/player/${route}`, { query: { device_id: now.device } });
+    try {
+      await call(method, `/v1/me/player/${route}`, { query: { device_id: now ? now.device : request.device } });
+    } catch (err) {
+      if (!now) throw new Error('Spotify isn\'t playing on this computer. Start a song in the Spotify app first.');
+      throw err;
+    }
     return { ok: true };
   }
   return { list, play, playback, control };

@@ -21,8 +21,13 @@ test('mini-player state and transport use existing scopes, target the displayed 
     await assert.rejects(web.control(input('next')), /does not allow/); assert.equal(mutations(), n);
     fake.state.playbackActions = { disallows: { skipping_prev: true } };
     assert.equal((await web.playback()).allowed.previous, false, 'older nested restrictions are respected too');
-    await assert.rejects(web.control({ ...input('pause'), device: 'different-device' }), /changed songs or devices/);
-    await assert.rejects(web.control({ ...input('pause'), uri: 'spotify:track:' + 'a'.repeat(22) }), /changed songs or devices/);
+    // a poll-old song or device (a song that ended, Spotify restarted with a new device id): the button still acts, on this
+    // computer's Spotify as it is now (Colin's error box, Nov 8: 'Spotify changed songs or devices')
+    await web.control({ ...input('pause'), device: 'different-device' }); assert.equal(fake.state.playbackPlaying, false);
+    await web.control({ ...input('resume'), uri: 'spotify:track:' + 'a'.repeat(22) }); assert.equal(fake.state.playbackPlaying, true);
+    // already so: pause on a paused player and resume on a playing one ask Spotify nothing (it would answer 'not allowed')
+    const before = mutations();
+    await web.control(input('resume')); assert.equal(mutations(), before, 'resume while playing is a no-op');
     const calls = fake.seen.length;
     for (const action of ['constructor', '__proto__', '../next', 'like']) await assert.rejects(web.control(input(action)), /Choose a Spotify/);
     assert.equal(fake.seen.length, calls, 'unknown commands never reach the API');
@@ -30,6 +35,9 @@ test('mini-player state and transport use existing scopes, target the displayed 
     fake.state.devices[0].is_restricted = true; assert.ok(Object.values((await web.playback()).allowed).every((v) => !v));
     fake.state.devices[0].type = 'Smartphone'; assert.equal(await web.playback(), null, 'do not adopt a phone as the local player');
     fake.state.devices = []; assert.equal(await web.playback(), null, '204 playback has no timing');
+    const quiet = mutations();
+    assert.deepEqual(await web.control(input('pause')), { ok: true }, 'nothing active here: pause is already done');
+    assert.equal(mutations(), quiet);
   } finally { await fake.close(); }
 });
 
