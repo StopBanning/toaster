@@ -2441,12 +2441,14 @@ void main() {
 // leaps from the pool every 8 bars and on a drop; the toaster floats in the pool on an inner tube.
 // By day a rainbow stands in the spray; at night, a moonbow.
 const FALLS = `
-// the falls swelling after a drop (and every 8 bars): 1 then, fading over a few seconds
-float surge() { return leap.w > 0.5 ? exp(-max(leap.x, 0.0) * 0.6) : 0.0; }
+// a drop's leap (1) or the 8-bar one (0): the uniform's side is 2 or -2 on a drop
+float bigD() { return abs(leap.y) > 1.5 ? 1.0 : 0.0; }
+// the falls swelling after a drop (and every 8 bars): 1 then, fading over a few seconds (slower after a drop)
+float surge() { return leap.w > 0.5 ? exp(-max(leap.x, 0.0) * mix(0.6, 0.38, bigD())) : 0.0; }
 // the falls' half width at y: narrow at the lip, widening as it falls, wider in a surge
 float fallW(float y) {
   float u = clamp((farL.x - y) / (farL.x - lake.x), 0.0, 1.0);
-  return mix(0.07, 0.115, u) * (1.0 + 0.12 * surge());
+  return mix(0.07, 0.115, u) * (1.0 + (0.12 + 0.34 * bigD()) * surge());   // (a drop's surge a third again as wide)
 }
 // how far out from the falls' middle the rock starts on a side (s: -1 left, 1 right), at y: just
 // outside the water, jutting here and there, opening out toward the pool
@@ -2559,10 +2561,11 @@ void main() {
 
   // --- the mist at the falls' foot, drifting up, billowing on each kick, laid over whatever's there;
   // a rainbow standing in it by day, a moonbow at night
-  float mr = length(vec2((X - cx) / (0.18 + 0.05 * sg), (Y - pool - 0.01) / (0.1 + 0.04 * sg + 0.02 * sea.w)));
+  float big = bigD() * sg;     // (a drop's surge: the mist bursts up and out, white, the bow bright in it)
+  float mr = length(vec2((X - cx) / (0.18 + 0.05 * sg + 0.08 * big), (Y - pool - 0.01) / (0.1 + 0.04 * sg + 0.02 * sea.w + 0.06 * big)));
   if (mr < 1.8) {
     float n = fbm(vec2(X * 6.0 + 0.4 * sin(time * 0.13), Y * 9.0 - time * 0.32));
-    mistA = min(0.78, smoothstep(1.8, 0.2, mr) * (0.24 + 0.3 * sea.w + 0.3 * sg + 0.1 * glow) * (0.35 + 1.05 * n));
+    mistA = min(0.78 + 0.1 * big, smoothstep(1.8, 0.2, mr) * (0.24 + 0.3 * sea.w + 0.3 * sg + 0.32 * big + 0.1 * glow) * (0.35 + 1.05 * n));
     mistC = P(rgb(150.0, 170.0, 226.0), rgb(250.0, 252.0, 255.0));
     // (the bow: an arc over the foot, red outside to violet in, in bands a cell or so wide)
     vec2 bc = vec2(cx + 0.02, pool - 0.08);
@@ -2571,7 +2574,7 @@ void main() {
       float k = (br + 1.0) * 0.5;               // (0 inside, 1 outside)
       bowC = day ? (k > 0.83 ? rgb(232.0, 70.0, 70.0) : k > 0.66 ? rgb(250.0, 150.0, 60.0) : k > 0.5 ? rgb(240.0, 210.0, 70.0) : k > 0.33 ? rgb(90.0, 190.0, 100.0) : k > 0.17 ? rgb(80.0, 140.0, 230.0) : rgb(150.0, 100.0, 220.0))
                  : mix(rgb(170.0, 180.0, 220.0), rgb(236.0, 240.0, 255.0), k);
-      bowA = (0.25 + 0.55 * smoothstep(0.04, 0.4, mistA)) * (day ? 0.62 : 0.34) * (1.0 - pow(abs(br), 6.0));
+      bowA = min(0.95, (0.25 + 0.55 * smoothstep(0.04, 0.4, mistA)) * (day ? 0.62 : 0.34) * (1.0 + 0.5 * big) * (1.0 - pow(abs(br), 6.0)));
     }
   }
   // (over it all: the spray, a burst of drops thrown up from the foot on each kick, arcing over and
@@ -2583,13 +2586,23 @@ void main() {
       if (pp.y > pool - 0.01 && abs(X - pp.x) < cw * 0.5 && abs(Y - pp.y) < ch * 0.5) { over = ka < 0.15 ? G_STAR : (ka < 0.45 ? G_TICK : G_DOT); overInk = 1.0 - 0.8 * ka; overC = wW; break; }
     }
   }
+  // (on a drop, a fountain: drops thrown high from the whole foot, arcing out over the pool and falling back)
+  if (bigD() > 0.5 && leap.x < 1.7 && over == 0) {
+    for (int k = 0; k < 30; k++) {
+      float fk = float(k), age = leap.x - 0.25 * h1(fk * 5.3);
+      if (age < 0.0) continue;
+      float a = (h1(fk * 3.1) - 0.5) * 2.2, sp = 0.32 + 0.4 * h1(fk * 7.7);
+      vec2 pp = vec2(cx + (h1(fk * 1.7) - 0.5) * fallW(pool) * 2.4, pool + 0.004) + vec2(sin(a) * 0.8, cos(a)) * sp * age - vec2(0.0, 0.55 * age * age);
+      if (pp.y > pool - 0.01 && abs(X - pp.x) < cw * 0.5 && abs(Y - pp.y) < ch * 0.5) { over = age < 0.25 ? G_STAR : (age < 0.8 ? G_TICK : G_DOT); overInk = 1.0 - 0.45 * age; overC = wW; break; }
+    }
+  }
   if (mr < 1.4 && over == 0) {
     float glint = h2(cell + floor(time * 9.0));
     if (glint > 0.992 - 0.03 * fly * smoothstep(1.4, 0.3, mr)) { over = glint > 0.998 ? G_SPARK : G_TICK; overInk = 1.0; overC = P(rgb(240.0, 246.0, 255.0), rgb(255.0, 255.0, 255.0)); }
   }
   // (the fish's splashes where it leaves the pool and where it lands; the fish itself is in pixels)
   if (leap.w > 0.5 && leap.x < 1.3 && over == 0) {
-    float x0 = cx + leap.y * 0.15, x1 = cx + leap.y * 0.06;
+    float x0 = cx + sign(leap.y) * 0.15, x1 = cx + sign(leap.y) * 0.06;
     for (int i = 0; i < 2; i++) {
       float age = leap.x - float(i);
       vec2 sp = vec2(i == 0 ? x0 : x1, pool - 0.02);
@@ -2674,7 +2687,7 @@ void main() {
   // rings moving on the beats, the moon's (or the sun's) path, and at night the aurora's light
   if (Y < pool) {
     float dd = pool - Y, depth = clamp(dd / (pool - lake.y), 0.0, 1.0);
-    float footW = fallW(pool) * 1.3 * (1.0 + 0.25 * sea.w + 0.3 * sg);
+    float footW = fallW(pool) * 1.3 * (1.0 + 0.25 * sea.w + 0.3 * sg + 0.3 * big);
     vec3 water = mix(wM, wD, 0.3 + 0.55 * depth);
     water = mix(water, wL, 0.4 * (1.0 - smoothstep(0.0, footW * 3.0, dx)) * (1.0 - depth));
     tileC = water; tileA = 1.0;
@@ -6574,10 +6587,14 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
   if (scene === 'falls' && V.lake) {
     // the trout leaping from the pool beside the falls' foot (every 8 bars, and on a drop): up and over
     // toward the falls and back in, nose up rising, down falling (as the shader's leap: its splashes)
-    const age = t - popAt, side = Math.floor(popAt * 3.7) % 2 ? 1 : -1;
-    if (age >= 0 && age < 1) {
-      const x0 = 0.5 * aspect + side * 0.15, x1 = 0.5 * aspect + side * 0.06;
-      const fy = V.lake[0] - 0.02 + 0.16 * Math.sin(Math.PI * age);
+    // (on a drop, a school: five more after the first, from both sides, staggered, higher and wider)
+    const side0 = Math.floor(popAt * 3.7) % 2 ? 1 : -1, n = popAt === dropAt ? 6 : 1;
+    for (let k = 0; k < n; k++) {
+      const age = (t - popAt - k * 0.17) / (k ? 1.15 : 1), side = k % 2 ? -side0 : side0;
+      if (age < 0 || age >= 1) continue;
+      const out = k ? 0.1 + 0.05 * k : 0.15, hop = k ? 0.17 + 0.025 * (k % 3) : 0.16;
+      const x0 = 0.5 * aspect + side * out, x1 = 0.5 * aspect + side * (out - 0.09);
+      const fy = V.lake[0] - 0.02 + hop * Math.sin(Math.PI * age);
       at(A[age < 0.38 ? 'trout0' : age < 0.62 ? 'trout1' : 'trout2'], mix(x0, x1, age) * H, (1 - fy) * H + (TROUT_H * S) / 2, S, side > 0, 0.75, 0.35);
     }
   }
@@ -8104,7 +8121,7 @@ export function createScenery(canvas) {
       gl.uniform4fv(u('birds'), birds);
       gl.uniform4fv(u('shoot'), shoot);
       gl.uniform4fv(u('car'), flight ? [(flight.x - 20 * Sz) / H, 1 - (flight.y + 9.5 * Sz) / H, 0, 1] : carU);
-      gl.uniform4f(u('leap'), t - popAt, scene === 'space' || scene === 'festival' ? (popAt === dropAt ? 2 : 1) : Math.floor(popAt * 3.7) % 2 ? 1 : -1, (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'space' ? 1 : 0);
+      gl.uniform4f(u('leap'), t - popAt, scene === 'space' || scene === 'festival' ? (popAt === dropAt ? 2 : 1) : (Math.floor(popAt * 3.7) % 2 ? 1 : -1) * (scene === 'falls' && popAt === dropAt ? 2 : 1), (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'space' ? 1 : 0);
       const M = V.stage || V.moon; // (halloween's moon, or the festival's stage)
       gl.uniform4f(u('moon'), (M?.[0] ?? 0) * aspect, M?.[1] ?? 0, M?.[2] ?? 0, 0);
       if (scene === 'sharks') {

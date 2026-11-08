@@ -156,7 +156,7 @@ const bar = () => ev(`(() => { const q = (s) => document.querySelector('#player 
 // What a person puts away by hand: the source menu, where an error from a source ends up (a copy that may not hear the Mac's sound says so there
 // when a play takes the system's sound for its source), which would take the library's keys. Says whether it was up.
 const clearMenu = () => ev(`(() => { const menu = document.getElementById('menu'); const up = !menu.hidden; if (up) { menu.hidden = true; document.getElementById('alerts').innerHTML = ''; } return up; })()`);
-const spRowTexts = () => ev(`[...document.querySelectorAll('#library .lib-row')].map((r) => ({ i: +r.dataset.i, cls: r.className, text: r.innerText.replace(/\\s+/g, ' ').trim(), field: r.querySelector('input')?.dataset.field || null, value: r.querySelector('input')?.value ?? null }))`);
+const spRowTexts = () => ev(`[...document.querySelectorAll('#library .lib-row')].map((r) => ({ i: +r.dataset.i, cls: r.className, text: r.innerText.replace(/\\s*▶ preview/g, '').replace(/\\s+/g, ' ').trim(), field: r.querySelector('input')?.dataset.field || null, value: r.querySelector('input')?.value ?? null }))`);
 const spLabels = () => ev(`[...document.querySelectorAll('#library .lib-label')].map((n) => n.textContent.trim())`);
 const spError = () => ev(`document.querySelector('#library .lib-err')?.textContent.trim() || ''`);
 // the AppleScript lines a copy with --player-dry-run was asked to send to tell the Spotify app to play something (it sends none of them)
@@ -642,7 +642,7 @@ if (phase === 'main') {
     await send('Input.insertText', { text: 'play something by Crystal Castles' });
     await key('Enter');
     await sleep(500);
-    expect('a line that is no link is refused in words, over the list, and nothing goes to the Spotify app', /^That isn't a Spotify link to a song, an album or a playlist/.test(await spError()) && (await spSent()).length === before, await spError());
+    expect('a line that is no link is refused in words, over the list, and nothing goes to the Spotify app', /^That isn't a Spotify link to a song, an artist, an album or a playlist/.test(await spError()) && (await spSent()).length === before, await spError());
     rows = await spRowTexts();
     expect('and it stays in the field, to put right', rows[0].value === 'play something by Crystal Castles', rows[0]);
     // a link: an album's, as Spotify's Share gives it
@@ -688,7 +688,7 @@ if (phase === 'main') {
     expect('Enter on a pasted link plays it again (the same address), and it moves to the top with its name', (await spSent()).at(-1) === playScript(`spotify:album:${album.id}`) && /^01 Plague · Crystal Castles album/.test(rows[1].text) && /^02 Kerosene/.test(rows[2].text), rows.map((r) => r.text));
     // nothing but a link is ever played: whatever is pasted, the bad ones leave the count as it was
     const settled = (await spSent()).length;
-    for (const bad of [`https://open.spotify.com/artist/${track.id}`, `https://open.spotify.com.evil.example/track/${track.id}`, `spotify:track:${track.id}x`, 'javascript:alert(1)']) {
+    for (const bad of [`https://open.spotify.com/show/${track.id}`,   /* (a show: since 0.5.2 an artist is a link) */ `https://open.spotify.com.evil.example/track/${track.id}`, `spotify:track:${track.id}x`, 'javascript:alert(1)']) {
       await key('Home'); await spType(bad); await sleep(350);
       expect(`${bad} is refused`, /isn't a Spotify link/.test(await spError()), await spError());
     }
@@ -712,7 +712,7 @@ if (phase === 'main') {
     const steps = await ev(`[...document.querySelectorAll('#library .lib-step')].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
     expect('the steps: the dashboard, Web API, the redirect (exactly), the Client ID, the field', /developer\.spotify\.com\/dashboard/.test(steps[0]) && /Web API/.test(steps[1]) && steps[2].includes('http://127.0.0.1:43821/callback') && /Client ID/.test(steps[3]) && /paste it below/.test(steps[4]), steps);
     expect('the redirect is marked, with a button to copy it', (await ev(`document.querySelector('#library .lib-step b').textContent`)) === 'http://127.0.0.1:43821/callback' && (await ev(`!!document.querySelector('#library .lib-step .lib-copy')`)));
-    await clickOn('#library .lib-step .lib-copy');
+    await clickOn('#library .lib-step [data-do="copy"]');   // (step 1's .lib-copy is the dashboard's open button since 0.5.2)
     await sleep(400);
     expect('the copy button says it copied (or why it could not)', /^copied$|^could not copy/.test(await ev(`document.getElementById('status').textContent`)), await ev(`document.getElementById('status').textContent`));
     const h = await head();
@@ -756,7 +756,7 @@ if (phase === 'main') {
     expect('the status: connected and the Client ID; no token', /"connected":true/.test(status) && status.includes(CLIENT) && !/fake-access|fake-refresh|access_token|refresh_token/.test(status), status);
     expect('no token anywhere on the page: not in its DOM, its storage, or what its calls return', await ev(`(async () => { const all = document.documentElement.outerHTML + JSON.stringify({ ...localStorage }) + JSON.stringify(await window.nc.spotifyList({ list: 'playlists' })); return !/fake-access|fake-refresh/.test(all); })()`));
     const calls = await ev(`Object.keys(window.nc).filter((k) => /spotify/i.test(k)).sort().join()`);
-    expect('the page has the seven calls and no more', calls === 'spotifyConnect,spotifyCover,spotifyDisconnect,spotifyList,spotifyOpen,spotifyPlay,spotifyStatus', calls);
+    expect('the page has its calls and no more (0.5.2 adds control, dashboard, playback for the mini player, search came in 0.5.0)', calls === 'spotifyConnect,spotifyControl,spotifyCover,spotifyDashboard,spotifyDisconnect,spotifyList,spotifyOpen,spotifyPlay,spotifyPlayback,spotifySearch,spotifyStatus', calls);
     const file = path.join(copy.profile, 'spotify.bin');
     expect('main kept the sign-in in the settings folder, as safeStorage gave it (here the fake\'s scrambling), not in the clear', fs.existsSync(file) && !/fake-access|fake-refresh|access/.test(fs.readFileSync(file).toString('latin1')));
     // and main refuses what it was not made for, whatever the page asks

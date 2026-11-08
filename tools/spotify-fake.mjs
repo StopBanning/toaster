@@ -113,7 +113,8 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
       // ---- the Web API
       if (state.drop > 0 && url.pathname.startsWith('/v1/')) { state.drop--; req.socket.destroy(); return; }
       if (state.expire401 > 0 && url.pathname.startsWith('/v1/')) { state.expire401--; return send(res, 401, { error: { status: 401, message: 'The access token expired' } }); }
-      if (state.limit > 0 && url.pathname.startsWith('/v1/')) { state.limit--; return send(res, 429, { error: { status: 429, message: 'API rate limit exceeded' } }, { 'Retry-After': '7' }); }
+      // (not the mini player's playback poll, every 3 s: it would eat the 429 meant for the call being checked)
+      if (state.limit > 0 && url.pathname.startsWith('/v1/') && url.pathname !== '/v1/me/player') { state.limit--; return send(res, 429, { error: { status: 429, message: 'API rate limit exceeded' } }, { 'Retry-After': '7' }); }
       if (!url.pathname.startsWith('/v1/')) return send(res, 404, { error: { status: 404, message: 'no such address' } });
       if (record.auth !== `Bearer fake-access-${state.tokens}`) return send(res, 401, { error: { status: 401, message: 'Invalid access token' } });
       const ok = (json) => send(res, 200, json);

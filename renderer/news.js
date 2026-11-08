@@ -4,6 +4,9 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.3', items: [
+    { act: 'strength', in: 'scenery', text: "the waterfall answers the drop (D): the falls surge, the mist bursts up and lights the rainbow, spray flies off the pool and a school of trout leaps" },
+  ] },
   { version: '0.5.2', items: [
     { key: 'kick', text: "after a drop the kick line unmutes with the first kicks: it no longer waits behind the line being typed" },
     { key: 'kick', text: "when the kick comes back a 16th off the beat after a breakdown, the beat moves to it at once instead of a few bars later" },
