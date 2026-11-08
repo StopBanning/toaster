@@ -4,6 +4,9 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.4', items: [
+    { act: 'strength', in: 'scenery', text: "the snow answers the drop (D): the ice-fishing toaster hauls up a trout bigger than itself, and a gust drives the snow sideways" },
+  ] },
   { version: '0.5.3', items: [
     { act: 'strength', in: 'scenery', text: "the waterfall answers the drop (D): the falls surge, the mist bursts up and lights the rainbow, spray flies off the pool and a school of trout leaps" },
   ] },

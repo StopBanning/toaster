@@ -1267,12 +1267,14 @@ void main() {
   vec3 snowC = P(rgb(176.0, 196.0, 240.0), rgb(150.0, 170.0, 204.0)), shade = P(rgb(70.0, 86.0, 140.0), rgb(110.0, 130.0, 176.0));
 
   // --- snow falling, over everything: three layers, the nearer bigger and faster, blown by
-  // the wind, thicker when the hats are busy
+  // the wind, thicker when the hats are busy; on a drop a gust: thick and driven sideways, easing off
+  float gust = leap.w > 0.5 && abs(leap.y) > 1.5 ? exp(-max(leap.x, 0.0) * 0.55) : 0.0;
+  float gx = leap.w > 0.5 && abs(leap.y) > 1.5 ? 14.0 * (1.0 - gust) : 0.0;     // (how far the gust has blown it, cells)
   for (int k = 0; k < 3; k++) {
     float fk = float(k), G = 7.0 + 3.0 * fk;
-    vec2 q = vec2(cell.x - time * (0.4 + 2.5 * wind) * (1.4 - 0.3 * fk), row - time * (5.0 - 1.4 * fk));
+    vec2 q = vec2(cell.x - time * (0.4 + 2.5 * wind) * (1.4 - 0.3 * fk) - gx * (1.4 - 0.3 * fk), row - time * (5.0 - 1.4 * fk));
     vec2 gi = floor(q / G), sub = floor(vec2(h2(gi + fk * 13.0), h2(gi + fk * 29.0)) * G);
-    if (h2(gi + fk * 7.0) < 0.07 + 0.18 * fly && floor(q.x) - gi.x * G == sub.x && floor(q.y) - gi.y * G == sub.y) {
+    if (h2(gi + fk * 7.0) < 0.07 + 0.18 * fly + 0.4 * gust && floor(q.x) - gi.x * G == sub.x && floor(q.y) - gi.y * G == sub.y) {
       over = k == 0 ? G_STAR : (k == 1 ? (h0 < 0.5 ? G_BULLET : G_PLUS) : G_MID);
       overInk = 0.85 - 0.2 * fk;
       overC = P(rgb(226.0, 234.0, 255.0), rgb(236.0, 242.0, 252.0));
@@ -6566,6 +6568,20 @@ function pixFor(scene, W, H, V, { t, beats, swim, popAt, dropAt, night, cwPx, ch
     const cs = mix(0.7, 1, wide), cabX = mix(0.8, 0.76, wide) * aspect, sc = Math.floor((cabX - 0.1 * cs - mix(0.035, 0.05, wide)) / cw);
     at(A.snowman, (sc + 0.5) * cwPx, Math.floor((1 - (V.lake[0] + 0.004)) / ch) * chPx, S, false, 0.75, 0.6);
   }
+  if (scene === 'snow' && V.lake && popAt === dropAt && t - dropAt >= 0 && t - dropAt < 3.6) {
+    // on a drop the toaster lands a big one: a trout bigger than itself hauled up out of the hole in the ice, up and over onto the ice beside
+    // it, flopping there, then a last flip back into the hole (the hole as the toaster's sprite has it: its pixel
+    // 36.5 across, row 22, the sprite placed as the scene's draw places it)
+    const a = t - dropAt, waterY = (1 - (V.lake[1] + (V.lake[0] - V.lake[1]) * V.toaster.y)) * H;
+    const hx = V.toaster.x * W - (SW * S) / 2 + 36.5 * S, hy = waterY - WATER * S + 22.5 * S, lx = hx + 0.1 * H, up = 0.13 * H, K = Math.round(S * 2.5);   // (a big one: bigger than the toaster)
+    const arc = (x0, x1, h, u) => [mix(x0, x1, u), mix(hy, hy, u) - h * Math.sin(Math.PI * u)];
+    let x, y, f, flip = false;
+    if (a < 0.7) { [x, y] = arc(hx, mix(hx, lx, 0.35), up * 1.6, a / 1.4); f = 'trout0'; }
+    else if (a < 1.2) { const u = (a - 0.7) / 0.5; x = mix(mix(hx, lx, 0.35), lx, u); y = hy - up * 1.6 * (1 - u * u); f = 'trout2'; }
+    else if (a < 3.1) { const k = Math.floor((a - 1.2) / 0.16); x = lx; y = hy - (k % 2 ? 2 * K : 0); f = 'trout1'; flip = k % 2 === 1; }
+    else { const u = (a - 3.1) / 0.5; [x, y] = arc(lx, hx, up * 0.5, u); f = u < 0.5 ? 'trout0' : 'trout2'; flip = true; }
+    at(A[f], x, y, K, flip, 0.75, 0.35);
+  }
   if (scene === 'city' && V.lake) {
     // the cat on its roof, its tail swishing on the beat; the people walking the far pavement
     // (sitting on the roof's edge line itself, the middle of the row of cells the shader draws it in; where its
@@ -8121,7 +8137,7 @@ export function createScenery(canvas) {
       gl.uniform4fv(u('birds'), birds);
       gl.uniform4fv(u('shoot'), shoot);
       gl.uniform4fv(u('car'), flight ? [(flight.x - 20 * Sz) / H, 1 - (flight.y + 9.5 * Sz) / H, 0, 1] : carU);
-      gl.uniform4f(u('leap'), t - popAt, scene === 'space' || scene === 'festival' ? (popAt === dropAt ? 2 : 1) : (Math.floor(popAt * 3.7) % 2 ? 1 : -1) * (scene === 'falls' && popAt === dropAt ? 2 : 1), (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'space' ? 1 : 0);
+      gl.uniform4f(u('leap'), t - popAt, scene === 'space' || scene === 'festival' ? (popAt === dropAt ? 2 : 1) : (Math.floor(popAt * 3.7) % 2 ? 1 : -1) * ((scene === 'falls' || scene === 'snow') && popAt === dropAt ? 2 : 1), (((popAt * 0.618) % 1) + 1) % 1, scene === 'falls' || scene === 'halloween' || scene === 'festival' || scene === 'space' || scene === 'snow' ? 1 : 0);
       const M = V.stage || V.moon; // (halloween's moon, or the festival's stage)
       gl.uniform4f(u('moon'), (M?.[0] ?? 0) * aspect, M?.[1] ?? 0, M?.[2] ?? 0, 0);
       if (scene === 'sharks') {
