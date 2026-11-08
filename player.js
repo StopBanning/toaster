@@ -325,7 +325,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
       spotifySending = true;
       try {
         await nc.spotifyControl({ action: kind === 'play' ? (spotify.playing ? 'pause' : 'resume') : SYSTEM_ACTION[kind], device: spotify.device, uri: spotify.track.uri });
-      } catch (err) { hold = null; act.note?.(err.message || 'Spotify did not answer.'); }
+      } catch (err) { hold = null; act.note?.(String(err?.message || 'Spotify did not answer.').replace(/^Error invoking remote method '[^']*': (Error: )?/, '')); }
       finally { spotifySending = false; spotifyAsked = -Infinity; }
       return;
     }

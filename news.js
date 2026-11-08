@@ -4,6 +4,10 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.5', items: [
+    { act: 'visual', text: "the Spotify player's back, play and next act on whatever Spotify is playing on this computer, with no error box when the song or the device moved on" },
+    { key: 'Ctrl+K', text: "hand points: with the camera on (C), your tracked hands drawn as dots and bones over the picture, the fingertips swelling on the kick ('hand points' in Ctrl+K)" },
+  ] },
   { version: '0.5.4', items: [
     { act: 'strength', in: 'scenery', text: "the snow answers the drop (D): the ice-fishing toaster hauls up a trout bigger than itself, and a gust drives the snow sideways" },
     { act: 'mini', text: "the mini player from the library: W on the spotify tab (or your music) gives a little window with the cover big, the song under it, its progress and back, play and next" },

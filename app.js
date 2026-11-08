@@ -17,6 +17,7 @@ import { createPost, LOOKS } from './post.js';
 import { createGlass } from './glass.js';
 import { createTracker } from './tracking.js';
 import { createLens } from './lens.js';
+import { createHandPoints } from './handpoints.js';
 import { createPortal } from './portal.js';
 import { createSegcam } from './segcam.js';
 import { createGestures } from './gestures.js';
@@ -157,6 +158,7 @@ const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'sp
 const storm = createStorm($('storm')); // the drop effect "not responding"
 const STORM_LAYERS = [...LAYERS, $('glass')]; // (what its window shows: the backgrounds, and the glass blob over them)
 const lens = createLens($('lens')); // the finger frame
+const handPoints = createHandPoints($('handpoints')); // the tracked hands drawn over the picture (Ctrl+K: hand points)
 const portal = createPortal($('portal')); // portals
 const segcam = createSegcam($('segcam')); // big eyes
 const gestures = createGestures(); // hand signs: theme, record, hush
@@ -194,6 +196,7 @@ const state = {
   eyes: false, // the camera's third setting: big eyes over your face
   ascii: false, // and its fourth: the camera as text, in place of the ASCII background
   camFx: 0, // the camera's effect (K), in CAM_FX
+  handPoints: false, // the tracked hands drawn as dots and lines over the camera (Ctrl+K: hand points)
   worldLook: 'auto', // the worlds' look (A while they're on): auto, night, film, ascii, ink, risograph...
   spectroTheme: false, // the spectrogram in the theme's colours rather than the rainbow (A while it's on)
   sceneryTheme: false, // the scenery in the theme's two colours rather than its own (A while it's on)
@@ -228,7 +231,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['perfectCopy', 'stagedTypos', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip', 'patternKick', 'earthTour'];
+const SAVED = ['handPoints', 'perfectCopy', 'stagedTypos', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip', 'patternKick', 'earthTour'];
 function sceneDomains() {
   return { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS,
     sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true, orb: true, libCover: ['chars', 'photo'],
@@ -970,6 +973,7 @@ function patternClock(t) {
 function kickVisuals(s) {
   field.kick(s); spiral.kick(s); wheel.kick(s); glass.kick(s); segcam.kick(s); takeover.kick(); y2k.kick();
   lens.kick(s, state.calm);
+  handPoints.kick(s, state.calm);
   fire.kick(s, state.calm);
   portal.kick(s, state.calm);
   // the ones that punch the whole picture's light (the tunnel's flash, the warp, the camera's and
@@ -2381,10 +2385,12 @@ function drawFrame(t) {
     // on the portals' canvas over the whole picture: over the code, it hid it)
     const under = portal.full || portal.glassFx;
     if (under !== document.body.classList.contains('portal-full')) document.body.classList.toggle('portal-full', under);
+    if (state.handPoints) handPoints.draw(t, { hands: tracker.hands, place: cam.place, col });
+    else handPoints.clear();
     watchSigns(t);
     if (handLog.on) handLog.update(t, tracker.hands, { place: cam.place, rect: cam.rect, portal: portal.state, lens: lens.showing, sign: gestures.holding });
     if (state.eyes || windows) segcam.draw(t, { ...where, face: tracker.face, eyes: state.eyes, windows, frame: cam.frame, ascii: state.ascii });
-  }
+  } else handPoints.clear();
   post.draw(t, eng, col, syncOffset());
   glass.draw(t, eng, col, LAYERS);
   storm.draw(t, eng, { layers: STORM_LAYERS, bg: `rgb(${col.bg})`, offset: syncOffset(), calm: state.calm });
@@ -2600,6 +2606,7 @@ const paletteEntries = () => [
   })),
   { id: 'looks:folder', name: 'looks folder', aliases: ['shaders', 'hyprland', 'custom looks'], run: () => (window.nc?.looksOpen ? window.nc.looksOpen() : flashStatus('looks from a folder are in the app')) },
   { id: 'looks:reload', name: 'reload looks', aliases: ['shaders'], run: () => loadLooks(true) },
+  { id: 'hand-points', name: 'hand points (on or off): the tracked hands drawn over the camera', aliases: ['hands', 'hand tracking', 'skeleton', 'landmarks', 'dots'], run: () => { state.handPoints = !state.handPoints; saveSettings(); flashStatus(state.handPoints ? 'hand points on' : 'hand points off'); } },
   { id: 'glass', name: 'the glass blob (on or off)', aliases: ['glass', 'blob', 'liquid', 'lens'], run: () => { setGlass(!state.glass); flashStatus(state.glass ? 'the glass on' : 'the glass off'); } },
   { id: 'code:glass', name: 'code on glass (on or off)', aliases: ['glass', 'liquid glass', 'acrylic', 'plates'], run: () => setGlassPlates(!state.glassPlates) },
   // the Earth's views, by name
