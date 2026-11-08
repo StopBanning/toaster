@@ -32,3 +32,16 @@ test('mini-player state and transport use existing scopes, target the displayed 
     fake.state.devices = []; assert.equal(await web.playback(), null, '204 playback has no timing');
   } finally { await fake.close(); }
 });
+
+test("a command Spotify answers 200 with plain text (not JSON, not 204) still goes through, with no error (Colin's error box, Nov 8)", async () => {
+  const fake = await startFakeSpotify();
+  // the fake carries the command out, then the reply is swapped for what Spotify sent: 200 and a bare id
+  const fetch = async (url, opts) => { const res = await globalThis.fetch(url, opts); return opts?.method && opts.method !== 'GET' ? new Response('JKvh2WzHVLsnapshot', { status: 200, headers: { 'Content-Type': 'text/plain' } }) : res; };
+  const web = createWebApi({ api: fake.base, accessToken: async () => 'fake-access-0', fetch });
+  try {
+    const s = await web.playback(), input = (action) => ({ action, uri: s.track.uri, device: s.device });
+    assert.deepEqual(await web.control(input('pause')), { ok: true }); assert.equal(fake.state.playbackPlaying, false);
+    assert.deepEqual(await web.control(input('resume')), { ok: true }); assert.equal(fake.state.playbackPlaying, true);
+    await web.control(input('next')); assert.equal((await web.playback()).track.name, 'Jóga');
+  } finally { await fake.close(); }
+});

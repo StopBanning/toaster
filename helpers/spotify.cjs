@@ -273,7 +273,10 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     let res = await send(false);
     if (res.status === 401) res = await send(true);
     if (!res.ok) throw await failure(res);
-    return res.status === 204 || res.status === 202 ? null : res.json();
+    // (a command (play, pause, next...) has nothing to say back, and Spotify sometimes answers one 200 with a plain-text id instead of an
+    // empty 204: read as JSON it was an error box on every press, though the command had gone through. Colin, Nov 8)
+    if (method !== 'GET' || res.status === 204 || res.status === 202) return null;
+    return res.json();
   }
   async function list(request = {}) {
     if (request.list === 'artist' || request.list === 'artist-releases' || request.list === 'album-info') {
