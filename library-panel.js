@@ -40,7 +40,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     // the spotify section: whether it is connected (null: not asked yet), the lists (playlists, albums, liked: { items, total, more, next, loading }) and the open collection's
     // songs, kept in memory only (Spotify allows its metadata and covers to be kept only for a while), the covers (address -> data: address), what was typed in each field
     // and wasn't sent, and gen, which a disconnect or a new sign-in moves on so that an answer to an older question is let go
-    sp: { status: null, checking: false, connecting: false, gen: 0, lists: {}, tracks: {}, open: null, error: '', armed: false, at: 0, cursorKey: '', dirty: false, draft: { link: '', client: '' }, covers: new Map(), coverTried: new Set() },
+    sp: { status: null, checking: false, connecting: false, gen: 0, lists: {}, tracks: {}, open: null, error: '', armed: false, at: 0, cursorKey: '', dirty: false, linksAll: false, draft: { link: '', client: '' }, covers: new Map(), coverTried: new Set() },
   };
   const mac = /Mac|iP(hone|ad|od)/.test(win.navigator?.platform || '');
   const FIND_KEY = mac ? '⌘F' : 'ctrl+F', FIND_MAX = 300;
@@ -315,7 +315,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   const sp = host.spotify, X = S.sp;
   const video = createSpotifyVideo({ document: doc, root, beforeLoad: () => sp.prepareVideo?.(), openSpotify: (uri) => spOpenLink(uri) });
   const spVideo = (row) => { if (row?.kind === 'strack') video.open(row.track); else host.say('pick a Spotify song, then V for its player'); };
-  const spModel = () => ({ links: sp.links(), app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
+  const spModel = () => ({ links: sp.links(), linksAll: X.linksAll, app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
   let search = { q: '', items: [], albums: [], artist: null, loading: false, more: false, next: 0, total: 0 }, searchGeneration = 0;
   // one row per song: Spotify lists the same song more than once (a single and its album's, a re-release), so a song is its title and its
   // artists, and the best-known of its copies is the one kept (Colin, Nov 5: "songs repeating again")
@@ -475,6 +475,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
       const title = half() ? `"${two(row.index + 1)} ${esc(t.name)}",` : esc(t.name);
       return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : half() ? '' : two(row.index + 1)}</span><span class="t">${on && half() ? `<u>${title}</u>` : title}${by && !t.artistRefs?.length ? ` <em>${half() ? '// ' : '· '}${esc(by)}</em>` : ''}${spNames(t, half(), row.coll)}</span><span class="d"><button type="button" class="lib-sp-action lib-sp-watch" data-do="video" title="Spotify's 30-second preview, right here (V)">▶ preview</button> ${fmtDuration(t.ms)}</span></div>`;
     }
+    if (row.kind === 'more' && row.list === 'links') return `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t">more pasted links</span><span class="d">${count(row.shown)} of ${count(row.total)}</span></div>`;
     if (row.kind === 'more' && row.list === 'search') return `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t">more results</span></div>`;
     if (row.kind === 'more') {
       const l = row.list === 'tracks' ? (row.coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(row.coll)]) : X.lists[row.list];
@@ -513,7 +514,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   const cursorSong = () => { const row = S.section === 'spotify' ? rows()[cursor()] : null; return row?.kind === 'strack' ? row.track : null; };
   // And it follows whichever changed last, the song or the cursor: a new song playing shows its own cover (what Spotify or Music
   // gave for it), till the cursor moves to another row or another collection opens (Colin: "we want album art to update").
-  const playingArt = () => (X.bigFrom === 'playing' && host.playing().art) || '';
+  // (the mini player (W) has no rows to follow: there it's always the song playing, when there's one)
+  const playingArt = () => ((X.bigFrom === 'playing' || !!doc.body?.classList?.contains?.('mini')) && host.playing().art) || '';
   function spArtSrc() {
     if (X.artist) {
       const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = cursorSong(), want = song ? song.big || song.cover : coll?.big || coll?.cover;
@@ -718,6 +720,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (request) await spSend(request);
   }
   function spMore(row) {
+    if (row.list === 'links') { X.linksAll = true; X.cursorKey = `saved:${sp.links()[row.shown]?.uri || ''}`; spRepaint(); return; } // (the cursor on the first link that was folded)
     if (row.list === 'search') { searchSpotify(search.next); return; }
     const list = row.list === 'tracks' ? (row.coll.kind === 'liked' ? X.lists.liked : X.tracks[collKey(row.coll)]) : X.lists[row.list];
     if (!list || list.loading) return;
@@ -1326,7 +1329,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   parts.list.addEventListener('focusout', (e) => { if (S.typing && e.target.matches?.('.lib-address, .lib-rename')) finishInput(e.target.matches('.lib-address') ? false : true, e.target); });
 
   let resizeTimer = 0;
-  win.addEventListener('resize', () => { if (!S.open) return; clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { S.artKey = ''; paintArt(); }, 150); });
+  win.addEventListener('resize', () => { if (!S.open) return; clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { S.artKey = ''; paintArt(); paintBig(); }, 150); }); // (paintBig too: the mini player's cover is the song playing)
 
   // ---------------------------------------------------------------- open and close
 
@@ -1334,6 +1337,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (S.open) { if (section) setSection(section); return; }
     S.open = true;
     S.followPlaying = true;
+    X.linksAll = false; // (the pasted links folded again each time the library opens)
     if (section) S.section = section;
     root.hidden = false;
     doc.body.classList.add('library-open');
