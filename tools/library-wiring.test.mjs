@@ -21,7 +21,7 @@ test('G is the library\'s key: an action nothing else has the key of, in the foo
   assert.deepEqual(keys.filter(([, k]) => k === 'g'), [['library', 'g']], 'G is the library\'s alone');
   assert.equal(new Set(keys.map(([, k]) => k)).size, keys.length, 'no key twice');
   assert.match(app, /const FOOTER = \[\['source', 'source'\], \['library', 'library'\], \['visual', 'background'\],/);
-  assert.match(body('toggleLibrary'), /if \(WIDGET \|\| state\.mini\) \{ flashStatus\(`the library needs the full window[^\n]*`\); return; \}\s*if \(!libraryPanel\.isOpen\) closeMenu\(\);[^\n]*\n\s*libraryPanel\.toggle\(\);/);
+  assert.match(body('toggleLibrary'), /if \(WIDGET \|\| \(state\.mini && !libraryPanel\.isOpen\)\) \{ flashStatus\(`the library needs the full window[^\n]*`\); return; \}\s*if \(!libraryPanel\.isOpen\) closeMenu\(\);[^\n]*\n\s*libraryPanel\.toggle\(\);/);
 });
 
 test('the help lists G among the setup keys, the touch panel has a button for it, and Ctrl+K calls it "library"', () => {

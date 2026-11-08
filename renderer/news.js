@@ -6,6 +6,8 @@
 export const NEWS = [
   { version: '0.5.4', items: [
     { act: 'strength', in: 'scenery', text: "the snow answers the drop (D): the ice-fishing toaster hauls up a trout bigger than itself, and a gust drives the snow sideways" },
+    { act: 'mini', text: "the mini player from the library: W on the spotify tab (or your music) gives a little window with the cover big, the song under it, its progress and back, play and next" },
+    { key: 'G', text: "the spotify tab folds your pasted links after the latest four (more pasted links opens the rest), so your playlists stay in sight" },
   ] },
   { version: '0.5.3', items: [
     { act: 'strength', in: 'scenery', text: "the waterfall answers the drop (D): the falls surge, the mist bursts up and lights the rainbow, spray flies off the pool and a school of trout leaps" },

@@ -683,8 +683,9 @@ test('app.js hands the bar what is playing at the footer\'s pace, and the roll k
   assert.match(update, /tempo: eng\.tempo, key: eng\.key \? `\$\{NOTES\[eng\.key\.root\]\} \$\{eng\.key\.mode\}` : '', at: eng\.placeAt\(t\)/);
   assert.match(update, /el: state\.el/);
   assert.match(update, /app: state\.winSong\?\.app \|\| ''/);
-  // it is on screen unless H, the mini player or a recording (without the setting) has put it away
-  assert.match(app, /const playerShowing = \(\) => !document\.hidden && !document\.body\.classList\.contains\('clean'\) && !state\.mini && !\(rec\.mr && !state\.playerRec\);/);
+  // it is on screen unless H, the mini player (but for the library's, the cover with the song and its buttons) or a recording
+  // (without the setting) has put it away
+  assert.match(app, /const playerShowing = \(\) => !document\.hidden && !document\.body\.classList\.contains\('clean'\) && !\(state\.mini && !document\.body\.classList\.contains\('library-open'\)\) && !\(rec\.mr && !state\.playerRec\);/);
   // a click on the bar is not a click on the water of the koi pond
   assert.match(app, /closest\('button, a, input, select, dialog, \[role="menu"\], \.panel, #menu, #bar, footer, #player, /);
 });
@@ -733,6 +734,11 @@ test('H puts it away with the footer; Z\'s visualizer mode shows it only at the 
   assert.match(rule('body.recording:not(.player-rec) #player'), /visibility: hidden;/);
   assert.doesNotMatch(css, /body\.player-rec #player \{[^}]*visibility/, 'with the setting on, nothing hides it');
   assert.match(rule('body.mini #player, body.widget #player'), /display: none !important;/);
+  // ...but for the mini player from the library: the cover big, then the song, its progress and its buttons, one under another
+  assert.match(css, /body\.mini\.library-open #player \{[^}]*display: grid !important;[^}]*grid-template-areas: "id" "progress" "transport";/);
+  assert.match(css, /body\.mini #library \.lib-panel \{ display: none; \}/);
+  assert.match(css, /#library\[hidden\] \{ display: none; \}/);
+  assert.doesNotMatch(css, /body\.mini #library \{ display: none/);
   // what else sits at the bottom steps over it only while it is there
   assert.match(css, /body\.player-bar\.clean, body\.player-bar\.mini, body\.player-bar\.recording:not\(\.player-rec\), body\.widget \{ --player-h: 0px; \}/);
   assert.match(css, /#notice \{ bottom: calc\(44px \+ var\(--player-h, 0px\)\); \}/);

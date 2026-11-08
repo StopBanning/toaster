@@ -943,6 +943,36 @@ body.player-bar #player[data-spotify="true"] { height: 64px; }
 }
 body.player-bar.clean:has(#player[data-spotify="true"]), body.player-bar.mini:has(#player[data-spotify="true"]), body.player-bar.recording:not(.player-rec):has(#player[data-spotify="true"]), body.widget:has(#player[data-spotify="true"]) { --player-h: 0px; }
 
+/* The mini player (W) from the library (Colin, Nov 7: "some people are just going to want the MiniPlayer with the album art ... make
+   a good cool mini version of that"): a tall little window, the cover big at its top in whichever look it's in (the photo, the half
+   look's frame with the characters faint around it, or all characters), and under it the song, its progress and back / play / next:
+   the player bar, rearranged. The tabs, the lists and the search stay in the big window; W again brings them back. */
+body.mini #library .lib-panel { display: none; }
+body.mini #library .lib-glyphs, body.mini #library .lib-bigcover:not(:empty) {
+  display: grid; place-items: center; position: absolute; inset: auto; top: 48px; left: 50%; right: auto; transform: translateX(-50%);
+  width: min(calc(100vw - 36px), calc(100vh - 210px)); height: auto; aspect-ratio: 1;
+}
+body.mini #library .lib-glyphs.in { opacity: .9; }
+body.mini #library.lib-half .lib-glyphs.in { opacity: .3; }
+body.mini #library .lib-bigcover img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
+body.mini #library.lib-half .lib-bigcover img { width: 72%; border-radius: 0; outline: 1px solid var(--fg); box-shadow: 0 0 0 .4em var(--bg), 0 0 0 calc(.4em + 1px) var(--faint); }
+body.mini.library-open #player {
+  display: grid !important; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; grid-template-areas: "id" "progress" "transport";
+  justify-items: center; align-content: start; gap: 10px; position: fixed; left: 0; right: 0; bottom: auto;
+  top: calc(48px + min(100vw - 36px, 100vh - 210px) + 18px); /* (just under the cover) */
+  height: auto !important; padding: 0 18px; white-space: normal; background: transparent; border-top: 0; font-size: 12px;
+}
+body.mini.library-open #player .pl-chip, body.mini.library-open #player .pl-near, body.mini.library-open #player .pl-status,
+body.mini.library-open #player .pl-misread, body.mini.library-open #player .pl-spotify-cover { display: none !important; }
+body.mini.library-open #player .pl-id { order: 1; width: 100%; justify-content: center; text-align: center; gap: 8px; min-width: 0; }
+body.mini.library-open #player .pl-song { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; max-width: 100%; }
+body.mini.library-open #player .pl-title { font-size: 1.5em; font-style: italic; font-weight: 800; letter-spacing: -.01em; }
+body.mini.library-open #player .pl-title, body.mini.library-open #player .pl-artist { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.mini.library-open #player .pl-progress { order: 2; width: 100%; min-width: 0; }
+body.mini.library-open #player .pl-transport { order: 3; gap: 10px; }
+body.mini.library-open #player .pl-btn { width: 40px; height: 34px; }
+body.mini.library-open #player .pl-btn svg { width: 15px; height: 15px; }
+
 /* ---------- the library (G; library-panel.js): your music, the radio and scenes, full screen over the visuals ---------- */
 /* The kept look: the cover of the open album in characters (golden's ramp) in the foreground colour, behind rows on the theme's line
    background. Everything is in em of --lib-fs, the type of its track rows (12 px in the 9:16 still, 17 in the desktop one), and every
@@ -956,7 +986,7 @@ body.player-bar.clean:has(#player[data-spotify="true"]), body.player-bar.mini:ha
   position: fixed; inset: 0; z-index: 4; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font); user-select: none;
   --lib-fs: clamp(11px, 2.22vw, 17px); --lib-line: color-mix(in srgb, var(--bg) 62%, transparent); --lib-pw: 100%; --lib-left: 1.5em;
 }
-#library[hidden], body.mini #library { display: none; }
+#library[hidden] { display: none; } /* (the mini player (W) keeps the library when it's open: whatever tab you're on, small; see body.mini #library below) */
 body.library-open:not(.mini) header, body.library-open:not(.mini) #first-run-hint { visibility: hidden; }
 #library .lib-drag { display: none; }
 #library.titlebar .lib-drag { display: block; position: absolute; left: 0; right: 0; top: 0; height: 36px; -webkit-app-region: drag; }

@@ -384,6 +384,32 @@ const KINDS = (rows) => rows.map((r) => r.kind);
 const model = (lists, extra = {}) => ({ links: [], app: true, connected: true, lists, open: null, tracks: {}, ...extra });
 const saved = (uri, at, extra = {}) => ({ uri, at, ...extra });
 
+test('the pasted links fold after the latest four (a "more" row opens the rest), so the playlists stay in sight; five or fewer are just listed', async () => {
+  await withFake(async (fake, web) => {
+    const lists = await library(web);
+    const many = Array.from({ length: 11 }, (_, i) => saved(`spotify:track:${String(i).padStart(22, '0')}`, 100 - i));
+    const rows = L.spotifyRows(model(lists, { links: many }));
+    assert.deepEqual(KINDS(rows).slice(0, 7), ['link', 'saved', 'saved', 'saved', 'saved', 'more', 'coll']);
+    const more = rows.find((r) => r.kind === 'more' && r.group === 'links');
+    assert.deepEqual([more.list, more.shown, more.total], ['links', L.LINKS_SHOWN, 11]);
+    assert.equal(rows[6].group, 'playlists', 'the playlists come straight after the fold');
+    assert.deepEqual(rows.filter((r) => r.kind === 'saved').map((r) => r.link.uri), many.slice(0, 4).map((l) => l.uri), 'the latest four');
+    // unfolded: all of them, in order, no "more" row for the links
+    const all = L.spotifyRows(model(lists, { links: many, linksAll: true }));
+    assert.equal(all.filter((r) => r.kind === 'saved').length, 11);
+    assert.ok(!all.some((r) => r.kind === 'more' && r.group === 'links'));
+    // five: listed, not folded (a "1 more" row is no shorter than the link)
+    const five = L.spotifyRows(model(lists, { links: many.slice(0, 5) }));
+    assert.equal(five.filter((r) => r.kind === 'saved').length, 5);
+    assert.ok(!five.some((r) => r.kind === 'more' && r.group === 'links'));
+    // the browser (no sign-in) folds the same way
+    assert.deepEqual(KINDS(L.spotifyRows({ links: many, app: false })), ['link', 'saved', 'saved', 'saved', 'saved', 'more']);
+    // the "more" row has a key of its own (the cursor is kept by it)
+    const keys = rows.map(L.spotifyKey);
+    assert.equal(new Set(keys).size, keys.length);
+  });
+});
+
 test('the rows: the field for a link and the links pasted; then the Client ID field, or the playlists, the albums, the liked songs and the way to disconnect; a browser stops after the links', async () => {
   await withFake(async (fake, web) => {
     const lists = await library(web);
@@ -652,7 +678,7 @@ test('Spotify covers share the library glyph renderer, with data from main and c
   assert.match(spotifyPart, /return \(want && X\.covers\.get\(want\)\) \|\| \(song\?\.cover && X\.covers\.get\(song\.cover\)\) \|\| /, 'fall back to the collection until the song artwork arrives');
   assert.match(panel, /if \(S\.section === 'spotify'\) \{ const key = spotifyKey\(rows\(\)\[i\]\); if \(key !== X\.cursorKey\) X\.bigFrom = 'cursor'; X\.cursorKey = key; paintBig\(\); \}/, 'the big cover follows the cursor, once it moves');
   // and the song that's playing, whichever changed last: a new song (or its cover coming in) shows its own cover, till the cursor moves
-  assert.match(panel, /const playingArt = \(\) => \(X\.bigFrom === 'playing' && host\.playing\(\)\.art\) \|\| '';/);
+  assert.match(panel, /const playingArt = \(\) => \(\(X\.bigFrom === 'playing' \|\| !!doc\.body\?\.classList\?\.contains\?\.\('mini'\)\) && host\.playing\(\)\.art\) \|\| '';/);
   assert.match(panel, /function spArtSrc\(\) \{\n    if \(X\.artist\) \{\n[^]*?return \(want && X\.covers\.get\(want\)\) \|\| \(X\.artist\.cover && X\.covers\.get\(X\.artist\.cover\)\) \|\| null;\n    \}\n    const now = playingArt\(\);\n    if \(now\) return now;/, 'an artist\'s page: the song or album under the cursor, else the artist; elsewhere the playing song\'s cover first, when it changed last');
   assert.match(panel, /if \(artSig !== X\.artSig\) \{ const was = X\.artSig; X\.artSig = artSig; if \(was !== undefined && p\.art\) \{ X\.bigFrom = 'playing';/, 'not on the first reading: the tab opens on its collection');
   assert.match(panel, /X\.bigFrom = 'cursor'; \/\/ \(a collection opened or closed by hand/);

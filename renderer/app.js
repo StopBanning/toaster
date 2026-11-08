@@ -1661,7 +1661,8 @@ async function changeWindowMode(mode) {
     // The desktop replies with the new state (false is a successful exit). A web adapter may
     // refuse entry with false; a missing adapter or a rejected call is not a successful resize.
     // (the mini player tall with the handheld game on: the handheld on its own, a little player)
-    const shape = which === 'mini' && gameShowing() ? 'tall' : 'wide';
+    // (and tall from the library too: the mini player there is the cover with the song and its buttons under it, a portrait)
+    const shape = which === 'mini' && (gameShowing() || document.body.classList.contains('library-open')) ? 'tall' : 'wide';
     if (await window.nc?.[method]?.(on, shape) !== on) throw new Error('This window layout is only available in the desktop app.');
     state[which] = on;
     changed = true;
@@ -1837,8 +1838,9 @@ const playerBar = createPlayerBar({
     get previous() { return liveQueue() ? previousTrack : undefined; },
   },
 });
-// on screen just now: on, and not put away by H, the mini player or a recording (so it's worth asking Music where it is)
-const playerShowing = () => !document.hidden && !document.body.classList.contains('clean') && !state.mini && !(rec.mr && !state.playerRec);
+// on screen just now: on, and not put away by H, the mini player or a recording (so it's worth asking Music where it is). The mini
+// player keeps it when it's the library's (the cover, then the song and its buttons under it: style.css, body.mini.library-open)
+const playerShowing = () => !document.hidden && !document.body.classList.contains('clean') && !(state.mini && !document.body.classList.contains('library-open')) && !(rec.mr && !state.playerRec);
 function updatePlayer(t) {
   if (!state.playerBar || WIDGET) return;
   playerBar.update({
@@ -2901,7 +2903,8 @@ const libraryPanel = lazyLibrary({
 });
 // G: the library over the whole window (the mini player and the desktop handheld are too small for it)
 function toggleLibrary() {
-  if (WIDGET || state.mini) { flashStatus(`the library needs the full window (${K('mini')} brings it back)`); return; }
+  // (in the mini player G only closes it: opening it needs the full window; the mini player from the library is the cover and its song)
+  if (WIDGET || (state.mini && !libraryPanel.isOpen)) { flashStatus(`the library needs the full window (${K('mini')} brings it back)`); return; }
   if (!libraryPanel.isOpen) closeMenu(); // (the source menu, which the web version starts with, would sit over it)
   libraryPanel.toggle();
 }

@@ -168,7 +168,8 @@ export const collKey = (c) => `${c.kind}:${c.id}`;
 // (not connected) or the playlists, the saved albums and the liked songs, folded, a "more" row where a list goes on, and last the row that
 // disconnects. A browser has no sign-in, so it stops after the links. `group` says which part of the section a row is in (the panel puts a line
 // of words before the first row of each part).
-//   m: { links, app (the page can sign in), connected, lists: { playlists, albums, liked }, open (a collection's key), tracks: { key: list } }
+//   m: { links, linksAll (the pasted links unfolded), app (the page can sign in), connected, lists: { playlists, albums, liked }, open (a collection's key), tracks: { key: list } }
+export const LINKS_SHOWN = 4; // (the pasted links listed before the rest fold under a "more" row)
 export function spotifyRows(m) {
   const rows = [], lists = m.lists || {}, liked = lists.liked;
   const likedColl = { ...SPOTIFY_LIKED, count: liked?.total || 0 };
@@ -180,7 +181,11 @@ export function spotifyRows(m) {
     if (list?.more) rows.push({ kind: 'more', group: 'songs', list: 'tracks', coll: open });
   }
   rows.push({ kind: 'link', group: 'link' });
-  (m.links || []).forEach((link, n) => rows.push({ kind: 'saved', group: 'links', link, n }));
+  // (the links pasted fold after the latest few, so the playlists and albums below stay in sight; a "more" row opens the rest. One
+  // past the fold is listed rather than folded: a row that says "1 more" is no shorter than the link itself. Colin, Nov 7)
+  const links = m.links || [], folded = !m.linksAll && links.length > LINKS_SHOWN + 1;
+  (folded ? links.slice(0, LINKS_SHOWN) : links).forEach((link, n) => rows.push({ kind: 'saved', group: 'links', link, n }));
+  if (folded) rows.push({ kind: 'more', group: 'links', list: 'links', shown: LINKS_SHOWN, total: links.length });
   if (!m.app) return rows;
   if (!m.connected) return [...rows, { kind: 'client', group: 'connect' }];
   for (const name of ['playlists', 'albums']) {

@@ -13,6 +13,27 @@ It finds the beat, the kick, clap and hats, the bass line, the chords and the ke
 rewriting the code as the song moves. It's a live reconstruction for show, not an exact
 transcription.
 
+## Start here
+
+1. **Play the demo.** Open [toaster.locust.lol](https://toaster.locust.lol) and press *hear it on a demo song*: no mic, no
+   account. The code types itself as the beat plays.
+2. **Pick a look.** Press **V** (or the background button) for the scenes, the dominoes, the handheld and the rest, or one of
+   the presets along the picker's top for a whole look in one click.
+3. **Use your own music.** In the browser: a tab's sound, your mic, an audio file or a radio stream (**S**). In the app:
+   anything playing on your computer, Spotify, YouTube or anything else, straight away.
+
+Lost? **?** lists every key, and **Ctrl+K** finds any command by name.
+
+**Spotify, three ways.** Toaster hears Spotify playing on your computer like any other app. Connected (with your own Spotify
+Client ID, see [Search Spotify](#search-spotify)), the library's spotify tab browses and plays your playlists and albums and searches
+inside Toaster. Without a connection, its search opens Spotify's own search page.
+
+**Does it split the song into stems?** No stems. It listens to the whole mix as it plays and picks out the kick, snare, hats,
+bass and chords from their frequencies and timing, then writes them as code that plays back on drum-machine samples and synths.
+
+**Will the code sound exactly like the song?** No: it's a sketch of the song's parts. The rhythm and the bass line come
+closest, the sounds are stand-ins, and a busy or sidechained bass can fool its kick ([Good to know](#good-to-know)).
+
 ## What it does
 
 - **Writes the song as code you can play.** A line for each part, typed the way a live coder
@@ -66,7 +87,7 @@ These are the keys as they come; every one can be changed in the help (**?**): c
 | Key | Does |
 | --- | --- |
 | S | audio source: system audio, demo beat, file, input, radio |
-| V | background, best first: scenes (a new one each song), worlds, the Earth (NASA's footage from the space station: aurora, northern lights, city lights, dawn and day, A moves through them, and it moves on by itself at a breakdown or every 32 bars), the backrooms (an endless walk through yellow rooms: the kick brightens the lights, a drop blows them out), chrome, spaghetti, spectrogram, cuts, fire, the code rain, off (each described under [Backgrounds](#backgrounds)). The background button in the bar opens a picker with a picture of each, under five presets that set up a whole look in one click: live coding, visualizer, handheld, the Japan edition and for TikTok |
+| V | background, best first: scenes (a new one each song), worlds, the Earth (NASA's footage from the space station: aurora, northern lights, city lights, dawn and day, A moves through them, and it moves on by itself at a breakdown or every 32 bars), the backrooms (an endless walk through yellow rooms: the kick brightens the lights, a drop blows them out), chrome, spaghetti, spectrogram, cuts, fire, the code rain, off (each described under [Backgrounds](#backgrounds)). The background button in the bar opens a picker with a picture of each, under six presets that set up a whole look in one click: live coding, visualizer, orb, handheld, the Japan edition and for TikTok |
 | A | the next one of whatever's showing (the footer says which). With the worlds on, their look: auto (film, and on each drop another look for 8 bars), night (as auto, but every world keeps a dark sky with its stars, so no cut lights the whole screen; with fewer flashes on, the worlds always have night skies), film, ASCII (the planet as text, each character in its own colour), thermal camera, and cells, the planet cut into cells of the worlds around it, turning over cell by cell into the next on each cut (after Days of Glitch's moving cells). A print look covers the planet, or the sky when the code sits over the planet. With chrome, A turns its collage off and on; with the spaghetti, its noodles: snakes (a card each time round, a few of its noodles dancing) or endless (the cover stuck on top, the machine never stopping, each noodle the cover again and again, spreading over the floor on the kick and dripping off it); with the spectrogram, it switches its colours between the rainbow and the theme's own; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the falls, Halloween, the sharks, the festival, the koi pond, space, the eye, and last auto again in the theme's two colours. With the handheld game on (P), A goes round the game's screens instead: Toaster's own (in the theme's colours), neon, an old LCD, and the Japan edition (Toaster's own in Japanese, in black and white, on a cream and red handheld after the Famicom: its screens, its cartridge and its power-on in katakana). Remembered |
 | P | the code look, over whichever background is picked, in turn: dominoes (after mewtw0o's domino piano roll): every hit of the code stands as a domino that the playhead knocks over as it plays, landing on its beat and leaning on the one before when it's close, a held bass note a slab on legs that glows while the note holds and falls when it ends, a chord's notes one behind another; the handheld game (after mewtw0o's handheld rhythm game): the song played on a little two-screen handheld of our own, the kick, clap, hats and bass falling down their lanes onto their targets as they're heard, each judged by how near the real hit came (PERFECT, GREAT, GOOD), the combo and score climbing and a MISS when a part drops out; under it a 4 x 4 of pads, the drums and the twelve notes up from the song's key, lit as the bass and the chords play them, and now and then that screen turns into the code instead, its parts typing in as Toaster types them, a page at a time on the bar lines; its buttons go down with the drums, and a drop is FEVER, points doubled, for two bars (in the tall layout it fits in under the code, in place of the pitch roll). It powers on like an old handheld each time it comes on: its light, the screens flickering awake, the logo dropping in with a ding, a self-test of the song's parts, PRESS START. With no beat to play it stands by instead of going away: picked with nothing playing it says PLAY ANY SONG, with a song coming in READING while it finds the beat, and when the music stops CONTINUE? and a count, then GAME OVER; it powers on again when the music's back. On the pink theme it comes in a pink edition; then the punchcard blocks; then none. Remembered |
 | R | the orb: a cloud of dots in 3D shapes over any background (a sphere, a crystal, orbit paths, a galaxy and more), flowing into the next every 8 bars; again to turn it off |
