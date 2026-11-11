@@ -26,7 +26,7 @@ test('only the measured scenes compile with rolled bounds; other sources retain 
   const context={rolledSceneSource,captured,mulberry32}; // (mulberry32: the sea's dice, a let at the top of the file)
   vm.runInNewContext(constants+`;for(const name of Object.keys(MAINS)){const source=LIB+MAINS[name];const made=${selection[1]};captured.push({name,source,made});}`,context);
   for(const {name,source,made} of captured){
-    if(['sharks','garden','koi','halloween'].includes(name)){
+    if(['sharks','garden','koi'].includes(name)){
       assert.ok((made.match(/\+ loopZero/g)||[]).length>=1);
       assert.equal((made.match(/uniform int loopZero;/g)||[]).length,1);
       assert.equal(made.replace('uniform int loopZero;\n','').replaceAll(' + loopZero',''),source);

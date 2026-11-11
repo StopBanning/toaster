@@ -20,7 +20,7 @@ export const CONTROLS = [
   ['crt', 'look', 'old TV (CRT)', 'scanlines and glass'],
   ['look', 'look', 'look', 'trails, dots, LED, halftone, VHS, line art'],
   ['blocks', 'look', 'code look', 'dominoes, handheld, punchcard, none'],
-  ['orb', 'look', 'the orb', 'dots in 3D shapes over any background'],
+  ['orb', 'look', 'over the picture', 'the orb, the glass blob, both, none'],
   ['card', 'look', 'ID card', 'off, on, big'],
   ['cam', 'camera', 'camera', 'tinted, big eyes, ASCII, off'],
   ['camfx', 'camera', 'camera effect', 'the next one'],

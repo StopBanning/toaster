@@ -56,7 +56,7 @@ test('the scenes shown are the ones the app lists, whatever they are',async()=>{
   assert.ok(round[0].includes('__nc.setVisual(0)'));
   PAGE.scenes.forEach((scene,k)=>assert.ok(round[1+k].includes(`"scene:${scene}"`)&&round[1+k].includes('.run()'),scene));
   // (none from a list kept in the checker)
-  assert.ok(r.switched.every(js=>!/lake|halloween|sharks|festival|koi|space|eye/.test(js)));
+  assert.ok(r.switched.every(js=>!/lake|sharks|festival|koi|space|eye/.test(js)));
   assert.ok(r.log.some(l=>l.includes('scene: aurora')&&l.includes('scene: tea')));
 });
 

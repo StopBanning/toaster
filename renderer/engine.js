@@ -1797,7 +1797,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         const v = this.v[id];
         parts[id] = id === 'vox' ? { on: v.shown.slice(), tok: v.tok.slice() } : v.shown.slice();
       }
-      this.tape.pattern(bar * 4 + this.tempo.down, parts);
+      const T = this.tempo; // (the bar line's own time on the beat grid as it stands: for the export's tempo: tape.js)
+      this.tape.pattern(bar * 4 + T.down, parts, T.t0 + (bar * 4 + T.down - T.n0) * T.P);
     },
 
     // The bass's brightness now (its 150-2000 Hz against its 30-150 Hz, as a log), while there's

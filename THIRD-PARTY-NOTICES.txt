@@ -60,14 +60,18 @@ The galaxy and Saturn in the eye's pupil, in renderer/eye/galaxy.jpg and rendere
   ESA/Hubble images: Creative Commons Attribution 4.0 International
     (https://creativecommons.org/licenses/by/4.0/; https://esahubble.org/copyright/).
 
-The Earth's views (V): five clips downloaded the first time each is picked (kept in the settings
+The Earth's views (V): twenty clips downloaded the first time each is picked (kept in the settings
   folder; not in the app), with their first frames in renderer/earth and renderer/thumbs. Each is
   a stretch of footage turned upright, cropped clear of the station, its repeated frames taken
   out, denoised, graded, scaled to 1080p and looped (its last seconds crossfaded into its first).
   From NASA's Johnson Space Center, filmed by the crews of the International Space Station:
     "Earth in 4K: Space Station Expedition 67-68 Edition" (jsc2023m000111): the aurora,
-      the northern lights, city lights and dawn.
-    "4K Earth Views Extended Cut for Earth Day 2021" (jsc2021m000138): the day side.
+      the northern lights, city lights, dawn, the golden coast, the sun's glint, the whole
+      Earth, the porthole, the sunrise star and the capsule.
+    "Earth from Space in 4K: Expedition 65 Edition" (jsc2022m000172): the aurora ribbon,
+      the aurora with the arm, moonlit clouds and the cargo ship.
+    "4K Earth Views Extended Cut for Earth Day 2021" (jsc2021m000138): the day side, the
+      Sahara, the blue ocean, the snow mountains, the desert coast and the hurricane.
   From https://images.nasa.gov. NASA material is not protected by copyright unless noted
   (https://www.nasa.gov/nasa-brand-center/images-and-media/); NASA doesn't endorse Toaster.
 

@@ -231,10 +231,10 @@ export function spotifyFold(rows, cursor) {
 export function spotifyPlay(row, liked) {
   const from = (n) => (liked?.items || []).slice(n, n + 100).map((t) => t.uri);
   if (row?.kind === 'coll') {
-    if (row.coll.kind === 'liked') return from(0).length ? { tracks: from(0), index: 0 } : null;
+    if (row.coll.kind === 'liked') return from(0).length ? { liked: true, tracks: from(0), index: 0 } : null;
     return { context: row.coll.uri };
   }
-  if (row?.kind === 'strack') return row.coll.kind === 'liked' ? { tracks: from(row.index), index: 0 } : { context: row.coll.uri, track: row.track.uri };
+  if (row?.kind === 'strack') return row.coll.kind === 'liked' ? { liked: true, tracks: from(row.index), index: 0 } : { context: row.coll.uri, track: row.track.uri };
   return null;
 }
 
@@ -288,11 +288,21 @@ export function glyphRows(rgba, cols, rows, gamma = 0.9) {
 // so a dim or washed-out cover still uses the whole ramp; a flat one is left alone), and its detail lifted against a blur of itself. On a big
 // grid the strongest edges are drawn as their direction, | / _ \, the way a hand-drawn ASCII picture outlines a face or a logo (a small one
 // keeps the ramp only: at thirty columns the outlines are noise).
-export function coverGlyphs(rgba2, cols, rows, { edges = rows >= 48, gamma = 0.9, lift = 0.6 } = {}) {
+export function coverGlyphs(rgba2, cols, rows, { edges = rows >= 48, gamma = 0.9, lift = 0.6, local = 0, clean = false, colour = 0 } = {}) {
   if (!cols || !rows) return [];
   const W2 = cols * 2, H2 = rows * 2, n2 = W2 * H2;
   const L2 = new Float32Array(n2);
-  for (let i = 0; i < n2; i++) L2[i] = ((0.2126 * rgba2[i * 4] + 0.7152 * rgba2[i * 4 + 1] + 0.0722 * rgba2[i * 4 + 2]) / 255) * (rgba2[i * 4 + 3] / 255);
+  for (let i = 0; i < n2; i++) {
+    const r = rgba2[i * 4] / 255, g = rgba2[i * 4 + 1] / 255, b = rgba2[i * 4 + 2] / 255;
+    let light = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (colour) {
+      // (colour: a saturated pixel counts toward its strongest channel, by how saturated it is, so a figure that stands out by colour
+      // and not by light, red on black (Zeli's Only The Fallen), comes apart from its ground; greys are untouched)
+      const max = Math.max(r, g, b), sat = max ? (max - Math.min(r, g, b)) / max : 0;
+      light += colour * sat * (max - light);
+    }
+    L2[i] = light * (rgba2[i * 4 + 3] / 255);
+  }
   const sorted = Float32Array.from(L2).sort();
   const lo = sorted[Math.floor(0.015 * (n2 - 1))], hi = sorted[Math.ceil(0.985 * (n2 - 1))];
   if (hi - lo > 0.08) for (let i = 0; i < n2; i++) L2[i] = Math.min(1, Math.max(0, (L2[i] - lo) / (hi - lo)));
@@ -300,6 +310,21 @@ export function coverGlyphs(rgba2, cols, rows, { edges = rows >= 48, gamma = 0.9
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
     const a = 2 * y * W2 + 2 * x;
     L[y * cols + x] = (L2[a] + L2[a + 1] + L2[a + W2] + L2[a + W2 + 1]) / 4;
+  }
+  if (local) {
+    // each region stretched to its own range too (a mid-tone face against a background of about its brightness comes apart): the light
+    // against the mean and spread of a window about an eighth of the cover, mixed with the whole cover's stretch by `local`
+    const r = Math.max(2, Math.round(Math.min(cols, rows) / 16));
+    const M = boxBlur(L, cols, rows, r), sq = boxBlur(L.map((v) => v * v), cols, rows, r);
+    for (let i = 0; i < n; i++) {
+      const sd = Math.sqrt(Math.max(0, sq[i] - M[i] * M[i]));
+      if (sd < 0.04) continue; // (a flat region stays as the whole cover has it)
+      const v = Math.min(1, Math.max(0, 0.5 + (L[i] - M[i]) / (4 * sd)));
+      // (on the mid-tones only, where a face is: near black and near white stay put, or a black ground beside a bright edge would
+      // be lifted into a halo round it, the Daft Punk helmet and the Justice cross both)
+      const w = local * 4 * L[i] * (1 - L[i]);
+      L[i] = (1 - w) * L[i] + w * v;
+    }
   }
   if (lift) {
     const B = boxBlur(boxBlur(L, cols, rows, 2), cols, rows, 2); // (two box blurs: about a gaussian two cells wide)
@@ -320,10 +345,27 @@ export function coverGlyphs(rgba2, cols, rows, { edges = rows >= 48, gamma = 0.9
     const mag = new Float32Array(n);
     for (let i = 0; i < n; i++) mag[i] = Math.hypot(gx[i], gy[i]);
     const ms = Float32Array.from(mag).sort(), threshold = Math.max(0.35, ms[Math.floor(0.9 * (n - 1))]); // (the strongest tenth, and only real edges)
+    const dir = new Int8Array(n).fill(-1);
     for (let i = 0; i < n; i++) {
       if (mag[i] < threshold) continue;
       const a = (Math.atan2(gy[i] * 0.6, gx[i]) * 180 / Math.PI + 180) % 180; // the light's direction; the edge runs across it
-      cells[Math.floor(i / cols)][i % cols] = a < 22.5 || a >= 157.5 ? '|' : a < 67.5 ? '/' : a < 112.5 ? '_' : '\\';
+      dir[i] = a < 22.5 || a >= 157.5 ? 0 : a < 67.5 ? 1 : a < 112.5 ? 2 : 3;
+    }
+    // (clean: a stroke only where the line goes on, a neighbour along its own run with the same direction or one next to it: on a
+    // texture (the sea, a knit, skin) the strongest tenth is loose single cells, which read as scribble, not outline)
+    const along = [[[0, -1], [0, 1]], [[1, -1], [-1, 1]], [[-1, 0], [1, 0]], [[-1, -1], [1, 1]]]; // | / _ \ : the cells the line runs to
+    const goesOn = (i) => {
+      const x = i % cols, y = Math.floor(i / cols), d = dir[i];
+      return along[d].some(([dx, dy]) => {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= cols || yy >= rows) return false;
+        const e = dir[yy * cols + xx];
+        return e >= 0 && (e === d || (e + 1) % 4 === d || (d + 1) % 4 === e);
+      });
+    };
+    for (let i = 0; i < n; i++) {
+      if (dir[i] < 0 || (clean && !goesOn(i))) continue;
+      cells[Math.floor(i / cols)][i % cols] = '|/_\\'[dir[i]];
     }
   }
   return cells.map((r) => r.join(''));

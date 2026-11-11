@@ -223,7 +223,8 @@ export function createDominoes() {
       }
     },
     // col: the theme's colours; t: now (s). What is drawn is the blocks as the steps have left them.
-    draw(ctx, { blocks, vg, W, H, col, level, t, ahead, rows }) {
+    // solid: a picture is behind them (a scene, the Earth...): drawn nearly opaque, as they read in the reels, not see-through grey on it
+    draw(ctx, { blocks, vg, W, H, col, level, t, ahead, rows, solid = false }) {
       const { span, stepW, laneH, mid, U } = layoutOf(W, H, ahead, rows);
       if (rows !== orderOf) { order = Object.keys(rows).filter((k2) => k2 !== 'n').sort((a, b) => rows[a] - rows[b]); orderOf = rows; }
       const X = (g) => mid + (g - vg) * stepW;
@@ -261,12 +262,14 @@ export function createDominoes() {
         for (const b of mine) {
           for (const p of b.posts) {
             const flash = p.hit !== undefined ? Math.max(0, 1 - (t - p.hit) / 0.3) : 0;
-            ctx.globalAlpha = (p.ghost ? 0.28 : 0.35 + 0.65 * Math.max(level[b.lane], p.st ? 1 : 0)) * (lane === 'chords' ? 0.8 : 1);
+            const on = Math.max(level[b.lane], p.st ? 1 : 0);
+            ctx.globalAlpha = solid ? (p.ghost ? 0.5 : 0.85 + 0.15 * on) * (lane === 'chords' ? 0.92 : 1)
+              : (p.ghost ? 0.28 : 0.35 + 0.65 * on) * (lane === 'chords' ? 0.8 : 1);
             box(ctx, X(at(p)), p.base, p.w, p.h, p.w, p.th, tone, 0.35 * flash, line, true, p.z || 0);
           }
           const sl = b.slab;
           if (sl) {
-            ctx.globalAlpha = 0.35 + 0.65 * level[b.lane];
+            ctx.globalAlpha = solid ? 0.85 + 0.15 * level[b.lane] : 0.35 + 0.65 * level[b.lane];
             if (sl.glow > 0.02) { ctx.shadowColor = `rgba(${col.fg.join(',')},${0.5 * sl.glow})`; ctx.shadowBlur = U * 0.22 * sl.glow; }
             box(ctx, X(b.g) - p0(b).w * 0.4, sl.base - sl.y + sl.dy, (b.len - 0.1) * stepW, sl.t, p0(b).w, 0, tone, 0.2 * sl.glow, line, false);
             ctx.shadowBlur = 0;

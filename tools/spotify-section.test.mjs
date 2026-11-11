@@ -251,6 +251,30 @@ test('play can start a collection at a song by its address, which holds where a 
   });
 });
 
+// (the liked songs had no context: they went as a list of the songs the page had (50 at first, 100 at most), and when that ran out
+// Spotify's own radio took over. Spotify plays them as one list under spotify:user:<id>:collection (not in its documentation; some
+// accounts refuse it), so that is asked first, from the song, and the old list is the fall-back. Colin, Nov 9)
+test('the liked songs play as their own context from that song; where Spotify refuses that context, as the list of songs they were', async () => {
+  await withFake(async (fake, web) => {
+    const uris = LIKED.slice(0, 3).map((t) => `spotify:track:${t.id}`);
+    const plays = () => fake.seen.filter((r) => r.method === 'PUT' && r.path === '/v1/me/player/play');
+    assert.deepEqual(await web.play({ liked: true, tracks: uris, index: 1 }), { device: "Colin's MacBook" });
+    assert.deepEqual(plays().at(-1).body, { context_uri: 'spotify:user:colin:collection', offset: { uri: uris[1] } });
+    fake.state.collectionRefused = true;
+    const before = plays().length;
+    assert.deepEqual(await web.play({ liked: true, tracks: uris, index: 1 }), { device: "Colin's MacBook" });
+    assert.deepEqual(plays().slice(before).map((r) => r.body), [{ context_uri: 'spotify:user:colin:collection', offset: { uri: uris[1] } }, { uris, offset: { position: 1 } }], 'refused, then the list');
+    fake.state.collectionRefused = false;
+    fake.state.playFails = { status: 403, reason: 'PREMIUM_REQUIRED', message: 'Premium required' };
+    const n = plays().length;
+    await assert.rejects(web.play({ liked: true, tracks: uris, index: 0 }), /needs Premium/);
+    assert.equal(plays().length, n + 1, 'no Premium is no Premium: not asked again as a list');
+    fake.state.playFails = null;
+    assert.equal(fake.seen.filter((r) => r.path === '/v1/me').length, 1, 'whose collection it is, asked once');
+    await assert.rejects(web.play({ liked: 'yes', tracks: uris, index: 0 }), /Spotify songs|liked/);
+  });
+});
+
 test('the failures a listener meets come back in words: no Premium, no open player, a slow-down, an expired token (one fresh try) and a connection that is no longer', async () => {
   await withFake(async (fake, web) => {
     const context = `spotify:album:${ALBUMS[0].id}`;
@@ -261,6 +285,16 @@ test('the failures a listener meets come back in words: no Premium, no open play
     await assert.rejects(web.play({ context }), /Open Spotify on this computer and play anything once/);
     fake.state.devices = [{ id: 'd', name: 'phone', is_active: false, is_restricted: false }];
     await assert.rejects(web.play({ context }), /Open Spotify on this computer/, 'a device that is not the active one is not the one to play on');
+    // (the Spotify app open on this computer but idle since it started: Spotify lists it, not active, and takes a play sent to it.
+    // "play anything once, then try again" was a step the listener had no need to take. Nov 9 polish pass)
+    const idle = { id: 'mac', name: 'Colin\'s MacBook', is_active: false, is_restricted: false, type: 'Computer' };
+    fake.state.devices = [{ id: 'd', name: 'phone', is_active: false, is_restricted: false, type: 'Smartphone' }, idle];
+    assert.deepEqual(await web.play({ context }), { device: 'Colin\'s MacBook' }, 'the one computer, idle, is the one to play on');
+    assert.equal(fake.seen.at(-1).query.device_id, 'mac');
+    fake.state.devices = [idle, { ...idle, id: 'pc', name: 'PC' }];
+    await assert.rejects(web.play({ context }), /Open Spotify on this computer/, 'two idle computers: which one is not Toaster\'s guess');
+    fake.state.devices = [{ ...idle, is_restricted: true }];
+    await assert.rejects(web.play({ context }), /Open Spotify on this computer/, 'nor one Spotify says takes no commands');
     fake.state.limit = 1;
     await assert.rejects(web.list({ list: 'playlists' }), /slow down: try again in 7 s/);
   });
@@ -542,8 +576,8 @@ test('what Enter asks main to play: a collection from its start, a song from tha
     assert.deepEqual(L.spotifyPlay(pRows.filter((r) => r.kind === 'strack')[4], lists.liked), { context: `spotify:playlist:${playlist.id}`, track: `spotify:track:${PLAYLISTS[0].tracks[4].id}` });
     const likedRows = L.spotifyRows(model(lists, { open: 'liked:liked' }));
     const likedColl = folded.find((r) => r.group === 'liked' && r.kind === 'coll');
-    assert.deepEqual(L.spotifyPlay(likedColl, lists.liked), { tracks: LIKED.map((t) => `spotify:track:${t.id}`), index: 0 });
-    assert.deepEqual(L.spotifyPlay(likedRows.filter((r) => r.kind === 'strack')[5], lists.liked), { tracks: LIKED.slice(5).map((t) => `spotify:track:${t.id}`), index: 0 }, 'from that one on');
+    assert.deepEqual(L.spotifyPlay(likedColl, lists.liked), { liked: true, tracks: LIKED.map((t) => `spotify:track:${t.id}`), index: 0 });
+    assert.deepEqual(L.spotifyPlay(likedRows.filter((r) => r.kind === 'strack')[5], lists.liked), { liked: true, tracks: LIKED.slice(5).map((t) => `spotify:track:${t.id}`), index: 0 }, 'from that one on');
     assert.equal(L.spotifyPlay(likedColl, undefined), null, 'not in yet: nothing to play');
     for (const kind of ['link', 'saved', 'client', 'more', 'disconnect']) assert.equal(L.spotifyPlay({ kind }, lists.liked), null, kind);
     const hundred = { items: Array.from({ length: 130 }, (_, i) => ({ uri: `spotify:track:${idOf(`t${i}`)}` })), total: 130 };
@@ -554,7 +588,7 @@ test('what Enter asks main to play: a collection from its start, a song from tha
     assert.deepEqual(bodies[0], { context_uri: `spotify:album:${album.id}`, offset: { position: 0 } });
     assert.deepEqual(bodies[1], { context_uri: `spotify:album:${album.id}`, offset: { uri: `spotify:track:${ALBUMS[2].tracks[2].id}` } });
     assert.deepEqual(bodies[2], { context_uri: `spotify:playlist:${playlist.id}`, offset: { uri: `spotify:track:${PLAYLISTS[0].tracks[4].id}` } });
-    assert.deepEqual(bodies[3], { uris: LIKED.slice(5).map((t) => `spotify:track:${t.id}`), offset: { position: 0 } });
+    assert.deepEqual(bodies[3], { context_uri: 'spotify:user:colin:collection', offset: { uri: `spotify:track:${LIKED[5].id}` } }, 'the liked songs play as their own collection, from that song');
   });
 });
 

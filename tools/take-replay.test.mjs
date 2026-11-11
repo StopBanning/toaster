@@ -95,7 +95,7 @@ test('a take keeps D\'s drops and the toggles a scene doesn\'t hold, and the cop
   assert.match(replaySrc, /else if \(c\.drop\) \{ eng\.lastDrop = c\.t; eng\.on\.drop\(true\); \}/, 'D, at its own time, as the key does it (pressed)');
   assert.match(app, /    if \(takeRec\.id\) takeRec\.changes\.push\(\{ t, drop: true \}\);/, 'a drop during the take is noted');
   assert.match(app, /\.\.\.\(takeRec\.dropsAt \|\| \[\]\)\.filter\(\(x\) => x >= soundAt\)\.map\(\(x\) => \(\{ t: x, drop: true \}\)\)/, 'and the run-up\'s');
-  assert.match(app, /const TAKE_EXTRAS = \['orb', 'card', 'cardV', 'cardBig', 'hushed', 'drop', 'crt', 'look', 'worldLook', 'chromeCollage', 'spaghettiKind', 'spectroTheme'\];/);
+  assert.match(app, /const TAKE_EXTRAS = \['orb', 'glass', 'card', 'cardV', 'cardBig', 'hushed', 'drop', 'crt', 'look', 'worldLook', 'chromeCollage', 'spaghettiKind', 'spectroTheme'\];/);
   assert.match(app, /return \{ \.\.\.rest, \.\.\.Object\.fromEntries\(TAKE_EXTRAS\.map\(\(k\) => \[k, state\[k\]\]\)\) \};/, 'noted with the scene\'s keys');
   assert.match(app, /presetSetters,\n  orb: \(on\) => setOrb\(on\)/, 'and each has a setter in the copy, so none is missing');
   assert.match(app, /, takeSetters\)\.catch\(\(\) => false\);/);

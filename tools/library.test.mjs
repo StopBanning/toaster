@@ -323,7 +323,7 @@ test('a scene\'s picture is the scene it shows, or the background\'s own, and th
   assert.equal(L.scenePicture({ visual: 'spaghetti' }), 'thumbs/spaghetti-snakes.webp');
   assert.equal(L.scenePicture({ visual: 'warp' }), null);
   assert.equal(L.scenePicture({}), null);
-  for (const scene of ['auto', 'lake', 'sea', 'fire', 'snow', 'city', 'garden', 'falls', 'halloween', 'sharks', 'festival', 'koi', 'space', 'eye']) assert.ok(has(L.scenePicture({ visual: 'scenery', sceneryScene: scene })), scene);
+  for (const scene of ['auto', 'lake', 'sea', 'fire', 'snow', 'city', 'garden', 'sharks', 'festival', 'koi', 'space', 'eye']) assert.ok(has(L.scenePicture({ visual: 'scenery', sceneryScene: scene })), scene);
   for (const visual of ['chrome', 'cuts', 'fire', 'off', 'rain', 'spectrogram', 'worlds', 'spaghetti']) assert.ok(has(L.scenePicture({ visual })), visual);
   for (const p of PRESETS) assert.ok(has(p.picture), p.id);
 });
@@ -569,4 +569,49 @@ test('a missing custom look survives storage and reports once on load, then rest
   assert.match(reports[0], /custom: evening/);
   assert.deepEqual(L.readScenes(JSON.parse(JSON.stringify([scene])), DOMAINS), [scene]);
   assert.equal(L.sceneForLoad(scene, { ...DOMAINS, look: [...DOMAINS.look, 'custom: evening'] }).settings.look, 'custom: evening');
+});
+
+test("the cover's clean strokes: a long edge keeps its outline, a texture's loose single strokes go (Colin, Nov 8: 'a little wonky')", () => {
+  // a hard vertical edge down a big grid: its stroke runs on cell to cell, so clean keeps every one of them
+  const edge = picture(60, 50, (x) => (x < 0.5 ? 20 : 235));
+  const plain = L.coverGlyphs(edge, 60, 50), clean = L.coverGlyphs(edge, 60, 50, { clean: true });
+  assert.ok(count(plain.join(''), '|') > 30);
+  assert.equal(count(clean.join(''), '|'), count(plain.join(''), '|'), 'a real outline loses nothing');
+  // a speckle (the sea, a knit): bright single pixels scattered on dark, each its own strong spot; strokes there stand alone
+  const speckle = picture(60, 50, (x, y) => ((Math.round(x * 119) * 7 + Math.round(y * 99) * 13) % 23 === 0 ? 255 : 30));
+  const sPlain = L.coverGlyphs(speckle, 60, 50).join(''), sClean = L.coverGlyphs(speckle, 60, 50, { clean: true }).join('');
+  const strokes = (s) => [...s].filter((c) => '|/_\\'.includes(c)).length;
+  assert.ok(strokes(sClean) < strokes(sPlain) / 2, `the loose strokes go (${strokes(sPlain)} -> ${strokes(sClean)})`);
+});
+
+test("the cover's local contrast: a mid-tone face on a background of about its brightness comes apart; a black ground by a bright edge gets no halo", () => {
+  // a mid-grey square (0.45) on a mid-grey ground (0.55): the whole-cover stretch barely parts them, the local one does
+  const face = picture(60, 50, (x, y) => (x > 0.3 && x < 0.7 && y > 0.3 && y < 0.7 ? 100 : 140) + (x * 997 % 7));
+  const lv = (rows, x, y) => level(rows[y][x]);
+  const g0 = L.coverGlyphs(face, 60, 50, { edges: false, lift: 0 }), g1 = L.coverGlyphs(face, 60, 50, { edges: false, lift: 0, local: 0.5 });
+  assert.ok(Math.abs(lv(g1, 30, 25) - lv(g1, 30, 6)) >= Math.abs(lv(g0, 30, 25) - lv(g0, 30, 6)), 'the inside and the ground are at least as far apart');
+  // black with a bright bar: the black right beside the bar stays empty (no halo), with local on
+  const bar = picture(60, 50, (x) => (x > 0.48 && x < 0.52 ? 255 : 0));
+  const b1 = L.coverGlyphs(bar, 60, 50, { edges: false, lift: 0, local: 0.5 });
+  for (const x of [22, 25, 34, 37]) assert.equal(b1[25][x], ' ', `the black at column ${x} stays black`);
+  // and with neither option a big cover is drawn exactly as before
+  assert.deepEqual(L.coverGlyphs(bar, 60, 50), L.coverGlyphs(bar, 60, 50, { local: 0, clean: false }));
+});
+
+test("the cover's colour: a figure that stands out by colour, not light, comes apart from its ground; greys draw as before", () => {
+  // a red square (200, 0, 0: light 0.17) on a grey ground of the same light (43), a white band at the top so the cover has a range
+  const cols = 60, rows = 50;
+  const redOnGrey = Uint8ClampedArray.from(Array.from({ length: cols * 2 * rows * 2 }, (_, i) => {
+    const x = (i % (cols * 2)) / (cols * 2 - 1), y = Math.floor(i / (cols * 2)) / (rows * 2 - 1);
+    if (y < 0.1) return [255, 255, 255, 255];
+    return x > 0.3 && x < 0.7 && y > 0.4 && y < 0.8 ? [200, 0, 0, 255] : [43, 43, 43, 255];
+  }).flat());
+  const lv = (g, x, y) => level(g[y][x]);
+  const opts = { edges: false, lift: 0 };
+  const plain = L.coverGlyphs(redOnGrey, cols, rows, opts), colour = L.coverGlyphs(redOnGrey, cols, rows, { ...opts, colour: 1 });
+  assert.equal(lv(plain, 30, 30), lv(plain, 10, 30), 'by light alone the red square and its ground are one glyph');
+  assert.ok(lv(colour, 30, 30) > lv(colour, 10, 30) + 2, `with colour the square is clearly lighter (${lv(colour, 30, 30)} vs ${lv(colour, 10, 30)})`);
+  // a grey cover is drawn exactly the same with colour on
+  const grey = picture(cols, rows, (x, y) => 30 + 200 * x * y);
+  assert.deepEqual(L.coverGlyphs(grey, cols, rows, { clean: true, local: 0.5, colour: 1 }), L.coverGlyphs(grey, cols, rows, { clean: true, local: 0.5 }));
 });

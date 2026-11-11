@@ -76,7 +76,6 @@ const ALLOWED = {
   },
   'renderer/app.js': {
     'Date.now': 'the recorder\'s watchdog: how long the file has made no progress, in real time',
-    'new Date': 'the month (Halloween\'s scene only in October), not a time of the picture',
     'Math.random': 'which track the library\'s shuffle starts a queue on (what plays, not what is drawn)',
     requestAnimationFrame: 'the frame loop itself, and the recorder\'s wait for a frame: the screen asking to be drawn (what a drawn frame shows is the clock\'s)',
   },
@@ -85,6 +84,7 @@ const ALLOWED = {
   'renderer/spectro.js': { 'performance.now': 'how long its program took to compile and settle (real time, for the driver)' },
   'renderer/worlds.js': { 'performance.now': 'how long a look\'s program took to compile and settle (real time, for the driver)' },
   'renderer/spaghetti.js': { 'performance.now': 'how long the noodles took to work out (the quality governor) and how long its programs took to compile (real time)' },
+  'renderer/gl-pool.js': { 'performance.now': 'how long since a layer was last on screen and since the browser was last asked for its context back (real time, for the browser: no picture reads it)' },
   'renderer/clips.js': { 'performance.now': 'the drop clips\' recorder: how long it has been recording a live stream (real time)' },
   'renderer/demo.js': { 'Math.random': 'the noise and the start of the demo beat\'s drum sounds: audio the demo plays, not a picture' },
   'renderer/handlog.js': { 'new Date': 'the hand log\'s header: when it was started' },

@@ -68,6 +68,7 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
     drop: 0, // the next n Web API calls get no answer at all: the connection is cut (a network that is gone)
     lastAuthorize: null, // { state, redirect } of the last sign-in page asked for
     playbackTrack: LIKED[0], playbackPlaying: true, playbackPosition: 92000, playbackActions: {},
+    collectionRefused: false, // a play of the liked songs' own context (spotify:user:<id>:collection) is refused 400, as some accounts' is
     tokens: 0, // access tokens given so far: the one in force is fake-access-<this>
   };
   const seen = [], challenges = new Map();
@@ -170,9 +171,11 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
         const step = url.pathname.endsWith('next') ? 1 : -1, at = LIKED.indexOf(state.playbackTrack);
         state.playbackTrack = LIKED[(at + step + LIKED.length) % LIKED.length]; state.playbackPosition = 0; return send(res, 204, null);
       }
+      if (req.method === 'GET' && url.pathname === '/v1/me') return ok({ id: 'colin', display_name: 'colin', uri: 'spotify:user:colin', type: 'user' });
       if (req.method === 'GET' && url.pathname === '/v1/me/player/devices') return ok({ devices: state.devices });
       if (req.method === 'PUT' && url.pathname === '/v1/me/player/play') {
         if (state.playFails) return send(res, state.playFails.status, { error: { status: state.playFails.status, message: state.playFails.message || 'refused', reason: state.playFails.reason } });
+        if (state.collectionRefused && /:collection$/.test(record.body?.context_uri || '')) return send(res, 400, { error: { status: 400, message: 'Non supported context uri' } });
         state.playbackPlaying = true;
         return send(res, 204, null);
       }

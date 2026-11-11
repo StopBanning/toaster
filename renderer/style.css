@@ -231,7 +231,7 @@ body:not(.glass-on) .ln .txt, body:not(.glass-on) #code .panel { border-radius: 
 }
 .panel .cur, .panel .lab.on { background: var(--accent); color: var(--bg); }
 .panel .dim { color: var(--dim); }
-#roll.cut { visibility: hidden; } /* (no room for all of it: see fitRoll) */
+#code > .cut { visibility: hidden; } /* (no room for all of it: a line or a panel the window's foot or the player bar would cut, see fitRoll) */
 #sys { position: fixed; z-index: 2; top: 48px; right: 24px; margin: 0; font-size: calc(var(--size) * .58); }
 #sys[hidden] { display: none; } /* (.panel's inline-block would otherwise keep it up, an empty box in the corner) */
 body.card-on #sys { right: 348px; }
@@ -320,6 +320,8 @@ header > button:hover, header > button:focus-visible, header > button.on { posit
 .drop button.on { background: var(--fg); color: var(--bg); }
 footer { bottom: 0; height: 32px; background: linear-gradient(transparent, var(--bg)); }
 body.live header, body.live footer { opacity: .14; }
+/* ...and back to full strength while the mouse is moving (body.awake, app.js): someone looking for a button finds the bar */
+body.live.awake header, body.live.awake footer { opacity: 1; }
 body.clean header, body.clean footer { opacity: 0 !important; }
 /* Z: the code hidden, just the visuals (still laid out, so it shows again as it stands) */
 body.nocode #code, body.nocode #err { visibility: hidden; }
@@ -339,6 +341,19 @@ body.recording header:hover button { cursor: pointer !important; }
 #notice { position: fixed; left: 16px; bottom: 44px; z-index: 50; max-width: calc(100% - 32px); padding: 10px 14px; font-size: 13px;
   background: var(--bg); color: var(--fg); border: 1px solid var(--fg); box-shadow: 4px 4px 0 var(--faint); }
 #notice button { margin-left: 8px; }
+/* A round's strip (app.js ROUNDS): every choice of the key just pressed, the one picked lit, over the footer for a moment.
+   Out of a recording and the clean look, as the bars are; under the CRT (#tube), so the old TV has it too. */
+#strip { position: fixed; left: 50%; bottom: calc(44px + var(--player-h, 0px)); transform: translateX(-50%); z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 4px;
+  width: max-content; max-width: calc(100vw - 24px); padding: 6px 10px; font-size: 13px; background: var(--bg); color: var(--fg); border: 1px solid var(--fg); box-shadow: 4px 4px 0 var(--faint); -webkit-app-region: no-drag; }
+/* (a message or the first-run hint is on the same line at the bottom: the strip goes above them, found on the Nov 10 walk) */
+body:has(#notice:not([hidden]), #first-run-hint:not([hidden])) #strip { bottom: calc(96px + var(--player-h, 0px)); }
+#strip[hidden], body.clean #strip, body.recording #strip, body.widget #strip { display: none; }
+#strip .word { margin-right: 6px; color: var(--dim); white-space: nowrap; }
+#strip .back { margin-left: 6px; color: var(--dim); font-size: 11px; white-space: nowrap; }
+#strip kbd { display: inline-block; border: 1px solid var(--dim); padding: 0 5px; font: inherit; color: var(--fg); }
+#strip button { border-color: transparent; padding: 2px 7px; font-size: inherit; white-space: nowrap; }
+#strip button.on { background: var(--fg); color: var(--bg); }
+#strip button.more { color: var(--dim); }
 .tag { letter-spacing: .1em; text-transform: uppercase; padding: 2px 8px; border: 1px solid currentColor; white-space: nowrap; }
 .tag.on { background: var(--fg); color: var(--bg); }
 .appname { opacity: .7; white-space: nowrap; }
@@ -888,6 +903,7 @@ body.widget:hover #w-back { opacity: 1; }
 /* The picker under the background button (V still goes round them): a picture of each scene and background */
 #vis-menu { padding: 8px 10px 2px; width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 96px); overflow-y: auto; }
 #vis-menu .pick-head { padding: 2px 2px 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+#vis-menu .pick-sub { padding: 0 2px 4px; font-size: 11px; opacity: .6; }
 #vis-menu .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
 #vis-menu button.tile { display: flex; flex-direction: column; gap: 4px; padding: 4px; border: 1px solid var(--faint); text-align: left; white-space: normal; }
 #vis-menu button.tile img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; background: var(--faint); }
@@ -903,6 +919,21 @@ body.widget:hover #w-back { opacity: 1; }
 #command-results button[aria-selected=true] { background: var(--hl-bg); }
 #command-results kbd, .palette-empty { color: var(--dim); font: inherit; }
 /* the help's first row: the search, and the bug report */
+/* The help's pages (app.js helpTab): keys, settings, what's new, how it works. Everything stays where it was in the page;
+   a page shows its own pieces and hides the others'. It was one scroll of all four. */
+#help { height: min(640px, calc(100vh - 32px)); } /* (one height for every page: the tabs stay under the mouse from one to the next) */
+#help .help-tabs { display: flex; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--fg); }
+#help .help-tabs button { border-color: transparent; border-bottom: 0; margin-bottom: -1px; padding: 6px 14px; min-height: 34px; }
+#help .help-tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); }
+#help[data-tab="keys"] :is(.t-how, .calm, tr.news, #news-head, tr.t-set),
+#help[data-tab="settings"] :is(.t-how, .rounds-note, .keys-note, tr:not(.t-set)),
+#help[data-tab="new"] :is(.t-how, .calm, .rounds-note, .keys-note, tr:not(.news):not(#news-head)),
+#help[data-tab="how"] :is(.calm, .rounds-note, .keys-note, table) { display: none; }
+#help[data-tab="settings"] tr.t-set td:first-child { display: none; }
+#help[data-tab="settings"] tr.t-set td { padding: 0; line-height: 1.5; }
+#help[data-tab="settings"] tr.t-set label { display: block; padding-left: 21px; text-indent: -21px; cursor: pointer; } /* (as the .calm ones above it: the box, then the words in a column) */
+#help[data-tab="settings"] tr.t-set input { margin: 0; vertical-align: -2px; accent-color: var(--fg); }
+#help[data-tab="new"] #news-head th { padding-top: 0; }
 #help .help-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
 #help .help-tools button { min-height: 36px; }
 
@@ -1136,6 +1167,12 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-onspot .lib-logo { flex: none; width: max(21px, 1.9em); height: max(21px, 1.9em); }
 #library button.lib-onspot { cursor: pointer; }
 #library button.lib-onspot:hover, #library button.lib-onspot:focus-visible { color: var(--fg); }
+#library .lib-head > div:has(> .lib-head-acts) { flex: 1; min-width: 0; }
+#library .lib-head-acts { display: flex; align-items: center; gap: 1em; margin-top: .5em; }
+#library .lib-head-acts .lib-onspot { margin-left: 0; }
+#library .lib-meta .lib-said { color: var(--fg); }
+#library .lib-play { flex: none; padding: .35em .9em; border: 1px solid var(--fg); border-radius: 999px; background: var(--fg); color: var(--bg); font: inherit; font-size: .83em; font-weight: 700; letter-spacing: .02em; cursor: pointer; }
+#library .lib-play:hover, #library .lib-play:focus-visible { background: transparent; color: var(--fg); }
 #library .lib-label { margin-top: .5em; color: var(--fg); font-weight: 700; letter-spacing: .04em; }
 #library .lib-list > .lib-label:first-child { margin-top: 0; }
 #library .lib-step { display: flex; gap: .67em; align-items: baseline; margin-bottom: .25em; }

@@ -10,7 +10,7 @@ const updates = require('./update.js');
 // ten minutes (null when it can't be had). (Kept out of update.js: a change there only shows at the next
 // update.)
 const REPO_PAGE = 'https://github.com/StopBanning/toaster';
-// The Earth's views (V, renderer/earth.js): NASA's footage from the space station, 6-25 MB a clip, so not in the app.
+// The Earth's views (V, renderer/earth.js): NASA's footage from the space station, 4-25 MB a clip, so not in the app.
 // Each comes down from the site the first time it's picked and is kept in the settings folder, so after that it
 // plays offline. Only these files, each checked against its SHA-256 (a damaged or changed one is fetched again).
 // TOASTER_MEDIA_BASE points it elsewhere for testing.
@@ -20,6 +20,21 @@ const EARTH_SUMS = {
   'earth-city-lights': 'c1e4342f92a1d8ca8d722b217f107db4a10dbea36fbd2cacc3d6cd8129ec1cf5',
   'earth-dawn': 'ca3f6b0f8a84aed35a11d5fb6caebbd4eb2b9eec3f65d762d721f41995296a8a',
   'earth-day': '40d0fd820153b5008e1a0bbb8d9b35e5b732bf0f2aa81758b1764c3a39c32672',
+  'earth-aurora-arm': 'c0cc0400bd2c301ecd2f32d9c375063a5fdcfcdb05b0c41e87eeb4ab9d5f1dab',
+  'earth-aurora-ribbon': '3a181b389bbcc3ce75fd783aa5540ce24f9d51e3caaf1ae472725b7ff970eeba',
+  'earth-blue-ocean': '882c473e3efb15fc437abb85375bf569260212cc2c2a48d2dde39c166d37008c',
+  'earth-capsule': '15f617d4830b092ddefde1647ace085167de8d3a2f557274f9924e87e7894931',
+  'earth-cargo-ship': '41f206a444c82ffddc5bfcf6e7c0a58e3546e3d460c03662447aaf246da49773',
+  'earth-desert-coast': '70ee04de7bffa5cdd965b7192d3e3188b84527771db8d0a68b897cc3fe08c535',
+  'earth-golden-coast': 'c6c1af8a0080ff96d6d5fa383002b424aeee3cc72e96a710a4d7b2f03e57ffd6',
+  'earth-hurricane': 'cab142a1d0b286482e696926245c1459072edf6aaa42e54665684b3431b39db5',
+  'earth-moonlit-clouds': '862868e7f60e81401f7c5c68f2d5693af18606ab3e035ad4d6124dabef256cb1',
+  'earth-porthole': '8f1d3721bdf95005936b93114281b3f29299697739c5c69d703de53cc0b4c98d',
+  'earth-sahara': '8eacadb5e6f252a447aad86e88f5e282104c01b0095b9b10e6ee0d9e727c3682',
+  'earth-snow-mountains': '9f379df9c862fe5de9ee85451feda781c9a23a2f7cf9c64b73dd28ed7579912b',
+  'earth-sun-glint': '5d14d35c812cfec6e83eb3b6983a6bfb218993c1d85640275cbabca290780555',
+  'earth-sunrise-star': '57fd57829364ace1e5200d2afd5ea2695f6e96cd7a8fef2282e70d12a3a6f2ee',
+  'earth-whole-earth': '6d4ec8424ccb5a83d5178a990203d07edd2a25de5b2a2d6088f704223ca47910',
   'backrooms-walk': '3ce8b00f0de2d739ca42114def8644715eeaa57b23e5d00f3dce24f40814ca26', // (the backrooms, V: our own walk, renderer/backrooms.js)
 };
 const EARTH_BASE = process.env.TOASTER_MEDIA_BASE || 'https://toaster.locust.lol/media/';
@@ -180,6 +195,12 @@ let widget = null, widgetAt = null; // the desktop handheld (W with the handheld
 // else busy on the PC can stall the listening for most of a second at a time. Keep it at normal
 // priority; listening alone costs about 2% of one core.
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
+// Chromium lets a page keep 16 WebGL pictures alive and kills the oldest for good when a 17th is made. Toaster has about twenty
+// (each background, the looks, the orb, the glass, the camera's effects, the handheld's screens), each made the first time it is
+// shown: a session that tried most of them (one round of V, the camera and its effects, the handheld) lost one, and that
+// background went black, or the looks stopped, until Toaster was started again (found on the Nov 10 walk: tools/gl-contexts.test.mjs).
+// Room for all of them at once, with some to spare; one that is off costs memory, not time.
+app.commandLine.appendSwitch('max-active-webgl-contexts', '32');
 
 // Keep the scenery's compiled shaders between launches. Chromium (Electron 44, Chrome 156 too)
 // writes a compiled program to the shader cache on disk (GPUCache, in the settings folder) only if
@@ -869,9 +890,8 @@ function setUpIpc() {
     fs.mkdirSync(dir, { recursive: true });
     const safe = String(name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'song';
     const base = freeBase(path.join(dir, `${safe} ${stamp()}`), ['.mid', '.strudel.js']);
-    fs.writeFileSync(base + '.mid', Buffer.from(midi), { flag: 'wx' });
-    if (typeof code === 'string' && code) fs.writeFileSync(base + '.strudel.js', code, { encoding: 'utf8', flag: 'wx' });
-    return base + '.mid';
+    // (both or neither: a failed code file takes the MIDI file back out, helpers/save-pair.cjs)
+    return require('./helpers/save-pair.cjs').savePair(base, Buffer.from(midi), code);
   });
   // The library (above): the folder in force, choosing another (the system's dialog), what the last scan kept, a scan (its progress
   // goes to the page that asked), and the bytes of one audio file of that folder, which helpers/library.cjs refuses unless it is

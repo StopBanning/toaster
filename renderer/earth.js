@@ -1,18 +1,38 @@
 // The Earth (V): the planet from the space station, as its crews filmed it in 4K and NASA gave it to everyone (public
-// domain): the aurora over the clouds on the night side, the northern lights along the limb, a continent's city
-// lights, dawn coming up the curve, and the day side's clouds over the mountains. A moves on to the next. Each clip is
-// a loop (its last seconds crossfade into its first), turned upright (the crews mostly film with the Earth overhead)
-// and cropped clear of the station.
+// domain). Twenty views: the night side (auroras, city lights, moonlit clouds, dawn coming up the curve), the day side
+// (deserts, oceans, mountains, a hurricane through the window, the sun's glint on the sea) and a few of the station's
+// own sights (the whole Earth from the cupola, the Earth in a porthole, the sun rising as a star, a capsule arriving, a
+// cargo ship on the arm). A moves on to the next. Each clip is a loop (its last seconds crossfade into its first),
+// turned upright (the crews mostly film with the Earth overhead) and cropped clear of the station, unless the station
+// is the picture.
 //
-// The song lights it only a little, so it stays a calm place to look: the bass brightens the auroras' green, the kick
-// sets the cities twinkling, a drop opens the exposure for a moment. The day side breathes with the bass, and that's all.
+// The song lights it: at night the bass brightens the auroras' green and the kick sets the cities twinkling; by day the
+// kick catches the brightest things (cloud tops, snow, the sun's glint) and the bass lifts the whole picture a little;
+// a drop is a camera hit, a small push in and a flash that fall away over a beat or two. With "fewer flashes" on, the
+// day side only breathes with the bass and a drop only opens the exposure a little, as before.
 //
-// The clips aren't in the app (10-25 MB each): one comes down the first time it's picked. The web plays it from the
+// The clips aren't in the app (4-25 MB each): one comes down the first time it's picked. The web plays it from the
 // site; the app keeps a copy (window.nc.earthClip), so after that it plays offline. Until it's in, its poster shows.
 import { clock } from './clock.js';
 
-export const EARTH_CLIPS = ['aurora', 'northern lights', 'city lights', 'dawn', 'day'];
-const NIGHT = new Set(['aurora', 'northern lights', 'city lights', 'dawn']);
+// (the first five keep their places: a saved view is kept by name, and A's round starts as it did)
+export const EARTH_CLIPS = ['aurora', 'northern lights', 'city lights', 'dawn', 'day',
+  'golden coast', 'aurora ribbon', 'aurora arm', 'moonlit clouds',
+  'sahara', 'blue ocean', 'snow mountains', 'desert coast', 'sun glint', 'hurricane',
+  'whole earth', 'porthole', 'sunrise star', 'capsule', 'cargo ship'];
+// The picker's three shelves, and which light a view answers the song with (night: the aurora and the cities).
+export const EARTH_GROUPS = [
+  ['night', ['aurora', 'northern lights', 'aurora ribbon', 'aurora arm', 'city lights', 'golden coast', 'moonlit clouds', 'dawn']],
+  ['day', ['day', 'sahara', 'blue ocean', 'snow mountains', 'desert coast', 'sun glint', 'hurricane']],
+  ['from the station', ['whole earth', 'porthole', 'sunrise star', 'capsule', 'cargo ship']],
+];
+const NIGHT = new Set(EARTH_GROUPS[0][1]);
+// The tour's order ("all views": a new one every 8 bars): night, day and the station's sights in turn, so each change
+// is a change of light, and no two auroras or two deserts meet.
+export const EARTH_TOUR = ['aurora', 'sahara', 'moonlit clouds', 'whole earth', 'city lights', 'blue ocean', 'sunrise star',
+  'northern lights', 'snow mountains', 'capsule', 'golden coast', 'desert coast', 'porthole', 'aurora ribbon', 'sun glint',
+  'dawn', 'day', 'cargo ship', 'aurora arm', 'hurricane'];
+const KEEP_URLS = 4; // (clips held in memory at once: with twenty views, every one's bytes would be 300 MB)
 const file = (name) => 'earth-' + name.replace(/ /g, '-'); // ('northern lights' -> earth-northern-lights)
 const FADE_OUT = 0.5, FADE_IN = 1.2; // seconds, a clip changing: down to black, then up from it once the next one shows
 
@@ -28,7 +48,7 @@ const FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D uTex;
 uniform vec2 uRes, uTexSize;
-uniform float uFade, uKick, uBass, uDrop, uNight, uTime;
+uniform float uFade, uKick, uBass, uDrop, uHit, uCalm, uNight, uTime;
 in vec2 vUv;
 out vec4 o;
 uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
@@ -37,6 +57,7 @@ void main() {
   float ra = uRes.x / uRes.y, ta = uTexSize.x / uTexSize.y;
   vec2 uv = vUv;
   if (ra > ta) uv.y = (uv.y - 0.5) * ta / ra + 0.5; else uv.x = (uv.x - 0.5) * ra / ta + 0.5;
+  uv = (uv - 0.5) * (1.0 - 0.035 * uHit * (1.0 - uCalm)) + 0.5; // (a drop: the camera pushed in a little, easing back)
   vec3 c = texture(uTex, vec2(uv.x, 1.0 - uv.y)).rgb;
   if (uNight > 0.5) {
     // the aurora's green, brighter with the bass
@@ -49,9 +70,12 @@ void main() {
     float tw = float(pcg(cell.x ^ pcg(cell.y + uint(floor(uTime * 6.0)) * 0x9e3779b9u))) / 4294967295.0;
     c += c * city * (0.2 + 0.6 * tw) * uKick;
   } else {
+    // by day the kick catches the brightest things: cloud tops, snow, the sun and its glint on the sea
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c += c * smoothstep(0.45, 0.9, l) * 0.18 * uKick * (1.0 - uCalm);
     c *= 1.0 + 0.05 * uBass;
   }
-  c *= 1.0 + 0.18 * uDrop;
+  c *= 1.0 + 0.18 * uDrop + 0.4 * uHit * (1.0 - uCalm);
   o = vec4(c * uFade, 1.0);
 }`;
 
@@ -75,7 +99,7 @@ export function createEarth(canvas) {
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
-    for (const n of ['uTex', 'uRes', 'uTexSize', 'uFade', 'uKick', 'uBass', 'uDrop', 'uNight', 'uTime']) u[n] = gl.getUniformLocation(prog, n);
+    for (const n of ['uTex', 'uRes', 'uTexSize', 'uFade', 'uKick', 'uBass', 'uDrop', 'uHit', 'uCalm', 'uNight', 'uTime']) u[n] = gl.getUniformLocation(prog, n);
     tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
@@ -92,6 +116,11 @@ export function createEarth(canvas) {
       if (urls.has(n)) return urls.get(n);
       const bytes = await kept(file(n));
       if (!urls.has(n)) urls.set(n, URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' })));
+      // (the oldest let go, never the one showing or wanted: its kept copy is read again if it's come back to)
+      for (const [k, url] of urls) {
+        if (urls.size <= KEEP_URLS) break;
+        if (k !== n && k !== name && k !== wanted) { URL.revokeObjectURL(url); urls.delete(k); }
+      }
       return urls.get(n);
     }
     return new URL(`/media/earth/${file(n)}.mp4`, location.origin).href;
@@ -153,7 +182,7 @@ export function createEarth(canvas) {
       canvas.width = canvas.height = 0;
       shownAt = -1;
     },
-    draw(t, eng, { offset = 0 } = {}) {
+    draw(t, eng, { offset = 0, calm = false } = {}) {
       active = true;
       if (gl?.isContextLost()) return; // (its picture comes back when the context does)
       if (!ready) { if (!setup()) return; ready = true; posterUp = posterUp && 'new'; frameUp = false; }
@@ -190,6 +219,8 @@ export function createEarth(canvas) {
       gl.uniform1f(u.uKick, env(at - hit('bd'), 0.25));
       gl.uniform1f(u.uBass, env(at - bassAt, 0.4));
       gl.uniform1f(u.uDrop, env(at - (eng.lastDrop ?? -99), 0.9));
+      gl.uniform1f(u.uHit, env(at - (eng.lastDrop ?? -99), 0.3));
+      gl.uniform1f(u.uCalm, calm ? 1 : 0);
       gl.uniform1f(u.uNight, NIGHT.has(name) ? 1 : 0);
       gl.uniform1f(u.uTime, t);
       gl.drawArrays(gl.TRIANGLES, 0, 3);

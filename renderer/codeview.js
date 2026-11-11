@@ -13,6 +13,9 @@ const NEAR = {
   j: 'huikmn', k: 'jiolm', l: 'kop', m: 'njk', n: 'bhjm', o: 'iklp', p: 'ol', q: 'wa', r: 'edft', s: 'awedxz',
   t: 'rfgy', u: 'yhji', v: 'cfgb', w: 'qase', x: 'zsdc', y: 'tghu', z: 'asx',
 };
+// Compare entries by changing this constant; the committed text is always complete.
+const KICK_ENTRY = 'fast'; // 'instant' | 'fast'
+const KICK_REVEAL = 0.195;
 const TYPO_CHANCE = 0.03;
 // A slip (a closing ) or " left out, an error, then fixed): a chance on an edit to a code line,
 // but never within 45 seconds of the last one, or the show is all errors (lines change often).
@@ -157,6 +160,27 @@ export function createCodeView(ids) {
     if (L.shown !== L.target && typer.cur?.id !== L.id && typer.held?.cur.id !== L.id && !typer.queue.includes(L.id)) typer.queue.push(L.id);
   }
 
+  // Commit semantics and tokens together. The reveal only hides characters in the complete DOM;
+  // it never backspaces through a playing pattern. Other typing keeps its plan.
+  let kickEntry = null;
+  function kickTransaction(L, parts, t, exactToggle) {
+    if (typer.cur?.id === L.id) {
+      if (err) err.hidden = true;
+      typer.cur = typer.held?.cur || null;
+      typer.next = typer.held?.next || 0;
+      typer.held = null;
+    } else if (typer.held?.cur.id === L.id) typer.held = null;
+    typer.queue = typer.queue.filter((id) => id !== L.id);
+    L.el.classList.remove('slipped');
+    if (err && !typer.cur) err.hidden = true;
+    L.glide = null;
+    L.shown = L.target = L.want = parts.map((p) => p.text).join('');
+    L.parts = L.targetParts = parts;
+    // Exact underscore toggles remain immediate, including the second-drop path.
+    kickEntry = KICK_ENTRY === 'fast' && !exactToggle ? { t0: t, progress: 0 } : null;
+    finish(L);
+  }
+
   // Backspace over what changed, then type the new text, now and then hitting a wrong key first.
   function plan(L) {
     const a = L.shown, b = L.target;
@@ -225,10 +249,15 @@ export function createCodeView(ids) {
     L.spans = [];
     // the text from a to b, with the row breaks that fall in it (comments aren't broken up)
     const cuts = text.trimStart().startsWith('//') ? [] : wraps(text, cols);
-    const piece = (a, b) => {
+    const rawPiece = (a, b) => {
       let html = '', at = a;
       for (const c of cuts) if (c >= a && c < b) { html += esc(text.slice(at, c)) + WRAP; at = c; }
       return html + esc(text.slice(at, b));
+    };
+    const piece = (a, b) => {
+      const end = L.id === 'bd' && kickEntry ? Math.floor(text.length * kickEntry.progress) : text.length;
+      const split = clamp(end, a, b);
+      return rawPiece(a, split) + (split < b ? `<span data-kick-hidden style="visibility:hidden">${rawPiece(split, b)}</span>` : '');
     };
     if (typer.cur?.id === L.id) {
       const c = typer.cur.caret;
@@ -283,6 +312,12 @@ export function createCodeView(ids) {
       for (const id of ids) {
         const L = lines[id];
         const text = wanted[id].map((p) => p.text).join('');
+        // Head includes the mute state and pattern, but excludes cosmetic effects.
+        if (id === 'bd' && text !== L.target && head(text) !== head(L.target)) {
+          const exactToggle = text === '_' + L.target || L.target === '_' + text;
+          kickTransaction(L, wanted[id], t, exactToggle);
+          continue;
+        }
         if (text === L.target) { L.targetParts = wanted[id]; L.want = text; continue; }
         // only a slider moved, on a line that's typed in: it slides there
         if (L.target && text.includes('slider(') && unslid(text) === unslid(L.target) && (L.shown === L.target || L.glide) && !typing(L)) { slide(L, wanted[id], t); continue; }
@@ -296,6 +331,13 @@ export function createCodeView(ids) {
     },
 
     step(t) {
+      if (kickEntry) {
+        const k = Math.min(1, Math.max(0, (t - kickEntry.t0) / KICK_REVEAL));
+        kickEntry.progress = k;
+        render(lines.bd);
+        if (k < 1) return; // suspend, then resume the existing theatrical edit
+        kickEntry = null;
+      }
       // A mute or unmute doesn't wait for the line being typed (a long one, or a slip's pause before its fix): its _ goes
       // in at once and that line's typing picks up after it. (A drop's kick waited ~1.4 s behind the bass line's retyping
       // and its slip, though the engine had it back on the drop's second kick: Garrix "Animals", Nov 6.)
@@ -419,6 +461,7 @@ export function createCodeView(ids) {
 
     // A fresh start for a new song: wipe the screen and type everything again.
     clear() {
+      kickEntry = null;
       dice = clock.rng('typing', 0);
       typer.queue.length = 0;
       typer.cur = null;

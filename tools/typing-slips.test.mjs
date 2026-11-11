@@ -7,18 +7,18 @@ function view() {
   const element = () => ({ innerHTML: '', hidden: true, style: { setProperty() {} }, offsetWidth: 100, offsetHeight: 20,
     classList: { toggle() {}, remove() {}, add() {} }, querySelector: () => null, querySelectorAll: () => [],
     getBoundingClientRect: () => ({ left: 0, right: 900, top: 20, bottom: 40 }) });
-  const elements = Object.fromEntries(['ln-bd', 'code', 'err'].map(id => [id, element()]));
+  const elements = Object.fromEntries(['ln-sd', 'code', 'err'].map(id => [id, element()]));
   const context = vm.createContext({ clock: { rng: () => () => 0, now: () => 1000, after() {} },
     document: { getElementById: id => elements[id], createElement: () => ({ getContext: () => ({}) }) },
     ResizeObserver: class { observe() {} }, innerHeight: 800 });
   vm.runInContext(code.replace("import { clock } from './clock.js';", '').replaceAll('export ', '') + '\nglobalThis.make = createCodeView;', context);
-  return { v: context.make(['bd']), err: elements.err };
+  return { v: context.make(['sd']), err: elements.err };
 }
 const target = 's("bd bd bd bd bd bd")';
 function type(v, inspect = () => {}) {
-  v.update({ bd: [{ text: target }] }, 0, true);
-  for (let i = 0; i < 200; i++) { v.step(i); inspect(v.lines.bd.shown); }
-  assert.equal(v.lines.bd.shown, target);
+  v.update({ sd: [{ text: target }] }, 0, true);
+  for (let i = 0; i < 200; i++) { v.step(i); inspect(v.lines.sd.shown); }
+  assert.equal(v.lines.sd.shown, target);
 }
 test('default typing never inserts wrong characters or a staged error even with dice forcing mistakes', () => {
   const { v, err } = view();
@@ -34,12 +34,12 @@ test('opt-in shows wrong keys and a staged error, then fixes them', () => {
 test('switching off cancels a planned or showing mistake and finishes normal typing', () => {
   for (const waitForError of [false, true]) {
     const { v, err } = view(); v.slipsOff = false;
-    v.update({ bd: [{ text: target }] }, 0, true);
+    v.update({ sd: [{ text: target }] }, 0, true);
     for (let i = 0; i < 100; i++) { v.step(i); if (!waitForError || !err.hidden) break; }
     v.slipsOff = true;
     assert.equal(err.hidden, true);
     for (let i = 100; i < 300; i++) { v.step(i); assert.equal(err.hidden, true); }
-    assert.equal(v.lines.bd.shown, target);
+    assert.equal(v.lines.sd.shown, target);
   }
 });
 test('preference is saved, exposed under code in help, and suppressed for every recording path; real errors keep the alert panel', () => {

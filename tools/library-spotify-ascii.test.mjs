@@ -176,6 +176,7 @@ test('Spotify search submits, pages, plays a result, clears, and ignores an obso
     assert.ok(panel.rows().every((row) => row.kind !== 'strack'));
     x.status = { connected: false }; panel.paintAll();
     assert.equal(parts['.lib-sp-submit'].textContent, 'search in Spotify ↗');
+    assert.equal(parts['.lib-sp-query'].placeholder, 'a song or artist', 'a hint that fits beside the wider button');
     const before = requests.length;
     await submit('Air & Moon');
     assert.deepEqual(handoffs, ['Air & Moon']);
@@ -340,4 +341,66 @@ test('a search cleared while it waits for the connection answer is never sent, c
       assert.deepEqual(f.handoffs, [], 'and none in the browser');
     } finally { f.panel.close(); }
   }
+});
+
+// (Colin, Nov 9: "when you click a playlist ... there's no way to play the playlist. You could pick a song in the playlist, but you can't
+// start the playlist": a click opens it and its own row becomes the head, so the row Enter played from the top was gone)
+test('an open playlist, album or the liked songs has a play button in its head that starts it from the top', async () => {
+  const parts = {}, events = {}, root = new El(), plays = [], said = [];
+  root.querySelector = (sel) => (parts[sel] ||= new El());
+  root.querySelectorAll = () => [];
+  const id = (c) => c.repeat(22), song = (c) => ({ id: id(c), uri: `spotify:track:${id(c)}`, name: `Song ${c}`, by: 'Artist', ms: 9000 });
+  const playlist = { kind: 'playlist', id: id('p'), uri: `spotify:playlist:${id('p')}`, name: 'Mix', by: 'Colin', count: 2 };
+  const album = { kind: 'album', id: id('a'), uri: `spotify:album:${id('a')}`, name: 'Record', by: 'Artist', count: 1 };
+  const host = {
+    key: () => 'G', blocked: () => false, live: () => false, playing: () => ({}), repeat: () => 'album', shuffle: () => false,
+    scenes: () => ({ presets: [], user: [] }), stations: () => [], say: (t) => said.push(t), fail: assert.fail,
+    spotify: { app: true, links: () => [], status: async () => ({ connected: true }),
+      list: async (r) => r.list === 'playlists' ? { items: [playlist], total: 1, more: false } : r.list === 'albums' ? { items: [album], total: 1, more: false }
+        : r.list === 'liked' ? { items: [song('l'), song('m')], total: 2, more: false } : r.list === 'playlist' ? { items: [song('x'), song('y')], total: 2, more: false }
+        : r.list === 'album' ? { items: [song('z')], total: 1, more: false } : { items: [], total: 0, more: false },
+      play: async (request) => { plays.push(request); return { device: 'Mac' }; }, open: async () => assert.fail('plays through Toaster, not the app route'), cover: async () => '' },
+  };
+  const panel = createLibraryPanel({ document: { body: new El(), createElement: () => new El() },
+    window: { navigator: {}, addEventListener: (k, fn) => { events[k] = fn; }, matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ getPropertyValue: () => '' }) },
+    root, source: { kind: 'web', supported: true, start: async () => false, cached: async () => null }, host });
+  const click = async (i) => { const el = { dataset: { i: String(i) } }; parts['.lib-list'].handlers.click[0]({ target: { closest: (s) => (s === '[data-i]' ? el : null) } }); await settle(); };
+  const play = async () => { const b = { blur() {} }; parts['.lib-head'].handlers.click[0]({ target: { closest: (s) => (s === '[data-do="playall"]' ? b : null) } }); await settle(); };
+  const openColl = async (kind) => { await click(panel.rows().findIndex((r) => r.kind === 'coll' && r.coll.kind === kind)); };
+  try {
+    panel.open('spotify'); await settle();
+    await openColl('playlist');
+    assert.equal(panel.state.sp.open, `playlist:${id('p')}`, 'a click opens it');
+    assert.match(parts['.lib-head'].innerHTML, /data-do="playall"[^>]*>[^<]*▶/, 'its head has a play button');
+    await play();
+    assert.deepEqual(plays.at(-1), { context: playlist.uri }, 'the whole playlist from the top, not one song');
+    assert.equal(said.at(-1), 'on Spotify, on Mac');
+    // (the app's status line, where host.say writes, is out of sight while the library is open: the library says it too, by the
+    // Spotify line, so a press is seen to have done something. Nov 9 polish pass)
+    assert.match(parts['.lib-meta'].innerHTML, /class="lib-line lib-said"[^>]*>on Spotify, on Mac</);
+    await openColl('album'); await play();
+    assert.deepEqual(plays.at(-1), { context: album.uri });
+    await openColl('liked'); await play();
+    assert.deepEqual(plays.at(-1), { liked: true, tracks: [song('l').uri, song('m').uri], index: 0 }, 'the liked songs, which have no playlist behind them, from the first');
+    // (an error stands over the list till the next thing asked; closing the library ends it, so it isn't still there, stale, the next
+    // time the library opens: Spotify's "open Spotify on this computer" stayed up after Spotify was playing again. Nov 9 polish pass)
+    host.spotify.play = async () => { throw new Error('Open Spotify on this computer and play anything once, then try again.'); };
+    await play();
+    assert.match(parts['.lib-err'].textContent, /Open Spotify on this computer/);
+    panel.close(); panel.open('spotify'); await settle();
+    assert.equal(parts['.lib-err'].textContent, '', 'a fresh opening starts with no old error');
+    assert.doesNotMatch(parts['.lib-meta'].innerHTML, /lib-said/, 'nor an old note');
+    assert.match(parts['.lib-head'].innerHTML, /class="lib-head-acts"><button type="button" class="lib-play"/, 'the buttons are a row of their own under the name');
+  } finally { panel.close(); }
+});
+
+test("an artist's page lists esc back once among the keys, in place of esc closes (it was there twice)", async () => {
+  const f = searchFixture();
+  try {
+    f.panel.open('spotify'); await settle();
+    f.panel.state.sp.artist = { id: 'a'.repeat(22), name: 'Artist', songs: [], releases: {} }; f.panel.paintAll();
+    const keys = f.parts['.lib-keys span'].innerHTML;
+    assert.equal(keys.match(/esc back/g)?.length, 1, keys);
+    assert.doesNotMatch(keys, /esc closes/);
+  } finally { f.panel.close(); }
 });

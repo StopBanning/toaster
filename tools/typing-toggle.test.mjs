@@ -44,28 +44,28 @@ test('an unmute goes in at once while another line is typed, and that line finis
   assert.equal(v.lines.bd.shown, ON);
 });
 
-test('a mute still waits the 0.7 s (a stray gap mustn\'t flick the _ in and out)', () => {
+test('a kick mute commits without debounce', () => {
   const v = view();
   let t = 0;
   v.update({ bd: [{ text: ON }], bassline: [{ text: 'bassline: note("g2")' }] }, t, true);
   for (; t < 5; t += 0.01) v.step(t);
   v.update({ bd: [{ text: MUTED }], bassline: [{ text: 'bassline: note("g2")' }] }, t);
   for (const end = t + 0.5; t < end; t += 0.01) { v.update({ bd: [{ text: MUTED }], bassline: [{ text: 'bassline: note("g2")' }] }, t); v.step(t); }
-  assert.equal(v.lines.bd.shown, ON, 'not muted before 0.7 s');
+  assert.equal(v.lines.bd.shown, MUTED, 'muted without debounce');
   for (const end = t + 1; t < end; t += 0.01) { v.update({ bd: [{ text: MUTED }], bassline: [{ text: 'bassline: note("g2")' }] }, t); v.step(t); }
   assert.equal(v.lines.bd.shown, MUTED);
 });
 
-test('an unmute with other changes on its line waits like any change', () => {
+test('an unmute with a new pattern commits without debounce', () => {
   let { v, t } = setUp();
   const CHANGED = 'kick: s("bd ~ bd ~")';
   v.update({ bd: [{ text: CHANGED }], bassline: [{ text: LONG }] }, t);
   const asked = t;
   for (const end = t + 0.4; t < end; t += 0.01) { v.update({ bd: [{ text: CHANGED }], bassline: [{ text: LONG }] }, t); v.step(t); }
-  assert.equal(v.lines.bd.shown, MUTED, `untouched ${(t - asked).toFixed(2)} s in`);
+  assert.equal(v.lines.bd.shown, CHANGED, 'new pattern committed');
 });
 
-test('a part back with a new pattern: the _ goes, then its new pattern is typed before the line that was paused', () => {
+test('a kick returns with a complete new pattern before the paused line finishes', () => {
   let { v, t } = setUp();
   const NEW = 'kick: s("bd ~ bd ~")';
   v.update({ bd: [{ text: NEW }], bassline: [{ text: LONG }] }, t);

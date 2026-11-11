@@ -180,6 +180,62 @@ export function matchF1(pred, truth, tol = DRUM_TOLERANCE) {
   return pred.length + truth.length ? (2 * tp) / (pred.length + truth.length) : null;
 }
 
+// A drum line scored three ways, so "the grid is off" and "the pattern is wrong" can't hide each other:
+//   a    as exported: one tempo and one start, the whole song
+//   fit  one tempo and one start again, but the best pair there is: the tempo within 0.4% of the exported one, the grid
+//        slid up to 100 ms, pivoting on the export's end (where the app's grid was anchored); the pair that puts the most
+//        exported hits within 35 ms of a real one. What a perfect tempo would score.
+//   pat  on that grid, every bar also slid by up to a 32nd to where it fits best. What the pattern alone is worth.
+// cycles: the exported hits, in bars from the export's start; ref: the real hits, in seconds; span: { origin, barSec, bars,
+// from, to } (the export's start and bar length in seconds, how many bars, and the stretch of the song that was heard).
+export function drumThreeWays(cycles, ref, { origin, barSec, bars, from = 0, to = Infinity }) {
+  const none = { a: null, fit: null, pat: null };
+  if (!ref?.length || !(barSec > 0) || !(bars > 0)) return none;
+  const hits = [...cycles].sort((x, y) => x - y), real = [...ref].sort((x, y) => x - y);
+  const avg = (xs) => (xs.length ? xs.reduce((x, y) => x + y, 0) / xs.length : null);
+  // A bar's score: its own exported hits against the real hits in its window (25 ms early, as the bars above), slid by
+  // up to `most` seconds to where they fit best. (kickF1 above hands a bar the next bar's first hit as well, so a perfect
+  // four-on-the-floor tops out there at 0.89; here a perfect line scores 1.)
+  const perBar = (start, bar, most) => {
+    const f1s = [];
+    for (let i = 0; i < bars; i++) {
+      const a = start + i * bar, b = a + bar;
+      if (a < from || b > to) continue;
+      const own = hits.filter((c) => c >= i - 1e-6 && c < i + 1 - 1e-6).map((c) => start + c * bar);
+      let best = -1, at = 0;
+      for (let k = -Math.floor(most / 0.004); k * 0.004 <= most + 1e-9; k++) {
+        const sh = k * 0.004, tBar = real.filter((t) => t >= a + sh - 0.025 && t < b + sh - 0.025);
+        if (!tBar.length) continue;
+        const f = matchF1(own.map((t) => t + sh), tBar);
+        if (f > best + 1e-9 || (Math.abs(f - best) < 1e-9 && Math.abs(sh) < Math.abs(at))) { best = f; at = sh; }
+      }
+      if (best >= 0) f1s.push(best);
+    }
+    return avg(f1s);
+  };
+  const a = perBar(origin, barSec, 0);
+  if (!hits.length) return { a, fit: a, pat: a };
+  const end = origin + bars * barSec;
+  const gap = (t) => { // (to the nearest real hit)
+    let lo = 0, hi = real.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (real[m] < t) lo = m + 1; else hi = m; }
+    return Math.min(Math.abs(real[lo] - t), lo ? Math.abs(real[lo - 1] - t) : Infinity);
+  };
+  const heard = hits.filter((c) => { const t = origin + c * barSec; return t >= from && t <= to; });
+  let most = -1, cost = Infinity, start = origin, bar = barSec;
+  for (let k = -80; k <= 80; k++) {
+    const b = barSec * (1 + k * 0.00005);
+    for (let j = -20; j <= 20; j++) {
+      const sh = j * 0.005, s0 = end + sh - bars * b;
+      let n = 0;
+      for (const c of heard) if (gap(s0 + c * b) <= DRUM_TOLERANCE) n++;
+      const c = Math.abs(k) * 0.001 + Math.abs(sh); // (of two that fit as well, the one nearer the export's own)
+      if (n > most || (n === most && c < cost)) { most = n; cost = c; start = s0; bar = b; }
+    }
+  }
+  return { a, fit: perBar(start, bar, 0), pat: perBar(start, bar, bar / 32), bpmFit: 240 / bar, start, barSec: bar }; // (start, barSec: the fitted grid, for a closer look)
+}
+
 function mostOver(spans, a, b) {
   const cover = new Map();
   for (const [s, e, v] of spans) {
@@ -220,7 +276,7 @@ export async function scoreExportRun(name, r, targetSet = 'full') {
   if (!r.song || !r.song.bars?.length || !(r.song.bpm > 0)) {
     return {
       set, key, run, hasExport: 0, cover: 0, bars: 0,
-      kickF1: 0, clapF1: 0, hatF1: 0,
+      kickF1: 0, clapF1: 0, hatF1: 0, kickAs: 0, kickFit: 0, kickPat: 0, clapAs: 0, clapFit: 0, clapPat: 0,
       bassPc: 0, bassExact: 0, bassCover: 0,
       chord: 0, chordRoot: 0, chordInKey: kref?.key ? 0 : null,
       envCorr: 0, envScore: 0,
@@ -273,6 +329,10 @@ export async function scoreExportRun(name, r, targetSet = 'full') {
   const kickF1 = scoreDrumBars(byPart.bd, refKick);
   const clapF1 = scoreDrumBars(byPart.sd, refClap);
   const hatF1 = scoreDrumBars(byPart.hat, refHat);
+  // (the kick and the clap again, on the best single tempo and with each bar slid into place: see drumThreeWays)
+  const span = { origin, barSec, bars: barsCount, from: r.from || 0, to: (r.from || 0) + (r.seconds || 150) };
+  const cyclesOf = (part) => events.filter((ev) => ev.part === part).map((ev) => ev.onset);
+  const kick3 = drumThreeWays(cyclesOf('bd'), refKick, span), clap3 = drumThreeWays(cyclesOf('sd'), refClap, span);
 
   // 2. Bass per beat against YIN bass truth
   const refBass = (truth?.bass?.notes || []).map((n) => [n.start, n.end, n.midi]);
@@ -354,6 +414,7 @@ export async function scoreExportRun(name, r, targetSet = 'full') {
   return {
     set, key, run, hasExport: 1, cover, bars: barsCount,
     kickF1, clapF1, hatF1,
+    kickAs: kick3.a, kickFit: kick3.fit, kickPat: kick3.pat, clapAs: clap3.a, clapFit: clap3.fit, clapPat: clap3.pat,
     bassPc, bassExact, bassCover,
     chord, chordRoot, chordInKey,
     envCorr, envScore,
@@ -391,7 +452,7 @@ export function summarizeExport(rows0) {
     if (!byOffset.has(off)) byOffset.set(off, []);
     byOffset.get(off).push(r);
   }
-  const fields = ['hasExport', 'cover', 'kickF1', 'clapF1', 'hatF1', 'bassPc', 'bassExact', 'bassCover', 'chord', 'chordRoot', 'chordInKey', 'envCorr', 'envScore'];
+  const fields = ['hasExport', 'cover', 'kickF1', 'clapF1', 'hatF1', 'kickAs', 'kickFit', 'kickPat', 'clapAs', 'clapFit', 'clapPat', 'bassPc', 'bassExact', 'bassCover', 'chord', 'chordRoot', 'chordInKey', 'envCorr', 'envScore'];
   const summary = { n: rows.length };
   for (const f of fields) summary[f] = mean(rows.map((r) => r[f]));
   if (byOffset.size > 1) {
@@ -473,5 +534,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const d = (cur[c] ?? 0) - (base[c] ?? 0);
       return `${c} ${(d >= 0 ? '+' : '') + d.toFixed(3)}`;
     }).join('  '));
+  }
+  // The kick and the clap three ways (see drumThreeWays): as exported, on the best single tempo, and with each bar slid
+  // into place. as exported far under best tempo: the grid is off. best tempo near pattern alone and both low: the pattern is.
+  const three = [['kick', 'kickAs', 'kickFit', 'kickPat'], ['clap', 'clapAs', 'clapFit', 'clapPat']];
+  console.log('\n  drums, three ways      as exported   best single tempo   pattern alone (each bar slid to fit)');
+  for (const [name, a, fit, pat] of three) {
+    console.log(`  ${name.padEnd(20)} ${f3(cur[a])}         ${f3(cur[fit])}              ${f3(cur[pat])}`
+      + (base ? `      was ${f3(base[a])} ${f3(base[fit])} ${f3(base[pat])}` : ''));
   }
 }

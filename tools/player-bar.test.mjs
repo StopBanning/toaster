@@ -677,7 +677,10 @@ test('app.js hands the bar what is playing at the footer\'s pace, and the roll k
   // is handed what is playing at the same 8 a second, on the frames)
   assert.match(app, /if \(t - footerAt > 0\.125 \|\| t < footerAt\) \{ footerAt = t; renderFooter\(\); \}/);
   assert.match(app, /if \(t - playerAt > 0\.125 \|\| t < playerAt\) \{ playerAt = t; updatePlayer\(t\); \}/);
-  assert.match(app, /roll\.classList\.toggle\('cut', r\.height > 0 && r\.bottom > innerHeight - playerBar\.reserved\(\) \+ 1\);/);
+  // (every line and panel of the code, not only the roll: one that the window's foot or the bar would cut is hidden whole)
+  assert.match(app, /const foot = innerHeight - playerBar\.reserved\(\) \+ 1;/);
+  assert.match(app, /for \(const el of \$\('code'\)\.children\) \{ const r = el\.getBoundingClientRect\(\); el\.classList\.toggle\('cut', r\.height > 0 && r\.bottom > foot\); \}/);
+  assert.match(fs.readFileSync(new URL('../renderer/style.css', import.meta.url), 'utf8'), /#code > \.cut \{ visibility: hidden; \}/);
   const update = app.slice(app.indexOf('function updatePlayer(t) {'), app.indexOf('function updatePlayer(t) {') + 700);
   assert.match(update, /if \(!state\.playerBar \|\| WIDGET\) return;/);
   assert.match(update, /tempo: eng\.tempo, key: eng\.key \? `\$\{NOTES\[eng\.key\.root\]\} \$\{eng\.key\.mode\}` : '', at: eng\.placeAt\(t\)/);

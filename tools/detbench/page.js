@@ -91,7 +91,7 @@ async function ({ job, sources, sr }, audio) {
     };
     e.tape.lock = (...a) => { curStretch = { moved: 0, rows: [], patterns: 0, down: 0 }; stretches.push(curStretch); return lock0(...a); };
     e.tape.shift = (d) => { if (curStretch) curStretch.moved += d; return shift0(d); };
-    e.tape.pattern = (b, p) => { if (curStretch) { curStretch.rows.push({ b: b + curStretch.moved, kind: 'pattern' }); curStretch.patterns++; } return pat0(b, p); };
+    e.tape.pattern = (b, p, ...r) => { if (curStretch) { curStretch.rows.push({ b: b + curStretch.moved, kind: 'pattern' }); curStretch.patterns++; } return pat0(b, p, ...r); }; // (r: the bar line's time, for the export's fitted tempo)
     e.tape.harmony = (b, ...r) => { if (curStretch) curStretch.rows.push({ b: b + curStretch.moved, kind: 'harmony' }); return harm0(b, ...r); };
     const beats = [], tempo = [], lines = [], notes = [];
     // (bench instrumentation) each bar's harmony as the engine filed it: the bar's start and length, the chord found in it

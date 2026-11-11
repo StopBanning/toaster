@@ -14,3 +14,6 @@ tools/handheld/concepts/renders/
 tools/handheld/concepts/__pycache__/
 
 tools/release/config.json
+
+# Local comparison videos
+demo/

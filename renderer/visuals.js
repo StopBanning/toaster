@@ -477,6 +477,7 @@ export function createPunchcard(canvas) {
   const ctx = canvas.getContext('2d');
   const level = Object.fromEntries(Object.keys(ROW).map((k) => [k, 1])); // 1 playing .. 0 stopped
   let last = 0, vg = null, queuedTo = 0, moved = 0, blocks = [], sending = {}; // (sending: which parts the queue last sent blocks for)
+  let overScene = false; // (a picture behind the blocks, not the plain theme: the dominoes are drawn solid so they read on it)
   const dominoes = createDominoes();
   let game = null; // (game.js's, once it has been fetched: loadGame)
   const reset = () => { vg = null; blocks = []; sending = {}; dominoes.reset(); game?.reset(); };
@@ -584,6 +585,8 @@ export function createPunchcard(canvas) {
   });
 
   return {
+    // (app.js says, each frame, whether a background picture is behind the blocks)
+    setBackdrop(busy) { overScene = !!busy; },
     // For tests (tools/checks.js): the drawing clock and the queued blocks.
     get vg() { return vg; },
     get blocks() { return blocks; },
@@ -646,7 +649,7 @@ export function createPunchcard(canvas) {
       sim.advance(t);
 
       if (look === 'dominoes') {
-        dominoes.draw(ctx, { blocks, vg, W, H, col, level, t, ahead: AHEAD, rows: ROWS });
+        dominoes.draw(ctx, { blocks, vg, W, H, col, level, t, ahead: AHEAD, rows: ROWS, solid: overScene });
         return;
       }
       if (look === 'game') {

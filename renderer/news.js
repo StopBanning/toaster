@@ -4,6 +4,26 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.6', items: [
+    { act: 'visual', text: "a key that goes round a list (V, A, P, T, B, C, K, N, U, Z) shows the whole list for a moment, the one picked lit: Shift with the key goes back, ← and → step while it shows, a click picks; the drop effects' list starts at off" },
+    { key: '?', text: "the help is in four pages: keys, settings, what's new, how it works" },
+    { act: 'orb', text: "R goes round what floats over the picture: the orb, the glass blob (liquid glass bending the code like a lens; it had no key), both, none" },
+    { act: 'strength', in: 'earth', text: "the Earth from the space station has twenty views now (deserts, oceans, a hurricane, more auroras, the whole globe, a capsule arriving), in their own part of the scenes picker; a drop pushes in with a flash, and the day side answers the kick" },
+    { key: 'Ctrl+K', text: "the top bar and the footer come back while the mouse moves, and the footer starts with Ctrl+K (⌘K on a Mac), which finds anything by name" },
+    { act: 'visual', text: "backgrounds and looks no longer go black after you've tried most of them in one sitting" },
+    { act: 'visual', text: "after a visit to the backrooms, the worlds, the chrome, the spaghetti and the Earth no longer draw black" },
+    { key: 'web', text: "in a browser, the looks and the code's glass no longer stop after you've tried the camera's effects and most of the backgrounds" },
+    { key: 'G', text: "spotify: an open playlist, album or your liked songs has its own play button; the library says where it's playing (on Spotify, on your device); play reaches a Spotify that's open but hasn't played yet; liked songs carry on through the whole list" },
+    { key: 'kick', text: "on a drop the kick line shows at once" },
+    { key: 'G', text: "the big cover in characters is cleaner: clean strokes, more contrast, and a strong colour counts as light" },
+    { act: 'blocks', text: "the dominoes are solid over a scene" },
+    { key: 'Ctrl+K', text: "a preset sets everything it owns: the orb no longer stays on after another preset" },
+    { act: 'export', text: "X saves the MIDI file and the Strudel code together or not at all, and says what they are: an approximate sketch of the song" },
+    { act: 'export', text: "X writes one tempo fitted to the whole song, so the MIDI file and the code stay with the record from the first bar to the last" },
+    { key: 'grid', text: "before the beat is found, the drum grid says what it's waiting for" },
+    { act: 'layout', text: "in the tall layout the code keeps clear of the player bar: a line that doesn't fit is left out, not run under it" },
+    { act: 'strength', in: 'scenery', text: "eleven scenes now: halloween and the falls are out" },
+  ] },
   { version: '0.5.5', items: [
     { act: 'visual', text: "the Spotify player's back, play and next act on whatever Spotify is playing on this computer, with no error box when the song or the device moved on" },
     { key: 'Ctrl+K', text: "hand points: with the camera on (C), your tracked hands drawn as dots and bones over the picture, the fingertips swelling on the kick ('hand points' in Ctrl+K)" },

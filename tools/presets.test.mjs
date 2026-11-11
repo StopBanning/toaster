@@ -37,3 +37,53 @@ test('a layout that refuses to change stops the preset before anything else chan
   await assert.rejects(applyPreset(PRESETS.at(-1), {}, refusing));
   assert.deepEqual(calls, ['vertical']);
 });
+
+// App defaults, with the visual/theme indices resolved as currentSetup() does.
+const defaults = { visual: 'scenery', blocks: true, blockLook: 'dominoes', orb: false, codeHidden: false,
+  theme: 'bluescreen', vertical: false, gameScreens: 'os', sceneryScene: 'auto' };
+const settersFor = (current) => Object.fromEntries(Object.keys(defaults).map((key) => [key, (value) => { current[key] = value; }]));
+// A disabled block layer has no visible look; its stored choice is deliberately left alone.
+const coreLook = ({ visual, blocks, blockLook, orb, codeHidden }) => ({ visual, blocks, orb, codeHidden,
+  ...(blocks ? { blockLook } : {}) });
+
+test('each preset declares its complete core look', () => {
+  assert.deepEqual(PRESETS.map((p) => coreLook(p.settings)), [
+    { visual: 'scenery', blocks: true, orb: false, codeHidden: false, blockLook: 'dominoes' },
+    { visual: 'scenery', blocks: true, orb: false, codeHidden: true, blockLook: 'dominoes' },
+    { visual: 'off', blocks: false, orb: true, codeHidden: false },
+    { visual: 'off', blocks: true, orb: false, codeHidden: false, blockLook: 'game' },
+    { visual: 'off', blocks: true, orb: false, codeHidden: false, blockLook: 'game' },
+    { visual: 'off', blocks: true, orb: false, codeHidden: false, blockLook: 'dominoes' },
+  ]);
+});
+
+test('every ordered preset pair ends with the second preset\'s core look from defaults', async (t) => {
+  for (const a of PRESETS) for (const b of PRESETS) {
+    await t.test(`${a.name} → ${b.name}`, async () => {
+      const direct = { ...defaults }, sequential = { ...defaults };
+      await applyPreset(b, direct, settersFor(direct));
+      await applyPreset(a, sequential, settersFor(sequential));
+      await applyPreset(b, sequential, settersFor(sequential));
+      assert.deepEqual(coreLook(sequential), coreLook(direct));
+    });
+  }
+});
+
+test('Orb → Live coding turns the orb off', async () => {
+  const current = { ...defaults }, setters = settersFor(current);
+  await applyPreset(PRESETS.find((p) => p.name === 'Orb'), current, setters);
+  assert.equal(current.orb, true);
+  await applyPreset(PRESETS.find((p) => p.name === 'Live coding'), current, setters);
+  assert.equal(current.orb, false);
+});
+
+test('theme, layout, game screens and scenery scene change only where named', async () => {
+  const personal = { theme: 'terminal', vertical: true, gameScreens: 'lcd', sceneryScene: 'lake' };
+  for (const preset of PRESETS) {
+    const current = { ...defaults, ...personal };
+    await applyPreset(preset, current, settersFor(current));
+    for (const key of Object.keys(personal)) {
+      assert.equal(current[key], preset.settings[key] ?? personal[key], `${preset.name}: ${key}`);
+    }
+  }
+});

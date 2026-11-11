@@ -1,0 +1,40 @@
+<!doctype html><div id="code"><div id="ln-bd"></div><div id="ln-bassline"></div></div><div id="err" hidden></div>
+<script type="module">
+import {createCodeView} from '../renderer/codeview.js';
+import {clock} from '../renderer/clock.js';
+const fast = new URLSearchParams(location.search).get('entry') !== 'instant';
+const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+const p=text=>[{text,steps:[0,4,8,12]}];
+let t=0;
+const tick=(v,n=1)=>{for(let i=0;i<n;i++){t+=.015;clock.set(t);v.step(t)}};
+try {
+clock.render({seed:123});
+for(const [before,after] of [
+ ['// kick: waiting','kick: s("bd*4")'],
+ ['_kick: s("bd*2")','kick: s("bd*4")'],
+ ['kick: s("bd*2")','kick: s("bd*4")'],
+ ['kick: s("bd*4")','_kick: s("bd*2")'],
+ ['kick: s("bd*4")','// kick: waiting'],
+ ['_kick: s("bd*4")','kick: s("bd*4")']]) {
+ const v=createCodeView(['bd','bassline']);
+ const old='bass: note("c2")', next='bass: note("c2 e2 g2 a2 d3 f3 b3")';
+ v.update({bd:p(before),bassline:p(old)},t,true);tick(v,300);
+ v.update({bd:p(before),bassline:p(next)},t,true);tick(v,8);
+ check(v.lines.bassline.shown!==next,'bass mid-edit');
+ const paused=v.lines.bassline.shown;
+ v.update({bd:p(after),bassline:p(next)},t);
+ check(v.lines.bd.shown===after,'first-update atomic commit');
+ check(document.getElementById('ln-bd').textContent===after,'DOM complete');
+ const exact=before==='_'+after;
+ if(exact)check(!v.lines.bd.el.querySelector('[data-kick-hidden]'),'exact unmute has no reveal delay');
+ if(after.startsWith('kick:'))check(v.lines.bd.spans[0].part.text===after,'tokens match committed pattern');
+ if(!exact && fast){tick(v,10);check(v.lines.bassline.shown===paused,'other edit suspended during reveal');check(v.lines.bd.el.querySelector('[data-kick-hidden]'),'reveal still running at 150 ms');}
+
+ for(let i=0;i<16;i++){tick(v);check(v.lines.bd.el.textContent===after,'valid at each tick');new Function(v.lines.bd.el.textContent);}
+ check(!v.lines.bd.el.querySelector('[data-kick-hidden]'),'reveal finished within 240 ms');
+ tick(v,300);check(v.lines.bassline.shown===next,'bass resumed');
+ check(paused!==next,'edit really suspended');v.clear();check(!v.lines.bd.el.querySelector('[data-kick-hidden]'),'clear reveal');
+}
+window.result={ok:true,cases:6};
+} catch(e){window.result={error:e.stack}}
+</script>

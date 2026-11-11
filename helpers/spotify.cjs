@@ -334,10 +334,11 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
   // play({ context, track: 'spotify:track:…' }) at that song (by its address, which stays right where the list the page was
   // shown left gaps out: a place counted in it would not be the place in the playlist); play({ tracks: [track uris], index })
   // starts a list of songs (the liked songs have no context to start), on the device Spotify says is active.
+  let userId = '';
   async function play(request = {}) {
     const index = request.index ?? 0;
     if (!Number.isInteger(index) || index < 0 || index > 10000) throw new Error('That isn\'t a place in the list.');
-    let body;
+    let body, liked = false;
     if (request.context !== undefined) {
       const m = /^spotify:(album|playlist):([A-Za-z0-9]{22})$/.exec(request.context || '');
       if (!m) throw new Error('That isn\'t a Spotify album or playlist.');
@@ -347,11 +348,28 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
       const tracks = request.tracks;
       if (!Array.isArray(tracks) || !tracks.length || tracks.length > 100 || !tracks.every((t) => TRACK_URI.test(t))) throw new Error('Those aren\'t Spotify songs.');
       if (index >= tracks.length) throw new Error('That isn\'t a place in the list.');
+      if (request.liked !== undefined && request.liked !== true) throw new Error('Those aren\'t Spotify songs.');
       body = { uris: tracks, offset: { position: index } };
+      liked = request.liked === true;
     }
     const { devices = [] } = await call('GET', '/v1/me/player/devices');
-    const device = devices.find((d) => d.is_active && !d.is_restricted);
+    // (the active device; or else, the Spotify app open on this computer but idle since it started (listed, not active, and it takes a
+    // play sent to it): the one computer there is, never a phone or a guess between two. Nov 9 polish pass)
+    const computers = devices.filter((d) => !d.is_active && !d.is_restricted && String(d.type || '').toLowerCase() === 'computer');
+    const device = devices.find((d) => d.is_active && !d.is_restricted) || (computers.length === 1 ? computers[0] : null);
     if (!device) throw new Error('Open Spotify on this computer and play anything once, then try again.');
+    // (the liked songs: Spotify's own 'liked songs' context, so the whole library plays on from the song (not the 100 the page holds,
+    // then a radio); where Spotify won't take that context, the songs as a list, as before. Nov 9 polish pass)
+    if (liked) {
+      try {
+        userId ||= String((await call('GET', '/v1/me')).id || '');
+        if (!/^[A-Za-z0-9._-]{1,64}$/.test(userId)) { userId = ''; throw new Error('no user'); }
+        await call('PUT', '/v1/me/player/play', { query: { device_id: device.id }, body: { context_uri: `spotify:user:${userId}:collection`, offset: { uri: request.tracks[index] } } });
+        return { device: device.name || '' };
+      } catch (e) {
+        if (e && /connect again|Premium|Open Spotify|slow down/.test(String(e.message))) throw e;
+      }
+    }
     await call('PUT', '/v1/me/player/play', { query: { device_id: device.id }, body });
     return { device: device.name || '' };
   }
