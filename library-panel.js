@@ -120,7 +120,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
         const aspect = (cols * 0.6) / rows, wider = im.naturalWidth / im.naturalHeight > aspect;
         const sw = wider ? im.naturalHeight * aspect : im.naturalWidth, sh = wider ? im.naturalHeight : im.naturalWidth / aspect;
         g.drawImage(im, (im.naturalWidth - sw) / 2, (im.naturalHeight - sh) / 2, sw, sh, 0, 0, cols * 2, rows * 2);
-        const lines = coverGlyphs(g.getImageData(0, 0, cols * 2, rows * 2).data, cols, rows);
+        const lines = coverGlyphs(g.getImageData(0, 0, cols * 2, rows * 2).data, cols, rows, rows >= 48 ? { clean: true, local: 0.5, colour: 1 } : {}); // (the big cover and the mini player: clean strokes, local contrast (Colin kept them Nov 8), colour counted as light (Nov 8: Only The Fallen's red figure on black))
         const out = doc.createElement('canvas');
         out.width = w;
         out.height = h;
@@ -314,7 +314,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // drawn with the library's shared cover look; Spotify's logo and "on Spotify" say whose it is.
   const sp = host.spotify, X = S.sp;
   const video = createSpotifyVideo({ document: doc, root, beforeLoad: () => sp.prepareVideo?.(), openSpotify: (uri) => spOpenLink(uri) });
-  const spVideo = (row) => { if (row?.kind === 'strack') video.open(row.track); else host.say('pick a Spotify song, then V for its player'); };
+  const spVideo = (row) => { if (row?.kind === 'strack') video.open(row.track); else spSay('pick a Spotify song, then V for its player'); };
   const spModel = () => ({ links: sp.links(), linksAll: X.linksAll, app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
   let search = { q: '', items: [], albums: [], artist: null, loading: false, more: false, next: 0, total: 0 }, searchGeneration = 0;
   // one row per song: Spotify lists the same song more than once (a single and its album's, a re-release), so a song is its title and its
@@ -340,6 +340,8 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   function paintSearch() {
     searchForm.hidden = S.section !== 'spotify' || !!X.artist;
     q('.lib-sp-submit').textContent = X.status?.connected ? 'search' : 'search in Spotify ↗';
+    // (the wider "search in Spotify ↗" left the field too narrow for its hint, cut at "a song": it names Spotify already. Nov 9 polish pass)
+    searchInput.placeholder = X.status?.connected ? 'search Spotify: a song or artist' : 'a song or artist';
     searchStatus.textContent = search.loading ? 'searching…' : search.q ? `${search.items.length} of ${search.total} results` : X.status?.connected ? '' : 'No connection needed. Results open in Spotify in your browser.';
   }
   function searchRows() {
@@ -418,19 +420,26 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const open = spOpenColl();
     if (X.artist && !open) return `${spCover(X.artist.cover, half() ? 'lib-photo' : '')}<div><div class="lib-name lib-line">${esc(X.artist.name || 'artist')}</div><div class="lib-sub lib-line">${esc(X.artist.loading ? 'loading…' : X.artist.genres?.join(' · ') || '')}</div></div>${X.artist.uri ? `<button type="button" class="lib-onspot" data-do="artistspotify">${logo()}<span>Open Spotify</span></button>` : ''}`;
     if (open) {
-      // ("play on Spotify": one of the three its guidelines give a link back to the Spotify app; the liked songs, which have no link, say whose they are)
+      // (▶ play starts the whole collection from the top, as Enter on its row does: a click opens a collection and its row becomes this
+      // head, so without it there was nothing left on screen that played the playlist, only its songs. Colin, Nov 9. The two buttons are a
+      // row under the name, as Spotify's own pages have them, so a long name keeps the head's width and isn't broken word by word. "play on Spotify": the
+      // link back to the Spotify app its guidelines ask for; the liked songs, which have no link, say whose they are)
+      const playAll = `<button type="button" class="lib-play" data-do="playall" title="play ${open.kind === 'liked' ? 'the liked songs' : `this ${open.kind}`} from the top (enter on a song plays from there)">▶ play</button>`;
       const mark = open.uri ? `<button type="button" class="lib-onspot" data-do="onspotify" title="play this in the Spotify app">${logo()}<span class="lib-line">play on Spotify</span></button>` : `<span class="lib-onspot">${logo()}<span class="lib-line">on Spotify</span></span>`;
       const code = half(), tile = open.kind === 'liked' ? '<i class="lib-cover real liked" aria-hidden="true">♥</i>' : spCover(open.cover, code ? 'lib-photo' : '');
       const name = code ? `x = x.${esc(ident(open.by || 'Spotify'))}(<s>"</s>${esc(cleanTitle(open.name))}<s>"</s>)` : esc(open.name);
-      return `${tile}<div><div class="lib-name lib-line${code ? ' lib-code' : ''}">${name}</div><div class="lib-sub lib-line sp">${code ? '// ' : ''}${esc(collLine(open))}${X.albumInfo?.[open.id]?.year || open.year ? ` · ${esc(X.albumInfo?.[open.id]?.year || open.year)}` : ''}</div></div>${mark}`;
+      return `${tile}<div><div class="lib-name lib-line${code ? ' lib-code' : ''}">${name}</div><div class="lib-sub lib-line sp">${code ? '// ' : ''}${esc(collLine(open))}${X.albumInfo?.[open.id]?.year || open.year ? ` · ${esc(X.albumInfo?.[open.id]?.year || open.year)}` : ''}</div><div class="lib-head-acts">${playAll}${mark}</div></div>`;
     }
     const sub = !sp.app ? 'web player' : X.status?.connected ? 'connected' : 'not connected';
     return `<i class="lib-cover lib-spot" aria-hidden="true">${logo()}</i><div><div class="lib-name lib-line">spotify</div><div class="lib-sub lib-line sp">${esc(sub)}</div></div>`;
   }
+  // what a Spotify press did ("on Spotify, on Colin's MacBook"), or a hint: said in the app's status line and, for three seconds (notice),
+  // by the Spotify line here: the status line is out of sight while the library is open, and a press that showed nothing looked like it did nothing
+  const spSay = (text) => { host.say(text); notice(text); };
   function spMeta() {
     const left = sp.app ? 'plays in your Spotify app' : 'opens in Spotify\'s web player, in a new tab'; // (a link in the app on this computer, a list's song where Spotify plays)
-    const right = X.connecting ? 'waiting for Spotify…' : spBusy() ? 'loading…' : '';
-    return `<span class="lib-line">${esc(left)}</span>${right ? `<span class="lib-line">${esc(right)}</span>` : ''}`;
+    const right = X.connecting ? 'waiting for Spotify…' : S.note ? '' : spBusy() ? 'loading…' : '';
+    return `<span class="lib-line">${esc(left)}</span>${S.note && !X.connecting ? `<span class="lib-line lib-said" role="status">${esc(S.note)}</span>` : right ? `<span class="lib-line">${esc(right)}</span>` : ''}`;
   }
 
   // the five steps and the field for a Client ID, which is all there is to see until the listener has connected
@@ -699,7 +708,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
       if (!sp.app && !link) throw new Error(SPOTIFY_NOT_A_LINK);
       await sp.open(text, link);
       X.draft.link = '';
-      host.say('on Spotify');
+      spSay('on Spotify');
     } catch (err) { X.error = plainError(err); X.draft.link = text; }
     spRepaint();
   }
@@ -707,7 +716,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     X.error = '';
     try {
       const said = await sp.play(request);
-      host.say(said?.device ? `on Spotify, on ${said.device}` : 'on Spotify');
+      spSay(said?.device ? `on Spotify, on ${said.device}` : 'on Spotify');
     } catch (err) { spFail(err); return; }
     spRepaint();
   }
@@ -755,7 +764,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   let artistGeneration = 0;
   const releaseGroups = ['album', 'single', 'appears_on', 'compilation'];
   async function spOpenLinkExternal(uri) {
-    try { await sp.open(uri, parseLink(uri)); host.say('on Spotify'); } catch (err) { spFail(err); }
+    try { await sp.open(uri, parseLink(uri)); spSay('on Spotify'); } catch (err) { spFail(err); }
   }
   function artistRows() {
     const a = X.artist, rows = [{ kind: 'back' }];
@@ -817,7 +826,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   }
   async function artistByName(name) {
     if (!name) return;
-    if (!X.status?.connected) { host.say('connect Spotify to open artist pages'); return; }
+    if (!X.status?.connected) { spSay('connect Spotify to open artist pages'); return; }
     saveArtistBack();
     const generation = ++artistGeneration, gen = X.gen;
     X.artist = { name, loading: true, releases: {} }; X.open = null; X.cursorKey = ''; S.cursor.spotify = 0; spRepaint();
@@ -920,7 +929,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const k = host.key();
     const more = S.section === 'music' ? '←→ fold' : S.section === 'scenes' ? '←→ move' : S.section === 'spotify' ? '←→ open' : '';
     const items = S.find ? ['esc ends find', '↑↓ pick', 'enter plays', 'a click on an album opens it', `${k} library`]
-      : [`${k} library`, S.section === 'spotify' && X.artist ? 'esc back' : 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? ['A artist', 'V preview', ...(X.artist ? ['esc back'] : [])] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() && !(S.section === 'spotify' && X.artist) ? ['shift+C cover'] : [])];
+      : [`${k} library`, S.section === 'spotify' && X.artist ? 'esc back' : 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? ['A artist', 'V preview'] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() && !(S.section === 'spotify' && X.artist) ? ['shift+C cover'] : [])];
     parts.keys.innerHTML = items.map((t, i) => `<span>${i ? ' · ' : ''}${esc(t)}</span>`).join('');
   }
 
@@ -1292,8 +1301,10 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // "on Spotify" over an open collection plays it in the Spotify app (the link back to Spotify that its guidelines ask for)
   parts.head.addEventListener('click', (e) => {
     if (e.target.closest('[data-do="artistspotify"]')) { spOpenLinkExternal(X.artist.uri); return; }
+    const playAll = e.target.closest('[data-do="playall"]'), open = playAll && spOpenColl();
+    if (open) { playAll.blur(); spPlayRow({ kind: 'coll', coll: open }); return; }
     const mark = e.target.closest('[data-do="onspotify"]'), coll = mark && spOpenColl();
-    if (coll?.uri) { mark.blur(); sp.open(coll.uri, parseLink(coll.uri)).then(() => host.say('on Spotify'), (err) => { X.error = plainError(err); spRepaint(); }); }
+    if (coll?.uri) { mark.blur(); sp.open(coll.uri, parseLink(coll.uri)).then(() => spSay('on Spotify'), (err) => { X.error = plainError(err); spRepaint(); }); }
   });
   parts.list.addEventListener('click', (e) => {
     if (e.target.closest('input')) return;
@@ -1357,6 +1368,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     closeFind(false);
     video.close();
     S.open = false;
+    X.error = ''; S.note = ''; clearTimeout(noteTimer); // (Spotify's error and the note end with the library: one still up the next time it opens was about a moment that had passed)
     clearInterval(clockTimer);
     root.hidden = true;
     doc.body.classList.remove('library-open');

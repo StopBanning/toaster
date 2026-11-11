@@ -1296,7 +1296,7 @@ export function createWorlds(canvas, wordsCanvas) {
   function finish() {
     try {
       if (!jobs || !jobs.world.settled() || !jobs.post.settled()) return false;
-    } catch (err) { console.error('worlds:', err); jobs = null; return false; }
+    } catch (err) { if (!gl.isContextLost()) console.error('worlds:', err); jobs = null; return false; } // (lost mid-compile: built again when it's back)
     worldProg = jobs.world.pr;
     postProg = jobs.post.pr;
     loc = Object.fromEntries(['uRes', 'uScale', 'uCircle', 'uT', 'uWorld', 'uVar', 'uBlend', 'uFore', 'uDrift', 'uLight', 'uSkyA', 'uSkyB', 'uSkyH', 'uStars', 'uSun', 'uGlow', 'uBand', 'uSkySeed', 'uPass', 'uQuilt', 'uQuiltIds', 'uPrevWorld', 'uCutSeed', 'uAge', 'uBeat', 'uCalm', 'uZoom', 'uAct', 'uHit', 'uTexCode', 'uTexLedger', 'uTexMark', 'uTexSky'].map((k) => [k, gl.getUniformLocation(worldProg, k)]));

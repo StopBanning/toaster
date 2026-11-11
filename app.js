@@ -31,7 +31,7 @@ import { createSpaghetti } from './spaghetti.js';
 import { createSpectro } from './spectro.js';
 import { createScenery, FIELD } from './scenery.js';
 import { createLanes } from './lanes.js';
-import { createEarth, EARTH_CLIPS } from './earth.js';
+import { createEarth, EARTH_CLIPS, EARTH_GROUPS, EARTH_TOUR } from './earth.js';
 import { createBackrooms } from './backrooms.js';
 import { createWait } from './wait.js';
 import { createCuts } from './cuts.js';
@@ -55,6 +55,11 @@ import { readTags, songOfFile } from './audio-tags.js';
 // (the library's panel and its two modules, library-panel.js, library-source.js and library.js, are not imported here: they are fetched when
 // it is first opened, see makeLibrary below. library-core.js is what the page has of it from the start.)
 import { lazyLibrary, queueLine, queueNext, queueOf, queuePrevious, readScenes, sceneForLoad, readStations, noteStation, sceneIsOn, setupOf, readLinks, noteLink, nameLink, nextRepeat, noteRecent, readRecent, readRepeat, readResume, withShuffle, deleteScene as dropScene, renameScene as nameScene, saveScene as addScene, noteRadioCover, queueSkip, trackLabel } from './library-core.js';
+import { createGlPool, watch, glBudget } from './gl-pool.js';
+// The WebGL pictures take turns under the browser's limit (gl-pool.js): every canvas is watched from here on, before any
+// layer is made, and showLayers tends the pool each frame.
+const glPool = createGlPool({ budget: glBudget({ app: !!window.nc, touch: matchMedia('(hover: none)').matches }) });
+watch(glPool, HTMLCanvasElement.prototype);
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1110,9 +1115,9 @@ function nextWorldLook() {
   flashStatus('look: ' + state.worldLook);
   saveSettings();
 }
-// The tour's next view (the aurora, the northern lights, city lights, dawn, the day side), see tourEarth
+// The tour's next view, in the tour's own order (EARTH_TOUR: night, day and the station's sights in turn), see tourEarth
 function nextEarthClip(quiet = false) {
-  state.earthClip = EARTH_CLIPS[(EARTH_CLIPS.indexOf(state.earthClip) + 1) % EARTH_CLIPS.length];
+  state.earthClip = EARTH_TOUR[(EARTH_TOUR.indexOf(state.earthClip) + 1) % EARTH_TOUR.length];
   earth.setClip(state.earthClip);
   if (!quiet) flashStatus('the Earth: ' + state.earthClip);
   earthTour.at = nowSec(); // (a view picked by hand starts the tour's count over)
@@ -1170,7 +1175,7 @@ function toggleSpectroColours() {
 }
 // A, while the scenery is on: the next scene (auto, a new one each song; then each by name), and
 // after the last, auto again in the theme's two colours rather than its own
-const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', falls: 'the falls', halloween: 'halloween', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond', space: 'space', eye: 'the eye' };
+const SCENE_NAMES = { auto: 'auto (a new one each song)', lake: 'the lake', sea: 'the sea', fire: 'the campfire', snow: 'the snow', city: 'the city in the rain', garden: 'the garden', sharks: 'the sharks', festival: 'the festival', koi: 'the koi pond', space: 'space', eye: 'the eye' };
 function nextScene() {
   const all = ['auto', ...scenery.scenes];
   if (state.sceneryTheme) { state.sceneryTheme = false; state.sceneryScene = 'auto'; }
@@ -1180,11 +1185,9 @@ function nextScene() {
   saveSettings();
 }
 // with auto, the scene shown: a new one each song, in turn (from one picked at random at the start)
-// (Halloween's among them only in October)
 // (a copy starts from the live page's: rolled here, it would be rolled from this page's own seed, before the take's is set)
 let autoScene = Number.isInteger(TAKE?.autoScene) ? TAKE.autoScene : Math.floor(clock.rng('auto-scene', 0)() * 64), autoSceneAt = -99;
-// (the month, for Halloween's scene: not a time of any picture)
-const autoScenes = () => scenery.scenes.filter((s) => s !== 'halloween' || new Date().getMonth() === 9);
+const autoScenes = () => scenery.scenes;
 const sceneShown = () => (state.sceneryScene === 'auto' ? autoScenes()[autoScene % autoScenes().length] : state.sceneryScene);
 function nextAutoScene() {
   const t = nowSec();
@@ -1480,7 +1483,7 @@ function showNews(news, version) {
     list: items.length > 6 ? [...items.slice(0, 5), ['?', `and ${items.length - 5} more in the help`]] : items,
     buttons: ['Show in help', 'OK'],
   });
-  $('alerts').querySelector('button').addEventListener('click', () => { $('help').showModal(); $('news-head').scrollIntoView({ block: 'start' }); });
+  $('alerts').querySelector('button').addEventListener('click', () => { $('help').showModal(); helpTab('new'); });
   state.seenVersion = version;
   saveSettings();
 }
@@ -1593,7 +1596,7 @@ async function exportSong() {
     const { name, about } = song.who || songNames(currentSong());
     const { midi, code } = await buildSongFiles(song, name, about);
     const file = await window.nc.saveSong(name, midi, code);
-    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')}`, file);
+    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')} (an approximate sketch of the song: whether you can share it depends on the music's rights)`, file);
   } finally { exporting = false; $('status').textContent = restingStatus(); }
 }
 
@@ -1643,11 +1646,25 @@ async function toggleCam() {
     segcam.clear();
     gestures.reset();
   }
+  camShown();
+}
+// (what follows any change of the camera's way: the layers it no longer feeds cleared, the body's classes, its button's word)
+function camShown() {
   if (!state.eyes) segcam.clear();
   if (!(cam.on && state.ascii)) asciiCam.clear();
   document.body.classList.toggle('cam-on', cam.on);
   document.body.classList.toggle('cam-ascii', cam.on && state.ascii);
   camLabel();
+}
+// The camera's ways in C's order: off, on, big eyes, ASCII. And one picked by its place (the strip's click, Shift+C), by
+// toggleCam's own first and last steps, not through the ways between (which would stop the camera and start it again).
+const camWay = () => (!cam.on ? 0 : state.eyes ? 2 : state.ascii ? 3 : 1);
+async function pickCam(i) {
+  if (i === camWay()) return;
+  if (i === 0) { state.eyes = false; state.ascii = true; return toggleCam(); } // (its last step: the camera off)
+  state.eyes = i === 2; state.ascii = i === 3;
+  if (!cam.on) return toggleCam(); // (its first step: the camera on, in the way set)
+  camShown();
 }
 
 async function toggleLayout() {
@@ -1779,7 +1796,13 @@ function renderGrid() {
     html += '│\n';
     text += '│\n';
   }
-  const status = locked ? `    bar ${eng.bar + 1} · step ${eng.step + 1}/16` : '    waiting for the beat...';
+  // (before the lock, where it is, as the code's tempo line says it: nothing heard yet (and how to start), sound but no pulse yet,
+  // a pulse heard and the bar's start being found; a newcomer otherwise saw one 'waiting' however long it took and whatever it was
+  // waiting for. From Astra's review, Nov 7: 'help before the beat locks')
+  const pre = !state.node ? `no sound yet: play a song (${K('source')} picks where it listens)`
+    : eng.silent ? 'no sound yet: play something'
+    : eng.tempo.provisional ? `a beat at ~${Math.round(eng.tempo.provisional.bpm)} bpm · finding bar one...` : 'hearing it · finding the beat...';
+  const status = locked ? `    bar ${eng.bar + 1} · step ${eng.step + 1}/16` : `    ${pre}`;
   html += `<span class="dim">${status}</span>`;
   if (html !== gridHtml) {
     gridHtml = html;
@@ -1808,13 +1831,14 @@ function renderRoll() {
   html += `<span class="dim">   ${chord ? 'chord ' + chord.name : 'listening for chords...'}</span>`;
   $('roll').innerHTML = html;
 }
-// The roll hangs below the last line. Where the code reaches too far down for it (the vertical
-// layout under the ID card or the camera, or a short window), the bottom of the window would cut
-// it in half, so it's hidden till there's room again. (Hidden, it keeps its place: whether it fits
-// doesn't change with it.)
+// The code keeps clear of the window's foot. Where it reaches too far down (the vertical layout under the ID card or the
+// camera, a short window, a song with every part and long lines), the bottom of the window would cut a line or the roll in
+// half, and the player bar, while it's up, would have the last lines running under it. So a line or a panel that doesn't
+// fit whole is hidden till there's room again, the last ones first, as they come in the code. (Hidden, each keeps its
+// place: whether one fits doesn't change with it.)
 function fitRoll() {
-  const roll = $('roll'), r = roll.getBoundingClientRect();
-  roll.classList.toggle('cut', r.height > 0 && r.bottom > innerHeight - playerBar.reserved() + 1); // (the player bar, while it's up, covers the bottom)
+  const foot = innerHeight - playerBar.reserved() + 1; // (the player bar, while it's up, covers the bottom)
+  for (const el of $('code').children) { const r = el.getBoundingClientRect(); el.classList.toggle('cut', r.height > 0 && r.bottom > foot); }
 }
 
 const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
@@ -2089,7 +2113,7 @@ async function takeBegin() {
 // layout: the copy keeps the shape the recording began with)
 // (and the toggles and A's variants a scene doesn't hold: the orb, the card, hush, the drop effect, the CRT, the look, the worlds'
 // look, the chrome's collage, the noodles, the spectrogram's colours; applied in the copy by takeSetters)
-const TAKE_EXTRAS = ['orb', 'card', 'cardV', 'cardBig', 'hushed', 'drop', 'crt', 'look', 'worldLook', 'chromeCollage', 'spaghettiKind', 'spectroTheme'];
+const TAKE_EXTRAS = ['orb', 'glass', 'card', 'cardV', 'cardBig', 'hushed', 'drop', 'crt', 'look', 'worldLook', 'chromeCollage', 'spaghettiKind', 'spectroTheme'];
 const takeSetup = () => { const { vertical, ...rest } = currentSetup(); return { ...rest, ...Object.fromEntries(TAKE_EXTRAS.map((k) => [k, state[k]])) }; };
 function takeNote(t) {
   const now = JSON.stringify(takeSetup());
@@ -2269,6 +2293,10 @@ const LAYER_ON = {
   chrome: () => VISUALS[state.visual] === 'chrome',
   spaghetti: () => VISUALS[state.visual] === 'spaghetti',
   earth: () => VISUALS[state.visual] === 'earth',
+  // (the backrooms had no line here till 0.5.6: its canvas, emptied when another background was picked, stayed in the page over
+  // the worlds, the chrome, the spaghetti and the Earth, and an empty canvas that isn't see-through is a black sheet: those four drew
+  // black after a visit to the backrooms, till Toaster was started again)
+  backrooms: () => VISUALS[state.visual] === 'backrooms',
   spectro: () => VISUALS[state.visual] === 'spectrogram',
   spectrobox: () => VISUALS[state.visual] === 'spectrogram',
   scenery: () => VISUALS[state.visual] === 'scenery',
@@ -2283,6 +2311,7 @@ const LAYER_ON = {
 };
 function showLayers() {
   for (const id in LAYER_ON) { const el = $(id), on = LAYER_ON[id](); if (el.hidden === on) el.hidden = !on; }
+  glPool.tend();
 }
 
 // Drawing: at most 60 frames a second, even on faster monitors, and none while minimized. With
@@ -2331,7 +2360,7 @@ function drawFrame(t) {
   else if (mode === 'warp') warp.draw(t, eng, col);
   else if (mode === 'fire') fire.draw(t, eng, col);
   else if (mode === 'earth') {
-    earth.draw(t, eng, { offset: syncOffset() });
+    earth.draw(t, eng, { offset: syncOffset(), calm: state.calm });
     if (earth.failed && !earthSaid) { earthSaid = true; flashStatus("the Earth's views come down the first time: no connection"); }
   } else if (mode === 'backrooms') {
     backrooms.draw(t, eng, { offset: syncOffset() });
@@ -2357,6 +2386,7 @@ function drawFrame(t) {
     setTimeout(() => worlds.warm(), 30000);
   }
   if (state.orb) orb.draw(t, eng, col, syncOffset(), (out, at) => bands(eng, out, 40, 14000, at), storm.orbRect(stageRect()));
+  if (state.blocks) punch.setBackdrop(mode !== 'off');
   if (state.blocks) punch.draw(t, eng, col, syncOffset(), mode === 'worlds' || mode === 'chrome' || mode === 'spaghetti', state.blockLook, currentSong()?.title, WIDGET ? 'widget' : state.mini, THEMES[state.theme] === 'pink' ? 'pink' : 'blue');
   if (card.shown) card.draw(t, eng, { song: currentSong(), source: state.label, frame: cam.frame, face: meshFace() || cam.face, art: songArt() }, col);
   cam.draw(col, camRect(), { mask: tracker.mask, bar: eng.bar });
@@ -2472,10 +2502,14 @@ function showVisMenu(open) {
   const tile = (kind, name, label, on) => `<button type="button" role="menuitem" class="tile${on ? ' on' : ''}" data-kind="${kind}" data-name="${name}"><img src="thumbs/${kind}-${name}.webp" alt="" width="160" height="100"><span>${label}</span></button>`;
   const scenes = ['auto', ...scenery.scenes].map((s) => tile('scene', s, s === 'auto' ? 'auto: a new one each song' : (SCENE_NAMES[s] || s).replace(/^the /, ''), now === 'scenery' && !state.sceneryTheme && state.sceneryScene === s));
   const more = V_ROUND.filter((v) => v !== 'scenery').flatMap((v) => (v === 'spaghetti' ? SPAGHETTI_KINDS.map((k) => tile('spaghetti', k, 'spaghetti: ' + k, now === v && state.spaghettiKind === k))
-    : v === 'earth' ? [tile('earth', 'all', 'earth (all)', now === v && state.earthTour !== false), ...EARTH_CLIPS.map((c) => tile('earth', c.replace(/ /g, '-'), `earth (${c})`, now === v && state.earthTour === false && state.earthClip === c))]
+    : v === 'earth' ? []
     : [tile('bg', v, v === 'off' ? 'off: just the code' : visName(v), now === v)]));
+  // the Earth has its own shelves (twenty views): all of them in turn first, then the night side, the day side and the station's sights
+  const earthTile = (c) => tile('earth', c.replace(/ /g, '-'), c, now === 'earth' && state.earthTour === false && state.earthClip === c);
+  const earthShelves = `<div class="pick-head">the Earth, from the space station</div><div class="pick-grid">${tile('earth', 'all', 'all views: a new one every 8 bars', now === 'earth' && state.earthTour !== false)}</div>`
+    + EARTH_GROUPS.map(([shelf, views]) => `<div class="pick-sub">${shelf}</div><div class="pick-grid">${views.map(earthTile).join('')}</div>`).join('');
   const presets = PRESETS.map((p) => `<button type="button" role="menuitem" class="tile" data-kind="preset" data-name="${p.id}"><img src="${p.picture}" alt="" width="160" height="100"><span>${p.name}</span></button>`);
-  visMenu.innerHTML = `<div class="pick-head">presets</div><div class="pick-presets">${presets.join('')}</div><div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div><div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
+  visMenu.innerHTML = `<div class="pick-head">presets</div><div class="pick-presets">${presets.join('')}</div><div class="pick-head">scenes</div><div class="pick-grid">${scenes.join('')}</div>${earthShelves}<div class="pick-head">more backgrounds</div><div class="pick-grid">${more.join('')}</div>`;
   const b = $('b-visual');
   visMenu.style.left = `${Math.max(12, Math.min(b.offsetLeft, innerWidth - visMenu.offsetWidth - 12))}px`;
 }
@@ -2506,14 +2540,30 @@ addEventListener('pointerdown', (e) => { if (!visMenu.hidden && !e.target.closes
 addEventListener('click', (e) => {
   if (VISUALS[state.visual] === 'scenery' && sceneShown() === 'koi' && !e.target.closest('button, a, input, select, dialog, [role="menu"], .panel, #menu, #bar, footer, #player, #alerts, #notice, #err, #card, #library')) scenery.feed(e.clientX, e.clientY);
 });
-$('b-blocks').onclick = () => nextBlocks();
-$('b-cam').onclick = () => toggleCam();
-$('b-card').onclick = () => toggleCard();
+$('b-blocks').onclick = () => { nextBlocks(); showRound('blocks'); };
+$('b-cam').onclick = () => toggleCam().then(() => showRound('cam'));
+$('b-card').onclick = () => { toggleCard(); showRound('card'); };
 $('b-strudel').onclick = () => openInStrudel();
 $('b-rec').onclick = () => toggleRecording();
 $('b-layout').onclick = () => toggleLayout();
 $('b-mini').onclick = () => (gameShowing() && window.nc?.setWidget ? window.nc.setWidget(true) : toggleMini());
 $('b-help').onclick = () => $('help').showModal();
+// The help's pages: keys (the one it opens on), settings, what's new, how it works; the one last looked at stays for next time
+// it opens. (It was all four down one long scroll: the settings were under two paragraphs, the keys under the settings.)
+// Only what shows changes (style.css, #help[data-tab]); the arrows move between the tabs when one has the focus.
+function helpTab(name) {
+  const h = $('help');
+  h.dataset.tab = name;
+  for (const b of h.querySelectorAll('.help-tabs button')) { const on = b.dataset.tab === name; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }
+  h.scrollTop = 0;
+}
+$('help').querySelector('.help-tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) helpTab(b.dataset.tab); };
+$('help').querySelector('.help-tabs').onkeydown = (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const all = [...e.currentTarget.querySelectorAll('button')], to = all[(all.indexOf(document.activeElement) + (e.key === 'ArrowRight' ? 1 : all.length - 1)) % all.length];
+  e.preventDefault(); helpTab(to.dataset.tab); to.focus();
+};
+helpTab('keys');
 
 $('rename-form').addEventListener('submit', () => {
   const title = $('rename-title').value.trim(), artist = $('rename-artist').value.trim();
@@ -2525,6 +2575,15 @@ $('rename-form').addEventListener('submit', () => {
 // Every action and its key. Each key can be changed in the help (?): click it, press the new one;
 // a key another action has goes over to it in exchange. The changes are kept with the settings
 // (only the ones that differ from these). Esc, ? and F11 stay as they are.
+// R's round: what floats over the picture. The orb and the glass blob are each on or off; the round goes none, the orb, the
+// glass blob, both (its place read from the two, so the orb's preset and Ctrl+K's "the glass blob" land in it too).
+const OVER = ['none', 'the orb', 'the glass blob', 'both'];
+const overAt = () => (state.orb ? 1 : 0) + (state.glass ? 2 : 0);
+function pickOver(i) {
+  if (!!(i & 1) !== !!state.orb) setOrb(!!(i & 1));
+  if (!!(i & 2) !== !!state.glass) setGlass(!!(i & 2));
+  flashStatus('over the picture: ' + OVER[i]);
+}
 const ACTIONS = [
   { id: 'source', key: 's', run: () => showMenu() },
   { id: 'library', key: 'g', run: () => toggleLibrary() },
@@ -2532,7 +2591,9 @@ const ACTIONS = [
   { id: 'strength', key: 'a', run: () => (state.blocks && state.blockLook === 'game' ? nextGameScreens() : VISUALS[state.visual] === 'worlds' ? nextWorldLook() : VISUALS[state.visual] === 'earth' ? nextEarthView() : VISUALS[state.visual] === 'chrome' ? toggleCollage() : VISUALS[state.visual] === 'spaghetti' ? nextSpaghetti() : VISUALS[state.visual] === 'spectrogram' ? toggleSpectroColours() : VISUALS[state.visual] === 'scenery' ? nextScene() : flashStatus(`${K('strength')} changes the scene, the world's look, the Earth's view, the chrome's collage, the spaghetti's noodles, the spectrogram's colours or the handheld's screens`)) },
   { id: 'blocks', key: 'p', run: () => nextBlocks() },
   // R: the orb, its 3D shapes over any background (off the keys in 0.4.23, back in 0.4.26: it was missed)
-  { id: 'orb', key: 'r', run: () => { setOrb(!state.orb); flashStatus(state.orb ? 'the orb on' : 'the orb off'); } },
+  // (and since 0.5.6 R goes round what floats over the picture: none, the orb, the glass blob, both. The glass had no key
+  // from 0.4.23 on, only its name in Ctrl+K, and nobody found it)
+  { id: 'orb', key: 'r', run: () => pickOver((overAt() + 1) % OVER.length) },
   // the blocks' timing: earlier if they land after the beat, later if before
   { id: 'later', key: '[', run: () => nudgeSync(-10) },
   { id: 'earlier', key: ']', run: () => nudgeSync(10) },
@@ -2568,6 +2629,90 @@ const ACTIONS = [
 ];
 // the footer's list of keys, in this order: [actions..., what it says]
 const FOOTER = [['source', 'source'], ['library', 'library'], ['visual', 'background'], ['strength', 'next'], ['blocks', 'code look'], ['theme', 'theme'], ['code', 'hide code']];
+// The rounds: a key that goes round a list (V, A, P, T, B, C, K, N, U, Z) shows the whole list for a moment over the footer, the one
+// picked lit (#strip). The key again goes on as it always did; Shift with it goes back; while the list shows the arrows step
+// either way and a click picks. (Before, a press said one name in the header, which sits dim while a song plays: no telling
+// how many there were, where the round was, or that B's has an "off".) A round: its word, its names in the key's order, where
+// it is now (-1: on none of them), how one is picked; `from`, the name the strip starts at (B's: "off" first).
+function aRound() {
+  const mode = VISUALS[state.visual];
+  if (gameShowing()) return { word: "the handheld's screens", names: GAME_SCREENS.map((g) => SCREEN_NAMES[g]), at: GAME_SCREENS.indexOf(state.gameScreens),
+    pick: (i) => { state.gameScreens = GAME_SCREENS[i]; setGameScreens(state.gameScreens); saveSettings(); flashStatus('screens: ' + SCREEN_NAMES[state.gameScreens]); } };
+  if (mode === 'worlds') { const all = worlds.looks; return { word: "the world's look", names: all, at: all.indexOf(state.worldLook),
+    pick: (i) => { state.worldLook = all[i]; worlds.setLook(all[i]); flashStatus('look: ' + all[i]); saveSettings(); } }; }
+  if (mode === 'earth') { const all = [...EARTH_CLIPS, 'all']; return { word: 'the Earth', names: [...EARTH_CLIPS, 'all, in turn'], at: state.earthTour !== false ? all.length - 1 : all.indexOf(state.earthClip),
+    pick: (i) => setEarthView(all[i]) }; }
+  if (mode === 'chrome') return { word: 'the collage', names: ['off', 'on'], at: state.chromeCollage ? 1 : 0, pick: (i) => { if (!!state.chromeCollage !== !!i) toggleCollage(); } };
+  if (mode === 'spaghetti') return { word: 'the noodles', names: SPAGHETTI_KINDS, at: SPAGHETTI_KINDS.indexOf(state.spaghettiKind),
+    pick: (i) => { state.spaghettiKind = SPAGHETTI_KINDS[i]; flashStatus('noodles: ' + state.spaghettiKind); saveSettings(); } };
+  if (mode === 'spectrogram') return { word: 'colours', names: ['rainbow', "the theme's"], at: state.spectroTheme ? 1 : 0, pick: (i) => { if (!!state.spectroTheme !== !!i) toggleSpectroColours(); } };
+  if (mode === 'scenery') { const all = ['auto', ...scenery.scenes]; return { word: 'scene', names: [...all.map((n) => (SCENE_NAMES[n] || n).replace(/^the | \(.*/g, '')), "auto, in the theme's colours"], at: state.sceneryTheme ? all.length : all.indexOf(state.sceneryScene),
+    pick: (i) => { state.sceneryTheme = i === all.length; state.sceneryScene = all[i] || 'auto'; flashStatus('scene: ' + (SCENE_NAMES[state.sceneryScene] || state.sceneryScene) + (state.sceneryTheme ? ", in the theme's colours" : '')); saveSettings(); } }; }
+  return null; // (nothing for A to change on this background: the key says so, as before)
+}
+const ROUNDS = {
+  visual: () => ({ word: 'background', names: V_ROUND.map(visName), at: V_ROUND.indexOf(VISUALS[state.visual]), more: ['pictures ▾', () => showVisMenu(true)],
+    pick: (i) => { setVisual(VISUALS.indexOf(V_ROUND[i])); flashStatus('background: ' + visName(V_ROUND[i])); crtStatic(); crtOsd(crtChannel()); } }),
+  strength: aRound,
+  blocks: () => ({ word: 'the code as', names: ['dominoes', 'handheld game', 'punchcard', 'none'], at: state.blocks ? BLOCK_LOOKS.indexOf(state.blockLook) : BLOCK_LOOKS.length,
+    pick: (i) => { if (BLOCK_LOOKS[i]) state.blockLook = BLOCK_LOOKS[i]; setBlocks(!!BLOCK_LOOKS[i]); flashStatus('code look: ' + ['dominoes', 'handheld game', 'punchcard', 'none'][i]); } }),
+  theme: () => ({ word: 'theme', names: THEMES, at: state.theme, pick: (i) => { state.theme = i; applyTheme(); crtOsd(`PICTURE\n${THEMES[i].toUpperCase()}`); saveSettings(); } }),
+  dropfx: () => ({ word: 'on a drop', names: DROPS, at: state.drop, from: DROPS.indexOf('off'),
+    pick: (i) => { state.drop = i; if (DROPS[i] === 'y2k bug') y2k.prepare(); saveSettings(); flashStatus('drop fx: ' + DROPS[i]); } }),
+  camfx: () => ({ word: 'camera effect', names: CAM_FX, at: state.camFx, pick: (i) => setCamFx(i, true) }),
+  look: () => ({ word: 'look', names: LOOKS, at: LOOKS.indexOf(state.look), pick: (i) => setLook(LOOKS[i]) }),
+  cam: () => ({ word: 'camera', names: ['off', 'on', 'big eyes', 'ASCII'], at: camWay(), pick: pickCam }),
+  orb: () => ({ word: 'over the picture', names: OVER, at: overAt(), pick: pickOver }),
+  card: () => {
+    if ((state.vertical || state.mini) && gameShowing()) return null; // (the cartridge has the song: N says so)
+    const on = state.vertical ? state.cardV : state.card;
+    if (state.mini) return { word: 'card', names: ['off', 'on'], at: on ? 1 : 0, pick: (i) => { if (!!on !== !!i) toggleCard(); } };
+    return { word: 'card', names: ['off', 'on', 'big'], at: !on ? 0 : state.cardBig ? 2 : 1,
+      pick: (i) => { if (state.vertical) state.cardV = i > 0; else state.card = i > 0; state.cardBig = i === 2; applyCard(); saveSettings(); } };
+  },
+  code: () => ({ word: 'the code', names: ['shown', 'hidden', 'all but the beat'], at: state.codeHidden ? 1 : state.beatHidden ? 2 : 0, pick: (i) => { setCodeHidden(i === 1, i === 2); flashStatus(codeSaid()); } }),
+};
+const strip = $('strip');
+let stripId = null, stripT = 0;
+const stripShowing = () => !!stripId && !strip.hidden && strip.getClientRects().length > 0; // (not while recording or with the clean look: the CSS has it out)
+function hideRound() { clearTimeout(stripT); strip.hidden = true; stripId = null; }
+function showRound(id) {
+  const r = ROUNDS[id]?.();
+  if (!r) { hideRound(); return; }
+  stripId = id;
+  const n = r.names.length, el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; x.textContent = text; return x; };
+  const word = el('span', 'word', ' ' + r.word);
+  word.prepend(el('kbd', '', K(id)));
+  strip.replaceChildren(word, ...r.names.map((_, j) => {
+    const i = ((r.from || 0) + j) % n, b = el('button', i === r.at ? 'on' : '', r.names[i]);
+    b.type = 'button'; b.dataset.i = i;
+    if (i === r.at) b.setAttribute('aria-current', 'true');
+    return b;
+  }));
+  if (r.more) { const b = el('button', 'more', r.more[0]); b.type = 'button'; b.dataset.more = '1'; strip.append(b); }
+  strip.append(el('span', 'back', `shift+${K(id)} back`));
+  strip.hidden = false;
+  clearTimeout(stripT);
+  stripT = setTimeout(hideRound, 2600);
+}
+// (a step from where the round is: on from none of them is the first, back from none the last)
+function stepRound(id, dir) {
+  const r = ROUNDS[id]?.();
+  if (!r) return false;
+  const n = r.names.length;
+  Promise.resolve(r.pick(r.at < 0 ? (dir > 0 ? 0 : n - 1) : (r.at + dir + n) % n)).then(() => showRound(id), showError); // (the camera's takes a moment to start)
+  return true;
+}
+strip.onclick = (e) => {
+  const b = e.target.closest('button'), id = stripId;
+  if (!b || !id) return;
+  if (b.dataset.more) { const more = ROUNDS[id]()?.more; hideRound(); more?.[1](); return; }
+  Promise.resolve(ROUNDS[id]()?.pick(+b.dataset.i)).then(() => showRound(id), showError);
+};
+// (it stays longer while the mouse moves on it; not for good, or a mouse left resting there would keep it over the picture)
+strip.onpointermove = () => { clearTimeout(stripT); stripT = setTimeout(hideRound, 6000); };
+strip.onpointerleave = () => { clearTimeout(stripT); stripT = setTimeout(hideRound, 1200); };
+
 const RESERVED = new Set(['escape', '?', '/', 'f11', 'tab', 'enter', 'shift', 'control', 'alt', 'meta', 'capslock', 'contextmenu']);
 // The keys you changed, as saved: kept if they're single keys, not taken twice, and not the key another action has as its own. A profile
 // from before an action had its key may have set that key for another one (U's look and G's library came later): that one goes back
@@ -2611,7 +2756,7 @@ const paletteEntries = () => [
   { id: 'code:glass', name: 'code on glass (on or off)', aliases: ['glass', 'liquid glass', 'acrylic', 'plates'], run: () => setGlassPlates(!state.glassPlates) },
   // the Earth's views, by name
   ...EARTH_CLIPS.map((c) => ({
-    id: 'earth:' + c, name: `earth (${c})`, aliases: ['earth', 'space', 'nasa', ...(c.includes('aurora') || c.includes('northern') ? ['aurora', 'northern lights'] : [])],
+    id: 'earth:' + c, name: `earth (${c})`, aliases: ['earth', 'space', 'nasa', 'iss', EARTH_GROUPS.find(([, views]) => views.includes(c))[0], ...(c.includes('aurora') || c.includes('northern') ? ['aurora', 'northern lights'] : [])],
     run: () => { setEarthView(c, false); setVisual(VISUALS.indexOf('earth')); flashStatus(earthLabel()); },
   })),
   { id: 'earth:all', name: 'earth (all): a new view every 8 bars', aliases: ['earth', 'the earth', 'earth tour', 'all earth', 'cycle earth', 'nasa', 'space'],
@@ -2809,7 +2954,19 @@ function codeNext() {
 function footerKeys() {
   const word = (f) => (f[0] === 'code' ? codeNext() : f[f.length - 1]);
   const parts = FOOTER.map((f) => (f[0] === 'strength' ? (nextWhat() ? `${K('strength')} ${nextWhat()}` : null) : `${f.slice(0, -1).map(K).join(' ')} ${word(f)}`));
-  document.querySelector('footer .keys').textContent = [...parts.filter(Boolean), '? all keys'].join(' · ');
+  // (first, the way to everything by name: the palette, which was only told of in the help)
+  const find = `${document.documentElement.classList.contains('darwin') ? '⌘K' : 'Ctrl+K'} find anything`;
+  document.querySelector('footer .keys').textContent = [find, ...parts.filter(Boolean), '? all keys'].join(' · ');
+}
+// The bars fade while a song plays (body.live), so the picture has the window; a moving mouse is someone looking for a
+// button, so they come back for as long as it moves and three seconds more.
+{
+  let asleep = 0;
+  addEventListener('mousemove', () => {
+    document.body.classList.add('awake');
+    clearTimeout(asleep);
+    asleep = setTimeout(() => document.body.classList.remove('awake'), 3000);
+  }, { passive: true });
 }
 
 // The controls panel (controls.js): on a screen with no hover (an iPad, a phone), every action above as a
@@ -3058,10 +3215,11 @@ addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (!visMenu.hidden) { showVisMenu(false); if (k === 'escape') return; }
-  if (k === 'escape') { if (WIDGET) { window.nc?.setWidget(false); return; } closeMenu(); return; }
+  if (k === 'escape') { hideRound(); if (WIDGET) { window.nc?.setWidget(false); return; } closeMenu(); return; }
   if (e.target.closest('#alerts, #menu:not([hidden]) input')) return; // let Enter/Space press the message box's button, and an address be typed
   if (k === '?' || k === '/') { $('help').showModal(); return; }
   if (k === 'f11') { e.preventDefault(); window.nc?.toggleFullscreen(); return; }
+  if ((k === 'arrowleft' || k === 'arrowright') && stripShowing()) { e.preventDefault(); stepRound(stripId, k === 'arrowright' ? 1 : -1); return; }
   const act = byKey.get(k);
   if (!act) return;
   if (k === ' ' || act.id === 'full') e.preventDefault(); // (Space would scroll or press a button)
@@ -3070,7 +3228,10 @@ addEventListener('keydown', (e) => {
   // second later, which ran on unnoticed for four minutes).
   if (e.repeat && act.id !== 'later' && act.id !== 'earlier') return;
   updateHints({ action: act.id });
-  act.run();
+  // (Shift with a round's key goes back a step; only a letter's or a digit's, as Shift is part of typing the others)
+  if (e.shiftKey && /^[a-z0-9]$/.test(k) && ROUNDS[act.id] && stepRound(act.id, -1)) return;
+  const ran = act.run();
+  if (ROUNDS[act.id]) Promise.resolve(ran).then(() => showRound(act.id), () => {}); // (after the camera has started, for C)
 });
 
 let statusTimer;
@@ -3100,7 +3261,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
 const prepareFrame = (t) => Promise.all([scenery.prepare(t), spaghetti.prepare(), earth.prepare(t), backrooms.prepare(t)]);
-window.__nc = { clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
+window.__nc = { glPool, clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
 // (for the clock harness, tools/clock-harness.mjs, and for whatever drives a render: the layers and what a look is made of)
 Object.assign(window.__nc, { setAutoScene: (n, at) => { autoScene = n; if (Number.isFinite(at)) autoSceneAt = at; }, lookWaiting, setPerfectCopy, takeBegin, takeEnd, takeState: () => ({ id: takeRec.id, tapping: !!takeRec.tap, runup: takeRec.blocks.length, making: !!takeRec.making }), VISUALS, BLOCK_LOOKS, THEMES, SPAGHETTI_KINDS, DROPS, scenery, chrome, spaghetti, spectro, warp, fire, tunnel, spiral, wheel, field, wait, storm, sceneShown, applyCard, setCrt, freshStart, setPostLook: (name) => setLook(name === 'none' ? 'off' : name, false), setGlassPlates: (on) => setGlassPlates(on, false) });
 // (the looks as they are now: the ones from outside come in after the page starts)
@@ -3169,7 +3330,7 @@ if (inBrowser && !TAKE) {
 // what changed during the take goes in on its time, through the same setters as a scene of yours (applySetup).
 const takeSetters = {
   ...presetSetters,
-  orb: (on) => setOrb(on), hushed: (on) => setHush(on), crt: (on) => setCrt(on), look: (name) => setLook(name, false),
+  orb: (on) => setOrb(on), glass: (on) => setGlass(on), hushed: (on) => setHush(on), crt: (on) => setCrt(on), look: (name) => setLook(name, false),
   card: (on) => { state.card = on; applyCard(); }, cardV: (on) => { state.cardV = on; applyCard(); }, cardBig: (on) => { state.cardBig = on; applyCard(); },
   drop: (i) => { state.drop = i; }, worldLook: (look) => { state.worldLook = look; worlds.setLook(look); },
   chromeCollage: (on) => { state.chromeCollage = on; }, spaghettiKind: (kind) => { state.spaghettiKind = kind; }, spectroTheme: (on) => { state.spectroTheme = on; },

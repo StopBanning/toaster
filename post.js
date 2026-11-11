@@ -545,8 +545,21 @@ export function createPost(canvas, layerIds = POST_LAYERS) {
   const els = layerIds.map((id) => document.getElementById(id));
   const code = document.getElementById('code');
   let look = 'off', broken = !gl, W = 0, H = 0, dpr = 1;
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); broken = true; canvas.hidden = true; document.body.classList.remove('look-on'); });
-  const programs = {};
+  // The context can go and come back (the browser's limit on WebGL pictures: gl-pool.js parks this one while it is off and
+  // hands it back when it shows; a driver restart does the same). While it's gone nothing is drawn, and the canvas stays
+  // as shown as its look or the glass wants it, which is how the pool knows to bring it back. Back, everything made with
+  // the old context is made again: the programs (a look from outside from its kept source), the pictures, the targets.
+  let gone = false;
+  const programs = {}, outside = {};
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); gone = true; document.body.classList.remove('look-on'); });
+  canvas.addEventListener('webglcontextrestored', () => {
+    gone = false;
+    for (const name in programs) delete programs[name];
+    pics = []; pp = []; present = glassT = null; W = H = 0; // (fit() makes them again at the next draw)
+    restart();
+    try { if (look !== 'off') programOf(look); if (look !== 'off' || glass) programOf('<present>'); if (glass) programOf('<glass>'); } catch (err) { console.warn('look', look, err); broken = true; canvas.hidden = true; return; }
+    document.body.classList.toggle('look-on', look !== 'off');
+  });
   // the gathered pictures, two taking turns: this frame's (pics[picAt]), and the one the trails' last step took in (the
   // other, once fedOk); the look's two ping-pong targets (the newest output first), and the last pass's
   let pics = [], picAt = 0, fedOk = false, pp = [], present = null, glassT = null;
@@ -590,7 +603,7 @@ export function createPost(canvas, layerIds = POST_LAYERS) {
     for (let i = 0; i < n; i++) { const name = gl.getActiveUniform(p, i).name; u[name] = gl.getUniformLocation(p, name); }
     return { p, u };
   }
-  const programOf = (name) => (programs[name] ??= program(name === '<present>' ? PRESENT : name === '<glass>' ? GLASS : HEAD + LOOK_SRC[name]));
+  const programOf = (name) => (programs[name] ??= program(name === '<present>' ? PRESENT : name === '<glass>' ? GLASS : outside[name] ?? HEAD + LOOK_SRC[name]));
 
   function texture() {
     const t = gl.createTexture();
@@ -742,9 +755,9 @@ export function createPost(canvas, layerIds = POST_LAYERS) {
       look = LOOKS.includes(name) ? name : 'off';
       const on = look !== 'off' && !broken;
       canvas.hidden = !(on || (glass && !broken));
-      document.body.classList.toggle('look-on', on);
+      document.body.classList.toggle('look-on', on && !gone);
       restart(); // (the trails start from the background, not from whatever an earlier look left)
-      if (!on) return look;
+      if (!on || gone) return look; // (gone: its programs are made when the context is back)
       try { programOf(look); programOf('<present>'); } catch (err) { console.warn('look', look, err); broken = true; canvas.hidden = true; document.body.classList.remove('look-on'); return look; }
       return look;
     },
@@ -752,10 +765,11 @@ export function createPost(canvas, layerIds = POST_LAYERS) {
     // null, or why it won't.
     addLook(name, src) {
       if (broken) return 'looks need WebGL 2';
-      let made;
-      try { made = program(adaptScreenShader(src)); } catch (err) { return String(err?.message || err).slice(0, 400); }
-      if (programs[name]) gl.deleteProgram(programs[name].p);
-      programs[name] = made;
+      let made, text;
+      try { text = adaptScreenShader(src); if (!gone) made = program(text); } catch (err) { return String(err?.message || err).slice(0, 400); }
+      if (programs[name]) { gl.deleteProgram(programs[name].p); delete programs[name]; }
+      outside[name] = text; // (kept: the program is made again from it when the context comes back)
+      if (made) programs[name] = made;
       if (!LOOKS.includes(name)) LOOKS.push(name);
       return null;
     },
@@ -764,16 +778,19 @@ export function createPost(canvas, layerIds = POST_LAYERS) {
       const i = LOOKS.indexOf(name);
       if (i > 0) LOOKS.splice(i, 1);
       if (programs[name]) { gl.deleteProgram(programs[name].p); delete programs[name]; }
+      delete outside[name];
     },
     // The code on glass, on or off; false if this machine can't (no WebGL 2, or its shader won't compile).
     setGlass(on) {
       glass = !!on && !broken;
-      if (glass) try { programOf('<glass>'); programOf('<present>'); } catch (err) { console.warn('glass', err); glass = false; }
+      if (glass && !gone) try { programOf('<glass>'); programOf('<present>'); } catch (err) { console.warn('glass', err); glass = false; }
       canvas.hidden = !((look !== 'off' || glass) && !broken);
       return glass;
     },
     draw(t, eng, col, offset = 0) {
       if ((look === 'off' && !glass) || broken) return;
+      // (gone: nothing to draw with, but the canvas is kept as shown as it's wanted, so the pool hands the context back)
+      if (gone) { const want = look !== 'off' || platesNow() > 0; if (canvas.hidden === want) canvas.hidden = !want; return; }
       if (fit()) restart();
       const panes = glass ? platesNow() : 0;
       if (look === 'off' && !panes) { if (!canvas.hidden) canvas.hidden = true; return; } // (the code hidden: nothing on glass)

@@ -43,9 +43,11 @@ export function createTape() {
     shift(beats) { if (cur) cur.moved += beats; },
     // A bar starting at beat beat0 and the patterns playing in it: { id: [16 on/off] or null },
     // the lead's as { on, tok } (its notes, 0-11).
-    pattern(beat0, parts) {
+    // t: when that bar's first beat fell, in seconds on the engine's own beat grid as it stood then (not the clock the call
+    // came on); kept for the export's tempo (fitTempo). Without it the bar is kept as before.
+    pattern(beat0, parts, t) {
       if (!cur) return;
-      cur.bars.push({ b: beat0 + cur.moved, parts });
+      cur.bars.push(Number.isFinite(t) ? { b: beat0 + cur.moved, parts, t } : { b: beat0 + cur.moved, parts });
       cur.who = api.who?.() || cur.who;
     },
     // wob: the bass's filter sweeps a beat in that bar (2, 3, 4), or 0 (engine.js: wobbleCheck);
@@ -123,10 +125,38 @@ export function createTape() {
         recordedBars: stretches.reduce((n, st) => n + st.bars.length, 0),
         recordedSeconds: stretches.reduce((n, st) => n + st.bars.length * 240 / st.bpm, 0),
       };
-      return { bpm: best.bpm, bars, who: best.who || null, coverage, timeline };
+      // One tempo for the whole song, fitted to every bar line heard, when there is one to trust (fitTempo); else the last one.
+      // origin: where the export's first beat falls, in the engine's seconds, on that fitted line (for laying it over the sound).
+      const fit = fitTempo(best.bars, best.bpm);
+      // (to a thousandth of a BPM either way: the last reading comes with fourteen decimals, which is noise in a file someone reads)
+      if (!fit) return { bpm: Math.round(best.bpm * 1000) / 1000, bars, who: best.who || null, coverage, timeline };
+      return { bpm: fit.bpm, bpmLast: best.bpm, origin: fit.at + fit.P * (first * 4 + d + off), bars, who: best.who || null, coverage, timeline };
     },
   };
   return api;
+}
+
+// The export's tempo, with hindsight. The engine's tempo is its latest reading: right to a few hundredths of a BPM, which is
+// plenty while it plays, as it keeps correcting where the beat is. Written down as ONE tempo for the whole song, the last reading
+// run back from the end slid the first bars 60 ms and more off the record over two and a half minutes (0.5.5: a median of 0.043%
+// off; the exported kicks scored 0.32 against the stems as exported and 0.52 with the tempo refitted, Nov 10). So: a straight
+// line through the time of every bar line the engine heard, by its beat number (corrected, as the bars are, for the beats it
+// moved since). The slope is the median of the slopes between bars 8 or more apart, which a moved beat or a few bars of wobble
+// don't pull; the line's height is the median of what is left. Used only with 16 bars or more, within half a percent of the
+// last reading (further is a different tempo, not a better one), and no further from the bar lines than the last reading's line.
+// bars: [{ b, t }] of one stretch. Returns { bpm (to a thousandth), P (seconds a beat), at (the line's time at beat 0) } or null.
+export function fitTempo(bars, bpmLast) {
+  const pts = bars.filter((r) => Number.isFinite(r.t) && Number.isFinite(r.b)).sort((x, y) => x.b - y.b);
+  if (pts.length < 16 || !(bpmLast > 0)) return null;
+  const median = (xs) => { const v = xs.slice().sort((x, y) => x - y), n = v.length; return n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2; };
+  const slopes = [];
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) if (pts[j].b - pts[i].b >= 32) slopes.push((pts[j].t - pts[i].t) / (pts[j].b - pts[i].b));
+  if (slopes.length < 8) return null;
+  const bpm = Math.round(60000 / median(slopes)) / 1000;
+  if (!(bpm > 0) || Math.abs(bpm / bpmLast - 1) > 0.005) return null;
+  const line = (P) => { const at = median(pts.map((r) => r.t - P * r.b)); return { P, at, off: median(pts.map((r) => Math.abs(r.t - at - P * r.b))) }; };
+  const fitted = line(60 / bpm), last = line(60 / bpmLast);
+  return fitted.off <= last.off ? { bpm, P: fitted.P, at: fitted.at } : null;
 }
 
 // ---------------------------------------------------------------- MIDI
