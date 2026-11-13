@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>tune, for real</title>
+<script type="module">
+// The export's tune for real, in a hidden Electron window (tools/tune-real-check.cjs): a tune played on a live AudioContext
+// into the ear (renderer/ear.js), on the app's clock (clock.js), then heard by Basic Pitch through tune.js, as X hears a song.
+// The notes heard are compared with the notes played, in the engine's seconds: which were found, at the right pitch, how far off
+// in time. Nothing is played aloud (the tune goes only to the ear).
+import { clock } from '../renderer/clock.js';
+import { createEar } from '../renderer/ear.js';
+import { tuneFor } from '../renderer/tune.js';
+import { topLine } from '../renderer/melody.js';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+try {
+  const ac = new AudioContext({ latencyHint: 'interactive' });
+  await ac.resume();
+  clock.attach(ac); clock.playing = true;
+  // (the app reads the clock every frame; its hold on the audio clock moves only when it is read)
+  const reading = setInterval(() => clock.now(), 5);
+  const ear = await createEar(ac, clock);
+  const bus = ac.createGain();
+  ear.connect(bus);
+  // 24 notes, 0.25 s each, every 0.3 s, in a voice's range; an organ-ish tone (four harmonics), soft edges
+  const TUNE = [64, 67, 69, 71, 72, 71, 69, 67, 64, 62, 60, 62, 64, 67, 72, 74, 76, 74, 72, 71, 69, 67, 65, 64];
+  await sleep(1500); // (the clock takes hold of the audio clock)
+  const start = ac.currentTime + 0.5;
+  TUNE.forEach((midi, i) => {
+    const at = start + i * 0.3, hz = 440 * 2 ** ((midi - 69) / 12), env = ac.createGain();
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(0.2, at + 0.005);
+    env.gain.setValueAtTime(0.2, at + 0.24);
+    env.gain.linearRampToValueAtTime(0, at + 0.25);
+    env.connect(bus);
+    [1, 0.5, 0.33, 0.25].forEach((amp, h) => {
+      const osc = ac.createOscillator(), g = ac.createGain();
+      osc.frequency.value = hz * (h + 1); g.gain.value = amp;
+      osc.connect(g).connect(env);
+      osc.start(at); osc.stop(at + 0.26);
+    });
+  });
+  const end = start + TUNE.length * 0.3;
+  while (ac.currentTime < end + 0.6) await sleep(50);
+  // the notes played, in the engine's seconds (as the engine would have heard them), and a song over them: 120 BPM (2 s bars)
+  const played = TUNE.map((midi, i) => [clock.fromAudio(start + i * 0.3), 0.25, midi]);
+  const song = { bpm: 120, origin: played[0][0] - 0.5, bars: Array.from({ length: 5 }, () => ({ parts: {}, events: [] })) };
+  const steps = [];
+  // (this check is of the notes heard in the mix and the line through them: the voice splitter, where a copy has one, is left out,
+  // since what is played here is a synth's tune, not a singer)
+  const got = await tuneFor(song, ear, (d) => steps.push(d), { split: async () => ({ vocals: null, absent: true, why: 'left out of this check' }) });
+  clearInterval(reading);
+  if (!got.notes) throw Error('no tune: ' + got.why);
+  const used = new Set(), offs = [];
+  for (const [t, , m] of played) {
+    let best = -1;
+    got.notes.forEach(([t2, , m2], j) => { if (!used.has(j) && m2 === m && Math.abs(t2 - t) < 0.05 && (best < 0 || Math.abs(t2 - t) < Math.abs(got.notes[best][0] - t))) best = j; });
+    if (best >= 0) { used.add(best); offs.push(got.notes[best][0] - t); }
+  }
+  const mean = offs.reduce((a, b) => a + b, 0) / Math.max(1, offs.length);
+  // and the line the export writes (the path through the frames, melody.js pathLine; with none, the notes' top line): each played
+  // note in it at its pitch, or an octave off
+  const line = got.line?.length ? got.line : topLine(got.notes);
+  const inLine = played.filter(([t, , m]) => line.some(([t2, , m2]) => m2 === m && Math.abs(t2 - t) < 0.05)).length;
+  const octaveOff = played.filter(([t, , m]) => line.some(([t2, , m2]) => m2 !== m && (m2 - m) % 12 === 0 && Math.abs(t2 - t) < 0.05)).length;
+  window.result = {
+    ok: true, played: played.length, heard: got.notes.length, found: offs.length, extra: got.notes.length - offs.length,
+    meanOffsetMs: +(mean * 1000).toFixed(1), worstOffsetMs: +(Math.max(...offs.map(Math.abs)) * 1000).toFixed(1),
+    backend: got.backend, ms: got.ms, line: line.length, inLine, octaveOff, seconds: +got.seconds.toFixed(2), progressSteps: steps.length, sampleRate: ac.sampleRate,
+  };
+  ear.stop(); await ac.close();
+} catch (err) { window.result = { ok: false, error: String(err?.stack || err) }; }
+</script>

@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>tune check</title>
+<script type="module">
+// Basic Pitch in the app's own worker (renderer/tune-worker.js) on a stretch of a recording, in a hidden Electron window
+// (tools/tune-check.cjs): the notes it hears, how long it took and on what. ?audio=<path>&start=<s>&seconds=<s>
+const q = new URLSearchParams(location.search);
+try {
+  window.stage = 'fetch';
+  const bytes = await (await fetch('file://' + q.get('audio'))).arrayBuffer();
+  const start = Number(q.get('start') || 0), seconds = Number(q.get('seconds') || 30);
+  window.stage = 'decode';
+  const decoded = await new OfflineAudioContext(1, 1, 22050).decodeAudioData(bytes);
+  const a = Math.round(start * 22050), n = Math.min(decoded.length - a, Math.round(seconds * 22050));
+  const audio = new Float32Array(n);
+  for (let c = 0; c < decoded.numberOfChannels; c++) {
+    const ch = decoded.getChannelData(c);
+    for (let i = 0; i < n; i++) audio[i] += ch[a + i] / decoded.numberOfChannels;
+  }
+  window.stage = 'worker';
+  const worker = new Worker(new URL('../renderer/tune-worker.js', import.meta.url), { type: 'module' });
+  const t0 = performance.now(), progress = [];
+  window.result = await new Promise((resolve) => {
+    worker.onmessage = ({ data }) => {
+      window.stage = 'msg ' + data.type + ' ' + (data.done ?? '');
+      if (data.type === 'ready') return;
+      if (data.type === 'progress') progress.push([Math.round(performance.now() - t0), +data.done.toFixed(3)]);
+      else resolve(data.type === 'notes' ? { ok: true, ...data, wall: Math.round(performance.now() - t0), seconds: n / 22050, steps: progress.length } : { ok: false, error: data.error });
+    };
+    worker.onerror = (e) => resolve({ ok: false, error: e.message || 'worker failed' });
+    worker.postMessage({ audio }, [audio.buffer]);
+  });
+  worker.terminate();
+} catch (err) { window.result = { ok: false, error: String(err?.stack || err) }; }
+</script>

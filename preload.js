@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('nc', {
   closeWindow: () => ipcRenderer.invoke('win:close'),
   // Song export (X): the song as MIDI bytes and as Strudel code, into Music\Toaster.
   saveSong: (name, midi, code) => ipcRenderer.invoke('song:save', name, midi, code),
+  saveRebuilt: (midiFile, code, files) => ipcRenderer.invoke('song:save-rebuilt', midiFile, code, files),
   // The perfect take (stream B): a take begun (its details; says its id), its sound as it comes, its end (with what changed);
   // main draws it again beside the recording and says how far along it is, when it's done (the file) or why it couldn't be.
   takeBegin: (meta) => ipcRenderer.invoke('take:begin', meta),

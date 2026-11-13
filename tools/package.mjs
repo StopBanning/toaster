@@ -40,7 +40,7 @@ const packager = path.join(root, 'node_modules', '@electron', 'packager', 'bin',
 // Only what git tracks goes in the package, plus what the build makes (node_modules, the Mac helpers' bin): notes,
 // drafts, recordings, test output and other leftovers in a working copy, ignored by git or not, stay out, so a
 // package built from a busy checkout holds what a clean one does. A clean checkout, as on GitHub's Macs, adds nothing.
-const BUILT = ['node_modules/', 'helpers/mac/bin/', 'build/icon.icns'];
+const BUILT = ['node_modules/', 'helpers/mac/bin/', 'build/icon.icns', 'renderer/models/htdemucs/']; // (the splitter's model: tools/fetch-splitter.mjs)
 const untracked = spawnSync('git', ['ls-files', '--others', '--directory', '-z'], { cwd: root, encoding: 'utf8' });
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const untrackedIgnores = untracked.status === 0
@@ -69,6 +69,11 @@ const ignore = [
   '--ignore=mp4-muxer/build/mp4-muxer\\.js$',
   '--ignore=mp4-muxer/build/.*\\.d\\.ts$',
   '--ignore=node_modules/@types(/|$)',
+  // the voice splitter's runtime: its bundle and its two engines (the graphics card's, the processor's), ~45 MB of its 141; the
+  // bundle needs none of the packages it was built from
+  '--ignore=onnxruntime-web/(lib|docs|types\\.d\\.ts)(/|$)',
+  '--ignore=onnxruntime-web/dist/(?!ort\\.all\\.min\\.mjs$|ort-wasm-simd-threaded\\.(jsep\\.)?(mjs|wasm)$)',
+  '--ignore=node_modules/(onnxruntime-common|protobufjs|@protobufjs|long|flatbuffers|guid-typescript|platform)(/|$)',
 ];
 
 const args = [

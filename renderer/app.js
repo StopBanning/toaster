@@ -37,6 +37,8 @@ import { createWait } from './wait.js';
 import { createCuts } from './cuts.js';
 import { createTape } from './tape.js';
 import { buildSongFiles } from './tape-export.js';
+import { createEar } from './ear.js';
+import { tuneFor, withTune } from './tune.js';
 import { createClips } from './clips.js';
 import { createTakeTap } from './take-tap.js';
 import { makeDemo } from './demo.js';
@@ -355,6 +357,7 @@ function detach() {
   state.radioKey = '';
 }
 
+let ear = null; // (a promise of it, once made)
 function attach(node, source, label) {
   // (the names a file read before it started, if this is that file: see useFile)
   fileTags = source === 'file' && pendingTags?.name === label ? pendingTags.tags : null;
@@ -364,6 +367,10 @@ function attach(node, source, label) {
   node.connect(fast);
   node.connect(mid);
   node.connect(slow);
+  // (and what they hear is kept, the last ten minutes, for the export's tune: ear.js. Made the first time there's something to
+  // hear, and only where X can save a song: the app's main window. Never in a browser or on a phone (X doesn't export there, and
+  // the 29 MB, 58 for a sound in two channels, would be kept for nothing), in the handheld's own window, or in a take's render)
+  if (!TAKE && !WIDGET && window.nc?.saveSong) (ear ??= createEar(ac, clock).catch((err) => { console.warn('the export\'s tune: nothing can be kept to hear:', err); return null; })).then((e) => e?.connect(node));
   state.node = node;
   clock.playing = true;
   state.source = source;
@@ -1587,10 +1594,57 @@ async function exportSong() {
     // song() makes a snapshot; the worker owns a copy while listening keeps adding to the tape.
     // (named after the song it was: X just after a song ends exports that one)
     const { name, about } = song.who || songNames(currentSong());
-    const { midi, code } = await buildSongFiles(song, name, about);
+    // the tune: Spotify's Basic Pitch on the stretch of sound the song covers, its top line written as the lead (tune.js)
+    const tune = await tuneFor(song, await ear, (done) => { $('status').textContent = `listening for the tune… ${Math.round(done * 100)}%`; },
+      { keep: !!window.nc.saveRebuilt, onVoice: (done) => { $('status').textContent = `pulling the voice out… ${Math.round(done * 100)}%`; } });
+    if (tune.notes) console.info(`the export's tune: from the ${tune.from === 'voice' ? `voice alone (${tune.line.length} notes, pulled out of ${tune.voice.wide ? 'two channels' : 'one channel'} in ${tune.voice.ms} ms on ${tune.voice.backend})` : `mix${tune.voice?.why ? ` (${tune.voice.why})` : ''}`}; ${tune.notes.length} notes in ${Math.round(tune.seconds)} s of sound, ${tune.ms} ms (${tune.backend})${tune.missed?.[0] > 1 || tune.missed?.[1] > 5 || Math.abs(tune.missed?.[2]) > 0.05 ? `; not kept: ${tune.missed.map((x) => x.toFixed(1)).join(' / ')} s (before / after / the clock moved)` : ''}`);
+    else console.info(`the export's tune: none (${tune.why})`);
+    $('status').textContent = 'exporting…';
+    const { midi, code } = await buildSongFiles(withTune(song, tune.notes, tune.line), name, about);
     const file = await window.nc.saveSong(name, midi, code);
-    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')} (an approximate sketch of the song: whether you can share it depends on the music's rights)`, file);
+    // and the song rebuilt from its own sounds, where the splitter gave its four parts (rebuild.js; an experiment, Nov 13)
+    let rebuilt = null;
+    if (tune.parts) {
+      $('status').textContent = 'rebuilding it from its own sounds…';
+      const origin = (Number.isFinite(song.origin) ? song.origin : song.originLast) - tune.t0;
+      const made = await rebuildSong({ parts: tune.parts, sr: 22050, bpm: song.bpm, origin, from: origin + 0.01, bars: song.bars.length, title: name, base: '{{base}}' });
+      if (made.code) {
+        rebuilt = await window.nc.saveRebuilt(file, made.code, made.files).catch((err) => { console.warn('the rebuilt song could not be saved:', err); return null; });
+        if (rebuilt) {
+          lastRebuilt = { name, code: rebuilt.code };
+          console.info(`the export rebuilt from its own sounds: ${made.bars} bars, ${made.sounds} sounds cut from the song, ${made.ms} ms${rebuilt.served ? '' : ' (its sounds could not be served: the port was taken)'}`);
+        }
+      } else console.warn('the song could not be rebuilt from its own sounds:', made.why);
+    }
+    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}${tune.notes ? ', with the tune it heard' : ''}${rebuilt ? ', and rebuilt from its own sounds' : ''}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')} (an approximate sketch of the song: whether you can share it depends on the music's rights)`, file);
   } finally { exporting = false; $('status').textContent = restingStatus(); }
+}
+
+// The song rebuilt from its own sounds, in its worker (rebuild-worker.js): { code, files, bars, sounds, ms } or { code: null, why }.
+function rebuildSong(job) {
+  return new Promise((resolve) => {
+    let worker;
+    try { worker = new Worker(new URL('./rebuild-worker.js', import.meta.url), { type: 'module' }); } catch (err) { return resolve({ code: null, why: String(err?.message || err) }); }
+    // (a minute of song is about 2 s on this Mac: a minute and a half of grace on a slow machine)
+    const timer = setTimeout(() => { worker.terminate(); resolve({ code: null, why: 'rebuilding took too long' }); }, 90000);
+    const done = (r) => { clearTimeout(timer); worker.terminate(); resolve(r); };
+    worker.onmessage = ({ data }) => done(data.type === 'rebuilt' ? data : { code: null, why: data.error });
+    worker.onerror = (e) => { e.preventDefault?.(); done({ code: null, why: e.message || 'the rebuild failed' }); };
+    worker.postMessage(job, Object.values(job.parts).map((p) => p.buffer));
+  });
+}
+
+// O, once X has rebuilt the song playing from its own sounds: that song opens instead of the live code, its sounds served by Toaster
+// while it is open (Colin's pick, Nov 13). True when it opened (or said why it couldn't); false sends O on to the live code.
+let lastRebuilt = null; // { name, code }
+function openRebuilt() {
+  if (!lastRebuilt || lastRebuilt.name !== songNames(currentSong()).name) return false;
+  const url = strudelLink(lastRebuilt.code);
+  // (a link is at most 60,000 characters, main.js; a long song's code can be more: then its file, beside its sounds, is the way)
+  if (url.length >= 60000) { flashStatus('the rebuilt song is too long to open by link: paste its song.strudel.js into strudel.cc'); return true; }
+  if (window.nc?.openStrudel) window.nc.openStrudel(url); else window.open(url, '_blank', 'noopener');
+  flashStatus('opened the song rebuilt from its own sounds in strudel.cc');
+  return true;
 }
 
 // O: the code as it is now, opened in the Strudel REPL in your browser, to play and change.
@@ -2531,7 +2585,7 @@ addEventListener('click', (e) => {
 $('b-blocks').onclick = () => { nextBlocks(); showRound('blocks'); };
 $('b-cam').onclick = () => toggleCam().then(() => showRound('cam'));
 $('b-card').onclick = () => { toggleCard(); showRound('card'); };
-$('b-strudel').onclick = () => openInStrudel();
+$('b-strudel').onclick = () => openRebuilt() || openInStrudel();
 $('b-rec').onclick = () => toggleRecording();
 $('b-layout').onclick = () => toggleLayout();
 $('b-mini').onclick = () => (gameShowing() && window.nc?.setWidget ? window.nc.setWidget(true) : toggleMini());
@@ -2587,7 +2641,7 @@ const ACTIONS = [
   { id: 'earlier', key: ']', run: () => nudgeSync(10) },
   { id: 'cam', key: 'c', run: () => toggleCam() },
   { id: 'card', key: 'n', run: () => toggleCard() },
-  { id: 'strudel', key: 'o', run: () => openInStrudel() },
+  { id: 'strudel', key: 'o', run: () => openRebuilt() || openInStrudel() },
   { id: 'rec', key: 'm', run: () => toggleRecording() },
   { id: 'clips', key: 'j', run: () => toggleClips() },
   { id: 'export', key: 'x', run: () => exportSong().catch(showError) },
@@ -3249,7 +3303,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
 const prepareFrame = (t) => Promise.all([scenery.prepare(t), spaghetti.prepare(), earth.prepare(t), backrooms.prepare(t)]);
-window.__nc = { glPool, clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); } };
+window.__nc = { glPool, clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); }, get ear() { return ear; } };
 // (for the clock harness, tools/clock-harness.mjs, and for whatever drives a render: the layers and what a look is made of)
 Object.assign(window.__nc, { setAutoScene: (n, at) => { autoScene = n; if (Number.isFinite(at)) autoSceneAt = at; }, lookWaiting, setPerfectCopy, takeBegin, takeEnd, takeState: () => ({ id: takeRec.id, tapping: !!takeRec.tap, runup: takeRec.blocks.length, making: !!takeRec.making }), VISUALS, BLOCK_LOOKS, THEMES, SPAGHETTI_KINDS, DROPS, scenery, chrome, spaghetti, spectro, warp, fire, tunnel, spiral, wheel, field, wait, storm, sceneShown, applyCard, setCrt, freshStart, setPostLook: (name) => setLook(name === 'none' ? 'off' : name, false), setGlassPlates: (on) => setGlassPlates(on, false) });
 // (the looks as they are now: the ones from outside come in after the page starts)

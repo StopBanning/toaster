@@ -18,8 +18,8 @@ test('short, changing, unique and harmony-only sections retain accepted pitched 
     const song = { bpm: 120, bars };
     const es = events(await runtime.evaluate(songStrudel(song, 'pitched fixture')), 0, bars.length);
     assert.equal(es.filter((e) => e.value.s === 'supersaw').length, bars.filter((b) => b.chord).length * 3);
-    assert.equal(es.filter((e) => e.value.s === 'triangle').length, bars.reduce((n, b) => n + (b.parts.vox?.on.filter(Boolean).length || 0), 0));
-    assert.equal(midiNotes(songMidi(song, 'fixture'), 4).length, es.filter((e) => e.value.s === 'triangle').length);
+    assert.equal(es.filter((e) => e.value.s === 'square').length, bars.reduce((n, b) => n + (b.parts.vox?.on.filter(Boolean).length || 0), 0));
+    assert.equal(midiNotes(songMidi(song, 'fixture'), 4).length, es.filter((e) => e.value.s === 'square').length);
   }
 });
 
@@ -66,7 +66,7 @@ async function assertParity(song) {
   const code = songStrudel(song, 'parity');
   const es = code ? events(await runtime.evaluate(code), 0, song.bars.length) : [];
   const bytes = songMidi(song, 'parity');
-  for (const [sound, track] of [['sawtooth', 2], ['supersaw', 3], ['triangle', 4]]) {
+  for (const [sound, track] of [['sawtooth', 2], ['supersaw', 3], ['square', 4]]) {
     assert.deepEqual(es.filter((e) => e.value.s === sound).map((e) => ({ note: midiPitch(e.value.note), begin: e.begin, end: e.end, velocity: Math.round(e.value.velocity * 127) })).sort(byNote), midiNotes(bytes, track), sound);
   }
   const pitch = { bd: 36, cp: 39, hh: 42, oh: 46 };
@@ -89,7 +89,7 @@ test('O, X and MIDI use C4 lead; X and MIDI share bass, chord and drum note even
   song.bars[6].parts = { hhc: grid(0, 2, 5, 7, 12, 15), hho: grid(3, 8), sd: grid(4, 12) };
   song.bars[7] = bar({ parts: {}, bass: 36 });
   const es = await assertParity(song);
-  assert.equal(es.find((e) => e.value.s === 'triangle').value.note, o[0].value.note);
+  assert.equal(es.find((e) => e.value.s === 'square').value.note, o[0].value.note);
   assert.deepEqual(es.filter((e) => e.value.s === 'sawtooth' && e.begin < 1).map((e) => e.end - e.begin), [.25, .125, .25]);
   assert.equal(es.find((e) => e.value.s === 'sawtooth' && e.begin === 1).end, 1.25);
 });
@@ -180,4 +180,23 @@ test('O moving bass uses the pitch at each shared onset, including a note crossi
   const es = events(await runtime.evaluate(writer.strudelProgram(texts, null, 0, rhythm)), 0);
   const expected = midiNotes(songMidi({ bpm: 120, bars: [bar({ bass: 36, beats: [36, 38, 40, 41], parts: { bass: rhythm } })] }, 'moving O'), 2).map(({ velocity, ...e }) => e);
   assert.deepEqual(es.map((e) => ({ note: midiPitch(e.value.note), begin: e.begin, end: e.end })), expected);
+});
+
+test('the export keeps its drums under the tune: kick and clap at .4, the hats in their old ratio to them', integration, async () => {
+  // (At full level the 909 kick alone was 6 dB over the tune and 11 dB over the chords and the bass in every one of 16 songs' exports,
+  // and the drums alone went 3.6 dB over full scale where kick and clap land together. Colin on One More Time, Nov 11: "I can't really hear underneath it")
+  const runtime = await strudelRuntime();
+  const song = { bpm: 120, bars: Array.from({ length: 4 }, () => bar({ parts: { bd: grid(0, 4, 8, 12), sd: grid(4, 12), hhc: grid(2, 6, 10, 14), hho: grid(3) } })) };
+  const es = events(await runtime.evaluate(songStrudel(song, 'levels')), 0, 4);
+  const gain = (s) => [...new Set(es.filter((e) => e.value.s === s).map((e) => e.value.gain))];
+  assert.deepEqual([gain('bd'), gain('cp'), gain('hh'), gain('oh')], [[.4], [.4], [.2], [.16]]);
+});
+
+test('two recorded bars that land on one bar of the song leave each sound once, not doubled', () => {
+  const t = createTape(); t.lock(120, 0);
+  for (const beat of [0, 4, 8, 8.1, 12]) t.pattern(beat, { bd: grid(0, 4, 8, 12), sd: grid(4, 12) });
+  const song = t.song(0);
+  assert.equal(song.bars.length, 4);
+  for (const b of song.bars) assert.deepEqual(b.events.filter((e) => e.part === 'bd').map((e) => e.onset), [0, .25, .5, .75]);
+  assert.ok(!/\[bd,bd\]|\[cp,cp\]/.test(songStrudel(song, 'doubles')));
 });

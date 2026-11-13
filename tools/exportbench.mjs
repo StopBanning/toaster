@@ -261,7 +261,7 @@ async function evaluateSongStrudel(code, barsCount) {
   return queryEvents(pattern, 0, barsCount).map((n) => {
     const s = n.value.s, value = String(s ?? '');
     const part = ({ bd: 'bd', cp: 'sd', hh: 'hhc', oh: 'hho' })[value]
-      ?? (value === 'sawtooth' ? 'bass' : value === 'triangle' ? 'lead' : 'chords');
+      ?? (value === 'sawtooth' ? 'bass' : value === 'triangle' || value === 'square' ? 'lead' : 'chords');
     return { onset: n.begin, duration: n.end - n.begin, midi: noteNumber(n.value.note), part };
   });
 }

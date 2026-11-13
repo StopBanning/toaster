@@ -503,10 +503,11 @@ body.vertical #player { padding-left: max(12px, var(--safe)); padding-right: max
 #player .pl-btn { display: grid; place-items: center; width: 30px; height: 26px; padding: 0; }
 #player .pl-btn svg { display: block; width: 13px; height: 13px; fill: currentColor; }
 #player .pl-play { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-/* shuffle and repeat (player.js modesFor): dim while off, the accent with a dot under them while on, as Spotify marks its own */
-#player .pl-mode { position: relative; color: var(--dim); border-color: transparent; background: none; }
-#player .pl-mode:hover, #player .pl-mode:focus-visible { color: var(--fg); }
-#player .pl-mode.on { color: var(--accent); }
+/* shuffle and repeat (player.js modesFor): boxed like back and next, so they read as buttons (Colin, on his first look at 0.5.7 with
+   the two as bare dim icons: "Where would it be?"); while on, the box and the icon take the accent, with a dot under the icon as
+   Spotify marks its own */
+#player .pl-mode { position: relative; }
+#player .pl-mode.on { color: var(--accent); border-color: var(--accent); }
 #player .pl-repeat[data-state="one"]::before { content: '1'; position: absolute; top: 0; right: 4px; font-size: 9px; font-weight: 800; line-height: 1; color: var(--accent); }
 #player .pl-mode.on::after { content: ''; position: absolute; left: calc(50% - 2px); bottom: 1px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
 #player .pl-play:hover, #player .pl-play:focus-visible { background: color-mix(in srgb, var(--accent) 80%, var(--bg)); }

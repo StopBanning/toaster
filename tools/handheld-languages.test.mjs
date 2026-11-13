@@ -142,3 +142,10 @@ test('the big words come whole on a small screen (the handheld on the desktop cu
   }
   setLang('');
 });
+
+test('a standby screen asked for a moment before the beat was lost paints as at zero (a take from Contact at 177.56 s threw "Invalid count value: -1")', () => {
+  for (const which of ['top', 'bottom']) for (const mode of ['insert', 'reading', 'continue']) for (const t of [-0.01, -0.4, -2]) {
+    const c = pixelCanvas(150, 112);
+    assert.doesNotThrow(() => paintIdle(c, 150, 112, which, t, palette, info, mode), `${mode} ${which} at ${t}`);
+  }
+});

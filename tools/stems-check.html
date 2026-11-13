@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>stems check</title>
+<script type="module">
+// The app's own voice splitter (renderer/stems.js and stems-worker.js) and voice reader (renderer/voice.js) on a stretch of a
+// recording, in a hidden Electron window (tools/stems-check.cjs): the recording is brought to what the ear keeps (22050 Hz mono),
+// the voice is pulled out, the tune is read from it. ?audio=<path>&start=<s>&seconds=<s>&prefer=webgpu|wasm&threads=<n>&parts=other,bass
+import { splitVoice, down2 } from '../renderer/stems.js';
+import { voiceLine, dropStrays } from '../renderer/voice.js';
+const q = new URLSearchParams(location.search);
+try {
+  window.stage = 'fetch';
+  const bytes = await (await fetch('file://' + q.get('audio'))).arrayBuffer();
+  const start = Number(q.get('start') || 0), seconds = Number(q.get('seconds') || 30);
+  window.stage = 'decode';
+  // (&rate=44100 and &stereo=1: what the ear could keep instead of 22050 Hz mono, to see what each is worth to the tune)
+  const RATE = Number(q.get('rate') || 22050), stereo = q.get('stereo') === '1';
+  const decoded = await new OfflineAudioContext(2, 1, RATE).decodeAudioData(bytes);
+  const a = Math.round(start * RATE), n = Math.min(decoded.length - a, Math.round(seconds * RATE));
+  let audio = new Float32Array(n), right = null;
+  if (stereo && decoded.numberOfChannels > 1) { audio = decoded.getChannelData(0).slice(a, a + n); right = decoded.getChannelData(1).slice(a, a + n); }
+  else for (let c = 0; c < decoded.numberOfChannels; c++) {
+    const ch = decoded.getChannelData(c);
+    for (let i = 0; i < n; i++) audio[i] += ch[a + i] / decoded.numberOfChannels;
+  }
+  window.stage = 'split';
+  const t0 = performance.now(), progress = [];
+  const got = await splitVoice(audio, { rate: RATE, right, prefer: q.get('prefer') || 'webgpu', threads: Number(q.get('threads') || 0), parts: (q.get('parts') || '').split(',').filter(Boolean), onProgress: (d) => { window.stage = 'split ' + d.toFixed(2); progress.push([Math.round(performance.now() - t0), +d.toFixed(3)]); } });
+  if (!got.vocals) window.result = { ok: false, error: got.why, absent: !!got.absent };
+  else {
+    window.stage = 'read';
+    if (RATE === 44100) { got.vocals = down2(got.vocals); for (const k of Object.keys(got.parts || {})) got.parts[k] = down2(got.parts[k]); }   // (read, and kept, at 22050 as ever)
+    const t1 = performance.now(), line = dropStrays(voiceLine(got.vocals, 22050)), readMs = Math.round(performance.now() - t1);
+    // the vocals as 16-bit samples in base64, for the check to keep as a wav
+    const b64 = (x) => {
+      const pcm = new Int16Array(x.length);
+      for (let i = 0; i < pcm.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, Math.round(x[i] * 32767)));
+      const u8 = new Uint8Array(pcm.buffer); let bin = '';
+      for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+      return btoa(bin);
+    };
+    window.vocals = b64(got.vocals);
+    window.parts = Object.fromEntries(Object.entries(got.parts || {}).map(([name, x]) => [name, b64(x)]));
+    window.result = { ok: true, backend: got.backend, threads: got.threads, ms: got.ms, loadMs: got.loadMs, segments: got.segments, spent: got.spent, wall: Math.round(performance.now() - t0), readMs, seconds: n / RATE, rate: RATE, stereo: !!right, xRealtime: +((n / RATE) / ((got.ms - got.loadMs) / 1000)).toFixed(2), isolated: self.crossOriginIsolated, sab: typeof SharedArrayBuffer, gpu: !!navigator.gpu, steps: progress.length, line: line.map(([t, d, m]) => [+(t + start).toFixed(3), +d.toFixed(3), m]) };
+  }
+} catch (err) { window.result = { ok: false, error: String(err?.stack || err) }; }
+</script>

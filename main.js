@@ -143,9 +143,10 @@ const switchValue = (name) => process.argv.find((a) => a.startsWith(`--${name}=`
 const testData = app.isPackaged ? '' : switchValue('user-data-dir') || process.env.TOASTER_USER_DATA || '';
 const hidden = !app.isPackaged && (process.argv.includes('--hidden') || process.env.TOASTER_HIDDEN === '1');
 if (hidden && mac) app.dock?.hide();
-// (a test copy with a folder of its own keeps its recordings, drop clips and perfect copies there too, in Videos/Toaster: never
-// in yours)
+// (a test copy with a folder of its own keeps its recordings, drop clips and perfect copies there too, in Videos/Toaster, and its
+// exported songs in Music/Toaster: never in yours)
 const videosDir = () => (testData ? path.join(path.resolve(testData), 'Videos', 'Toaster') : path.join(app.getPath('videos'), 'Toaster'));
+const songsDir = () => (testData ? path.join(path.resolve(testData), 'Music', 'Toaster') : path.join(app.getPath('music'), 'Toaster'));
 
 // Run from source (npm start, npm run dev, the checks), it keeps its settings in a folder of its
 // own, so trying things out never changes the installed app's.
@@ -210,7 +211,10 @@ app.commandLine.appendSwitch('max-active-webgl-contexts', '32');
 // Chromium's per-context cache path hands every program to the disk cache; with it a restart
 // shows the first scene in about half a second.
 const features = app.commandLine.getSwitchValue('enable-features');
-app.commandLine.appendSwitch('enable-features', [features, 'ANGLEPerContextBlobCache'].filter(Boolean).join(','));
+// (SharedArrayBuffer: the voice splitter's runtime (renderer/stems-worker.js, onnxruntime-web) runs on one thread without shared
+// memory, and a page loaded from a file is never cross-origin isolated: with it, 30 s of song splits in 6 s here, without in 12.
+// An experiment on this branch: before it merges, weigh it against serving the page with the two isolation headers instead)
+app.commandLine.appendSwitch('enable-features', [features, 'ANGLEPerContextBlobCache', 'SharedArrayBuffer'].filter(Boolean).join(','));
 
 function createWindow() {
   // Windows draws its caption buttons on the right (the overlay). macOS draws the traffic
@@ -519,7 +523,10 @@ function spotify() {
 const spotifyCover = (url) => require('./helpers/spotify.cjs').fetchCover(url, { fetch: spotify().fetch });
 const plainObject = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {}); // (what the page sends for a request is checked by the helper, which wants an object)
 
+let soundServer = null; // (a promise of the rebuilt songs' sound server, started the first time it's needed: helpers/sound-server.cjs)
 function setUpIpc() {
+  // (and started now, where a rebuilt song may have been saved before: its code finds its sounds as soon as Toaster is open)
+  if (fs.existsSync(songsDir()) && fs.readdirSync(songsDir()).some((f) => f.endsWith(' rebuilt'))) soundServer ??= require('./helpers/sound-server.cjs').start(songsDir);
   ipcMain.handle('sys:info', () => {
     const d = screen.getPrimaryDisplay();
     const cpus = os.cpus();
@@ -753,7 +760,7 @@ function setUpIpc() {
   ipcMain.handle('win:close', () => win?.close());
   ipcMain.handle('rec:show', (_e, file) => {
     // only files inside our own folders (resolved first, so a .. in the path can't step out)
-    const ours = [videosDir(), path.join(app.getPath('music'), 'Toaster')];
+    const ours = [videosDir(), songsDir()];
     if (typeof file !== 'string') return;
     const at = path.resolve(file);
     if (ours.some((dir) => { const rel = path.relative(dir, at); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); })) shell.showItemInFolder(at);
@@ -886,12 +893,22 @@ function setUpIpc() {
   // Song export (X): the song as a MIDI file and as Strudel code, side by side in Music\Toaster,
   // named after the song and the time.
   ipcMain.handle('song:save', (_e, name, midi, code) => {
-    const dir = path.join(app.getPath('music'), 'Toaster');
+    const dir = songsDir();
     fs.mkdirSync(dir, { recursive: true });
     const safe = String(name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'song';
     const base = freeBase(path.join(dir, `${safe} ${stamp()}`), ['.mid', '.strudel.js']);
     // (both or neither: a failed code file takes the MIDI file back out, helpers/save-pair.cjs)
     return require('./helpers/save-pair.cjs').savePair(base, Buffer.from(midi), code);
+  });
+  // The song rebuilt from its own sounds (helpers/save-rebuilt.cjs): a folder beside the MIDI file X just saved, named after it. The
+  // page gives that file's path back; anything not a .mid file directly in the songs folder is refused.
+  // Its code names where its sounds are served from while Toaster is open (helpers/sound-server.cjs): the page writes '{{base}}'.
+  ipcMain.handle('song:save-rebuilt', async (_e, midiFile, code, files) => {
+    const dir = songsDir(), file = path.resolve(String(midiFile || ''));
+    if (path.dirname(file) !== path.resolve(dir) || !file.endsWith('.mid')) throw new Error('not a song X saved');
+    const folder = path.basename(file.slice(0, -4)) + ' rebuilt', server = await (soundServer ??= require('./helpers/sound-server.cjs').start(songsDir));
+    const final = String(code || '').replace("'{{base}}'", server ? `'${server.base(folder)}'` : "''");
+    return { file: require('./helpers/save-rebuilt.cjs').saveRebuilt(path.join(dir, folder), final, plainObject(files)), code: final, served: !!server };
   });
   // The library (above): the folder in force, choosing another (the system's dialog), what the last scan kept, a scan (its progress
   // goes to the page that asked), and the bytes of one audio file of that folder, which helpers/library.cjs refuses unless it is

@@ -105,7 +105,12 @@ export function createTape() {
       for (const e of shifted) {
         const i = Math.floor(e.onset), target = bars[i - first];
         const { wob, ...note } = e;
-        target.events.push({ ...note, onset: e.onset - i });
+        // Two recorded bars can land on one bar of the song (the bar line moved between them). The same sound at the same
+        // moment twice is one sound, at its longer length: written twice it plays twice as loud (Delilah's bar 18 had every
+        // kick doubled, 27 doubled notes in 6 of the bench's 36 songs, and the drums alone hit full scale there).
+        const twin = target.events.find((x) => x.part === e.part && x.pitch === e.pitch && Math.abs(x.onset - (e.onset - i)) < 1e-9);
+        if (twin) twin.duration = Math.max(twin.duration, e.duration);
+        else target.events.push({ ...note, onset: e.onset - i });
         if (e.part === 'bass') target.wob = wob;
         // The grids remain a convenient inspection view; writers use the timed events.
         const step = Math.round((e.onset - i) * 16);
@@ -132,7 +137,13 @@ export function createTape() {
       // origin: where the export's first beat falls, in the engine's seconds, on that fitted line (for laying it over the sound).
       const fit = fitTempo(best.bars, best.bpm);
       // (to a thousandth of a BPM either way: the last reading comes with fourteen decimals, which is noise in a file someone reads)
-      if (!fit) return { bpm: Math.round(best.bpm * 1000) / 1000, bars, who: best.who || null, coverage, timeline };
+      if (!fit) {
+        // (no fitted line to trust: the last tempo is kept, and where the first beat falls on the last tempo's line, from the bar
+        // lines heard, goes with it as originLast, for the tune (tune.js) only; origin stays the fitted line's, which the bench scores)
+        const P = 60 / best.bpm, ts = best.bars.filter((r) => Number.isFinite(r.t) && Number.isFinite(r.b)).map((r) => r.t - P * r.b).sort((x, y) => x - y);
+        const at = ts.length >= 4 ? (ts.length % 2 ? ts[(ts.length - 1) / 2] : (ts[ts.length / 2 - 1] + ts[ts.length / 2]) / 2) : NaN;
+        return { bpm: Math.round(best.bpm * 1000) / 1000, bars, who: best.who || null, coverage, timeline, ...(Number.isFinite(at) && { originLast: at + P * (first * 4 + d + off) }) };
+      }
       return { bpm: fit.bpm, bpmLast: best.bpm, origin: fit.at + fit.P * (first * 4 + d + off), bars, who: best.who || null, coverage, timeline };
     },
   };
@@ -370,18 +381,24 @@ function eventCode(es, bars, value) {
   });
 }
 
+// The drums' level in the export. At full level (no gain on the kick and the clap) the drums alone went 3.6 dB over full scale
+// wherever kick and clap land together, so every four-on-the-floor export clipped; and the kick sat 6 dB over the tune and 11 dB over
+// the chords and the bass in each of 16 songs (Nov 12, part-by-part renders). Colin on One More Time: "I can't really hear
+// underneath it". At .4 the drums are level with the tune, the whole export peaks at -1.8 dBFS (Gypsy Woman, 56-71 s), and the
+// hats keep their old ratio to the kick (.5 and .4 of it).
+const DRUM_GAIN = { bd: '.4', sd: '.4', hhc: '.2', hho: '.16' };
 function blockCode(block) {
   const es = block.flatMap((b, i) => barEvents(b).map((e) => ({ ...e, onset: i + e.onset, wob: b.wob || 0 })));
   const lines = [];
   for (const id of DRUMS) {
     const code = eventCode(es.filter((e) => e.part === id), block.length, () => TOKEN[id]);
-    if (code) lines.push(...code.map((c) => c.replace(/^note\(/, 's(') + `.bank("RolandTR909")${id === 'hhc' ? '.gain(.5)' : id === 'hho' ? '.gain(.4)' : ''}`));
+    if (code) lines.push(...code.map((c) => c.replace(/^note\(/, 's(') + `.bank("RolandTR909").gain(${DRUM_GAIN[id]})`));
   }
-  for (const [id, sound] of [['bass', 'sawtooth'], ['chords', 'supersaw'], ['lead', 'triangle']]) {
+  for (const [id, sound] of [['bass', 'sawtooth'], ['chords', 'supersaw'], ['lead', 'square']]) {
     const selected = es.filter((e) => e.part === id);
     for (const wob of id === 'bass' ? new Set(selected.map((e) => e.wob)) : [0]) {
       const code = eventCode(selected.filter((e) => id !== 'bass' || e.wob === wob), block.length, (e) => nameOf(e.pitch));
-      const effect = id === 'bass' ? `.lpf(${wob ? 400 : 800})` + wobble(wob) : id === 'chords' ? '.lpf(2000).gain(.6)' : '.clip(1)';
+      const effect = id === 'bass' ? `.lpf(${wob ? 400 : 800})` + wobble(wob) : id === 'chords' ? '.lpf(2000).gain(.6)' : '.lpf(3000).clip(1)'; // (the lead: a square under 3 kHz. As a triangle it sat 6 dB under the rest and 9 dB under it between 1 and 4 kHz, where a tune is heard: Colin could not hear it "underneath". Measured Nov 12 on Starships: 2 dB under the rest, 3 dB over it in that band)
       if (code) lines.push(...code.map((c) => c + `.s("${sound}")` + effect));
     }
   }
@@ -484,8 +501,10 @@ function compactFromExact(song, about, exact) {
     if (order.some((o) => o.name !== 'silence')) tracks.push(`  arrange(${order.map((o) => `[${o.bars}, ${o.name}]`).join(', ')}), // ${id}`);
   }
   const helpers = [...renderers.values()].map((r) => `const ${r.name} = (p, t = 0) => ${r.constructor}(p).slow(1).late(t)${r.effects}`);
-  // Break long strings into concatenated chunks and arrangement arguments at commas;
-  // concatenation preserves mini-notation whitespace and the resulting events.
+  // Break long strings over several lines and arrangement arguments at commas. A long mini-notation string goes inside backticks,
+  // broken only between its tokens: strudel.cc reads each "..." literal as a pattern of its own, so the old "a b" + "c d" became one
+  // note named [object Object][object Object], and a cut before an @ a parse error (measured on strudel.cc, Nov 11; no export had
+  // a string that long until the melody). In backticks it stays one string, and a line break is whitespace to mini-notation.
   const wrap = (line) => {
     if (line.startsWith('//') && line.length > 100) {
       // at a space, or after a comma inside the record's JSON, never in the middle of a word
@@ -502,8 +521,13 @@ function compactFromExact(song, about, exact) {
     }
     if (line.startsWith('const voice') && line.length > 100) line = line.replace('.velocity(', '\n  .velocity(');
     line = line.replace(/"([^"\n]{75,})"/g, (_, value) => {
-      const chunks = value.match(/.{1,70}/g);
-      return chunks.map((c) => JSON.stringify(c)).join(' +\n    ');
+      const rows = [];
+      let row = '';
+      for (const token of value.split(' ')) {
+        if (row && (row + ' ' + token).length > 70) { rows.push(row); row = token; } else row = row ? row + ' ' + token : token;
+      }
+      if (row) rows.push(row);
+      return '`' + rows.join('\n    ') + '`';
     });
     return line.replace(/, (?=\[\d+, )/g, ',\n    ').replace(/, (?=voice\d+\()/g, ',\n    ');
   };
