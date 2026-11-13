@@ -503,6 +503,12 @@ body.vertical #player { padding-left: max(12px, var(--safe)); padding-right: max
 #player .pl-btn { display: grid; place-items: center; width: 30px; height: 26px; padding: 0; }
 #player .pl-btn svg { display: block; width: 13px; height: 13px; fill: currentColor; }
 #player .pl-play { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+/* shuffle and repeat (player.js modesFor): dim while off, the accent with a dot under them while on, as Spotify marks its own */
+#player .pl-mode { position: relative; color: var(--dim); border-color: transparent; background: none; }
+#player .pl-mode:hover, #player .pl-mode:focus-visible { color: var(--fg); }
+#player .pl-mode.on { color: var(--accent); }
+#player .pl-repeat[data-state="one"]::before { content: '1'; position: absolute; top: 0; right: 4px; font-size: 9px; font-weight: 800; line-height: 1; color: var(--accent); }
+#player .pl-mode.on::after { content: ''; position: absolute; left: calc(50% - 2px); bottom: 1px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
 #player .pl-play:hover, #player .pl-play:focus-visible { background: color-mix(in srgb, var(--accent) 80%, var(--bg)); }
 #player .pl-progress { flex: 1 1 0; min-width: 140px; display: flex; align-items: center; gap: 10px; }
 #player .pl-time { flex: none; min-width: 4ch; color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -1183,6 +1189,42 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
 #library .lib-err { padding-left: .67em; border-left: .42em solid var(--fg); background: var(--hl-bg); color: var(--fg); }
 #library .lib-panel > .lib-err { flex: none; margin: 0; }
 #library .lib-wait { color: var(--fg); }
+/* the way in to Spotify (library.js SPOTIFY_GUIDE, library-panel.js spSteps): one step at a time in a frame, its number dots (the one
+   showing filled, the ones done ringed), the values to copy in a column, back and next; the drawing of Spotify's page for the step at
+   the right of a wide window (guidePicture), in the theme's colours */
+#library .lib-guide { margin: .6em 0 .8em; padding: .7em .9em .6em; border: 1px solid var(--faint); }
+#library .lib-guide-dots { display: flex; gap: .45em; margin-bottom: .6em; }
+#library .lib-guide-dot { display: grid; place-items: center; width: 1.9em; height: 1.9em; padding: 0; border: 1px solid var(--faint); border-radius: 50%; background: transparent; color: var(--dim); font: inherit; font-size: .83em; cursor: pointer; }
+#library .lib-guide-dot.done { border-color: var(--fg); color: var(--fg); }
+#library .lib-guide-dot.on { border-color: var(--fg); background: var(--fg); color: var(--bg); }
+#library .lib-guide-title { margin-bottom: .45em; color: var(--fg); font-weight: 700; }
+#library .lib-guide-title .n { margin-right: .67em; color: var(--dim); font-weight: 400; }
+#library .lib-guide-say { margin-bottom: .4em; }
+#library .lib-guide-field { display: grid; grid-template-columns: 9.5em minmax(0, 1fr) auto; gap: .67em; align-items: baseline; margin-bottom: .3em; }
+#library .lib-guide-field .k { color: var(--dim); }
+#library .lib-guide-field b { color: var(--fg); font-weight: 700; overflow-wrap: anywhere; }
+#library .lib-guide-then { margin: -.1em 0 .45em 10.17em; color: var(--fg); }
+#library .lib-guide-go { margin: .25em 0 .4em; padding: .3em .9em; border-color: var(--fg); color: var(--fg); }
+#library .lib-guide-nav { display: flex; gap: .67em; margin-top: .6em; }
+#library .lib-guide-nav .lib-copy { margin-left: 0; padding: .2em .8em; }
+#library .lib-guide-nav .lib-guide-next { margin-left: auto; border-color: var(--fg); color: var(--fg); }
+@media (max-width: 559px) {
+  #library .lib-guide-field { grid-template-columns: minmax(0, 1fr) auto; gap: 0 .67em; }
+  #library .lib-guide-field .k { grid-column: 1 / -1; }
+  #library .lib-guide-then { margin-left: 0; }
+}
+#library .lib-guidepic { display: none; }
+#library .lib-guidepic svg { display: block; width: 100%; height: 100%; font-family: inherit; }
+#library .lib-guidepic .gw { fill: var(--bg); stroke: var(--fg); stroke-width: 1.5; }
+#library .lib-guidepic .gl { fill: none; stroke: var(--dim); stroke-width: 1; }
+#library .lib-guidepic .gx { fill: none; stroke: var(--dim); stroke-width: 1; stroke-dasharray: 4 3; }
+#library .lib-guidepic .gh { fill: none; stroke: var(--fg); stroke-width: 2.5; }
+#library .lib-guidepic .gs { stroke: var(--dim); stroke-width: 1; }
+#library .lib-guidepic .gf { fill: var(--fg); }
+#library .lib-guidepic .gk { fill: none; stroke: var(--bg); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#library .lib-guidepic .gt { fill: var(--fg); }
+#library .lib-guidepic .gd { fill: var(--dim); }
+#library .lib-guidepic .gb { fill: var(--bg); }
 #library .lib-row.sp .t em { color: var(--dim); font-style: normal; }
 /* (Spotify's names are shown as Spotify gives them: the other rows lower-case theirs, these keep their capitals) */
 #library .lib-row.sp .t b, #library .lib-row.sp .t em, #library .lib-sub.sp { text-transform: none; }
@@ -1215,6 +1257,8 @@ html.darwin:not(.full) #library.titlebar .lib-top { padding-left: max(0px, calc(
   #library .lib-glyphs.in { opacity: .9; }
   #library .lib-bigcover:not(:empty) { display: grid; place-items: center; position: absolute; right: max(24px, 3.65vw); top: calc(50% - 1.85vh); height: min(86vh, calc(100vw - 2.5vw - var(--lib-pw) - 3.65vw - 2vw)); aspect-ratio: 1; transform: translateY(-50%); pointer-events: none; }
   #library .lib-bigcover img { display: block; width: min(100%, 640px); aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+  #library.lib-guiding .lib-guidepic { display: grid; place-items: center; position: absolute; right: max(24px, 3.65vw); top: calc(50% - 1.85vh); height: min(86vh, calc(100vw - 2.5vw - var(--lib-pw) - 3.65vw - 2vw)); aspect-ratio: 1; transform: translateY(-50%); pointer-events: none; }
+  #library.lib-guiding .lib-glyphs, #library.lib-guiding .lib-bigcover { display: none; }
   #library.lib-half .lib-glyphs.in { opacity: .3; }
   #library.lib-half .lib-head .lib-photo { display: none; }
   #library.lib-half .lib-bigcover img { width: 72%; max-width: none; border-radius: 0; outline: 1px solid var(--fg); box-shadow: 0 0 0 .5em var(--bg), 0 0 0 calc(.5em + 1px) var(--faint); }

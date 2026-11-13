@@ -9,7 +9,7 @@ test('mini-player state and transport use existing scopes, target the displayed 
   try {
     let s = await web.playback();
     assert.equal(s.track.name, 'Kerosene'); assert.equal(s.position, 92); assert.equal(s.duration, 192); assert.equal(s.playing, true);
-    assert.deepEqual(s.allowed, { pause: true, resume: true, next: true, previous: true });
+    assert.deepEqual(s.allowed, { pause: true, resume: true, next: true, previous: true, shuffle: true, repeat: true });
     const input = (action) => ({ action, uri: s.track.uri, device: s.device });
     await web.control(input('pause')); assert.equal(fake.state.playbackPlaying, false);
     await web.control(input('resume')); assert.equal(fake.state.playbackPlaying, true);
@@ -38,6 +38,31 @@ test('mini-player state and transport use existing scopes, target the displayed 
     const quiet = mutations();
     assert.deepEqual(await web.control(input('pause')), { ok: true }, 'nothing active here: pause is already done');
     assert.equal(mutations(), quiet);
+  } finally { await fake.close(); }
+});
+
+test("shuffle and repeat: read from Spotify, set on this computer's player, and only as Spotify allows", async () => {
+  const fake = await startFakeSpotify(), web = createWebApi({ api: fake.base, accessToken: async () => 'fake-access-0' });
+  try {
+    let s = await web.playback();
+    assert.equal(s.shuffle, false); assert.equal(s.smart, false); assert.equal(s.repeat, 'off');
+    const input = (action, state) => ({ action, state, uri: s.track.uri, device: s.device });
+    await web.control(input('shuffle', true)); s = await web.playback(); assert.equal(s.shuffle, true);
+    await web.control(input('repeat', 'context')); assert.equal((await web.playback()).repeat, 'context');
+    await web.control(input('repeat', 'track')); assert.equal((await web.playback()).repeat, 'track');
+    await web.control(input('repeat', 'off')); assert.equal((await web.playback()).repeat, 'off');
+    // smart shuffle is Spotify's own: read, and shuffle off turns it off
+    fake.state.playbackSmart = true; s = await web.playback(); assert.equal(s.smart, true);
+    await web.control(input('shuffle', false)); s = await web.playback(); assert.equal(s.shuffle, false); assert.equal(s.smart, false);
+    const put = fake.seen.filter((r) => r.path === '/v1/me/player/shuffle' || r.path === '/v1/me/player/repeat');
+    assert.ok(put.length === 5 && put.every((r) => r.method === 'PUT' && r.query.device_id === 'fake-device-1'));
+    // a bad state never reaches Spotify
+    const calls = fake.seen.length;
+    for (const bad of [input('shuffle', 'yes'), input('shuffle'), input('repeat', 'album'), input('repeat', true)]) await assert.rejects(web.control(bad), /Choose/);
+    assert.equal(fake.seen.length, calls);
+    fake.state.playbackActions = { disallows: { toggling_shuffle: true, toggling_repeat_track: true } };
+    s = await web.playback(); assert.equal(s.allowed.shuffle, false); assert.equal(s.allowed.repeat, false);
+    await assert.rejects(web.control(input('shuffle', true)), /does not allow/);
   } finally { await fake.close(); }
 });
 

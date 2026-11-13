@@ -1864,6 +1864,11 @@ const playerBar = createPlayerBar({
     // the queue's buttons exist only while a library album is playing (a file on its own has no neighbours)
     get next() { return liveQueue() ? nextTrack : undefined; },
     get previous() { return liveQueue() ? previousTrack : undefined; },
+    // and its shuffle and repeat (the library's own: Shift+S and Shift+R there), shown beside the transport
+    get shuffle() { return liveQueue() ? () => state.queueShuffle : undefined; },
+    get repeat() { return liveQueue() ? () => state.queueRepeat : undefined; },
+    setShuffle: (on) => flashStatus(setQueueShuffle(on)),
+    setRepeat: (mode) => flashStatus(setQueueRepeat(mode)),
   },
 });
 // on screen just now: on, and not put away by H, the mini player or a recording (so it's worth asking Music where it is). The mini

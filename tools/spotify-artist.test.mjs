@@ -86,6 +86,41 @@ test('artist panel opens from search, unfolds an album, plays in its context, op
   } finally { panel.close(); await fake.close(); }
 });
 
+test('the half look follows the shared setting on an artist page and its albums: the button and Shift+C are there too (Colin, Nov 11)', async () => {
+  const fake = await startFakeSpotify(), web = createWebApi({ api: fake.base, accessToken: async () => 'fake-access-0' });
+  const doc = documentOf(), root = new El(), parts = {}, events = {}, button = new El('button');
+  root.querySelector = (s) => parts[s] ||= new El(); root.querySelectorAll = () => [];
+  const win = { navigator: {}, addEventListener: (k, fn) => events[k] = fn, matchMedia: () => ({ matches: true }), getComputedStyle: () => ({ getPropertyValue: () => '' }) };
+  let look = 'photo';
+  const host = { repeat: () => 'album', shuffle: () => false, key: () => 'G', live: () => false, blocked: () => false, playing: () => ({}), say() {}, fail: assert.fail, scenes: () => ({ presets: [], user: [] }), stations: () => [],
+    coverLook: () => look, setCoverLook: (v) => { look = v; },
+    spotify: { app: true, links: () => [], status: async () => ({ connected: true }), list: (r) => web.list(r), play: async () => ({}), open: async () => {}, cover: async () => { throw new Error('no fixture image needed'); } } };
+  const panel = createLibraryPanel({ document: doc, root, window: win, host, source: { kind: 'web', supported: true, cached: async () => null } });
+  parts['.lib-tabs'].querySelector = (s) => s === '.lib-coverbtn' ? button : null;
+  const shiftC = { ...event('C'), shiftKey: true };
+  try {
+    panel.open('spotify'); await settle();
+    parts['.lib-sp-query'].value = 'Daft Punk'; parts['.lib-sp-search'].handlers.submit({ preventDefault() {} }); await settle();
+    events.keydown(event('ArrowRight')); await settle();
+    assert.equal(panel.state.sp.artist.name, 'Daft Punk');
+    assert.ok(root.classes.has('lib-half'), 'the artist page wears the half look when it is the setting');
+    assert.equal(button.hidden, false); assert.equal(button.textContent, 'half ascii');
+    assert.match(parts['.lib-keys span'].innerHTML, /shift\+C cover/);
+    assert.match(parts['.lib-list'].innerHTML, /"01 [^"]+",/, 'its songs are written as code');
+    events.keydown(shiftC); await settle();
+    assert.equal(look, 'chars', 'Shift+C switches it on the artist page');
+    assert.equal(root.classes.has('lib-half'), false); assert.equal(button.textContent, 'full ascii');
+    events.keydown(shiftC); await settle();
+    assert.equal(look, 'photo');
+    panel.state.cursor.spotify = panel.rows().findIndex((r) => r.kind === 'coll');
+    events.keydown(event('ArrowRight')); await settle();
+    assert.ok(panel.state.sp.open.startsWith('album:') && panel.state.sp.artist);
+    assert.ok(root.classes.has('lib-half'), 'and so does an album opened from it');
+    assert.match(parts['.lib-head'].innerHTML, /lib-code.*x = x\.DaftPunk/);
+    assert.equal(button.hidden, false);
+  } finally { panel.close(); await fake.close(); }
+});
+
 test('the player loads Spotify\'s embed at once, confined, with the song and artist on top; open in Spotify and close destroy it; late loads are dropped', async () => {
   const doc = documentOf(), root = new El(), calls = [], track = { uri: `spotify:track:${idOf('video')}`, name: '<unsafe title>', by: 'Daft Punk' };
   let prepare = () => {};

@@ -80,7 +80,13 @@ async function ({ job, sources, sr }, audio) {
       return +(from + st.final.t0 + ((s.timeline?.originBeat ?? first * 4) + st.down - st.final.n0) * st.final.P).toFixed(4);
     };
     const reset0 = e.tape.reset.bind(e.tape), lock0 = e.tape.lock.bind(e.tape), pat0 = e.tape.pattern.bind(e.tape), harm0 = e.tape.harmony.bind(e.tape), shift0 = e.tape.shift.bind(e.tape);
+    // Every call the engine makes to the tape, in order, kept with the run (tapeLog): a later tape.js can be handed the same
+    // calls and its export scored in seconds, with no 7-minute run (backlog/engineering/tapereplay.mjs). Bench only.
+    const tapeLog = [], tempo0 = e.tape.tempo.bind(e.tape);
+    const keep = (x) => (x === undefined ? null : JSON.parse(JSON.stringify(x)));
+    e.tape.tempo = (bpm) => { const last = tapeLog[tapeLog.length - 1]; if (last?.[0] === 'tempo') last[1] = bpm; else tapeLog.push(['tempo', bpm]); return tempo0(bpm); };
     e.tape.reset = (down = 0) => {
+      tapeLog.push(['reset', down]);
       const done = e.tape.song(down);
       if (done) {
         const best = stretches[(done.coverage?.selectedStretch ?? 1) - 1] || stretches.reduce((a, b) => !a || b.patterns > a.patterns ? b : a, null);
@@ -89,10 +95,10 @@ async function ({ job, sources, sr }, audio) {
       stretches = []; curStretch = null;
       return reset0(down);
     };
-    e.tape.lock = (...a) => { curStretch = { moved: 0, rows: [], patterns: 0, down: 0 }; stretches.push(curStretch); return lock0(...a); };
-    e.tape.shift = (d) => { if (curStretch) curStretch.moved += d; return shift0(d); };
-    e.tape.pattern = (b, p, ...r) => { if (curStretch) { curStretch.rows.push({ b: b + curStretch.moved, kind: 'pattern' }); curStretch.patterns++; } return pat0(b, p, ...r); }; // (r: the bar line's time, for the export's fitted tempo)
-    e.tape.harmony = (b, ...r) => { if (curStretch) curStretch.rows.push({ b: b + curStretch.moved, kind: 'harmony' }); return harm0(b, ...r); };
+    e.tape.lock = (...a) => { tapeLog.push(['lock', ...keep(a)]); curStretch = { moved: 0, rows: [], patterns: 0, down: 0 }; stretches.push(curStretch); return lock0(...a); };
+    e.tape.shift = (d) => { tapeLog.push(['shift', d]); if (curStretch) curStretch.moved += d; return shift0(d); };
+    e.tape.pattern = (b, p, ...r) => { tapeLog.push(['pattern', b, keep(p), ...keep(r)]); if (curStretch) { curStretch.rows.push({ b: b + curStretch.moved, kind: 'pattern' }); curStretch.patterns++; } return pat0(b, p, ...r); }; // (r: the bar line's time, for the export's fitted tempo)
+    e.tape.harmony = (b, ...r) => { tapeLog.push(['harmony', b, ...keep(r)]); if (curStretch) curStretch.rows.push({ b: b + curStretch.moved, kind: 'harmony' }); return harm0(b, ...r); };
     const beats = [], tempo = [], lines = [], notes = [];
     // (bench instrumentation) each bar's harmony as the engine filed it: the bar's start and length, the chord found in it
     // (null: none) and the one its slot writes, the bass found in it (per beat, filled forward as the code writes them, else
@@ -170,6 +176,7 @@ async function ({ job, sources, sr }, audio) {
     const song = e.tape.song(e.tempo.down);
     const best = stretches[(song?.coverage?.selectedStretch ?? 1) - 1] || stretches.reduce((a, b) => !a || b.patterns > a.patterns ? b : a, null);
     const origin = song?.origin != null ? +(from + song.origin).toFixed(4) : (song ? (best && best.patterns >= 4 ? calcOrigin(song, best) : beforeOrigin) : null);
-    return { key: job.key, from: job.from || 0, seconds: duration, sr, beats, tempo, lines, notes: notes.slice(0, 400), truth, harmony, tuning, keylog, song, origin };
+    tapeLog.push(['song', e.tempo.down]);
+    return { key: job.key, from: job.from || 0, seconds: duration, sr, beats, tempo, lines, notes: notes.slice(0, 400), truth, harmony, tuning, keylog, song, origin, tapeLog };
   } catch (error) { return { error: String(error.stack || error) }; }
 }

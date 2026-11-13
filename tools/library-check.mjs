@@ -33,6 +33,10 @@ import { fileURLToPath } from 'node:url';
 import { scratch } from './paths.mjs';
 import { embeddedCover } from '../renderer/embedded-cover.js';
 import { ALBUMS, LIKED, PLAYLISTS, startFakeSpotify } from './spotify-fake.mjs';
+// (how many presets there are, and which settings a saved scene holds, are the app's own lists: counted here by hand they went
+// stale twice, at the Orb preset and at For TikTok)
+import { PRESETS } from '../renderer/presets.js';
+import { SETUP_KEYS } from '../renderer/library-core.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, fallback) => { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : fallback; };
@@ -91,7 +95,8 @@ const click = async (x, y) => {
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
 };
-const centre = (selector) => ev(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+// (what is clicked is first brought into view, as a listener scrolls to it: the guide's Client ID field can lie under the list's edge)
+const centre = (selector) => ev(`(() => { const n = document.querySelector(${JSON.stringify(selector)}); n.scrollIntoView({ block: 'nearest' }); const r = n.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
 const clickOn = async (selector) => { const [x, y] = await centre(selector); await click(x, y); };
 const size = async (w, h, dpr = 1) => { await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: false }); await sleep(900); };
 async function shot(name, clip) {
@@ -540,16 +545,17 @@ if (phase === 'main') {
 
   await step('scenes: the presets as cards; save this setup, name it, apply a preset and then the scene, rename, delete', async () => {
     await key('Tab');
-    expect('the scenes section: the save card, the five presets', (await ev('__nc.library.section')) === 'scenes' && (await rowTexts()).length === 6, (await rowTexts()).map((r) => r.text));
+    const rows0 = await rowTexts();
+    expect('the scenes section: the save card, then every preset', (await ev('__nc.library.section')) === 'scenes' && (await rowTexts()).length === PRESETS.length + 1 && PRESETS.every((p, k) => rows0[k + 1]?.text.startsWith(p.name)), rows0.map((r) => r.text));
     // (the pictures are image files: on a busy Mac they can still be loading the moment the section opens, so a few seconds' grace)
-    expect('with their pictures', await until('[...document.querySelectorAll("#library .lib-card .pic img")].every((i) => i.complete && i.naturalWidth > 0) && document.querySelectorAll("#library .lib-card .pic img").length === 5', 4000));
+    expect('with their pictures', await until('[...document.querySelectorAll("#library .lib-card .pic img")].every((i) => i.complete && i.naturalWidth > 0) && document.querySelectorAll("#library .lib-card .pic img").length === ' + PRESETS.length, 4000));
     await ev('__nc.library.state.cursor.scenes = 0; true');
     await ev(`__nc.presetSetters.visual('worlds'); __nc.presetSetters.theme('terminal'); true`);
     await sleep(500);
     await key('Home'); await key('Enter');
     expect('Enter on the save card makes a scene and puts the cursor in its name', await until(`__nc.state.userScenes.length === 1`) && (await ev('document.activeElement && document.activeElement.className')) === 'lib-rename');
     expect('named "my scene 1", from the setup as it is', await ev(`(() => { const s = __nc.state.userScenes[0]; return s.name === 'my scene 1' && s.settings.visual === 'worlds' && s.settings.theme === 'terminal'; })()`), await ev('__nc.state.userScenes'));
-    expect('in the shape of a preset: only the settings presets use', await ev(`Object.keys(__nc.state.userScenes[0].settings).sort().join()`) === 'blockLook,blocks,codeHidden,gameScreens,sceneryScene,theme,vertical,visual');
+    expect('it holds the settings a scene is made of (library-core.js SETUP_KEYS: the presets\' own and the look, the drop, the camera effect, the Earth\'s view, the glass, the cover) and no others', await ev(`Object.keys(__nc.state.userScenes[0].settings).sort().join()`) === [...SETUP_KEYS].sort().join(), await ev(`Object.keys(__nc.state.userScenes[0].settings).sort().join()`));
     await send('Input.insertText', { text: 'Terminal worlds' });
     await key('Enter');
     await sleep(300);
@@ -600,7 +606,7 @@ if (phase === 'main') {
     await sleep(300);
     await clickOn('#library .lib-card .acts button[data-do="delete"]');
     await sleep(400);
-    expect('the delete button too', (await ev('__nc.state.userScenes.length')) === 0 && (await rowTexts()).length === 6);
+    expect('the delete button too', (await ev('__nc.state.userScenes.length')) === 0 && (await rowTexts()).length === PRESETS.length + 1);
     // one for a restart to find, made as a person would: Enter on the save card, a name, Enter
     await ev(`__nc.presetSetters.theme('pink'); true`);
     await key('Home'); await key('Enter');
@@ -702,17 +708,19 @@ if (phase === 'main') {
     await ev('__nc.library.close()');
   });
 
-  await step('spotify, your own library: the five steps and the field for a Client ID; a bad ID in words; the sign-in (PKCE) against the fake; the lists with their covers; the page never has a token', async () => {
+  await step('spotify, your own library: the guide (four steps) and the field for a Client ID; a bad ID in words; the sign-in (PKCE) against the fake; the lists with their covers; the page never has a token', async () => {
     const f = await spotifyReady();
     await reload();
     await size(540, 960, 2);
     await openLibrary('spotify');
     await sleep(700);
-    expect('not connected: the way in is the five steps and a field for a Client ID', (await spLabels()).includes('connect your Spotify') && (await ev(`document.querySelectorAll('#library .lib-step').length`)) === 5, await spLabels());
-    const steps = await ev(`[...document.querySelectorAll('#library .lib-step')].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
-    expect('the steps: the dashboard, Web API, the redirect (exactly), the Client ID, the field', /developer\.spotify\.com\/dashboard/.test(steps[0]) && /Web API/.test(steps[1]) && steps[2].includes('http://127.0.0.1:43821/callback') && /Client ID/.test(steps[3]) && /paste it below/.test(steps[4]), steps);
-    expect('the redirect is marked, with a button to copy it', (await ev(`document.querySelector('#library .lib-step b').textContent`)) === 'http://127.0.0.1:43821/callback' && (await ev(`!!document.querySelector('#library .lib-step .lib-copy')`)));
-    await clickOn('#library .lib-step [data-do="copy"]');   // (step 1's .lib-copy is the dashboard's open button since 0.5.2)
+    expect('not connected: the way in is the guide, four steps one at a time, and a field for a Client ID', (await spLabels()).includes('connect your Spotify') && (await ev(`document.querySelectorAll('#library .lib-guide-dot').length`)) === 4 && (await ev(`document.querySelector('#library .lib-guide').dataset.step`)) === '0', await spLabels());
+    expect('step 1 opens the dashboard for you', await ev(`!!document.querySelector('#library .lib-guide [data-do="dashboard"]')`));
+    await clickOn('#library .lib-guide-next');
+    await sleep(300);
+    const fields = await ev(`[...document.querySelectorAll('#library .lib-guide-field b')].map((b) => b.textContent)`);
+    expect('next: step 2, the form, with the name, the description and the redirect (exactly) to copy, and Add said', JSON.stringify(fields) === JSON.stringify(['Toaster', 'personal music visualizer', 'http://127.0.0.1:43821/callback']) && /press Add/.test(await ev(`document.querySelector('#library .lib-guide').innerText`)), fields);
+    await clickOn('#library .lib-guide [data-do="copy"][data-text="http://127.0.0.1:43821/callback"]');
     await sleep(400);
     expect('the copy button says it copied (or why it could not)', /^copied$|^could not copy/.test(await ev(`document.getElementById('status').textContent`)), await ev(`document.getElementById('status').textContent`));
     const h = await head();
@@ -837,7 +845,9 @@ if (phase === 'main') {
     for (let n = 0; n < 5; n++) await key('ArrowDown');
     await key('Enter');
     await sleep(800);
-    expect('Enter on the sixth plays it and the songs after it, as a list, from its start', puts().length === 4 && JSON.stringify(puts()[3].body) === JSON.stringify({ uris: LIKED.slice(5).map((t) => `spotify:track:${t.id}`), offset: { position: 0 } }), puts()[3] && puts()[3].body);
+    // (since 0.5.6 the liked songs play as Spotify's own list of them, from that song, so they carry on past the songs loaded here;
+    // the list of addresses is what it falls back to on an account whose collection Spotify will not play)
+    expect('Enter on the sixth plays the liked songs as Spotify\'s own list of them, from that song', puts().length === 4 && JSON.stringify(puts()[3].body) === JSON.stringify({ context_uri: 'spotify:user:colin:collection', offset: { uri: `spotify:track:${LIKED[5].id}` } }), puts()[3] && puts()[3].body);
     await key('ArrowLeft'); await sleep(300);
     expect('every play went to the active device with the same token', puts().every((r) => r.query.device_id === 'fake-device-1' && r.auth === 'Bearer fake-access-1'));
     await clearMenu();
@@ -903,7 +913,7 @@ if (phase === 'main') {
     await send('Input.insertText', { text: CLIENT });
     await key('Enter');
     expect('the page in the browser is asked for, and the section says it is waiting for them', await until(`!!document.querySelector('#library .lib-wait')`, 8000) && f.state.lastAuthorize !== null, f.state.lastAuthorize);
-    expect('the note says what to do and for how long; the line says "waiting for Spotify…"; the ID stays in its field', /waiting for you: Spotify's page is open in your browser and asks you to agree \(it waits five minutes\)/.test(await ev(`document.querySelector('#library .lib-wait').textContent`)) && /waiting for Spotify…/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)) && (await spRowTexts()).find((r) => r.field === 'client').value === CLIENT);
+    expect('the note says what to do and for how long; the line says "waiting for Spotify…"; the ID stays in its field', /waiting for you: press Agree on Spotify's page in your browser \(Toaster waits five minutes\)/.test(await ev(`document.querySelector('#library .lib-wait').textContent`)) && /waiting for Spotify…/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)) && (await spRowTexts()).find((r) => r.field === 'client').value === CLIENT);
     const first = f.state.lastAuthorize;
     // the listener on 127.0.0.1:43821 turns a stray address away and goes on waiting
     const stray = await fetch(`http://127.0.0.1:43821/callback?code=fake-code&state=not-the-one`).then(async (r) => ({ status: r.status, text: await r.text() }));
@@ -977,7 +987,7 @@ if (phase === 'main') {
     const dom = (expr) => ev(`(() => { const root = window.__browserPanel.root; return ${expr}; })()`);
     expect('the tabs are the four, spotify the one on', JSON.stringify(await dom(`[...root.querySelectorAll('.lib-tabs [data-section]')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : ''))`)) === '["your music","spotify*","radio","scenes"]');
     expect('the head says it opens the web player; the line says in a new tab', (await dom(`root.querySelector('.lib-sub').textContent`)) === 'web player' && /opens in Spotify's web player, in a new tab/.test(await dom(`root.querySelector('.lib-meta').textContent`)));
-    expect('the one row is the field for a link: no steps, no Client ID, nothing to sign in to', JSON.stringify(await dom(`[...root.querySelectorAll('.lib-row')].map((r) => r.querySelector('input')?.dataset.field || r.textContent)`)) === '["link"]' && (await dom(`root.querySelectorAll('.lib-step').length`)) === 0);
+    expect('the one row is the field for a link: no steps, no Client ID, nothing to sign in to', JSON.stringify(await dom(`[...root.querySelectorAll('.lib-row')].map((r) => r.querySelector('input')?.dataset.field || r.textContent)`)) === '["link"]' && (await dom(`root.querySelectorAll('.lib-guide, .lib-step').length`)) === 0);
     await key('Home'); await key('Enter');
     expect('Enter goes into the field', (await ev('document.activeElement && document.activeElement.dataset.field')) === 'link');
     await send('Input.insertText', { text: 'https://open.spotify.com/show/4Z8W4fKeB5YxbusRsdQVPb' });   // (a show: since 0.5.2 an artist is a link)
@@ -1156,7 +1166,7 @@ if (phase === 'main') {
     expect('the page has the five calls and the progress, no more', calls === 'libraryCached,libraryChoose,libraryFolder,libraryRead,libraryScan,onLibraryProgress', calls);
     expect('and no way to the file system itself', (await ev('typeof require + typeof process + typeof window.fs')) === 'undefinedundefinedundefined');
     const chosen = await ev('window.nc.libraryChoose()');
-    expect('choosing in this copy gives the folder it was told to take (no dialog in a window nobody sees)', chosen && chosen.path === where.path, chosen);
+    expect('choosing in this copy gives the folder it was told to take (no dialog in a window nobody sees)', chosen && (chosen.path === where.path || chosen.path === fs.realpathSync(where.path)), chosen);   // (scratch is a link to another drive on this Mac: main answers with where the folder really is)
     expect('the folder for the page\'s own scan call is main\'s', (await ev('window.nc.libraryScan.length')) === 0);
   });
 
@@ -1570,7 +1580,7 @@ if (phase === 'web') {
     await sleep(600);
     expect('the bridge has no Spotify call: a browser can not sign in, and says so by having no field for it', (await ev(`typeof window.nc.spotifyList + typeof window.nc.spotifyOpen`)) === 'undefinedundefined');
     const rows = await spRowTexts();
-    expect('the section is the field for a link and nothing else, with no steps', rows.length === 1 && rows[0].field === 'link' && (await ev(`document.querySelectorAll('#library .lib-step').length`)) === 0, rows);
+    expect('the section is the field for a link and nothing else, with no steps', rows.length === 1 && rows[0].field === 'link' && (await ev(`document.querySelectorAll('#library .lib-guide, #library .lib-step').length`)) === 0, rows);
     const h = await head();
     expect('the head says it is the web player, the line says in a new tab', h.name === 'spotify' && h.sub === 'web player' && /opens in Spotify's web player, in a new tab/.test(await ev(`document.querySelector('#library .lib-meta').innerText`)), h);
     await key('Home'); await spType('open.spotify.com/show/4Z8W4fKeB5YxbusRsdQVPb');   // (a show: since 0.5.2 an artist is a link)

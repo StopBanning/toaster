@@ -26,7 +26,8 @@ Lost? **?** lists every key, and **Ctrl+K** finds any command by name.
 
 **Spotify, three ways.** Toaster hears Spotify playing on your computer like any other app. Connected (with your own Spotify
 Client ID, see [Search Spotify](#search-spotify)), the library's spotify tab browses and plays your playlists and albums and searches
-inside Toaster. Without a connection, its search opens Spotify's own search page.
+inside Toaster. Without a connection, its search opens Spotify's own search page. Spotify asks each listener for a free developer
+app of their own (and Premium); the spotify tab walks you through making it, one step at a time, with a picture of each page.
 
 **Does it split the song into stems?** No stems. It listens to the whole mix as it plays and picks out the kick, snare, hats,
 bass and chords from their frequencies and timing, then writes them as code that plays back on drum-machine samples and synths.

@@ -254,6 +254,10 @@ async function failure(res) {
   if (res.status === 401) return new Error('Spotify wants you to connect again.');
   if (res.status === 403 && /\/v1\/playlists\/[A-Za-z0-9]{22}\/items$/.test(new URL(res.url || 'http://x/').pathname)) return new Error('Spotify only lets Toaster list the songs of playlists you made or work on: enter plays this one from the top.');
   if (res.status === 403 && reason === 'PREMIUM_REQUIRED') return new Error('Spotify says starting songs from Toaster needs Premium.');
+  // (Spotify's rules for a developer app of one's own, since Feb 2026: it works only while the account that made it has Premium, and
+  // only for the accounts on it, which is the maker's alone unless they add others; signing in with another account is the usual slip)
+  if (res.status === 403 && /premium/i.test(said)) return new Error('Spotify lets your developer app work only while the account that made it has Premium.');
+  if (res.status === 403 && /not be registered|not registered/i.test(said)) return new Error('Spotify says this account isn\'t on your developer app: disconnect, then connect again and sign in on Spotify\'s page with the account that made the app.');
   if (res.status === 404 && reason === 'NO_ACTIVE_DEVICE') return new Error('Open Spotify on this computer and play anything once, then try again.');
   if (res.status === 429) return new Error(`Spotify asks Toaster to slow down: try again in ${Number(res.headers.get('retry-after')) || 30} s.`);
   return new Error(`Spotify said no (${res.status}${said ? ': ' + said : ''}).`);
@@ -383,13 +387,21 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     return { track: song, device: r.device.id, playing: r.is_playing === true,
       position: Number.isFinite(r.progress_ms) && r.progress_ms >= 0 ? r.progress_ms / 1000 : null,
       duration: song.ms / 1000,
+      // shuffle and repeat, as Spotify has them (repeat: 'off', 'context' (the album or playlist) or 'track'); smart: Spotify's smart
+      // shuffle, which only Spotify can turn on (the Web API has no way to), and which shuffle off turns off with it
+      shuffle: r.shuffle_state === true, smart: r.smart_shuffle === true,
+      repeat: ['off', 'context', 'track'].includes(r.repeat_state) ? r.repeat_state : 'off',
       allowed: { pause: !restricted && !denied.pausing, resume: !restricted && !denied.resuming,
-        next: !restricted && !denied.skipping_next, previous: !restricted && !denied.skipping_prev } };
+        next: !restricted && !denied.skipping_next, previous: !restricted && !denied.skipping_prev,
+        shuffle: !restricted && !denied.toggling_shuffle, repeat: !restricted && !denied.toggling_repeat_context && !denied.toggling_repeat_track } };
   }
   async function control(request = {}) {
-    const routes = { pause: ['PUT', 'pause'], resume: ['PUT', 'play'], next: ['POST', 'next'], previous: ['POST', 'previous'] };
+    const routes = { pause: ['PUT', 'pause'], resume: ['PUT', 'play'], next: ['POST', 'next'], previous: ['POST', 'previous'], shuffle: ['PUT', 'shuffle'], repeat: ['PUT', 'repeat'] };
     if (!Object.hasOwn(routes, request.action) || !TRACK_URI.test(request.uri || '') || typeof request.device !== 'string' || !request.device || request.device.length > 256)
       throw new Error('Choose a Spotify player button.');
+    // (shuffle takes state true or false; repeat 'off', 'context' or 'track')
+    if (request.action === 'shuffle' && typeof request.state !== 'boolean') throw new Error('Choose shuffle on or off.');
+    if (request.action === 'repeat' && !['off', 'context', 'track'].includes(request.state)) throw new Error('Choose repeat off, the list, or the song.');
     // (the button acts on what Spotify is playing on this computer now, not only on the song and device the bar last showed: those
     // are a poll old, and a song that ended, a Spotify restart (a new device id) or a moment's idle made every press an error box
     // ("Spotify changed songs or devices", Colin, Nov 8). The page's device is used only when nothing is active here any more.)
@@ -399,7 +411,8 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     if (now && !now.allowed[request.action]) throw new Error('Spotify does not allow that button right now.');
     const [method, route] = routes[request.action];
     try {
-      await call(method, `/v1/me/player/${route}`, { query: { device_id: now ? now.device : request.device } });
+      const mode = request.action === 'shuffle' || request.action === 'repeat' ? { state: request.state } : {};
+      await call(method, `/v1/me/player/${route}`, { query: { ...mode, device_id: now ? now.device : request.device } });
     } catch (err) {
       if (!now) throw new Error('Spotify isn\'t playing on this computer. Start a song in the Spotify app first.');
       throw err;

@@ -67,7 +67,7 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
     hold: false, // the sign-in page does not agree at once: it waits (as it does for a listener reading it), and `lastAuthorize` says what was asked
     drop: 0, // the next n Web API calls get no answer at all: the connection is cut (a network that is gone)
     lastAuthorize: null, // { state, redirect } of the last sign-in page asked for
-    playbackTrack: LIKED[0], playbackPlaying: true, playbackPosition: 92000, playbackActions: {},
+    playbackTrack: LIKED[0], playbackPlaying: true, playbackPosition: 92000, playbackActions: {}, playbackShuffle: false, playbackSmart: false, playbackRepeat: 'off',
     collectionRefused: false, // a play of the liked songs' own context (spotify:user:<id>:collection) is refused 400, as some accounts' is
     tokens: 0, // access tokens given so far: the one in force is fake-access-<this>
   };
@@ -164,8 +164,11 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
       }
       if (req.method === 'GET' && url.pathname === '/v1/me/player') {
         if (!state.playbackTrack || !state.devices.some((d) => d.is_active)) return send(res, 204, null);
-        return ok({ device: state.devices.find((d) => d.is_active), is_playing: state.playbackPlaying, progress_ms: state.playbackPosition, item: trackOf(state.playbackTrack), actions: state.playbackActions });
+        return ok({ device: state.devices.find((d) => d.is_active), is_playing: state.playbackPlaying, progress_ms: state.playbackPosition, item: trackOf(state.playbackTrack), actions: state.playbackActions, shuffle_state: state.playbackShuffle, smart_shuffle: state.playbackSmart, repeat_state: state.playbackRepeat });
       }
+      // (shuffle off turns smart shuffle off with it, as Spotify does)
+      if (req.method === 'PUT' && url.pathname === '/v1/me/player/shuffle') { state.playbackShuffle = url.searchParams.get('state') === 'true'; if (!state.playbackShuffle) state.playbackSmart = false; return send(res, 204, null); }
+      if (req.method === 'PUT' && url.pathname === '/v1/me/player/repeat') { const m = url.searchParams.get('state'); if (!['off', 'context', 'track'].includes(m)) return send(res, 400, { error: { status: 400, message: 'Invalid state' } }); state.playbackRepeat = m; return send(res, 204, null); }
       if (req.method === 'PUT' && url.pathname === '/v1/me/player/pause') { state.playbackPlaying = false; return send(res, 204, null); }
       if (req.method === 'POST' && ['/v1/me/player/next', '/v1/me/player/previous'].includes(url.pathname)) {
         const step = url.pathname.endsWith('next') ? 1 : -1, at = LIKED.indexOf(state.playbackTrack);

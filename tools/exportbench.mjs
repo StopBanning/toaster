@@ -266,6 +266,37 @@ async function evaluateSongStrudel(code, barsCount) {
   });
 }
 
+// The clap's second answer key: the reference's claps with the kick's own click taken out. In four-on-the-floor songs the stem
+// reference counts the kick's click (it reaches into the clap's band) as a clap: Thriller's beats 1 and 3 held 146 "claps", every
+// one with a kick within 30 ms and none confirmed by the drum-reading model, so a right "clap on 2 and 4" was marked half wrong.
+// The rule: in a song where the model confirmed `asked` claps or more, a clap it did not confirm with a kick within `near`
+// seconds is the kick's click, not a clap (measured Nov 10, backlog/engineering/clapwrong.mjs --clean: Thriller's bars exactly
+// right 15% -> 43%, Funkytown 24% -> 42%, One More Time 9% -> 49%). Where the model confirmed fewer, it isn't asked: the key
+// stays as it was.
+// But a real clap falls on a kick too wherever the kick is on every beat, and the model misses some of those (Thriller's beat
+// 4: 35 of 73 confirmed, 26 more taken out by the rule above). Claps come round: with the reference's own beats (`beats`, their
+// times), a clap on a kick stays if the model confirmed a clap two or four beats before or after it (within `tol`): it is on a
+// beat where this song's claps fall. The kick's click on beats 1 and 3 has no such neighbour.
+// clap, kick: the reference's onsets ({ time, strength, confirmed_by_neural }) -> the claps' times, in order.
+export function cleanClaps(clap = [], kick = [], { asked = 20, near = 0.03, beats = [], tol = 0.06 } = {}) {
+  const strong = (o) => o.confirmed_by_neural || o.strength >= 0.8;
+  const sorted = (xs) => xs.slice().sort((a, b) => a - b);
+  // (the index of the first of `xs` at or after t)
+  const at = (xs, t) => { let lo = 0, hi = xs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m] < t) lo = m + 1; else hi = m; } return lo; };
+  const within = (xs, t, d) => { const i = at(xs, t); return (i < xs.length && xs[i] - t < d) || (i > 0 && t - xs[i - 1] < d); };
+  const kicks = sorted(kick.map((o) => o.time)), sure = sorted(clap.filter((o) => o.confirmed_by_neural).map((o) => o.time));
+  const bt = sorted(beats.map((b) => (Array.isArray(b) ? b[0] : b)).filter(Number.isFinite));
+  // (a beat's length around t: across the eight beats about it, so one beat a frame early or late doesn't matter)
+  const beat = (t) => {
+    if (bt.length < 9) return null;
+    const i = Math.min(bt.length - 1, at(bt, t)), a = Math.max(0, i - 4), b = Math.min(bt.length - 1, a + 8);
+    return (bt[b] - bt[Math.max(0, b - 8)]) / (b - Math.max(0, b - 8));
+  };
+  const comesRound = (t) => { const P = beat(t); return !!P && [2, 4].some((k) => within(sure, t - k * P, tol) || within(sure, t + k * P, tol)); };
+  const ask = sure.length >= asked;
+  return sorted(clap.filter(strong).filter((o) => !ask || o.confirmed_by_neural || !within(kicks, o.time, near) || comesRound(o.time)).map((o) => o.time));
+}
+
 export async function scoreExportRun(name, r, targetSet = 'full') {
   const [set, run] = name.split(':');
   if (targetSet && set !== targetSet) return null;
@@ -276,7 +307,7 @@ export async function scoreExportRun(name, r, targetSet = 'full') {
   if (!r.song || !r.song.bars?.length || !(r.song.bpm > 0)) {
     return {
       set, key, run, hasExport: 0, cover: 0, bars: 0,
-      kickF1: 0, clapF1: 0, hatF1: 0, kickAs: 0, kickFit: 0, kickPat: 0, clapAs: 0, clapFit: 0, clapPat: 0,
+      kickF1: 0, clapF1: 0, hatF1: 0, kickAs: 0, kickFit: 0, kickPat: 0, clapAs: 0, clapFit: 0, clapPat: 0, clapAs2: 0, clapFit2: 0, clapPat2: 0,
       bassPc: 0, bassExact: 0, bassCover: 0,
       chord: 0, chordRoot: 0, chordInKey: kref?.key ? 0 : null,
       envCorr: 0, envScore: 0,
@@ -333,6 +364,8 @@ export async function scoreExportRun(name, r, targetSet = 'full') {
   const span = { origin, barSec, bars: barsCount, from: r.from || 0, to: (r.from || 0) + (r.seconds || 150) };
   const cyclesOf = (part) => events.filter((ev) => ev.part === part).map((ev) => ev.onset);
   const kick3 = drumThreeWays(cyclesOf('bd'), refKick, span), clap3 = drumThreeWays(cyclesOf('sd'), refClap, span);
+  // (and the clap against its second key, the kick's click taken out: cleanClaps. The first key's columns stay as they were)
+  const clap32 = drumThreeWays(cyclesOf('sd'), cleanClaps(truth?.drums?.clap?.onsets, truth?.drums?.kick?.onsets, { beats: truth?.beat?.beats }), span);
 
   // 2. Bass per beat against YIN bass truth
   const refBass = (truth?.bass?.notes || []).map((n) => [n.start, n.end, n.midi]);
@@ -415,6 +448,7 @@ export async function scoreExportRun(name, r, targetSet = 'full') {
     set, key, run, hasExport: 1, cover, bars: barsCount,
     kickF1, clapF1, hatF1,
     kickAs: kick3.a, kickFit: kick3.fit, kickPat: kick3.pat, clapAs: clap3.a, clapFit: clap3.fit, clapPat: clap3.pat,
+    clapAs2: clap32.a, clapFit2: clap32.fit, clapPat2: clap32.pat,
     bassPc, bassExact, bassCover,
     chord, chordRoot, chordInKey,
     envCorr, envScore,
@@ -452,7 +486,7 @@ export function summarizeExport(rows0) {
     if (!byOffset.has(off)) byOffset.set(off, []);
     byOffset.get(off).push(r);
   }
-  const fields = ['hasExport', 'cover', 'kickF1', 'clapF1', 'hatF1', 'kickAs', 'kickFit', 'kickPat', 'clapAs', 'clapFit', 'clapPat', 'bassPc', 'bassExact', 'bassCover', 'chord', 'chordRoot', 'chordInKey', 'envCorr', 'envScore'];
+  const fields = ['hasExport', 'cover', 'kickF1', 'clapF1', 'hatF1', 'kickAs', 'kickFit', 'kickPat', 'clapAs', 'clapFit', 'clapPat', 'clapAs2', 'clapFit2', 'clapPat2', 'bassPc', 'bassExact', 'bassCover', 'chord', 'chordRoot', 'chordInKey', 'envCorr', 'envScore'];
   const summary = { n: rows.length };
   for (const f of fields) summary[f] = mean(rows.map((r) => r[f]));
   if (byOffset.size > 1) {
@@ -537,7 +571,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   // The kick and the clap three ways (see drumThreeWays): as exported, on the best single tempo, and with each bar slid
   // into place. as exported far under best tempo: the grid is off. best tempo near pattern alone and both low: the pattern is.
-  const three = [['kick', 'kickAs', 'kickFit', 'kickPat'], ['clap', 'clapAs', 'clapFit', 'clapPat']];
+  // The clap twice: against the reference as it is, and against it with the kick's click taken out (cleanClaps): the fair key.
+  const three = [['kick', 'kickAs', 'kickFit', 'kickPat'], ['clap', 'clapAs', 'clapFit', 'clapPat'], ['clap, no kick clicks', 'clapAs2', 'clapFit2', 'clapPat2']];
   console.log('\n  drums, three ways      as exported   best single tempo   pattern alone (each bar slid to fit)');
   for (const [name, a, fit, pat] of three) {
     console.log(`  ${name.padEnd(20)} ${f3(cur[a])}         ${f3(cur[fit])}              ${f3(cur[pat])}`

@@ -7,7 +7,7 @@
 // What it shows is library.js's (the albums, the rows, the cursor); where the tracks come from is library-source.js's; what plays,
 // the stations and the scenes are app.js's, through `host`.
 import {
-  SECTIONS, SPOTIFY_ICON, SPOTIFY_INTRO, SPOTIFY_LIKED, SPOTIFY_NOT_A_LINK, SPOTIFY_REDIRECT, SPOTIFY_STEPS, addPage, agoText, albumLine, collKey,
+  SECTIONS, SPOTIFY_ICON, SPOTIFY_INTRO, SPOTIFY_LIKED, SPOTIFY_NOT_A_LINK, SPOTIFY_REDIRECT, SPOTIFY_GUIDE, SPOTIFY_STUCK, SPOTIFY_APP, addPage, agoText, albumLine, collKey,
   collLine, coverGlyphs, findMarks, findRows, findWords, fmtDuration, fold, folderLabel, groupAlbums, keepCursor, linkParts, logoTone, makeTrack,
   moveCursor, musicRows, nextRepeat, nextSection, parseLink, plainError, scenePicture, spotifyAt, spotifyFold, spotifyKey, spotifyPlay, spotifyRows,
   spotifyUnfold, stationParts, unfold,
@@ -30,6 +30,7 @@ const STATIONS_PAGE = 'https://github.com/StopBanning/toaster/blob/main/docs/rad
 // latest first: { uri, at, title?, artist? }), open(text, link) (plays a pasted link: main reads the text again; a browser opens Spotify's web
 // player on the link the page read), status(), connect(clientId), disconnect(), list(request), play(request), cover(url) (a data: address): the
 // calls reject with errors in words, which the section shows as they are }
+const SIGNED_OUT = /wants you to connect again/i;
 export function createLibraryPanel({ document: doc, window: win = globalThis, root, source, host }) {
   const S = {
     open: false, section: 'music', albums: [], covers: {}, byPath: new Map(), openId: null, cursor: { music: 0, spotify: 0, radio: 0, scenes: 0 }, tracks: 0,
@@ -40,7 +41,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     // the spotify section: whether it is connected (null: not asked yet), the lists (playlists, albums, liked: { items, total, more, next, loading }) and the open collection's
     // songs, kept in memory only (Spotify allows its metadata and covers to be kept only for a while), the covers (address -> data: address), what was typed in each field
     // and wasn't sent, and gen, which a disconnect or a new sign-in moves on so that an answer to an older question is let go
-    sp: { status: null, checking: false, connecting: false, gen: 0, lists: {}, tracks: {}, open: null, error: '', armed: false, at: 0, cursorKey: '', dirty: false, linksAll: false, draft: { link: '', client: '' }, covers: new Map(), coverTried: new Set() },
+    sp: { status: null, checking: false, connecting: false, gen: 0, lists: {}, tracks: {}, open: null, error: '', armed: false, at: 0, cursorKey: '', dirty: false, linksAll: false, draft: { link: '', client: '' }, guide: 0, covers: new Map(), coverTried: new Set() },
   };
   const mac = /Mac|iP(hone|ad|od)/.test(win.navigator?.platform || '');
   const FIND_KEY = mac ? '⌘F' : 'ctrl+F', FIND_MAX = 300;
@@ -48,6 +49,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     <div class="lib-drag" aria-hidden="true"></div>
     <div class="lib-art" aria-hidden="true"></div>
     <div class="lib-bigcover" aria-hidden="true"></div>
+    <div class="lib-guidepic" aria-hidden="true"></div>
     <div class="lib-panel">
       <div class="lib-top"><span class="lib-brand"><span class="lib-line">toaster</span><span class="lib-live"></span></span><span class="lib-clock lib-line"></span></div>
       <div class="lib-tabs"><span role="tablist" aria-label="library sections">${SECTIONS.map(([id, name]) => `<button type="button" role="tab" data-section="${id}">${name}</button>`).join('')}</span><span class="lib-tabend"><button type="button" class="lib-coverbtn" title="the cover: all of it in characters, or the cover itself with them around it (shift+C)"></button><button type="button" class="lib-findbtn" title="find in your music (${FIND_KEY})">find</button></span></div>
@@ -65,7 +67,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   root.setAttribute('aria-label', 'Library');
   root.classList.toggle('titlebar', !!host.titleBar?.());
   const q = (sel) => root.querySelector(sel);
-  const parts = { art: q('.lib-art'), big: q('.lib-bigcover'), live: q('.lib-live'), clock: q('.lib-clock'), tabs: q('.lib-tabs'), head: q('.lib-head'), now: q('.lib-now'), meta: q('.lib-meta'), err: q('.lib-err'), list: q('.lib-list'), keys: q('.lib-keys span'),
+  const parts = { art: q('.lib-art'), big: q('.lib-bigcover'), guide: q('.lib-guidepic'), live: q('.lib-live'), clock: q('.lib-clock'), tabs: q('.lib-tabs'), head: q('.lib-head'), now: q('.lib-now'), meta: q('.lib-meta'), err: q('.lib-err'), list: q('.lib-list'), keys: q('.lib-keys span'),
     find: q('.lib-find'), q: q('.lib-q'), count: q('.lib-count'), shelf: q('.lib-shelf'), tiles: q('.lib-tiles') };
 
   // ---------------------------------------------------------------- what is listed
@@ -215,9 +217,10 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // ---------------------------------------------------------------- painting
 
   // the half look (golden's: the cover itself, framed, the characters faint around it, the album and its tracks written as code), for
-  // your music and Spotify; the full one draws all of it in characters
+  // your music and Spotify, its artist pages too; the full one draws all of it in characters. (Artist pages left it out from Nov 6, to
+  // show Spotify's pictures unaltered, but their big picture was drawn all in characters anyway, and Colin missed the half look there. Nov 11)
   const coverSection = () => S.section === 'music' || S.section === 'spotify';
-  const half = () => !(S.section === 'spotify' && S.sp.artist) && coverSection() && host.coverLook?.() === 'photo';
+  const half = () => coverSection() && host.coverLook?.() === 'photo';
   function paintLook() {
     S.lookSig = host.coverLook?.();
     root.classList.toggle('lib-spotify', S.section === 'spotify');
@@ -225,7 +228,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     root.classList?.toggle('lib-half', half());
     const b = parts.tabs.querySelector?.('.lib-coverbtn');
     if (!b) return;
-    b.hidden = !coverSection() || (S.section === 'spotify' && !!S.sp.artist);
+    b.hidden = !coverSection();
     b.textContent = host.coverLook?.() === 'photo' ? 'half ascii' : 'full ascii';
   }
   const paintTabs = () => { paintSearch(); paintLook(); for (const b of parts.tabs.querySelectorAll('[data-section]')) { const on = b.dataset.section === S.section; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); } };
@@ -392,7 +395,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     } catch (err) {
       if (generation !== searchGeneration || gen !== X.gen) return;
       search.loading = false; search.more = !!offset && hadMore; X.error = plainError(err);
-      if (/connect again/i.test(X.error)) spClear();
+      if (SIGNED_OUT.test(X.error)) spClear();
     }
     spRepaint();
   }
@@ -442,10 +445,62 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     return `<span class="lib-line">${esc(left)}</span>${S.note && !X.connecting ? `<span class="lib-line lib-said" role="status">${esc(S.note)}</span>` : right ? `<span class="lib-line">${esc(right)}</span>` : ''}`;
   }
 
-  // the five steps and the field for a Client ID, which is all there is to see until the listener has connected
+  // The way in, which is all there is to see until the listener has connected (library.js SPOTIFY_GUIDE): one step at a time, its
+  // number dots to go back to any of them, the values to copy (the app's name, its description, the redirect), back and next; while
+  // Toaster waits for the Agree, what Spotify's page might say instead, and the fix. The field for the Client ID stays under it all,
+  // whichever step is showing, for anyone who has one already. The drawing of Spotify's page for the step is beside it (guidePicture).
   function spSteps() {
-    const rd = esc(SPOTIFY_REDIRECT);
-    return `<div class="lib-note lib-line lib-label">connect your Spotify</div><div class="lib-note lib-line">${esc(SPOTIFY_INTRO)}</div>${SPOTIFY_STEPS.map((t, k) => `<div class="lib-note lib-line lib-step"><span class="n">${k + 1}</span><span>${esc(t).replace(rd, `<b>${rd}</b>`)}</span>${t.includes(SPOTIFY_REDIRECT) ? `<button type="button" class="lib-copy" data-do="copy" data-text="${rd}" title="copy the redirect address">copy</button>` : k === 0 && sp.dashboard ? '<button type="button" class="lib-copy" data-do="dashboard" title="open Spotify\'s developer dashboard in your browser">open</button>' : ''}</div>`).join('')}${X.connecting ? '<div class="lib-note lib-line lib-wait" role="status">waiting for you: Spotify\'s page is open in your browser and asks you to agree (it waits five minutes)</div>' : ''}`;
+    const g = SPOTIFY_GUIDE, k = Math.max(0, Math.min(g.length - 1, X.guide)), st = g[k];
+    const copyBtn = (text, what) => `<button type="button" class="lib-copy" data-do="copy" data-text="${esc(text)}" title="copy ${esc(what)}">copy</button>`;
+    const step = (j, label, cls = '') => `<button type="button" class="lib-copy ${cls}" data-do="guide" data-step="${j}">${label}</button>`;
+    const dots = g.map((t, j) => `<button type="button" class="lib-guide-dot${j === k ? ' on' : j < k ? ' done' : ''}" data-do="guide" data-step="${j}" title="step ${j + 1}: ${esc(t.title)}" aria-label="step ${j + 1}: ${esc(t.title)}"${j === k ? ' aria-current="step"' : ''}>${j + 1}</button>`).join('');
+    const say = (t) => `<div class="lib-note lib-line lib-guide-say">${esc(t)}</div>`;
+    const field = ([label, value, then]) => `<div class="lib-note lib-line lib-guide-field"><span class="k">${esc(label)}</span><b>${esc(value)}</b>${copyBtn(value, label.toLowerCase())}</div>${then ? `<div class="lib-note lib-line lib-guide-then">${esc(then)}</div>` : ''}`;
+    const open = st.open && sp.dashboard ? '<button type="button" class="lib-copy lib-guide-go" data-do="dashboard" title="open Spotify\'s developer dashboard in your browser">open the dashboard ↗</button>' : '';
+    const nav = `<div class="lib-guide-nav">${k > 0 ? step(k - 1, '← back') : ''}${k < g.length - 1 ? step(k + 1, 'next →', 'lib-guide-next') : ''}</div>`;
+    const stuck = X.connecting ? `<div class="lib-note lib-line lib-wait" role="status">waiting for you: press Agree on Spotify's page in your browser (Toaster waits five minutes)</div><div class="lib-note lib-line lib-label">stuck?</div>${SPOTIFY_STUCK.map(([seen, fix]) => `<div class="lib-note lib-line lib-step"><span class="n">·</span><span><b>${esc(seen)}</b>: ${esc(fix)}</span></div>`).join('')}` : '';
+    return `<div class="lib-note lib-line lib-label">connect your Spotify</div><div class="lib-note lib-line">${esc(SPOTIFY_INTRO)}</div><div class="lib-guide" data-step="${k}"><div class="lib-guide-dots">${dots}</div><div class="lib-note lib-line lib-guide-title"><span class="n">step ${k + 1} of ${g.length}</span>${esc(st.title)}</div>${(st.say || []).map(say).join('')}${(st.fields || []).map(field).join('')}${(st.after || []).map(say).join('')}${open}${nav}</div>${stuck}`;
+  }
+  const SPOTIFY_APP_NAME = SPOTIFY_APP.name, SPOTIFY_APP_ABOUT = SPOTIFY_APP.about;
+  // Is the way in what the section shows just now (connected or not is known, and no search or artist is over it)?
+  const guiding = () => S.open && S.section === 'spotify' && !!sp.app && !!X.status && !X.status.connected && !X.artist && !search.q;
+  // The drawing for a step: Spotify's page as a plain sketch in the theme's colours (never their artwork), what to press marked, the
+  // values Toaster gives already in the boxes. At the right of a wide window, where an open collection's cover goes (CSS); the words
+  // say it all without it, on a phone.
+  function guidePicture(k) {
+    const T = (x, y, text, cls = 'gt', size = 11, more = '') => `<text x="${x}" y="${y}" class="${cls}" font-size="${size}"${more}>${esc(text)}</text>`;
+    const box = (x, y, w, h, cls = 'gl', r = 3) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" class="${cls}"/>`;
+    const pill = (x, y, w, h, text, size = 11) => `${box(x, y, w, h, 'gf', h / 2)}${T(x + w / 2, y + h / 2 + size * 0.36, text, 'gb', size, ' font-weight="700" text-anchor="middle"')}`;
+    const badge = (x, y, n) => `<circle cx="${x}" cy="${y}" r="7" class="gf"/>${T(x, y + 3.3, String(n), 'gb', 9, ' font-weight="700" text-anchor="middle"')}`;
+    const check = (x, y, on, label, bold = false) => `${box(x, y, 11, 11, on ? 'gf' : 'gl', 2)}${on ? `<path d="M${x + 2.5} ${y + 5.8}l2.4 2.4 4-5" class="gk"/>` : ''}${T(x + 17, y + 9.5, label, on ? 'gt' : 'gd', 10, bold ? ' font-weight="700"' : '')}`;
+    const frame = (address) => `<rect x="10" y="10" width="380" height="380" rx="10" class="gw"/><line x1="10" y1="42" x2="390" y2="42" class="gl"/>${[28, 42, 56].map((x) => `<circle cx="${x}" cy="26" r="4" class="gl"/>`).join('')}${box(72, 17, 304, 18, 'gl', 9)}${T(84, 30, address, 'gd', 10)}`;
+    let body;
+    if (k === 0) body = `${frame('developer.spotify.com/dashboard')}${T(28, 66, 'Spotify for Developers', 'gd', 11)}${T(28, 112, 'Dashboard', 'gt', 26, ' font-weight="700"')}${box(244, 86, 126, 44, 'gh', 22)}${pill(250, 92, 114, 32, 'Create app', 12)}${T(307, 150, 'press Create app', 'gt', 11, ' text-anchor="middle"')}${T(28, 190, 'your apps', 'gd', 11)}${box(28, 200, 344, 34, 'gx', 4)}${box(28, 242, 344, 34, 'gx', 4)}${T(28, 318, 'sign in first if it asks;', 'gd', 11)}${T(28, 336, 'accept the developer terms if shown', 'gd', 11)}`;
+    else if (k === 1) body = `${frame('developer.spotify.com/dashboard/create')}${T(28, 70, 'Create app', 'gt', 18, ' font-weight="700"')}`
+      + `${T(28, 90, 'App name *', 'gd', 9)}${box(28, 95, 346, 22, 'gh')}${T(36, 110, SPOTIFY_APP_NAME, 'gt', 11)}${badge(18, 106, 1)}`
+      + `${T(28, 130, 'App description *', 'gd', 9)}${box(28, 135, 346, 22, 'gh')}${T(36, 150, SPOTIFY_APP_ABOUT, 'gt', 11)}${badge(18, 146, 2)}`
+      + `${T(28, 170, 'Website', 'gd', 9)}${box(28, 175, 346, 18, 'gx')}${T(36, 188, '(can stay empty)', 'gd', 9)}`
+      + `${T(28, 208, 'Redirect URIs *', 'gd', 9)}${box(28, 213, 296, 22, 'gh')}${T(36, 228, SPOTIFY_REDIRECT, 'gt', 10)}${box(326, 211, 50, 26, 'gh', 13)}${pill(330, 215, 42, 18, 'Add', 10)}${badge(18, 224, 3)}${T(374, 250, 'then press Add', 'gt', 9, ' text-anchor="end" font-weight="700"')}`
+      + `${T(28, 268, 'Which API/SDKs are you planning to use?', 'gd', 9)}${check(28, 276, true, 'Web API', true)}${badge(18, 281, 4)}${check(210, 276, false, 'Ads API')}${check(28, 294, false, 'Web Playback SDK')}${check(210, 294, false, 'iOS')}${check(28, 312, false, 'Android')}`
+      + `${check(28, 334, true, 'I understand and agree with the terms')}${badge(18, 339, 5)}`
+      + `${box(24, 352, 70, 30, 'gh', 15)}${pill(28, 356, 62, 22, 'Save', 11)}${badge(18, 367, 6)}${T(108, 371, 'Cancel', 'gd', 10)}`;
+    else if (k === 2) body = `${frame('developer.spotify.com/dashboard/...')}${T(28, 64, 'Dashboard  ›  ' + SPOTIFY_APP_NAME, 'gd', 10)}${T(28, 96, SPOTIFY_APP_NAME, 'gt', 22, ' font-weight="700"')}`
+      + `${T(28, 126, 'Basic Information', 'gt', 11, ' font-weight="700"')}<line x1="28" y1="132" x2="140" y2="132" class="gs" stroke-width="2"/>${T(160, 126, 'User Management', 'gd', 11)}`
+      + `${T(28, 162, 'Client ID', 'gd', 10)}${box(28, 169, 262, 28, 'gh')}${T(36, 187, '0a1b2c3d4e5f6a7b8c9d… (32)', 'gt', 11)}${T(300, 188, '← copy this', 'gt', 11, ' font-weight="700"')}`
+      + `${T(28, 228, 'App Status   Development mode', 'gd', 10)}${T(28, 254, 'View client secret', 'gd', 10)}<line x1="26" y1="251" x2="140" y2="251" class="gs"/>${T(156, 254, '← not this', 'gd', 10)}`
+      + `${T(28, 286, 'App name', 'gd', 9)}${T(130, 286, SPOTIFY_APP_NAME, 'gd', 9)}${T(28, 304, 'Redirect URIs', 'gd', 9)}${T(130, 304, SPOTIFY_REDIRECT, 'gd', 9)}${T(28, 322, 'APIs used', 'gd', 9)}${T(130, 322, 'Web API', 'gd', 9)}`
+      + `${box(28, 344, 54, 24, 'gl', 12)}${T(55, 360, 'Edit', 'gd', 10, ' text-anchor="middle"')}${T(92, 360, 'an app you had already: Edit is here', 'gd', 9)}`;
+    else body = `${frame('accounts.spotify.com/authorize?...')}${T(200, 112, SPOTIFY_APP_NAME, 'gt', 24, ' font-weight="700" text-anchor="middle"')}${T(200, 136, 'wants to connect to your Spotify account', 'gd', 11, ' text-anchor="middle"')}`
+      + `${[168, 186, 204].map((y, i) => box(96, y, [208, 176, 192][i], 8, 'gx', 4)).join('')}${box(124, 244, 152, 46, 'gh', 23)}${pill(130, 250, 140, 34, 'Agree', 13)}${T(200, 318, 'then come back to Toaster', 'gt', 11, ' text-anchor="middle"')}${T(200, 344, 'Cancel', 'gd', 10, ' text-anchor="middle"')}`;
+    return `<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+  }
+  function paintGuide() {
+    const on = guiding();
+    root.classList.toggle('lib-guiding', on);
+    const k = on ? Math.max(0, Math.min(SPOTIFY_GUIDE.length - 1, X.guide)) : -1;
+    if (String(k) === parts.guide.dataset.step) return;
+    parts.guide.dataset.step = String(k);
+    parts.guide.innerHTML = on ? guidePicture(k) : '';
   }
   // (the liked songs have no line over them: their row says it)
   const SP_GROUPS = { links: 'pasted links, the latest first', playlists: 'your playlists', albums: 'saved albums', search: 'songs', searchalbums: 'albums', artists: 'artists', artistsongs: 'songs', artistalbum: 'albums', artistsingle: 'singles and EPs', artistappears_on: 'appears on', artistcompilation: 'compilations' };
@@ -588,9 +643,12 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   }
   const spClear = () => { video.close(); X.artist = null; artistGeneration++; X.artistBack = null; X.albumInfo = {}; X.status = { connected: false }; X.lists = {}; X.tracks = {}; X.open = null; X.armed = false; X.gen++; searchGeneration++; search = { q: '', items: [], loading: false }; searchInput.value = ''; X.covers.clear(); X.coverTried.clear(); coverWait.length = 0; };
   // an error in main's words, shown over the list; one that says Spotify wants a new sign-in takes the lists away, which brings the field for a Client ID back
+  // The sign-in is gone (helpers/spotify.cjs: a 401 after one fresh try, or a refresh Spotify refuses): the lists go and the way in
+  // comes back. Only that message: the refusal for an account that isn't on the developer app also says "connect again" in its
+  // advice ("disconnect, then connect again..."), and that listener is still signed in, with a disconnect to press.
   function spFail(err) {
     X.error = plainError(err);
-    if (/connect again/i.test(X.error)) spClear();
+    if (SIGNED_OUT.test(X.error)) spClear();
     spRepaint();
   }
 
@@ -678,6 +736,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const gen = ++X.gen;
     X.error = '';
     X.connecting = true;
+    X.guide = SPOTIFY_GUIDE.length - 1; // (the step that says what happens now, with the stuck? lines under it)
     X.draft.client = clientId;
     spRepaint();
     try {
@@ -914,6 +973,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     markCursor(cur, false);
     coversIn(parts.list);
     S.listSig = listSig();
+    paintGuide();
   }
 
   // the row the cursor is on is outlined (the one playing is the inverted one); in view
@@ -929,7 +989,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const k = host.key();
     const more = S.section === 'music' ? '←→ fold' : S.section === 'scenes' ? '←→ move' : S.section === 'spotify' ? '←→ open' : '';
     const items = S.find ? ['esc ends find', '↑↓ pick', 'enter plays', 'a click on an album opens it', `${k} library`]
-      : [`${k} library`, S.section === 'spotify' && X.artist ? 'esc back' : 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? ['A artist', 'V preview'] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() && !(S.section === 'spotify' && X.artist) ? ['shift+C cover'] : [])];
+      : [`${k} library`, S.section === 'spotify' && X.artist ? 'esc back' : 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? ['A artist', 'V preview'] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() ? ['shift+C cover'] : [])];
     parts.keys.innerHTML = items.map((t, i) => `<span>${i ? ' · ' : ''}${esc(t)}</span>`).join('');
   }
 
@@ -1276,7 +1336,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     else if (k === 'Tab') take(() => setSection(nextSection(S.section, e.shiftKey ? -1 : 1)));
     else if (e.shiftKey && k.toLowerCase() === 'r') take(cycleRepeat); // (Shift+R and Shift+S: the queue's modes; R and S stay the page's)
     else if (e.shiftKey && k.toLowerCase() === 's') take(toggleShuffle);
-    else if (e.shiftKey && k.toLowerCase() === 'c' && coverSection() && !(S.section === 'spotify' && X.artist)) take(toggleCover);
+    else if (e.shiftKey && k.toLowerCase() === 'c' && coverSection()) take(toggleCover);
     else if (scenes && (k === 'Delete' || k === 'Backspace')) take(deleteKey);
     else if (scenes && k === 'F2') take(renameKey);
     // anything else is the page's own: T, Y, V and the rest still work over the library
@@ -1312,6 +1372,15 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (e.target.closest('.lib-stations')) { if (host.openStations) { e.preventDefault(); host.openStations(); } return; }
     const copy = e.target.closest('[data-do="copy"]');
     if (copy) { copy.blur(); spCopy(copy.dataset.text); return; }
+    const go = e.target.closest('[data-do="guide"]');   // (the way in: back, next, or a step's number)
+    if (go) {
+      go.blur(); X.guide = Math.max(0, Math.min(SPOTIFY_GUIDE.length - 1, Number(go.dataset.step) || 0)); spRepaint();
+      // (the guide is taller than the five lines it took over from: with pasted links over it, on a window of an ordinary height, the
+      // Client ID's field lay under the list's edge, and the last step says "the box below". What the step is about is brought into
+      // view: the field on the last step, the step itself on the others)
+      (X.guide === SPOTIFY_GUIDE.length - 1 ? parts.list.querySelector?.('input[data-field="client"]') : parts.list.querySelector?.('.lib-guide'))?.scrollIntoView?.({ block: 'nearest' });
+      return;
+    }
     const dash = e.target.closest('[data-do="dashboard"]');   // (step 1's page, opened for the listener: one less address to type)
     if (dash) { dash.blur(); Promise.resolve().then(() => sp.dashboard()).catch((err) => { X.error = plainError(err); spRepaint(); }); return; }
     const el = e.target.closest('[data-i]');

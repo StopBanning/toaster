@@ -1100,9 +1100,11 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // (the reading is of its first 50 ms, which are centred ~63 ms back; on the hits' clock, which
       // hears everything ~14 ms late, that's here)
       const at = t - (x.length - w / 2) / fs + 0.014, bt = this.beatOf(at);
-      const bar = B.bars.get(bt.bar) || { n: new Uint16Array(4), notes: [new Map(), new Map(), new Map(), new Map()] };
+      // (sn, steps: the same count by the 16th, sixteen to the bar, for the export's riff: tape.js riffNotes. Nothing live reads them)
+      const bar = B.bars.get(bt.bar) || { n: new Uint16Array(4), notes: [new Map(), new Map(), new Map(), new Map()], sn: new Uint16Array(16), steps: Array.from({ length: 16 }, () => new Map()) };
       B.bars.set(bt.bar, bar);
       bar.n[bt.beat]++;
+      bar.sn[this.stepOf(at)]++;
       const run = B.run;
       if (m !== run.m) { run.m = m; run.n = 0; run.at.length = 0; }
       run.n++;
@@ -1121,6 +1123,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       if (!bar) return;
       const notes = bar.notes[bt.beat];
       notes.set(m, (notes.get(m) || 0) + 1);
+      const by16 = bar.steps[this.stepOf(at)];
+      by16.set(m, (by16.get(m) || 0) + 1);
+    },
+    // Which 16th of its bar time t falls in, 0-15 (while locked; its bar is beatOf's).
+    stepOf(t) {
+      const T = this.tempo, x = T.n0 + (t - T.t0) / T.P - T.down;
+      return Math.max(0, Math.min(15, Math.floor((x - 4 * Math.floor(x / 4)) * 4)));
     },
     // Where time t falls on the grid by the beat: its bar and beat (0-3). (While locked.)
     beatOf(t) {
@@ -2101,7 +2110,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // analysis hears: see bassTrack); the chord and the key still go by the analysis's.
       const tb = this.bt.bars.get(prevBar);
       for (const k of this.bt.bars.keys()) if (k <= prevBar) this.bt.bars.delete(k);
-      let beats = null, tracked = -1;
+      let beats = null, steps = null, tracked = -1;
       if (tb) {
         const all = new Map();
         beats = tb.notes.map((notes, k) => {
@@ -2112,6 +2121,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         let bn = 0;
         for (const [m, n] of all) if (n > bn) { bn = n; tracked = m; }
         if (bn < 0.1 * (tb.n[0] + tb.n[1] + tb.n[2] + tb.n[3])) tracked = -1;
+        // The same by the 16th, for the export only (the riff: a bass line's notes where they start, not one a beat): each
+        // step's commonest note, held through 30% of that step's readings or more, and twice at least; null where none was.
+        steps = tb.steps.map((notes, k) => {
+          let best = -1, n16 = 0;
+          for (const [m, n] of notes) if (n > n16) { n16 = n; best = m; }
+          return best >= 0 && n16 >= 2 && n16 >= 0.3 * tb.sn[k] ? best : null;
+        });
       }
       const bassM = tracked > 0 ? tracked : midi;
       // Keep a slot's last known value when that part sits a bar out, so the line comes back intact.
@@ -2125,7 +2141,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       if (beats?.some((m) => m !== null)) this.bassBeats[slot] = beats;
       else if (midi > 0) this.bassBeats[slot] = null; // (the slot's note alone, then)
       const t = nowSec();
-      this.tape?.harmony(prevBar * 4 + this.tempo.down, chord, bassM > 0 ? bassM : null, this.bassSound.wobble, beats?.some((m) => m !== null) ? beats : null);
+      this.tape?.harmony(prevBar * 4 + this.tempo.down, chord, bassM > 0 ? bassM : null, this.bassSound.wobble, beats?.some((m) => m !== null) ? beats : null, steps?.some((m) => m !== null) ? steps : null);
       if (bassM > 0) this.bassSeen = t;
       if (chord) {
         this.chordSeen = t;

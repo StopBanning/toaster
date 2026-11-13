@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchF1, correlateEnvelopes, drumThreeWays } from './exportbench.mjs';
+import { matchF1, correlateEnvelopes, drumThreeWays, cleanClaps } from './exportbench.mjs';
 
 test('export drums match within 35 ms, once per reference onset', () => {
   assert.equal(matchF1([1.034], [1]), 1);
@@ -55,4 +55,58 @@ test('a right pattern whose bars wander by up to 110 ms: only the per-bar slide 
 test('no real hits to score against: no score; no exported hits: zero', () => {
   assert.deepEqual(drumThreeWays([0], [], { ...heard, origin: 0, barSec: 2 }), { a: null, fit: null, pat: null });
   assert.deepEqual(drumThreeWays([], real, { ...heard, origin: 0, barSec: 2 }), { a: 0, fit: 0, pat: 0 });
+});
+
+// The clap's second answer key (cleanClaps): a four-on-the-floor song at 120 BPM, 12 bars. A kick on every beat; a real clap on
+// beats 2 and 4, confirmed by the drum-reading model; and the kick's click heard as a strong "clap" on beats 1 and 3, 10 ms
+// after the kick, never confirmed.
+const floor = (confirmed = true, beats = 48) => {
+  const kick = [], clap = [];
+  for (let beat = 0; beat < beats; beat++) {
+    const t = beat * 0.5;
+    kick.push({ time: t, strength: 1, confirmed_by_neural: true });
+    if (beat % 2) clap.push({ time: t + 0.004, strength: 0.9, confirmed_by_neural: confirmed });
+    else clap.push({ time: t + 0.01, strength: 0.85, confirmed_by_neural: false });
+  }
+  return { kick, clap };
+};
+
+test('the clap key with the kick\'s click taken out: unconfirmed claps on a kick go, confirmed ones on a kick stay, weak ones were never in', () => {
+  const { kick, clap } = floor();
+  clap.push({ time: 3.25, strength: 0.9, confirmed_by_neural: false }); // strong, unconfirmed, no kick near: a real off-beat clap, kept
+  clap.push({ time: 5.25, strength: 0.3, confirmed_by_neural: false }); // weak: not in either key
+  const clean = cleanClaps(clap, kick);
+  assert.equal(clean.length, 24 + 1, 'the 24 backbeats and the off-beat one');
+  assert.ok(clean.every((t) => Math.abs((t % 1) - 0.504) < 1e-6 || t === 3.25), 'nothing left on beats 1 and 3');
+  assert.deepEqual(clean, [...clean].sort((a, b) => a - b), 'in order');
+});
+
+test('where the model confirmed fewer than 20 claps it is not asked: the key stays as it was', () => {
+  const { kick, clap } = floor(false); // (nothing confirmed)
+  assert.equal(cleanClaps(clap, kick).length, 48, 'every strong onset, as the first key has it');
+  const few = floor();
+  few.clap.splice(38); // (19 confirmed backbeats and 19 clicks left)
+  assert.equal(cleanClaps(few.clap, few.kick).length, 38);
+  assert.deepEqual(cleanClaps(), []);
+});
+
+test('a right "clap on 2 and 4" scores half against the key with the kick\'s click in it, and whole against the cleaned one', () => {
+  const { kick, clap } = floor();
+  const strong = clap.filter((o) => o.confirmed_by_neural || o.strength >= 0.8).map((o) => o.time);
+  const cycles = Array.from({ length: 12 }, (_, i) => [i + 0.25, i + 0.75]).flat(); // (beats 2 and 4 of each bar)
+  const span = { origin: 0, barSec: 2, bars: 12, from: 0, to: 24 };
+  const first = drumThreeWays(cycles, strong, span), second = drumThreeWays(cycles, cleanClaps(clap, kick), span);
+  assert.ok(first.pat < 0.7, `against the first key ${first.pat}`);
+  assert.ok(second.pat > 0.99, `against the cleaned key ${second.pat}`);
+});
+
+test('a real clap the model missed, on a kick, stays where the song\'s claps come round (two or four beats from a confirmed one); the kick\'s click still goes', () => {
+  // as above over 16 bars, but the model confirmed beat 4 in only half the bars: the other half are strong, unconfirmed, on the kick
+  const { kick, clap } = floor(true, 64);
+  for (const o of clap) if (Math.round(o.time / 0.5) % 8 === 7) o.confirmed_by_neural = false; // (beat 4 of every other bar)
+  const beats = Array.from({ length: 64 }, (_, i) => [i * 0.5, i % 4 === 0 ? 1 : 2, 120, 4]);
+  assert.equal(cleanClaps(clap, kick).length, 24, 'without the beats: only the confirmed ones (32 backbeats less the 8 the model missed)');
+  const clean = cleanClaps(clap, kick, { beats });
+  assert.equal(clean.length, 32, 'with them: every backbeat');
+  assert.ok(clean.every((t) => Math.abs((t % 1) - 0.504) < 1e-6), 'and nothing on beats 1 and 3');
 });

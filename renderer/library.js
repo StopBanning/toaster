@@ -246,13 +246,37 @@ export function collLine(coll) {
 
 // The words for connecting, in the order they are done. The redirect has to be exactly this (helpers/spotify.cjs listens on that port).
 export const SPOTIFY_REDIRECT = 'http://127.0.0.1:43821/callback';
-export const SPOTIFY_INTRO = 'your playlists, saved albums and liked songs, with covers. It takes a free developer app of your own (five minutes, once) and Spotify Premium.';
-export const SPOTIFY_STEPS = [
-  'go to developer.spotify.com/dashboard and create an app (any name will do)',
-  'tick Web API when it asks what the app will use',
-  `add the redirect address ${SPOTIFY_REDIRECT}`,
-  'save, open the app\'s settings and copy its Client ID',
-  'paste it below and press enter: Spotify\'s page opens to ask you to agree',
+export const SPOTIFY_INTRO = 'your playlists, saved albums and liked songs, with covers. Spotify asks for a developer app of your own: free, about five minutes, once, and it needs Spotify Premium.';
+// What to type into Spotify's form, ready to copy (any name works; these say what it is on Spotify's consent page)
+export const SPOTIFY_APP = { name: 'Toaster', about: 'personal music visualizer' };
+// The way in, one step at a time, each with a drawing of Spotify's page beside it (library-panel.js: spSteps, guidePicture). Colin,
+// Nov 10: "hold the user's hand throughout the entire process of getting the API". Written against Spotify's dashboard as it was that
+// night (its Create app form, an app's Basic Information page) and its rules since Feb 11 2026: one development app per person, the
+// owner on Premium, five people at most on it. So someone with an app already uses it (step 2's second half), and the common slips
+// get a line each: the redirect typed but never added (Add is a separate press), the description left empty (it's required), the
+// terms box, the secret copied for the ID.
+export const SPOTIFY_GUIDE = [
+  { title: 'open Spotify\'s developer dashboard', open: true,
+    say: ['sign in there with the Spotify account you listen on (it needs Premium). If it asks, accept the developer terms.',
+      'made an app there before? Spotify allows one per person: use it, and step 2 says how.'] },
+  { title: 'create the app',
+    say: ['press Create app, then fill in the form:'],
+    fields: [['App name', SPOTIFY_APP.name], ['App description', SPOTIFY_APP.about], ['Redirect URIs', SPOTIFY_REDIRECT, 'then press Add next to it: it counts once it shows under the box']],
+    after: ['tick Web API, tick the terms box at the bottom, then Save. Website can stay empty.',
+      'already have an app? Open it, press Edit at the bottom, add the redirect address the same way, then Save.'] },
+  { title: 'copy the Client ID',
+    say: ['Spotify opens your app\'s page. The Client ID is the first thing under Basic Information: 32 letters and numbers. Copy it.',
+      'not the client secret: Toaster never needs that.'] },
+  { title: 'paste it here',
+    say: ['paste the Client ID in the box below and press enter.',
+      'Spotify\'s page opens in your browser: press Agree, and your playlists come in here.'] },
+];
+// What Spotify's page says when something's off, and the fix: shown while Toaster waits for the Agree (the sign-in can't tell
+// Toaster about these: Spotify stops on its own page, so the wait just runs out)
+export const SPOTIFY_STUCK = [
+  ['Spotify\'s page says "Invalid redirect URI"', 'the address isn\'t saved in your app: open it, press Edit, add it under Redirect URIs, press Add, Save. Then paste the Client ID again.'],
+  ['it says "Invalid client"', 'that isn\'t your Client ID: copy it again from Basic Information (step 3).'],
+  ['no page opened', 'press enter in the box again.'],
 ];
 
 // Spotify's logo as the one path of its icon (a circle with the three arcs cut out of it), in a 24 by 24 box.

@@ -404,8 +404,10 @@ test('the Spotify words and numbers in the page are the helper\'s: the redirect 
   assert.equal(L.SPOTIFY_REDIRECT, `http://127.0.0.1:${S.PORT}/callback`, 'the redirect the steps say is the one the sign-in listens on');
   assert.equal(S.PORT, 43821);
   assert.equal(L.SPOTIFY_PAGE, Number(helper.match(/^const PAGE = (\d+);/m)[1]), 'the next page starts where the helper\'s page ends');
-  assert.equal(L.SPOTIFY_STEPS.length, 5, 'the five steps');
-  assert.ok(L.SPOTIFY_STEPS.some((t) => t.includes(L.SPOTIFY_REDIRECT)) && L.SPOTIFY_STEPS.some((t) => /Client ID/.test(t)) && L.SPOTIFY_STEPS.some((t) => /developer\.spotify\.com/.test(t)) && L.SPOTIFY_STEPS.some((t) => /Web API/.test(t)));
+  assert.equal(L.SPOTIFY_GUIDE.length, 4, 'the four steps of the way in');
+  const words = JSON.stringify(L.SPOTIFY_GUIDE);
+  assert.ok(L.SPOTIFY_GUIDE[1].fields.some(([label, value]) => label === 'Redirect URIs' && value === L.SPOTIFY_REDIRECT), 'the redirect the guide gives to copy is exactly the one the sign-in listens on');
+  assert.ok(/Client ID/.test(words) && /developer dashboard/.test(words) && /Web API/.test(words));
   assert.match(L.SPOTIFY_INTRO, /Premium/);
   // the scopes ask for nothing that changes the listener's library (the step above the section says so too)
   assert.ok(!S.SCOPES.some((s) => /modify-private|modify-public|library-modify/.test(s)));
@@ -697,7 +699,13 @@ test('what main says is shown as it is said, over the list; nothing is repainted
   assert.match(panel, /input\?\.dataset\.field === 'link'\) \{\s*if \(commit && value\.trim\(\)\) spOpenLink\(value\); else X\.draft\.link = value;/);
   assert.match(panel, /input\?\.dataset\.field === 'client'\) \{\s*if \(commit && value\.trim\(\)\) spConnect\(value\.trim\(\)\); else X\.draft\.client = value;/);
   // an error that says the sign-in is gone puts the Client ID field back
-  assert.match(spotifyPart, /if \(\/connect again\/i\.test\(X\.error\)\) spClear\(\);/);
+  assert.match(spotifyPart, /if \(SIGNED_OUT\.test\(X\.error\)\) spClear\(\);/);
+  // (only that one: the refusal for an account that isn't on the developer app advises "disconnect, then connect again", and
+  // must not throw the listener out of a section whose disconnect it has just told them to press; found in 0.5.7's packed-app run)
+  const signedOut = new RegExp(/const SIGNED_OUT = \/(.+?)\/i;/.exec(panel)[1], 'i');
+  assert.ok(signedOut.test('Spotify wants you to connect again.'));
+  assert.ok(!signedOut.test('Spotify says this account isn\'t on your developer app: disconnect, then connect again and sign in on Spotify\'s page with the account that made the app.'));
+  assert.ok(!signedOut.test('Port 43821 is busy, so Spotify can\'t send the sign-in back. Close whatever uses it (another Toaster?) and connect again.'));
   // nothing happens by itself: a link is played on Enter (the field's, or on a saved link), and nothing is pasted-and-run
   assert.doesNotMatch(spotifyPart, /addEventListener\('(paste|input|change)'/);
 });
@@ -734,15 +742,18 @@ test('whose it is: Spotify\'s logo (its icon, in the head, white or black by the
   assert.match(rules, /#library \.lib-onspot \.lib-logo \{ flex: none; width: max\(21px, 1\.9em\); height: max\(21px, 1\.9em\); \}/, 'never under the 21 pixels its guidelines ask for');
 });
 
-test('the steps to connect are drawn from library.js\'s five, with the redirect marked and a button to copy it; the Client ID field is the one thing to fill', () => {
-  assert.match(spotifyPart, /SPOTIFY_STEPS\.map\(\(t, k\) => /);
-  assert.match(spotifyPart, /esc\(t\)\.replace\(rd, `<b>\$\{rd\}<\/b>`\)/);
-  assert.match(spotifyPart, /t\.includes\(SPOTIFY_REDIRECT\) \? `<button type="button" class="lib-copy" data-do="copy" data-text="\$\{rd\}"/);
+test('the way in is drawn from library.js\'s guide, one step at a time, with the values to copy, back and next, and the stuck lines while it waits; the Client ID field is the one thing to fill', () => {
+  assert.match(spotifyPart, /const g = SPOTIFY_GUIDE, k = Math\.max\(0, Math\.min\(g\.length - 1, X\.guide\)\), st = g\[k\];/);
+  assert.match(spotifyPart, /const copyBtn = \(text, what\) => `<button type="button" class="lib-copy" data-do="copy" data-text="\$\{esc\(text\)\}"/, 'each value has its own copy button');
+  assert.match(spotifyPart, /data-do="guide" data-step="\$\{j\}"/, 'a number for each step, to go back to it');
+  assert.match(spotifyPart, /const stuck = X\.connecting \? /, 'the stuck lines only while it waits for the Agree');
+  assert.match(spotifyPart, /X\.guide = SPOTIFY_GUIDE\.length - 1; \/\/ \(the step that says what happens now/, 'connecting shows the last step');
   assert.match(spotifyPart, /field\('client', 'paste your Client ID, then enter', 'your Spotify Client ID', X\.draft\.client\)/);
   assert.match(spotifyPart, /field\('link', 'paste a Spotify link, then enter', 'a Spotify link', X\.draft\.link\)/);
   assert.match(spotifyPart, /win\.navigator\.clipboard\.writeText\(text\)/);
-  assert.match(spotifyPart, /k === 0 && sp\.dashboard \? '<button type="button" class="lib-copy" data-do="dashboard"/, 'step 1 opens the dashboard for you');
+  assert.match(spotifyPart, /st\.open && sp\.dashboard \? '<button type="button" class="lib-copy lib-guide-go" data-do="dashboard"/, 'step 1 opens the dashboard for you');
   assert.match(panel, /if \(dash\) \{ dash\.blur\(\); Promise\.resolve\(\)\.then\(\(\) => sp\.dashboard\(\)\)/);
+  assert.match(panel, /const go = e\.target\.closest\('\[data-do="guide"\]'\);/);
   const main = fs.readFileSync(new URL('../main.js', import.meta.url), 'utf8');
   assert.match(main, /ipcMain\.handle\('spotify:dashboard', \(\) => shell\.openExternal\('https:\/\/developer\.spotify\.com\/dashboard'\)\);/, 'that one address, nothing passed in');
 });

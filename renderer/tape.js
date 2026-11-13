@@ -52,8 +52,9 @@ export function createTape() {
     },
     // wob: the bass's filter sweeps a beat in that bar (2, 3, 4), or 0 (engine.js: wobbleCheck);
     // beats: its bass notes by the beat (4, null where none: engine.js bassTrack), or null
-    harmony(beat0, chord, bass, wob = 0, beats = null) {
-      if (cur) cur.harmony.push({ b: beat0 + cur.moved, chord: chord && { root: chord.root, third: chord.third, name: chord.name }, bass, wob, beats });
+    // steps: its bass notes by the 16th (16, null where none: the same tracker), or null; the export's riff (riffNotes)
+    harmony(beat0, chord, bass, wob = 0, beats = null, steps = null) {
+      if (cur) cur.harmony.push({ b: beat0 + cur.moved, chord: chord && { root: chord.root, third: chord.third, name: chord.name }, bass, wob, beats, steps });
     },
     // The longest stretch as bars from its first: { bpm, bars: [{ parts, chord, bass }], who }; the
     // song before if this one hasn't 4 bars yet; or null. down: where the bar starts now (for the
@@ -78,19 +79,21 @@ export function createTape() {
         let match = null;
         for (const h of remaining) if (Math.abs(h.b - r.b) < 2 && (!match || Math.abs(h.b - r.b) < Math.abs(match.b - r.b))) match = h;
         if (match) {
-          Object.assign(source(r.b), { chord: match.chord, bass: match.bass, wob: match.wob, beats: match.beats, harmonyBeat: match.b });
+          Object.assign(source(r.b), { chord: match.chord, bass: match.bass, wob: match.wob, beats: match.beats, steps: match.steps, harmonyBeat: match.b });
           remaining.delete(match);
         }
       }
-      for (const r of remaining) Object.assign(source(r.b), { chord: r.chord, bass: r.bass, wob: r.wob, beats: r.beats, harmonyBeat: r.b });
+      for (const r of remaining) Object.assign(source(r.b), { chord: r.chord, bass: r.bass, wob: r.wob, beats: r.beats, steps: r.steps, harmonyBeat: r.b });
       const shifted = [], windows = [];
       for (const [b, raw] of recorded) {
         const start = Math.round((b - off - d) * 4) / 16;
         windows.push([start, start + 1]);
         const harmonyStart = Math.round(((raw.harmonyBeat ?? b) - off - d) * 4) / 16;
         for (const e of barEvents(raw)) {
-          const harmonic = e.part === 'chords' || (e.part === 'bass' && !raw.parts.bass?.some(Boolean));
-          shifted.push({ ...e, onset: (harmonic ? harmonyStart : start) + e.onset, wob: raw.wob || 0 });
+          // (a riff's notes were heard with the bar's harmony, so they sit where it does)
+          const { riff, ...note } = e;
+          const harmonic = e.part === 'chords' || (e.part === 'bass' && (riff || !raw.parts.bass?.some(Boolean)));
+          shifted.push({ ...note, onset: (harmonic ? harmonyStart : start) + e.onset, wob: raw.wob || 0 });
         }
         if (raw.harmonyBeat != null) windows.push([harmonyStart, harmonyStart + 1]);
       }
@@ -182,6 +185,69 @@ function track(events) {
 }
 const named = (name) => [0, 0xff, 0x03, ...vlq(text(name).length), ...text(name)];
 
+// The bass line's riff for one bar, from the bass tracker's notes by the 16th (engine.js harmonyBar: steps, 16 of them, null
+// where no note was held): a note starts where the note changes, after a rest, or where the bass's own rhythm (on, its 16
+// steps, when the code shows one) starts one, and lasts till the next start or rest. One step's stray reading between two
+// steps of the same note is that note (a tracker's octave slip, not a note). null when fewer than four steps had a note:
+// the bar's beats or its one note say more then. (Before 0.5.7 the export had at most one bass note a beat, so a riff came
+// out as its root notes: Colin on Around the World, Nov 10: "it's not the song, but it's not a bad song".)
+// kick: the kick's 16 steps. Under a kick the tracker can't hear the bass for a moment: it reads nothing, or the kick's own
+// note for that one step, and the bass note that started there shows up a step late (measured Nov 10: Ra Ma La Ma's riff
+// came out right but a 16th late on every beat and on time between them; Technologic got a G, its kick's note, on every
+// beat). So on a kick's step, a note that begins on the next step began here; and one step's note alone on a kick's step,
+// with no note carrying on from it, is the kick's.
+// beats: the bar's note by the beat (the tracker's commonest note in each). Where the kick still leaves a hole (its step, or
+// the step after it, with no note), the beat's note fills it as a note of its own: the tracker lost the bass there, the record
+// didn't (measured Nov 10 on the bench: 10% of the record's bass notes started in such a hole and the export played nothing).
+// And a note held 4 steps or more through a kick is struck again on the kick (bass lines re-strike on the kick far more often
+// than they hold through it; the tracker can't hear a re-strike of the same note).
+export function riffNotes(steps, on = null, kick = null, beats = null) {
+  if (!steps || steps.filter((m) => m !== null && m !== undefined).length < 4) return null;
+  const st = steps.map((m) => (m === undefined ? null : m));
+  for (let s = 1; s < 15; s++) if (st[s - 1] !== null && st[s - 1] === st[s + 1] && st[s] !== st[s - 1]) st[s] = st[s - 1];
+  if (kick) for (let s = 0; s < 16; s++) {
+    if (!kick[s]) continue;
+    const before = s > 0 ? st[s - 1] : null, after = s < 15 ? st[s + 1] : null;
+    if (st[s] !== null && st[s] === before) continue; // (a note held through the kick)
+    if (after !== null && st[s] !== after) st[s] = after; // (the note that shows up after the kick began under it)
+    else if (after === null && st[s] !== null && st[s] !== before) st[s] = null; // (one step alone on a kick: the kick's own note)
+  }
+  // (a note's own number for each step: a new number starts a note, so a filled hole or a re-strike is a note of its own)
+  const id = st.map((m) => m);
+  let next = 1000;
+  if (kick) {
+    for (let s = 1; s < 16; s++) {
+      if (!kick[s] || st[s] === null || st[s] !== st[s - 1]) continue;
+      let a = s, e = s;
+      while (a > 0 && st[a - 1] === st[s]) a--;
+      while (e < 16 && st[e] === st[s]) e++;
+      if (e - a < 4) continue;
+      const was = id[s], n = next++;
+      for (let k = s; k < e && id[k] === was; k++) id[k] = n;
+    }
+    const filled = new Set();
+    if (beats) for (let s = 0; s < 16; s++) {
+      const m = beats[s >> 2];
+      if (st[s] !== null || m === null || m === undefined) continue;
+      if (!kick[s] && !(s > 0 && kick[s - 1] && st[s - 1] !== null)) continue;
+      st[s] = m;
+      id[s] = filled.has(s - 1) && st[s - 1] === m ? id[s - 1] : next++;
+      filled.add(s);
+    }
+  }
+  if (st.filter((m) => m !== null).length < 4) return null;
+  const notes = [];
+  let cur = null;
+  for (let s = 0; s < 16; s++) {
+    const m = st[s];
+    if (m === null) { cur = null; continue; }
+    if (!cur || cur.id !== id[s] || (on?.[s] && s > cur.start)) { cur = { part: 'bass', pitch: m, id: id[s], start: s, len: 0, riff: true }; notes.push(cur); }
+    cur.len++;
+  }
+  return notes.map(({ start, len, id: _id, ...n }) => ({ ...n, onset: start / 16, duration: len / 16, velocity: 95 }));
+}
+
+
 // Shared accepted export notes. onset/duration are in bars, relative to this bar.
 // This is an export view of learned patterns, not a new detector/event ledger.
 export function barEvents(b) {
@@ -198,7 +264,9 @@ export function barEvents(b) {
     for (const pitch of [r, r + b.chord.third, r + 7]) add('chords', pitch, 0, 1, 70);
   }
   const runs = beatRuns(b.beats);
-  if (b.bass != null || runs) {
+  const riff = riffNotes(b.steps, p.bass, p.bd, b.beats || (b.bass != null ? [b.bass, b.bass, b.bass, b.bass] : null));
+  if (riff) out.push(...riff);
+  else if (b.bass != null || runs) {
     const noteAt = (s) => runs ? runs.find((r) => r.beats.includes(s >> 2)).m : b.bass;
     const rhythmic = bassRhythmEvents(p.bass, noteAt);
     if (rhythmic.length) out.push(...rhythmic);

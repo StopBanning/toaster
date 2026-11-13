@@ -20,13 +20,13 @@ test('the look is a setting: full (characters) by default, half only when chosen
 });
 
 test('Shift+C, in your music and Spotify, and the button beside find switch it; the keys line says so', () => {
-  assert.match(panel, /else if \(e\.shiftKey && k\.toLowerCase\(\) === 'c' && coverSection\(\) && !\(S\.section === 'spotify' && X\.artist\)\) take\(toggleCover\);/);
+  assert.match(panel, /else if \(e\.shiftKey && k\.toLowerCase\(\) === 'c' && coverSection\(\)\) take\(toggleCover\);/);
   assert.match(panel, /<button type="button" class="lib-coverbtn"/);
   assert.match(panel, /else if \(b\.classList\.contains\('lib-coverbtn'\)\) \{ toggleCover\(\); b\.blur\(\); \}/);
-  assert.match(panel, /b\.hidden = !coverSection\(\) \|\| \(S\.section === 'spotify' && !!S\.sp\.artist\);/);
+  assert.match(panel, /b\.hidden = !coverSection\(\);/);
   assert.match(panel, /\['shift\+C cover'\]/);
   assert.match(panel, /const coverSection = \(\) => S\.section === 'music' \|\| S\.section === 'spotify';/);
-  assert.match(panel, /const half = \(\) => !\(S\.section === 'spotify' && S\.sp\.artist\) && coverSection\(\) && host\.coverLook\?\.\(\) === 'photo';/);
+  assert.match(panel, /const half = \(\) => coverSection\(\) && host\.coverLook\?\.\(\) === 'photo';/);
 });
 
 test('the half look writes the album and its tracks as code: x = x.Artist("Album"), "01 Title", // m:ss', () => {
