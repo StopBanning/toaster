@@ -87,7 +87,25 @@ const ICONS = {
   pause: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3.5v11H3.5zM9 2.5h3.5v11H9z"/></svg>',
   stop: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5h9v9h-9z"/></svg>',
   flag: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h1.5v13H3zM4.5 2.5h8l-2 3 2 3h-8z"/></svg>',
+  shuffle: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4h2.6l6.4 8h1.5v-2l3 2.75-3 2.75v-2h-2.2l-6.4-8H1.5zM1.5 12h2.6l1.6-2-.9-1.2-1.4 1.7H1.5zM10.5 4h1.5V2l3 2.75-3 2.75v-2h-.8l-1.5 1.9-.9-1.2z"/></svg>',
+  smart: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4h2.6l6.4 8h1.5v-2l3 2.75-3 2.75v-2h-2.2l-6.4-8H1.5zM1.5 12h2.6l1.6-2-.9-1.2-1.4 1.7H1.5zM12 1l.7 1.8 1.8.7-1.8.7L12 6l-.7-1.8-1.8-.7 1.8-.7z"/></svg>',
+  repeat: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3.5h7.5V1.5l3 2.75-3 2.75V5H4.5A1.5 1.5 0 0 0 3 6.5V8H1.5V6.5A3 3 0 0 1 4 3.5zM12 12.5H4.5v2l-3-2.75 3-2.75v2h7a1.5 1.5 0 0 0 1.5-1.5V8h1.5v1.5a3 3 0 0 1-2.5 3z"/></svg>',
 };
+// Shuffle and repeat beside the transport (modesFor): Spotify's own, through the Web API, while the bar shows Spotify's song from
+// it; or the library's queue (act.shuffle, act.repeat), while an album of it plays. repeat: 'off', 'all' (the album or the
+// playlist) or 'one' (the song). Spotify's smart shuffle (smart: true) shows as shuffle with a spark; only Spotify turns it on.
+const REPEAT_NEXT = { off: 'all', all: 'one', one: 'off' };
+const SPOTIFY_REPEAT = { off: 'off', context: 'all', track: 'one' }, TO_SPOTIFY = { off: 'off', all: 'context', one: 'track' };
+const QUEUE_REPEAT = { album: 'off', all: 'all', one: 'one' }, TO_QUEUE = { off: 'album', all: 'all', one: 'one' };
+export function modesFor({ player = null, spotify = null, source = '', queue = null }) {
+  if (player === 'spotify-api' && spotify) {
+    const a = spotify.allowed || {};
+    return { shuffle: a.shuffle ? (spotify.smart ? 'smart' : spotify.shuffle ? 'on' : 'off') : null, repeat: a.repeat ? SPOTIFY_REPEAT[spotify.repeat] || 'off' : null };
+  }
+  if (source === 'file' && queue) return { shuffle: queue.shuffle ? 'on' : 'off', repeat: QUEUE_REPEAT[queue.repeat] || 'off' };
+  return { shuffle: null, repeat: null };
+}
+const MODE_LABEL = { shuffle: { off: 'shuffle', on: 'shuffle: on', smart: 'smart shuffle: on (turn it off)' }, repeat: { off: 'repeat', all: 'repeat: all', one: 'repeat: this song' } };
 // Identify the local system player before consulting the account's Connect state.
 export const isSpotifySong = (s) => s.source === 'system' && /^(spotify(?:\.exe)?|com\.spotify\.client)$/i.test(s.app || '') && !!s.song?.title;
 const sameSong = (a, b) => a?.name === b?.title && (!b?.artist || a.by === b.artist);
@@ -138,7 +156,17 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     b.addEventListener('click', (e) => { press(kind); if (e.detail) b.blur?.(); });
     buttons[kind] = b;
   }
-  const transport = el('div', 'pl-transport', buttons.prev, buttons.play, buttons.next);
+  const modeButtons = {};
+  for (const kind of ['shuffle', 'repeat']) {
+    const b = el('button', `pl-btn pl-mode pl-${kind}`);
+    b.type = 'button';
+    b.dataset.kind = kind;
+    b.hidden = true;
+    b.addEventListener('click', (e) => { toggleMode(kind); if (e.detail) b.blur?.(); });
+    modeButtons[kind] = b;
+  }
+  // (as Spotify has them: shuffle before the transport, repeat after it)
+  const transport = el('div', 'pl-transport', modeButtons.shuffle, buttons.prev, buttons.play, buttons.next, modeButtons.repeat);
   const pos = el('span', 'pl-time pl-pos'), len = el('span', 'pl-time pl-len'), fill = el('i', 'pl-fill');
   const track = el('div', 'pl-track', fill);
   track.tabIndex = 0;
@@ -259,11 +287,63 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
       b.disabled = !!(ctl.player === 'spotify-api' && spotifySending);
       if (b.title !== label) b.title = label;
     }
+    paintModes(s);
     paintProgress(where(s.t));
 
     setText(status, statusText({
       locked: !!s.source && !!s.tempo?.locked, bpm: s.tempo?.shown, key: s.key, at: s.at, source: s.source ? chipOf(s.source) : s.stopped ? 'stopped' : 'no source',
     }));
+  }
+
+  let modeHold = null; // a shuffle or repeat just pressed on Spotify, shown till its own answer comes: { shuffle?, repeat?, until }
+  const queueModes = () => (typeof act.shuffle === 'function' && typeof act.repeat === 'function' ? { shuffle: act.shuffle(), repeat: act.repeat() } : null);
+  function currentModes(s) {
+    const m = modesFor({ player: ctl.player, spotify, source: s.source, queue: queueModes() });
+    if (modeHold && s.t < modeHold.until && ctl.player === 'spotify-api') {
+      if (modeHold.shuffle && m.shuffle) m.shuffle = modeHold.shuffle;
+      if (modeHold.repeat && m.repeat) m.repeat = modeHold.repeat;
+    }
+    return m;
+  }
+  function paintModes(s) {
+    const m = currentModes(s);
+    for (const kind of ['shuffle', 'repeat']) {
+      const b = modeButtons[kind], value = m[kind];
+      setHidden(b, !value);
+      if (!value) continue;
+      const icon = kind === 'shuffle' ? (value === 'smart' ? 'smart' : 'shuffle') : 'repeat'; // (repeat one: the same loop, with a 1 by it, style.css)
+      if (iconOf.get(kind) !== icon) { iconOf.set(kind, icon); b.innerHTML = ICONS[icon]; }
+      setData(b, 'state', value);
+      b.classList.toggle('on', value !== 'off');
+      setAttr(b, 'aria-pressed', value !== 'off');
+      const label = MODE_LABEL[kind][value];
+      setAttr(b, 'aria-label', label);
+      if (b.title !== label) b.title = label;
+      b.disabled = !!(ctl.player === 'spotify-api' && spotifySending);
+    }
+  }
+  function toggleMode(kind) {
+    const s = last;
+    if (!s) return;
+    const m = currentModes(s), value = m[kind];
+    if (!value) return;
+    // shuffle: off -> on; on or smart -> off. repeat: off -> all -> one -> off
+    const next = kind === 'shuffle' ? (value === 'off' ? 'on' : 'off') : REPEAT_NEXT[value];
+    try {
+      if (ctl.player === 'spotify-api') {
+        if (spotifySending) return;
+        const sentTo = spotify, state = kind === 'shuffle' ? next === 'on' : TO_SPOTIFY[next];
+        modeHold = { ...(modeHold && s.t < modeHold.until ? modeHold : {}), [kind]: next, until: s.t + 3 };
+        spotifySending = true;
+        Promise.resolve().then(() => nc.spotifyControl({ action: kind, state, device: spotify.device, uri: spotify.track.uri }))
+          // (done: the bar's copy of Spotify's state says so till the next answer; shuffle off takes smart shuffle with it)
+          .then(() => { if (spotify === sentTo) { spotify[kind] = state; if (kind === 'shuffle' && !state) spotify.smart = false; } })
+          .catch((err) => { modeHold = null; act.note?.(String(err?.message || 'Spotify did not answer.').replace(/^Error invoking remote method '[^']*': (Error: )?/, '')); })
+          .finally(() => { spotifySending = false; spotifyAsked = -Infinity; paintModes(last); });
+      } else if (kind === 'shuffle') act.setShuffle?.(next === 'on');
+      else act.setRepeat?.(TO_QUEUE[next]);
+      paintModes(s);
+    } catch (err) { act.fail?.(err); }
   }
 
   let spotifySending = false;

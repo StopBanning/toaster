@@ -4,6 +4,12 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.7', items: [
+    { key: 'player bar', text: "shuffle and repeat on the player bar: Spotify's own while Spotify plays here (repeat goes off, the whole list, this song; smart shuffle shows with a spark, and a press turns it off), and your library's while an album of yours plays" },
+    { key: 'G', text: "connecting Spotify is a guide now: four steps, one at a time, with the values to copy, a drawing of each Spotify page, and what to do when Spotify's page says no" },
+    { key: 'G', text: "the half look (the cover itself with characters around it, Shift+C) is back on Spotify artist pages and the albums opened from them" },
+    { act: 'export', text: "X writes the bass by the 16th, so a riff keeps its rhythm in the MIDI file and the Strudel code" },
+  ] },
   { version: '0.5.6', items: [
     { act: 'visual', text: "a key that goes round a list (V, A, P, T, B, C, K, N, U, Z) shows the whole list for a moment, the one picked lit: Shift with the key goes back, ← and → step while it shows, a click picks; the drop effects' list starts at off" },
     { key: '?', text: "the help is in four pages: keys, settings, what's new, how it works" },
