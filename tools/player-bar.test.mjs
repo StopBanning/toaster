@@ -686,9 +686,9 @@ test('app.js hands the bar what is playing at the footer\'s pace, and the roll k
   assert.match(update, /tempo: eng\.tempo, key: eng\.key \? `\$\{NOTES\[eng\.key\.root\]\} \$\{eng\.key\.mode\}` : '', at: eng\.placeAt\(t\)/);
   assert.match(update, /el: state\.el/);
   assert.match(update, /app: state\.winSong\?\.app \|\| ''/);
-  // it is on screen unless H, the mini player (but for the library's, the cover with the song and its buttons) or a recording
-  // (without the setting) has put it away
-  assert.match(app, /const playerShowing = \(\) => !document\.hidden && !document\.body\.classList\.contains\('clean'\) && !\(state\.mini && !document\.body\.classList\.contains\('library-open'\)\) && !\(rec\.mr && !state\.playerRec\);/);
+  // it is on screen unless H or a recording (without the setting) has put it away: the mini player has it too (the library's, the
+  // cover with the song and its buttons; over plain visuals, one that shows at the window's bottom edge)
+  assert.match(app, /const playerShowing = \(\) => !document\.hidden && !document\.body\.classList\.contains\('clean'\) && !\(rec\.mr && !state\.playerRec\);/);
   // a click on the bar is not a click on the water of the koi pond
   assert.match(app, /closest\('button, a, input, select, dialog, \[role="menu"\], \.panel, #menu, #bar, footer, #player, /);
 });
@@ -736,7 +736,13 @@ test('H puts it away with the footer; Z\'s visualizer mode shows it only at the 
   assert.doesNotMatch(css.slice(css.indexOf('/* ---------- the player bar (player.js)'), css.indexOf('/* ---------- menu ---------- */')).replace(/\/\*[\s\S]*?\*\//g, ''), /:focus-within/);
   assert.match(rule('body.recording:not(.player-rec) #player'), /visibility: hidden;/);
   assert.doesNotMatch(css, /body\.player-rec #player \{[^}]*visibility/, 'with the setting on, nothing hides it');
-  assert.match(rule('body.mini #player, body.widget #player'), /display: none !important;/);
+  assert.match(rule('body.widget #player'), /display: none !important;/);
+  assert.doesNotMatch(css, /body\.mini #player[^{]*\{[^}]*display: none/, 'the mini no longer drops the bar');
+  // the mini over plain visuals (Colin, Nov 16: "is there any way to bring up the Spotify bar if I'm just watching regular visuals or on mini?"):
+  // the bar sits on the bottom edge, see-through, and shows under the pointer (or keyboard focus), as Z's mode does; H still puts it away
+  assert.match(rule('body.mini:not(.library-open) #player'), /bottom: 0;[^}]*opacity: 0;/);
+  assert.match(css, /body\.mini:not\(\.library-open\) #player:hover, body\.mini:not\(\.library-open\) #player:has\(:focus-visible\) \{ opacity: 1; \}/);
+  assert.ok(css.indexOf('body.clean #player { opacity: 0 !important') > -1, 'H\'s rule is !important, so it wins over the hover');
   // ...but for the mini player from the library: the cover big, then the song, its progress and its buttons, one under another
   assert.match(css, /body\.mini\.library-open #player \{[^}]*display: grid !important;[^}]*grid-template-areas: "id" "progress" "transport";/);
   assert.match(css, /body\.mini #library \.lib-panel \{ display: none; \}/);
