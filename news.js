@@ -4,6 +4,15 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.8', items: [
+    { act: 'export', text: "X takes the song apart (drums, bass, voice and the rest, on your own computer: it uses Meta's open-source Demucs) and saves it rebuilt as code that plays the song's own sounds, beside the MIDI file and the sketch; O opens it at strudel.cc. The drums and the bass are the strongest part; the voice and the keys are the record's own pieces replayed" },
+    { act: 'export', text: "X writes the tune from the singer's voice alone, where the voice was pulled out" },
+    { key: 'G', text: "Toaster remembers a song it has heard (its tempo and drum lines, on your computer only): the second play locks sooner, and the songs in your music folder are read ahead while Toaster has nothing to listen to" },
+    { key: 'G', text: "spotify: the cover side shows the song playing when you open the tab with one already on; an opened playlist or album shows its own cover, not its first song's, until the cursor moves; the mini player shows the playing song's cover, not an artist page's" },
+    { key: 'the code', text: "the bass line in the code is written by the 16th, rests and all, as the export writes it: right on more of the steps than the old one note a beat, and far fewer notes written where the bass is silent" },
+    { key: 'the code', text: "a song paused in Spotify or Music is no longer named while other sound is playing (a song in a browser, say): the first line of the code follows what you hear, not the paused song" },
+    { key: 'player bar', text: "shuffle and repeat on the player bar are boxed like back and next" },
+  ] },
   { version: '0.5.7', items: [
     { key: 'player bar', text: "shuffle and repeat on the player bar: Spotify's own while Spotify plays here (repeat goes off, the whole list, this song; smart shuffle shows with a spark, and a press turns it off), and your library's while an album of yours plays" },
     { key: 'G', text: "connecting Spotify is a guide now: four steps, one at a time, with the values to copy, a drawing of each Spotify page, and what to do when Spotify's page says no" },

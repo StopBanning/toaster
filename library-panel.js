@@ -581,20 +581,25 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   // (the mini player (W) has no rows to follow: there it's always the song playing, when there's one)
   const playingArt = () => ((X.bigFrom === 'playing' || !!doc.body?.classList?.contains?.('mini')) && host.playing().art) || '';
   function spArtSrc() {
+    // (the mini player first: an artist page left open behind it showed that artist's picture over another artist's song. Colin, Nov 13:
+    // Baby Jane's photo while telepatía played)
+    const mini = !!doc.body?.classList?.contains?.('mini') && playingArt();
+    if (mini) return mini;
     if (X.artist) {
-      const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = cursorSong(), want = song ? song.big || song.cover : coll?.big || coll?.cover;
+      const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll && X.collFirst ? null : cursorSong(), want = song ? song.big || song.cover : coll?.big || coll?.cover;
       return (want && X.covers.get(want)) || (X.artist.cover && X.covers.get(X.artist.cover)) || null;
     }
     const now = playingArt();
     if (now) return now;
-    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll || search.q ? cursorSong() : null;
+    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = (coll && !X.collFirst) || (!coll && search.q) ? cursorSong() : null;
     const want = song ? song.big || song.cover : coll?.big || coll?.cover;
-    return (want && X.covers.get(want)) || (song?.cover && X.covers.get(song.cover)) || ((coll?.big || coll?.cover) && X.covers.get(coll.big || coll.cover)) || (coll?.cover && X.covers.get(coll.cover));
+    return (want && X.covers.get(want)) || (song?.cover && X.covers.get(song.cover)) || ((coll?.big || coll?.cover) && X.covers.get(coll.big || coll.cover)) || (coll?.cover && X.covers.get(coll.cover))
+      || (!coll && !song && host.playing().art) || null; // (Spotify home, nothing open or under the cursor: the song playing, whatever the panel last followed; Colin, Nov 15: "bug, no album art", a song already playing when the tab opened)
   }
   function paintBig() {
     if (S.section === 'music' && half()) { paintBigMusic(); return; }
     if (S.section === 'music') { parts.big.replaceChildren(); return; }
-    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = coll || search.q ? cursorSong() : null;
+    const coll = S.open && S.section === 'spotify' ? spOpenColl() : null, song = (coll && !X.collFirst) || (!coll && search.q) ? cursorSong() : null;
     const want = (song ? song.big || song.cover : coll?.big || coll?.cover) || (X.artist && !coll ? X.artist.cover : null);
     if (want && !playingArt() && !X.covers.has(want) && !X.coverTried.has(want)) { X.coverTried.add(want); coverWait.push(want); pumpCovers(); }
     const data = spArtSrc();
@@ -801,6 +806,9 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     S.cursor.spotify = 0;
     X.cursorKey = change.at || '';
     X.bigFrom = 'cursor'; // (a collection opened or closed by hand: its cover, till the next song)
+    // (and its own cover, not its first song's, till the cursor moves: the cursor put on the first song as the songs come in isn't a
+    // move. Nov 14 walk: the gym playlist, cyan, opened showing its first song's red)
+    X.collFirst = !!change.open;
     const coll = spOpenColl();
     if (coll?.kind === 'album') loadAlbumInfo(coll);
     if (coll) { X.first = collKey(coll); if (spSongsIn(coll)) spFirst(); else spSongs(coll); }
@@ -978,7 +986,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
 
   // the row the cursor is on is outlined (the one playing is the inverted one); in view
   function markCursor(i = cursor(), scroll = true) {
-    if (S.section === 'spotify') { const key = spotifyKey(rows()[i]); if (key !== X.cursorKey) X.bigFrom = 'cursor'; X.cursorKey = key; paintBig(); }
+    if (S.section === 'spotify') { const key = spotifyKey(rows()[i]); if (key !== X.cursorKey) { X.bigFrom = 'cursor'; X.collFirst = false; } X.cursorKey = key; paintBig(); }
     for (const el of parts.list.querySelectorAll('.cursor')) el.classList.remove('cursor');
     const el = parts.list.querySelector(`[data-i="${i}"]`);
     el?.classList.add('cursor');
@@ -1409,6 +1417,12 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   parts.list.addEventListener('focusout', (e) => { if (S.typing && e.target.matches?.('.lib-address, .lib-rename')) finishInput(e.target.matches('.lib-address') ? false : true, e.target); });
 
   let resizeTimer = 0;
+  // the mini player turned on or off: its big cover is the song playing (spArtSrc), so it's drawn again at once, not only if the window
+  // happens to be resized (Nov 14 walk: the mini player kept the artist page's picture till a resize)
+  if (typeof win.MutationObserver === 'function' && doc.body) {
+    let wasMini = doc.body.classList.contains('mini');
+    new win.MutationObserver(() => { const mini = doc.body.classList.contains('mini'); if (mini === wasMini) return; wasMini = mini; if (S.open) { S.artKey = ''; paintArt(); paintBig(); } }).observe(doc.body, { attributes: true, attributeFilter: ['class'] });
+  }
   win.addEventListener('resize', () => { if (!S.open) return; clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { S.artKey = ''; paintArt(); paintBig(); }, 150); }); // (paintBig too: the mini player's cover is the song playing)
 
   // ---------------------------------------------------------------- open and close
