@@ -37,16 +37,21 @@ function handler(root) {
 
 // start(root: () => the songs folder) -> Promise<{ port, base(folder), close() }> or null if the port is taken (the code then
 // finds no sounds; said once in the log)
+// A folder's name in an address. encodeURIComponent leaves ! ' ( ) * as they are, and the address is written into the song's code between
+// single quotes (main.js song:save-rebuilt, rebuild.js program), so an apostrophe in a song's name ("Don't Stop Me Now") ended the string and
+// the saved song did not run: those five are escaped too (fileFor reads them back with decodeURIComponent).
+const encodeName = (name) => encodeURIComponent(name).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+
 function start(root, port = PORT) {
   return new Promise((resolve) => {
     const server = http.createServer(handler(root));
     server.on('error', (err) => { console.warn(`the rebuilt songs' sounds can't be served on port ${port}:`, err.code || err.message); resolve(null); });
     server.listen(port, '127.0.0.1', () => resolve({
       port: server.address().port,
-      base: (folder) => `http://localhost:${server.address().port}/${encodeURIComponent(folder)}/`,
+      base: (folder) => `http://localhost:${server.address().port}/${encodeName(folder)}/`,
       close: () => new Promise((r) => server.close(r)),
     }));
   });
 }
 
-module.exports = { start, fileFor, PORT };
+module.exports = { start, fileFor, encodeName, PORT };

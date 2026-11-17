@@ -11,7 +11,7 @@
 //                                             (melody.js), or the song as it was
 import { topLine, placeLead, placeBass } from './melody.js';
 import { splitVoice } from './stems.js';
-import { voiceLine, dropStrays } from './voice.js';
+import { voiceLineSliced, dropStrays } from './voice.js';
 
 // (where bar 0 falls: the fitted tempo line's, else the last tempo's, tape.js)
 const originOf = (song) => (Number.isFinite(song?.origin) ? song.origin : song?.originLast);
@@ -34,7 +34,8 @@ export async function voiceTune(audio, onProgress = () => {}, split = splitVoice
   const got = await split(left, { rate: 22050, right, onProgress, ...(keep && { parts: ['drums', 'bass', 'other'] }) });
   if (!got?.vocals) return { line: null, why: got?.why || 'the voice could not be pulled out', absent: !!got?.absent };
   const parts = keep && got.parts?.drums && got.parts?.bass && got.parts?.other ? { ...got.parts, vocals: got.vocals } : null;
-  const line = dropStrays(voiceLine(got.vocals, 22050));
+  // (in slices, the page drawing between them: the pitch read is seconds of work on a whole song, and it froze the picture)
+  const line = dropStrays(await voiceLineSliced(got.vocals, 22050));
   if (line.length < 4) return { line: null, why: 'hardly any singing in it', backend: got.backend, ms: got.ms, parts };
   return { line, backend: got.backend, ms: got.ms, parts };
 }
@@ -52,7 +53,8 @@ export async function tuneFor(song, ear, onProgress = () => {}, { split = splitV
     // (the voice first, on a copy: the notes' worker takes the recording itself; one at a time, both want the graphics card)
     const voice = await voiceTune(heard.side ? heard.audio : heard.audio.slice(), onVoice, split, heard.side, { keep }).catch((err) => ({ line: null, why: String(err?.message || err) }));
     const got = await runWorker(heard.audio, seconds, onProgress);
-    const kept = voice.parts ? { parts: voice.parts, t0: heard.t0 } : {};
+    // (partsWhy: why the rebuilt song has no parts to be made from, for the export to say: the split failed, timed out, or would not start)
+    const kept = voice.parts ? { parts: voice.parts, t0: heard.t0 } : { partsWhy: voice.why || 'the voice splitter gave nothing back' };
     if (!got.notes && !voice.line) return { ...got, ...kept };
     const line = voice.line || got.line;
     return { ...got, notes: (got.notes || []).map(([t, d, m, a]) => [t + heard.t0, d, m, a]), line: line?.map(([t, d, m]) => [t + heard.t0, d, m]), seconds, missed: heard.missed,
@@ -84,6 +86,16 @@ function runWorker(audio, seconds, onProgress) {
     worker.onerror = (e) => { e.preventDefault(); finish({ notes: null, why: e.message || 'the tune could not be heard' }); };
     try { worker.postMessage({ audio }, [audio.buffer]); } catch (err) { finish({ notes: null, why: String(err?.message || err) }); }
   });
+}
+
+// What the export's notice says of the rebuilt song (the sweep, Nov 16, finding 3: when it did not happen the notice only left it out and the
+// reason went to the console, so a failure on a machine nobody had tried looked like the feature not being there). rebuilt: what
+// saveRebuilt answered, or null; why: the reason it was not made or not saved, in words.
+//   -> { mid: said where the notice lists what was saved, end: said after it }
+export function rebuildSaid(rebuilt, why) {
+  if (rebuilt) return { mid: ', and rebuilt from its own sounds', end: rebuilt.served === false ? " Its sounds can't be served (another program has the port they are served from), so the Strudel code can't play them." : '' };
+  const w = String(why || '').replace(/\s+/g, ' ').replace(/[.\s]+$/, '').slice(0, 140);
+  return { mid: '', end: w ? ` Couldn't rebuild it from its own sounds: ${w}.` : '' };
 }
 
 export function withTune(song, notes, line) {

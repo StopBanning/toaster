@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const { start, fileFor } = createRequire(import.meta.url)('../helpers/sound-server.cjs');
+const { start, fileFor, encodeName } = createRequire(import.meta.url)('../helpers/sound-server.cjs');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sound-server-'));
 const song = 'Eyes 2026-11-13 09.03.00 rebuilt';
 fs.mkdirSync(path.join(root, song, 'voice'), { recursive: true });
@@ -47,4 +47,26 @@ test('the names a request may use', () => {
 test('a port already taken gives null, not a crash', async () => {
   const a = await start(() => root, 0), b = await start(() => root, a.port);
   try { assert.equal(b, null); } finally { await a.close(); }
+});
+
+// The sweep, Nov 16: "Queen - Don't Stop Me Now" gave `}, 'http://localhost:47283/Queen%20-%20Don't...rebuilt/')`, a syntax error: the address goes
+// between single quotes in the song's code, and encodeURIComponent leaves ' as it is.
+test('a name with an apostrophe (or ( ) ! * & # %) makes an address that can sit between single quotes, and that is still served', async () => {
+  const nasty = "Queen - Don't Stop Me Now (live)! & #1 100% 2026-11-16 09.03.00 rebuilt";
+  const dir = path.join(root, nasty);
+  fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'kick.wav'), 'RIFFnasty');
+  const s = await start(() => root, 0);
+  try {
+    const base = s.base(nasty);
+    assert.doesNotMatch(base, /['()!*"` \\]/, base);
+    // the code the page writes: samples({ ... }, 'base'): it must be one string
+    assert.equal(new Function(`return 'x' + '${base}'`)(), 'x' + base);
+    assert.doesNotThrow(() => new Function(`const samples = () => {}; samples({ k: 'kick.wav' }, '${base}')`));
+    const r = await fetch(base + 'kick.wav');
+    assert.equal(r.status, 200); assert.equal(await r.text(), 'RIFFnasty');
+  } finally { await s.close(); }
+  // every character a song can have in its name comes back as it went in
+  const all = "a'b(c)d!e*f&g#h%i j~k_l-m.n,o;p:q@r=s+t$u";
+  assert.equal(decodeURIComponent(encodeName(all)), all);
+  assert.doesNotMatch(encodeName(all), /['()!*]/);
 });

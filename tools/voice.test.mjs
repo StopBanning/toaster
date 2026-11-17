@@ -1,7 +1,7 @@
 // The tune read from the voice alone (renderer/voice.js): YIN's pitch, the notes cut from it, the octave slip folded back.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { yin, voicePitch, voiceNotes, foldOctaves, voiceLine } from '../renderer/voice.js';
+import { yin, voicePitch, voicePitchSliced, voiceNotes, foldOctaves, voiceLine, voiceLineSliced } from '../renderer/voice.js';
 
 const SR = 22050, hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
 // a sung-like tone: a fundamental and two overtones, with a little vibrato
@@ -73,4 +73,25 @@ test('stray notes go: a short note with nothing within 2 s of it is not singing;
   assert.equal(dropStrays([[1, 0.1, 60], [2.9, 0.1, 62]]).length, 2);
   assert.equal(dropStrays([[1, 0.1, 60], [3.3, 0.1, 62]]).length, 0);
   assert.deepEqual(dropStrays([]), []);
+});
+
+// ---------------------------------------------------------------- in slices, for the page (Nov 16: the one read of a 4-minute song froze the picture for 3.7 s)
+
+test('the pitch read in slices is exactly the one made at once, and the page is given its turn between them', async () => {
+  const x = sing([[0.3, null], [0.5, 65], [0.25, null], [0.4, 64], [0.4, 65], [0.5, null], [0.6, 60]]);
+  let turns = 0, clock = 0;
+  const opts = { budget: 3, turn: async () => { turns++; }, now: () => (clock += 1) };   // (a fake clock: one tick a look, so a slice is three looks)
+  const whole = voicePitch(x, SR), sliced = await voicePitchSliced(x, SR, opts);
+  assert.deepEqual(sliced, whole, 'the same frames, the same notes');
+  assert.ok(turns > whole.f0.length / 8, `gave the page its turn ${turns} times over ${whole.f0.length} frames`);
+  assert.deepEqual(await voiceLineSliced(x, SR, opts), voiceLine(x, SR));
+});
+
+test('the real clock and the default turn (a message to itself) work, and give the same answer', async () => {
+  const x = sing([[2, 57], [1, null], [2, 64]]);
+  let turns = 0;
+  const got = await voicePitchSliced(x, SR, { budget: 4, turn: async () => { turns++; await new Promise((r) => setImmediate(r)); } });   // (the real clock; a turn that lets the event loop run)
+  assert.deepEqual(got, voicePitch(x, SR));
+  assert.ok(turns >= 1, 'the page was given its turn');
+  assert.deepEqual(await voicePitchSliced(x, SR), voicePitch(x, SR), 'the default turn');
 });

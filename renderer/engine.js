@@ -6,6 +6,8 @@ export const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb'
 export const VOICES = ['bd', 'sd', 'hhc', 'hho', 'vox'];
 // Everything with a 16-step pattern: the voices, and the bass line's rhythm (which steps a bass
 // note starts on; the notes themselves are per bar, in slots).
+const BASS_HOLD = 4; // (steps a bass note holds on through, where no new note began)
+const BASS_STRONG = [4, 0.5]; // (the live riff: readings, and their share of the step's, a 16th's own pitch needs to stand against the beat's)
 const PARTS = [...VOICES, 'bass'];
 export const ROLL_COLS = 48;
 // Hits are filed some time after they began (a kick is told from a bass note 90 ms later), so each has two times: t, when
@@ -20,7 +22,11 @@ function filed() {
 // The time the engine and the page share: the one clock's (clock.js), on the audio clock while a song plays. Read from
 // the global, so this file stands alone (tests and tools load it as plain text, with no imports to follow); the page's
 // first module, app.js, imports the clock before this is used. Without one, the performance clock.
-export const nowSec = () => globalThis.clock?.now() ?? performance.now() / 1000;
+// (A second copy of this module, loaded under its own address (preanalyse.js), gives itself a time of its own here, so an engine run through a file faster than real time keeps off the
+// page's clock.)
+let ownTime = null;
+export const useOwnTime = (f) => { ownTime = f; };
+export const nowSec = () => (ownTime ? ownTime() : globalThis.clock?.now() ?? performance.now() / 1000);
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 // v1 side record. No PCM, no quantization, no detector feedback. Chunks are evicted as a
@@ -622,12 +628,17 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // What's known about the song from outside: whether there is one (a title from Windows, a
     // file, the demo) and whether Windows says it's playing. Set by the app.
     song: () => ({ known: false, playing: false }),
+    // What was learned the last time this song played (song-memory.js, set by the app): { bpm, parts: { bd|sd|hhc|hho: 16 booleans } }, used only as provisional: a tempo reading that
+    // agrees with it locks at once, and a part's line comes in on its second hit on the steps it had, then every bar is checked against what is heard (see place(), patternCheck()).
+    prior: null,
+    priorUse: {},
     events: [],
     tick: 0,
 
     // top: what comes next is a song from its start (a file, the demo, a new song from Windows),
     // so its first chord is worth listening for (see listenOpening)
     reset({ top = false } = {}) {
+      this.priorUse = {};
       learnedLog.length = 0; // (a new song: what was learned of the last is no longer a thing to look back at)
       this.det = {
         bd: makeDetector(1.5, 0.12, 0.3, true), // bass notes get sorted out afterwards (lowDecide)
@@ -706,6 +717,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       this.lastBassHit = null;
       this.bt = newBassTrack();
       this.bassBeats = [null, null, null, null]; // each slot's bass note by the beat (harmonyBar)
+      this.bassSteps = [null, null, null, null]; // each slot's bass note by the 16th (harmonyBar): the live bass line's riff
       this.lowE = 0;
       this.lastDrop = this.lastDropKnown = -99;
       this.nextTempo = 0;
@@ -959,6 +971,21 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           v.away = null;
         }
       }
+      // A line this song had last time (song-memory.js): the second hit on its steps brings it in, from the first beats instead of after a few bars; a hit off it more
+      // often than on it throws it out (provisional: patternCheck looks at it again at the end of each bar).
+      const pr = this.prior?.parts?.[id];
+      if (pr && this.tempo.locked && Math.abs(this.tempo.bpm - this.prior.bpm) / this.prior.bpm < 0.03 && !v.shown && !(id === 'bd' && v.away) && this.priorUse[id] !== 'dropped' && this.priorUse[id] !== 'adopted') {
+        const u = (this.priorUse[id] ??= { on: 0, off: 0 });
+        if (pr[p.step]) u.on++; else u.off++;
+        if (u.off >= 2 && u.off > u.on) this.priorUse[id] = 'dropped';
+        else if (u.on >= 2 && u.off * 3 <= u.on) {
+          for (let k = 0; k < 16; k++) { v.on[k] = pr[k]; if (pr[k]) v.grid[k] = Math.max(v.grid[k], 1); }
+          v.shown = pr.slice(); v.sig = v.on.join(); v.sigN = v.holdBars; v.stale = false; v.emptyBars = 0; v.approx = false;
+          v.fromPrior = true;
+          this.priorUse[id] = 'adopted';
+          this.note(`${id}: the line from last time`);
+        }
+      }
       // A clear hit counts in full however loud it was, so a part's quieter hits still make the
       // pattern; weak strays count for less (w: what it counts for, when its caller knows better).
       v.grid[p.step] += w;
@@ -1100,7 +1127,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // (the reading is of its first 50 ms, which are centred ~63 ms back; on the hits' clock, which
       // hears everything ~14 ms late, that's here)
       const at = t - (x.length - w / 2) / fs + 0.014, bt = this.beatOf(at);
-      // (sn, steps: the same count by the 16th, sixteen to the bar, for the export's riff: tape.js riffNotes. Nothing live reads them)
+      // (sn, steps: the same count by the 16th, sixteen to the bar: the riff, codegen.js riffNotes, in the export and in the live bass line)
       const bar = B.bars.get(bt.bar) || { n: new Uint16Array(4), notes: [new Map(), new Map(), new Map(), new Map()], sn: new Uint16Array(16), steps: Array.from({ length: 16 }, () => new Map()) };
       B.bars.set(bt.bar, bar);
       bar.n[bt.beat]++;
@@ -1793,6 +1820,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // (the bass line by the beat starts over: its beats aren't the same beats now)
       this.bt.bars.clear();
       this.bassBeats.fill(null);
+      this.bassSteps.fill(null);
       this.tempo.renumber -= shift;
       this.resetClocks();
     },
@@ -1938,6 +1966,18 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           continue;
         }
         v.emptyBars = 0;
+        if (v.fromPrior) {
+          // (the line from last time against this bar's hits: more hits off it than on it, or none of them on it, and it goes; what was heard goes on from here)
+          v.fromPrior = false;
+          let on = 0, off = 0;
+          for (let s = 0; s < 16; s++) if (v.hitBar[s] === ended) { if (v.shown?.[s]) on++; else off++; }
+          if (off > on || (hits >= 3 && on === 0)) {
+            for (let s = 0; s < 16; s++) { v.on[s] = false; g[s] = v.hitBar[s] === ended ? 1 : 0; }
+            v.shown = null; v.sig = null; v.sigN = 0; v.stale = true;
+            this.priorUse[id] = 'dropped';
+            this.note(`${id}: not as last time`);
+          }
+        }
         let mx = 0;
         for (const x of g) mx = Math.max(mx, x);
         // The backbeat on 2 and 4 (steps 4 and 12), for the clap/snare line: when beats 2 and 4 clearly lead the off-beat
@@ -2087,6 +2127,22 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       o.halfAt = t;
     },
 
+    // The bar's bass by the 16th as the live code writes it (the export keeps `steps` as they are): the rhythm from the 16ths, a 16th's own pitch
+    // only where its evidence is strong (BASS_STRONG), else the beat's; and a note holds on through the steps where nothing new began (the bass
+    // line's onsets, v.bass.shown) for up to BASS_HOLD steps, so a sustained bass isn't written as a note and rests the tracker lost it in.
+    liveRiff(steps, tb, beats) {
+      const on = this.v?.bass?.shown, st = steps.map((m, k) => {
+        if (m === null || !tb) return m;
+        const n16 = tb.steps[k].get(m) || 0, beat = beats?.[k >> 2];
+        return n16 >= BASS_STRONG[0] && n16 >= BASS_STRONG[1] * tb.sn[k] || beat == null ? m : beat;
+      });
+      let held = 0;
+      for (let k = 1; k < 16; k++) {
+        if (st[k] !== null) { held = 0; continue; }
+        if (st[k - 1] !== null && !on?.[k] && held < BASS_HOLD) { st[k] = st[k - 1]; held++; } else held = BASS_HOLD;
+      }
+      return st;
+    },
     harmonyBar(prevBar) {
       this.wobbleCheck();
       let bassPc = -1, bmax = 0;
@@ -2121,7 +2177,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
         let bn = 0;
         for (const [m, n] of all) if (n > bn) { bn = n; tracked = m; }
         if (bn < 0.1 * (tb.n[0] + tb.n[1] + tb.n[2] + tb.n[3])) tracked = -1;
-        // The same by the 16th, for the export only (the riff: a bass line's notes where they start, not one a beat): each
+        // The same by the 16th, for the riff (the export's and the live bass line's: a bass line's notes where they start, not one a beat): each
         // step's commonest note, held through 30% of that step's readings or more, and twice at least; null where none was.
         steps = tb.steps.map((notes, k) => {
           let best = -1, n16 = 0;
@@ -2140,6 +2196,9 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       }
       if (beats?.some((m) => m !== null)) this.bassBeats[slot] = beats;
       else if (midi > 0) this.bassBeats[slot] = null; // (the slot's note alone, then)
+      // (the live bass line's riff: the rhythm and the rests from the 16ths, but a 16th's own pitch only where its evidence is strong, several readings
+      // that make up half its step; elsewhere the beat's note, which has four times the readings behind it. The export keeps the 16ths as they are.)
+      if (beats?.some((m) => m !== null) || midi > 0) this.bassSteps[slot] = steps?.some((m) => m !== null) ? this.liveRiff(steps, tb, beats) : null;
       const t = nowSec();
       this.tape?.harmony(prevBar * 4 + this.tempo.down, chord, bassM > 0 ? bassM : null, this.bassSound.wobble, beats?.some((m) => m !== null) ? beats : null, steps?.some((m) => m !== null) ? steps : null);
       if (bassM > 0) this.bassSeen = t;
@@ -2435,6 +2494,8 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       // talking or ambience under 0.8) whose grid the hits actually fit (music mostly 0.33 and
       // up, a livestream's talk and game sounds mostly under 0.25).
       const dense = this.dense(t, bpm), clear = conf >= 0.82 && fit >= 0.25 && dense;
+      // (a reading that agrees with the tempo this song had last time (song-memory.js) is enough to lock on: the next bars check it, as any lock)
+      const seed = !T.locked && !!this.prior?.bpm && Math.abs(bpm - this.prior.bpm) / this.prior.bpm < 0.02 && conf >= 0.6 && fit >= 0.1 && dense;
       if (clear) T.clearAt = t;
       // what the drums have read since the lock, fairly sure (the last minute of it: see repeatsThere)
       if (T.locked && fit > 0 && conf >= 0.6) { T.heard.push(bpm); if (T.heard.length > 120) T.heard.shift(); }
@@ -2473,11 +2534,13 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       const changing = T.locked && conf >= 0.82 && fit >= 0.18 && dense && gain >= 1.5;
       if (T.locked && (T.tapped || near(bpm, T.bpm) || octave(bpm, T.bpm) || atEdge || gain < 1.3)) {
         T.candN = 0; // same beat; fine-tuning happens in updatePhase from the hits themselves
-      } else if (clear || changing) {
+      } else if (clear || changing || seed) {
         if (T.cand && near(bpm, T.cand)) { T.cand = T.cand * 0.7 + bpm * 0.3; T.candN++; }
         else { T.cand = bpm; T.candN = 1; }
         // a real tempo change has to hold for 3 seconds before the patterns get relearned
-        if (T.candN >= (T.locked ? 6 : (this.timingBank ? 3 : 4)) && (T.locked || this.repeats(t, T.cand) >= 0.35) && this.repeatsThere(t, T.cand)) {
+        if (seed && T.candN >= 1) {
+          this.lockTo(t, T.cand, `tempo lock ${T.cand.toFixed(1)} (as last time)`); // (at what is heard, not at the kept tempo: a song's tempo is not the same to the 1% every time it is heard)
+        } else if (T.candN >= (T.locked ? 6 : (this.timingBank ? 3 : 4)) && (T.locked || this.repeats(t, T.cand) >= 0.35) && this.repeatsThere(t, T.cand)) {
           this.lockTo(t, T.cand, T.locked ? `tempo change ${T.bpm.toFixed(1)} -> ${T.cand.toFixed(1)}` : `tempo lock ${T.cand.toFixed(1)}`);
         }
       }
@@ -3109,6 +3172,17 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       const bit = PARTS.indexOf(id), at = histN && bit >= 0 ? histAt(st) : -1;
       return at < 0 ? this.present(id, st) : ((histHere[at] >> bit) & 1) === 1;
     },
+    // What a song's lines are now, for song-memory.js to keep for the next time it plays: only once the tempo has held for 25 s, and only lines learned from what was heard
+    // (not one still waiting to be checked). null when there is nothing worth keeping.
+    songSnapshot(t) {
+      const T = this.tempo;
+      if (!T.locked || this.silent || !this.v || t - T.lockedAt < 25) return null;
+      const parts = {};
+      for (const id of ['bd', 'sd', 'hhc', 'hho']) { const v = this.v[id]; if (v.shown && !v.fromPrior && !v.tooBusy && v.shown.some(Boolean)) parts[id] = v.shown.map(Boolean); }
+      if (!parts.bd && !parts.sd) return null;
+      return { bpm: +T.bpm.toFixed(2), parts };
+    },
+
     // The learned structures as they stood at time st: { shown, on, tooBusy (each by part), slots, bassBeats }, the entry of the
     // last change the engine had seen by then. (Read them, don't change them.)
     learnedAt(st) {

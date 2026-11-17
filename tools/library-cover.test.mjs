@@ -52,3 +52,7 @@ test('its colours are the theme\'s: the frame, the gap and the faint ring are to
   assert.match(rules, /outline: 1px solid var\(--fg\)/);
   assert.match(css, /#library\.lib-half \.lib-glyphs\.in \{ opacity: \.2; \}/);
 });
+
+test('Spotify home, with nothing open or under the cursor, shows the song playing whatever the panel last followed (Colin, Nov 15: "no album art")', () => {
+  assert.match(panel, /\|\| \(!coll && !song && host\.playing\(\)\.art\) \|\| null;/);
+});

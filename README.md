@@ -5,6 +5,11 @@ live Strudel code in front of you: named lines typed into a blank window and lig
 play. Around the code: every hit as a domino, a little world, a handheld rhythm game, or your webcam
 with effects you work with your hands. Toaster, as in Toaster Strudel.
 
+In the app, press **X** and Toaster takes the song apart on your own computer (drums, bass, voice and the rest, with Meta's open-source
+Demucs model) and saves it as code that plays the song's own sounds; **O** opens it at strudel.cc. The drums and the bass come
+out strongest; the voice and the keys are the record's own pieces replayed. Toaster also remembers a song it has heard, so the
+second play locks faster, and reads the songs in your music folder ahead.
+
 **[Try it in your browser](https://toaster.locust.lol)** · **[Download for Windows or Mac](../../releases/latest)**
 
 ![Toaster writing out Robin S's "Show Me Love" as code, every hit a domino knocked over as it plays](docs/hero-code.webp)

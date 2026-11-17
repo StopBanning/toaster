@@ -38,7 +38,9 @@ import { createCuts } from './cuts.js';
 import { createTape } from './tape.js';
 import { buildSongFiles } from './tape-export.js';
 import { createEar } from './ear.js';
-import { tuneFor, withTune } from './tune.js';
+import { createSongMemory, keyOf as songKeyOf } from './song-memory.js';
+import { createPreanalysis } from './preanalyse.js';
+import { tuneFor, withTune, rebuildSaid } from './tune.js';
 import { createClips } from './clips.js';
 import { createTakeTap } from './take-tap.js';
 import { makeDemo } from './demo.js';
@@ -191,7 +193,7 @@ const WIDGET = new URLSearchParams(location.search).has('widget');
 
 const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
-  winSong: null, winKey: '', manual: null,
+  winSong: null, winPausedAt: null, winKey: '', manual: null,
   radioSong: null, radioKey: '', // the radio's song, from the titles in its stream (see radioTitle)
   visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, glassPlates: true, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
@@ -844,7 +846,7 @@ const lineTexts = () => Object.fromEntries(LINE_IDS.map((id) => [id, view.lines[
 function currentSong() {
   if (TAKE?.song) return TAKE.song; // (a copy: the song the take was of, not the silent source it listens through)
   if (state.manual) return state.manual;
-  if (state.source === 'system') return state.winSong;
+  if (state.source === 'system') return pausedButHeardElsewhere() ? null : state.winSong;
   if (state.source === 'radio') return state.radioSong;
   if (state.source === 'demo') return { title: 'demo_beat', artist: 'Toaster' };
   const q = liveQueue();
@@ -880,6 +882,15 @@ function nameTheLink(song, key) {
   linkNaming = null;
   saveSettings();
 }
+// A song the system names but says is paused, while sound is still coming in, is not the song heard: a Mac answers nothing from its own list
+// (macOS 15.4), so only Spotify and Music are asked, by AppleScript, and a paused one still answers (helpers/player.cjs parseNowPlaying)
+// while the song is playing in a browser. (Nov 16, Colin: Spotify paused, a YouTube song playing, and Toaster named the Spotify one.) Not
+// named, then: not for the first 5 s of a pause (the sound dies away), and not once the sound has stopped (the card keeps a paused song).
+const PAUSED_GRACE = 5, PAUSED_SOUND_WITHIN = 2;
+function pausedButHeardElsewhere() {
+  const at = state.winPausedAt;
+  return at != null && nowSec() - at > PAUSED_GRACE && nowSec() - eng.lastSound < PAUSED_SOUND_WITHIN;
+}
 function nowPlaying(info) {
   if ((info?.art || '') !== artSrc) {
     artSrc = info?.art || '';
@@ -889,6 +900,7 @@ function nowPlaying(info) {
   const song = info?.title ? { title: info.title, artist: info.artist || '', app: (info.app || '').replace(/\.exe$/i, '') } : null;
   state.winSong = song;
   state.winPlaying = !!info?.playing;
+  state.winPausedAt = song && !state.winPlaying ? (state.winPausedAt ?? nowSec()) : null;
   // A new song on the system: start over, the way the code gets rewritten for each track. Only a
   // different title counts: a reading without one (between tracks, or a hiccup) or an artist that
   // fills in late is still the same song. Nor does the first title of all: that's the song that was
@@ -952,7 +964,7 @@ function radioTitle(el, song) {
 function songArt() {
   if (takeArt) return takeArt;
   if (state.source === 'file') return fileArt;
-  return state.manual ? null : state.source === 'system' ? artImg : state.source === 'radio' ? radioArt : null;
+  return state.manual ? null : state.source === 'system' ? (pausedButHeardElsewhere() ? null : artImg) : state.source === 'radio' ? radioArt : null;
 }
 
 // The kick's visuals. Once the beat is locked and the kick's line is written, they follow that line, step by step on
@@ -1603,20 +1615,21 @@ async function exportSong() {
     const { midi, code } = await buildSongFiles(withTune(song, tune.notes, tune.line), name, about);
     const file = await window.nc.saveSong(name, midi, code);
     // and the song rebuilt from its own sounds, where the splitter gave its four parts (rebuild.js; an experiment, Nov 13)
-    let rebuilt = null;
+    let rebuilt = null, rebuildWhy = null;
     if (tune.parts) {
       $('status').textContent = 'rebuilding it from its own sounds…';
       const origin = (Number.isFinite(song.origin) ? song.origin : song.originLast) - tune.t0;
       const made = await rebuildSong({ parts: tune.parts, sr: 22050, bpm: song.bpm, origin, from: origin + 0.01, bars: song.bars.length, title: name, base: '{{base}}' });
       if (made.code) {
-        rebuilt = await window.nc.saveRebuilt(file, made.code, made.files).catch((err) => { console.warn('the rebuilt song could not be saved:', err); return null; });
+        rebuilt = await window.nc.saveRebuilt(file, made.code, made.files).catch((err) => { console.warn('the rebuilt song could not be saved:', err); rebuildWhy = `it could not be saved (${String(err?.message || err).slice(0, 100)})`; return null; });
         if (rebuilt) {
-          lastRebuilt = { name, code: rebuilt.code };
+          lastRebuilt = { name, code: rebuilt.code, titled: name !== songNames(null).name }; // (titled: a song with a name of its own: every song Toaster cannot name is called by its source)
           console.info(`the export rebuilt from its own sounds: ${made.bars} bars, ${made.sounds} sounds cut from the song, ${made.ms} ms${rebuilt.served ? '' : ' (its sounds could not be served: the port was taken)'}`);
         }
-      } else console.warn('the song could not be rebuilt from its own sounds:', made.why);
-    }
-    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}${tune.notes ? ', with the tune it heard' : ''}${rebuilt ? ', and rebuilt from its own sounds' : ''}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')} (an approximate sketch of the song: whether you can share it depends on the music's rights)`, file);
+      } else { console.warn('the song could not be rebuilt from its own sounds:', made.why); rebuildWhy = made.why || 'nothing came out of it'; }
+    } else if (window.nc.saveRebuilt) rebuildWhy = tune.partsWhy || tune.why || 'the voice could not be pulled out';
+    const said = rebuildSaid(rebuilt, rebuildWhy);
+    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}${tune.notes ? ', with the tune it heard' : ''}${said.mid}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')} (an approximate sketch of the song: whether you can share it depends on the music's rights)${said.end}`, file);
   } finally { exporting = false; $('status').textContent = restingStatus(); }
 }
 
@@ -1636,9 +1649,11 @@ function rebuildSong(job) {
 
 // O, once X has rebuilt the song playing from its own sounds: that song opens instead of the live code, its sounds served by Toaster
 // while it is open (Colin's pick, Nov 13). True when it opened (or said why it couldn't); false sends O on to the live code.
-let lastRebuilt = null; // { name, code }
+let lastRebuilt = null; // { name, code, titled }
 function openRebuilt() {
-  if (!lastRebuilt || lastRebuilt.name !== songNames(currentSong()).name) return false;
+  // (only for a song with a real title, then and now: an unnamed song is "system audio", the same for every one, and the sweep, Nov 16, found O opening the first one's rebuild for the next)
+  const now = currentSong();
+  if (!lastRebuilt || !lastRebuilt.titled || !now?.title || lastRebuilt.name !== songNames(now).name) return false;
   const url = strudelLink(lastRebuilt.code);
   // (a link is at most 60,000 characters, main.js; a long song's code can be more: then its file, beside its sounds, is the way)
   if (url.length >= 60000) { flashStatus('the rebuilt song is too long to open by link: paste its song.strudel.js into strudel.cc'); return true; }
@@ -1726,6 +1741,9 @@ async function toggleMini() {
 }
 
 let windowChanging = false;
+// The 9:16 window was left for the mini player: coming back from the mini returns to it (the polish walk, Nov 16: 9:16, W, W gave the wide window). Only the mini's own
+// "back" does; choosing the 9:16 button or going to the mini from the wide window forgets it.
+let verticalBeforeMini = false;
 async function changeWindowMode(mode) {
   if (rec.mr) { flashStatus(`the window can't change size while recording (${K('rec')} stops it)`); return false; }
   if (windowChanging) return false;
@@ -1747,8 +1765,11 @@ async function changeWindowMode(mode) {
   };
   try {
     const on = !state[mode], other = mode === 'mini' ? 'vertical' : 'mini';
-    if (on && state[other]) await apply(other, false);
+    if (mode === 'vertical') verticalBeforeMini = false;
+    if (on && state[other]) { if (mode === 'mini') verticalBeforeMini = true; await apply(other, false); }
+    else if (mode === 'mini' && on) verticalBeforeMini = false;
     await apply(mode, on);
+    if (mode === 'mini' && !on && verticalBeforeMini) { verticalBeforeMini = false; await apply('vertical', true); }
     return true;
   } catch (err) { showError(err); return false; }
   finally {
@@ -2067,6 +2088,55 @@ function tapRecording() {
 // side at most 1920 pixels, an even number each way), the settings and the storage it opens with, the clock's seed.
 const TAKE_RUNUP = 30;
 const takeRec = { tap: null, starting: false, node: null, blocks: [], id: null, t0: 0, setup: '', changes: [], skipped: '' };
+
+
+// What the song taught the engine last time (song-memory.js): when the song playing is one heard before, its tempo and drum lines go to the engine as provisional; once its tempo has
+// held for 25 s what it learned this time is kept (not in a take, a widget or a copy that makes none: TAKE/WIDGET; window.NC_SONGMEM_OFF for tests).
+let songMemory;
+const memory = () => (songMemory === undefined ? (songMemory = TAKE || WIDGET ? null : createSongMemory()) : songMemory);
+let memKey = '', memSavedAt = 0, memAskedAt = 0, preAskedAt = 0;
+const songMemoryTick = (t) => {
+  const songMemory = memory();
+  if (!songMemory || window.NC_SONGMEM_OFF) return;
+  const key = songKeyOf(currentSong());
+  if (key !== memKey) { memKey = key; memSavedAt = t; eng.prior = key ? songMemory.prior(key) : null; }
+  // (until the tempo is found, what the song kept is looked up again twice a second: a song played again starts over with the same name, and it may have been kept since)
+  if (key && !eng.tempo.locked && t - memAskedAt > 0.5) { memAskedAt = t; eng.prior = songMemory.prior(key); }
+  if (!key || t - memSavedAt < 10) return;
+  memSavedAt = t;
+  const snap = eng.songSnapshot(t);
+  if (snap) songMemory.put(key, snap);
+};
+// The library's songs listened to ahead of time (preanalyse.js), only when nothing is going on: nothing playing, no recording or take, no scan, no splitting under way; and never in a take or a widget.
+let preanalysis = null, libraryAsked = false;
+// (idle: no music being heard: the app listens to the system's sound all the time, so a source being attached is not it; the engine's own silence for 10 s is)
+const preIdle = () => (window.NC_PREANALYSE_QUIET === true || !state.node || (eng.silent && nowSec() - eng.lastSound > 10)) && !(state.el && !state.el.paused) && !(state.source === 'system' && state.winPlaying) && !rec.mr && !rec.busy && !takeRec.id && !takeRec.starting && !libraryPanel.state?.scanning && !document.querySelector('dialog[open]');
+const preanalyseTick = () => {
+  if (preanalysis || TAKE || WIDGET || window.NC_PREANALYSE_OFF || !memory()) return;
+  // (the library is only loaded when its tab is first opened: once, when the app is idle, it is loaded quietly, closed, from what the last scan kept and a fresh scan if it is a minute
+  // old, as opening it would; with no music folder chosen that does nothing)
+  if (!libraryPanel.state?.albums?.length) {
+    if (!libraryAsked && !state.mini && window.nc?.libraryScan && preIdle()) { libraryAsked = true; libraryPanel.ready().then((p) => p.load()).catch(() => {}); }
+    return;
+  }
+  preanalysis = createPreanalysis({
+    library: () => (libraryPanel.state?.albums || []).flatMap((a) => a.tracks),
+    read: (track) => librarySrc.file(track),
+    keyOf: (track) => songKeyOf({ title: track.title, artist: track.artist || 'File' }), // (as currentSong names a queue's track)
+    memory: memory(),
+    idle: preIdle,
+  });
+  preanalysis.start();
+};
+window.ncPreanalysis = () => preanalysis;
+// (for tests: the same scheduler over a list of { title, artist?, file } handed in, as a library would give them)
+window.ncPreanalyseList = (tracks, opts = {}) => {
+  const idle = () => !state.node && !(state.el && !state.el.paused) && !rec.mr && !rec.busy && !takeRec.id && !takeRec.starting;
+  const p = createPreanalysis({ library: () => tracks, read: async (t) => t.file, keyOf: (t) => songKeyOf({ title: t.title, artist: t.artist || 'File' }), memory: memory(), idle, ...opts });
+  p.start();
+  return p;
+};
+window.ncSongMemory = { forget: () => memory()?.forget(), size: () => memory()?.size() ?? 0 };
 async function takeFollow() {
   if (TAKE || !window.nc?.takeBegin) return;
   if (takeRec.starting) return; // (the tap is being made, and follows the page as it is by then: a second go would find it not there yet)
@@ -2318,6 +2388,8 @@ setInterval(() => {
   // silence, else it would beat on to a song that stopped: the rings, the scenery's walk, the chrome)
   if (state.node || (eng.tempo.locked && !eng.silent)) eng.frame(t, ac.currentTime);
   codeTick(t);
+  songMemoryTick(t);
+  if (t - preAskedAt > 5) { preAskedAt = t; preanalyseTick(); }
 }, 15);
 
 // Layers whose feature is off are taken out of the page: an empty full-window canvas still costs

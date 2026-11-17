@@ -1,6 +1,7 @@
 // Packages Toaster for the OS you're on, or the one named: win32, darwin.
 // The Mac build compiles the Swift helpers first (Intel and Apple silicon).
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,6 +19,20 @@ function run(cmd, args) {
 if (platform !== 'darwin' && platform !== 'win32') {
   console.error(`package: ${platform} is not a Toaster target (win32 or darwin)`);
   process.exit(1);
+}
+
+// The voice splitter's model must be in the app before it is packaged: without it the export's voice-led tune and the song rebuilt from its own sounds quietly do nothing for
+// everyone who installs the package (Nov 15: a hand-packaged build went to Colin's Mac without it). Its SHA-256 is the one tools/fetch-splitter.mjs holds (read from there, so
+// the two can't disagree); a missing or different file stops the package before anything is built, and says the one command that puts it right.
+{
+  const model = path.join(root, 'renderer', 'models', 'htdemucs', 'htdemucs_embedded.onnx');
+  const want = fs.readFileSync(path.join(root, 'tools', 'fetch-splitter.mjs'), 'utf8').match(/const SHA256 = '([0-9a-f]{64})'/)?.[1];
+  if (!want) { console.error('package: tools/fetch-splitter.mjs no longer holds the splitter\'s SHA-256 (const SHA256 = \'...\')'); process.exit(1); }
+  const got = fs.existsSync(model) ? crypto.createHash('sha256').update(fs.readFileSync(model)).digest('hex') : null;
+  if (got !== want) {
+    console.error(`package: the voice splitter's model ${got ? 'is not the one this app was tested with' : 'is not there'} (renderer/models/htdemucs/htdemucs_embedded.onnx). Run: node tools/fetch-splitter.mjs`);
+    process.exit(1);
+  }
 }
 
 // The copyright line the package carries: LegalCopyright in Toaster.exe, NSHumanReadableCopyright in the Mac app. Left

@@ -38,18 +38,38 @@ export function yin(x, at, W, sr, threshold = 0.12) {
 
 // The voice's pitch every 10 ms: { hop (seconds), f0: [midi number or null] }. A frame quieter than 0.12 of the loud frames
 // (the 90th percentile of the frames' levels) is silence: a stem's leftovers of the band are that quiet.
-export function voicePitch(x, sr = 22050) {
+// (Two ways in, one reading: voicePitch runs it through at once; voicePitchSliced, below, gives the page its turn between slices.)
+const pitchPlan = (x, sr) => {
   const hop = Math.round(sr * 220 / 22050), W = Math.round(sr * 1024 / 22050), n = Math.max(0, Math.floor((x.length - W) / hop));
-  const rms = new Float64Array(n);
-  for (let i = 0; i < n; i++) { let s = 0; for (let k = 0; k < W; k++) { const v = x[i * hop + k]; s += v * v; } rms[i] = Math.sqrt(s / W); }
-  const sorted = Float64Array.from(rms).sort(), gate = Math.max(1e-4, (n ? sorted[Math.min(n - 1, Math.floor(0.9 * (n - 1)))] : 0) * 0.12);
-  const f0 = new Array(n).fill(null);
-  for (let i = 0; i < n; i++) {
-    if (rms[i] < gate) continue;
-    const hz = yin(x, i * hop, W, sr);
-    if (hz) f0[i] = Math.round(midiOf(hz) * 100) / 100;
-  }
-  return { hop: hop / sr, f0 };
+  return { hop, W, n, rms: new Float64Array(n), f0: new Array(n).fill(null), gate: 0 };
+};
+const levelOf = (p, x, i) => { let s = 0; for (let k = 0; k < p.W; k++) { const v = x[i * p.hop + k]; s += v * v; } p.rms[i] = Math.sqrt(s / p.W); };
+const setGate = (p) => { const sorted = Float64Array.from(p.rms).sort(); p.gate = Math.max(1e-4, (p.n ? sorted[Math.min(p.n - 1, Math.floor(0.9 * (p.n - 1)))] : 0) * 0.12); };
+const frameOf = (p, x, sr, i) => {
+  if (p.rms[i] < p.gate) return;
+  const hz = yin(x, i * p.hop, p.W, sr);
+  if (hz) p.f0[i] = Math.round(midiOf(hz) * 100) / 100;
+};
+export function voicePitch(x, sr = 22050) {
+  const p = pitchPlan(x, sr);
+  for (let i = 0; i < p.n; i++) levelOf(p, x, i);
+  setGate(p);
+  for (let i = 0; i < p.n; i++) frameOf(p, x, sr, i);
+  return { hop: p.hop / sr, f0: p.f0 };
+}
+
+// The same reading, in slices of about `budget` ms with `turn()` awaited between them, so the page keeps drawing while it runs (a
+// 4-minute song's pitch read is about 4 s of work: run at once in the page it froze the picture for 3.7 s, Nov 16, A5 in the app).
+// The answer is exactly voicePitch's.
+const nextTurn = () => new Promise((resolve) => { const c = new MessageChannel(); c.port1.onmessage = () => { c.port1.close(); resolve(); }; c.port2.postMessage(0); });
+export async function voicePitchSliced(x, sr = 22050, { budget = 8, turn = nextTurn, now = () => performance.now() } = {}) {
+  const p = pitchPlan(x, sr);
+  let from = now();
+  const slice = async () => { if (now() - from >= budget) { await turn(); from = now(); } };
+  for (let i = 0; i < p.n; i++) { levelOf(p, x, i); if ((i & 63) === 63) await slice(); }
+  setGate(p);
+  for (let i = 0; i < p.n; i++) { frameOf(p, x, sr, i); await slice(); }
+  return { hop: p.hop / sr, f0: p.f0 };
 }
 
 // The pitch cut into notes: [[start s, length s, midi]]. A note is 6 frames (60 ms) or more within half a semitone of its
@@ -86,6 +106,9 @@ export function foldOctaves(notes, { longest = 0.4, around = 1.5 } = {}) {
 // pathLine gives, so placeLead puts it on the export's bars as it does the mix's.
 export function voiceLine(x, sr = 22050) {
   return foldOctaves(voiceNotes(voicePitch(x, sr)));
+}
+export async function voiceLineSliced(x, sr = 22050, opts) {
+  return foldOctaves(voiceNotes(await voicePitchSliced(x, sr, opts)));
 }
 
 // Stray notes out: a short note with no other note within `alone` seconds either side is not singing. The splitter leaves a few
