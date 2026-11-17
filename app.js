@@ -1953,9 +1953,10 @@ const playerBar = createPlayerBar({
     setRepeat: (mode) => flashStatus(setQueueRepeat(mode)),
   },
 });
-// on screen just now: on, and not put away by H, the mini player or a recording (so it's worth asking Music where it is). The mini
-// player keeps it when it's the library's (the cover, then the song and its buttons under it: style.css, body.mini.library-open)
-const playerShowing = () => !document.hidden && !document.body.classList.contains('clean') && !(state.mini && !document.body.classList.contains('library-open')) && !(rec.mr && !state.playerRec);
+// on screen just now: on, and not put away by H or a recording (so it's worth asking Music where it is). The mini player has it too:
+// the library's (the cover, then the song and its buttons under it: style.css, body.mini.library-open), and over plain visuals one that
+// shows when the pointer is at the window's bottom edge (body.mini:not(.library-open) #player)
+const playerShowing = () => !document.hidden && !document.body.classList.contains('clean') && !(rec.mr && !state.playerRec);
 function updatePlayer(t) {
   if (!state.playerBar || WIDGET) return;
   playerBar.update({

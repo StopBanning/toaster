@@ -396,10 +396,56 @@ export function render(r, parts, sr) {
       out[e.part][at] += v * (fade && i >= L - fade ? (L - i) / fade : 1);
     }
   }
-  const orig = { drums: parts.drums, bass: parts.bass, voice: parts.vocals, keys: parts.other }, a0 = Math.round(T0 * sr), gain = {};
+  const orig = { drums: parts.drums, bass: parts.bass, voice: parts.vocals, keys: parts.other }, a0 = Math.round(T0 * sr), matched = {};
   const rms = (y, o = 0) => { let s = 0; for (let i = 0; i < N; i++) s += (y[o + i] || 0) ** 2; return Math.sqrt(s / N + 1e-24); };
-  for (const p of Object.keys(out)) { const g = rms(out[p]); gain[p] = g > 1e-6 ? Math.round(rms(orig[p], a0) / g * 100) / 100 : 0; }
-  return { parts: out, gain, start: T0, length: N };
+  for (const p of Object.keys(out)) { const g = rms(out[p]); matched[p] = g > 1e-6 ? Math.round(rms(orig[p], a0) / g * 100) / 100 : 0; }
+  // `matched` is each part at the level it had in the record. The Strudel code cannot be mastered: it plays the cut sounds one by one through the
+  // browser (documented Strudel has no limiter on the sum: compressor and postgain act on each sound alone), so the parts that land together add up
+  // past full scale (Blinding Lights: +5.2 dBFS, 1.4% of the samples clipped, though each part alone peaks under 0). The code's `gain` is `matched`
+  // brought down together until the sum's peak is under PEAK (a common factor keeps the parts' balance); the saved rebuilt.wav starts from `matched`
+  // and goes through master() instead, so it keeps its loudness.
+  const sum = (g) => { let m = 0; for (let i = 0; i < N; i++) { let v = 0; for (const p of Object.keys(out)) v += out[p][i] * g[p]; m = Math.max(m, Math.abs(v)); } return m; };
+  let gain = { ...matched }, peak = sum(gain);
+  for (let k = 0; k < 4 && peak > PEAK; k++) {   // (rounded down to the hundredths the code is written in; again if that still leaves it over)
+    const f = PEAK / peak; gain = Object.fromEntries(Object.entries(gain).map(([p, g]) => [p, Math.floor(g * f * 100) / 100])); peak = sum(gain);
+  }
+  return { parts: out, gain, matched, peak, start: T0, length: N };
+}
+
+// The highest the code's sum may go (the sixteenth bit's full scale is 1).
+export const PEAK = 0.97;
+
+// A soft limiter for the saved rebuilt.wav: nothing over `ceil` (-1 dBFS), by turning the level down a little ahead of each peak and
+// letting it back up over `release` seconds. The gain wanted at each sample is ceil / |x| (or 1); the lowest wanted within `look` seconds either
+// side is smoothed over that same width (so the dip is already at its depth when the peak arrives and never deeper than the peak needs), and
+// after a peak the gain comes back slowly. Returns a new array; a quiet file is returned as it was.
+export function master(x, sr, { ceil = 0.89, look = 0.006, release = 0.08 } = {}) {
+  const n = x.length, R = Math.max(1, Math.round(look * sr)), want = new Float32Array(n);
+  let any = false; for (let i = 0; i < n; i++) { const a = Math.abs(x[i]); if (a > ceil) { want[i] = ceil / a; any = true; } else want[i] = 1; }
+  if (!any) return Float32Array.from(x);
+  // the lowest wanted within R either side (a monotonic queue), then the mean of that over R either side
+  const low = new Float32Array(n), q = new Int32Array(n); let h = 0, t = 0;
+  for (let i = 0, j = 0; i < n; i++) {
+    for (; j < n && j <= i + R; j++) { while (t > h && want[q[t - 1]] >= want[j]) t--; q[t++] = j; }
+    while (q[h] < i - R) h++;
+    low[i] = want[q[h]];
+  }
+  const pre = new Float64Array(n + 1); for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + low[i];
+  const out = new Float32Array(n), k = Math.exp(-1 / (release * sr)); let g = 1;
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - R), b = Math.min(n, i + R + 1), d = (pre[b] - pre[a]) / (b - a);
+    g = d < g ? d : 1 - (1 - g) * k;   // down at once (d is already smooth), back up slowly
+    out[i] = x[i] * g;
+  }
+  return out;
+}
+
+// What the saved rebuilt.wav plays: the parts at the levels they had in the record, mastered. (The code plays the same sounds a little lower:
+// see render().)
+export function fileMix(audio, sr) {
+  const mix = new Float32Array(audio.length);
+  for (const p of Object.keys(audio.parts)) for (let i = 0; i < mix.length; i++) mix[i] += audio.parts[p][i] * audio.matched[p];
+  return master(mix, sr);
 }
 
 // The Strudel program: the samples, the tempo, a line per sound, each bar a 16-weight sequence (`<...>` one bar after another).
@@ -444,8 +490,8 @@ export function program(r, gain, { base = '', title = '' } = {}) {
   }
   if (ev('bass').length) lines.push(`  note("${bars(ev('bass'), (e) => noteName(e.midi), (e) => e.steps)}").s("thisSong_bass").clip(1).gain(${gain.bass}),`);
   const byShift = new Map(); for (const e of ev('voice')) { const k = e.shift.toFixed(3); byShift.set(k, [...(byShift.get(k) || []), e]); }
-  for (const [k, e] of [...byShift.entries()].sort((a, b) => a[0] - b[0])) lines.push(`  s("thisSong_voice").n("${bars(e, (x) => String(vn.get(x.sound)))}")${shift(+k)}.gain(${gain.voice}),`);
-  if (ev('keys').length) lines.push(`  s("thisSong_keys").n("${bars(ev('keys'), (x) => String(kn.get(x.sound)))}").clip(1).gain(${gain.keys}),`);
+  for (const [k, e] of [...byShift.entries()].sort((a, b) => a[0] - b[0])) lines.push(`  n("${bars(e, (x) => String(vn.get(x.sound)))}").s("thisSong_voice")${shift(+k)}.gain(${gain.voice}),`);
+  if (ev('keys').length) lines.push(`  n("${bars(ev('keys'), (x) => String(kn.get(x.sound)), (x) => x.steps)}").s("thisSong_keys").clip(1).gain(${gain.keys}),`);
   lines.push(`)`);
   // the files the program names, by the names it uses
   const files = {};
