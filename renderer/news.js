@@ -4,6 +4,11 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.9', items: [
+    { act: 'export', text: "the rebuilt song's code plays every voice and keys sound it writes at strudel.cc (on one song 26 of 591 were silent before), and its sound no longer goes past full scale, so it plays clean, quieter than the record" },
+    { act: 'export', text: "the rebuilt song X saves as a sound file is louder: about 3 dB under the record on the song measured, where it was 7 to 8" },
+    { act: 'mini', text: "the mini player has its bar again over plain visuals: play, pause and skip show when the pointer reaches the bottom edge, and H puts them away" },
+  ] },
   { version: '0.5.8', items: [
     { act: 'export', text: "X takes the song apart (drums, bass, voice and the rest, on your own computer: it uses Meta's open-source Demucs) and saves it rebuilt as code that plays the song's own sounds, beside the MIDI file and the sketch; O opens it at strudel.cc. The drums and the bass are the strongest part; the voice and the keys are the record's own pieces replayed" },
     { act: 'export', text: "X writes the tune from the singer's voice alone, where the voice was pulled out" },

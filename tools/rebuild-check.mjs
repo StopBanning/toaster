@@ -20,7 +20,7 @@ const audio = render(r, parts, sr);
 const { code, files } = program(r, audio.gain);
 const ms = Math.round(performance.now() - t0);
 const N = audio.length, mixed = new Float32Array(N);
-for (const p of Object.keys(audio.parts)) for (let i = 0; i < N; i++) mixed[i] += audio.parts[p][i] * audio.gain[p];
+for (const p of Object.keys(audio.parts)) for (let i = 0; i < N; i++) mixed[i] += audio.parts[p][i] * audio.matched[p];   // (the parts at their record levels, as before the code's gains came down for headroom)
 let peak = 1e-9; for (const v of mixed) peak = Math.max(peak, Math.abs(v));
 
 // the sound-match number, as the proof's: mono at 22.05 kHz, 1024-sample frames every 512, 40 log-spaced bands

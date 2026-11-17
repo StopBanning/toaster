@@ -3,7 +3,7 @@
 // and a program whose bars always add up to 16 sixteenths and whose audio puts each sound where the program says.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fft, findGrid, readDrums, readBass, readVoice, readKeys, rebuild, render, program, noteName } from '../renderer/rebuild.js';
+import { fft, findGrid, readDrums, readBass, readVoice, readKeys, rebuild, render, program, master, fileMix, noteName } from '../renderer/rebuild.js';
 
 const SR = 22050;
 let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 1073741824) - 1;
@@ -159,4 +159,104 @@ test('the app\'s tempo read double is set aside for the drums\' own', () => {
   assert.ok(Math.abs(r.grid.bpm - BPM) < 0.3, `bpm ${r.grid.bpm}`);
   const r2 = rebuild({ drums: d, bass: quiet, other: quiet, vocals: quiet }, SR, { bpm: BPM, origin: O, from: O });
   assert.equal(r2.grid.bpm, BPM, 'a tempo that agrees is kept as given');
+});
+
+// a whole made-up song at 120 BPM: the drum machine, a bass line on the kicks, a singer's phrases and a pair of chords, all loud and landing together
+function wholeSong() {
+  const d = drumMachine(), n = d.length, H = 8 * STEP, bass = new Float32Array(n), vocals = new Float32Array(n), other = new Float32Array(n);
+  for (let b = 0; b < BARS; b++) {
+    for (const [s, m] of [[0, 33], [8, 36]]) {
+      const f = 440 * 2 ** ((m - 69) / 12), len = Math.round(8 * STEP * SR * 0.95);
+      put(bass, Float32Array.from({ length: len }, (_, i) => 0.9 * Math.sin(2 * Math.PI * f * i / SR) * Math.min(1, i / 60, (len - i) / 200)), O + (b * 16 + s) * STEP);
+    }
+    const tone = (secs, f) => Float32Array.from({ length: Math.round(secs * SR) }, (_, i) => 0.9 * Math.sin(2 * Math.PI * f * i / SR) * Math.min(1, i / 200, (secs * SR - i) / 200));
+    if (b % 3 === 0) put(vocals, tone(0.6, 330), O + (b * 16 + 3) * STEP + 0.02);
+    if (b % 3 === 1) put(vocals, tone(0.6, 392), O + (b * 16 + 6) * STEP);
+    const chord = (fs) => Float32Array.from({ length: Math.round(H * SR) }, (_, i) => fs.reduce((s, f) => s + 0.3 * Math.sin(2 * Math.PI * f * i / SR), 0) * Math.exp(-i / (0.6 * SR)));
+    put(other, chord(b % 2 ? [196, 247, 294] : [220, 277, 330]), O + b * 16 * STEP); put(other, chord(b % 2 ? [220, 277, 330] : [196, 247, 294]), O + (b * 16 + 8) * STEP);
+  }
+  const q = (x) => Float32Array.from(x, (v) => v * 0.55);   // (about as loud as a mastered song's parts)
+  return { drums: q(d), bass: q(bass), other: q(other), vocals: q(vocals) };
+}
+const rebuiltSong = () => { const parts = wholeSong(), r = rebuild(parts, SR, { bpm: BPM, from: O, bars: 8 }), a = render(r, parts, SR); return { parts, r, a, ...program(r, a.gain) }; };
+// how many sounds a line of the program starts, as Strudel reads it: a line whose first call is n("<bars>") starts one sound for every
+// value in its bars (the structure is n's); one that begins s("name").n(...) takes its structure from s, so a value not at the very start of a cycle never starts
+const startsOf = (line) => {
+  const m = line.match(/^\s*(n|s|note)\("<([^>]*)>"\)/); if (!m) return 0;
+  let k = 0; for (const [, bar, rep] of m[2].matchAll(/(\[[^\]]*\])(?:!(\d+))?/g)) k += (rep ? +rep : 1) * bar.slice(1, -1).trim().split(/\s+/).filter((t) => !t.startsWith('~')).length;
+  return k;
+};
+
+test('the program: every voice and keys event starts when Strudel plays it (n() first, the way the bass line is, so its values are the events)', () => {
+  const { r, code } = rebuiltSong(), lines = code.split('\n');
+  for (const part of ['voice', 'keys']) {
+    const mine = lines.filter((l) => l.includes(`.s("thisSong_${part}")`)), events = r.events.filter((e) => e.part === part).length;
+    assert.ok(events >= 4, `${events} ${part} events in the song`);
+    assert.ok(mine.length >= 1, `a ${part} line`);
+    for (const l of mine) assert.match(l, /^\s*n\("</, `the line starts with n(): ${l}`);
+    assert.equal(mine.reduce((n, l) => n + startsOf(l), 0), events, `${part}: a start for each of ${events} events`);
+  }
+  assert.doesNotMatch(code, /s\("thisSong_(voice|keys)"\)\.n\(/);
+  // the same count for the other lines, so the counting itself is checked on lines that always worked
+  const kicks = lines.filter((l) => /^\s*s\("thisSong_kick\d*"\)\.struct/.test(l));
+  assert.ok(kicks.length >= 1);
+});
+
+test('the program: each keys event is written as long as it plays (the line is clipped to its events), and the voice lines are not clipped', () => {
+  const { r, code } = rebuiltSong(), line = code.split('\n').find((l) => l.includes('.s("thisSong_keys")'));
+  const keys = r.events.filter((e) => e.part === 'keys');
+  assert.ok(keys.length >= 4 && line && line.includes('.clip(1)'));
+  // what the line writes: [step in the song, written length in sixteenths] for every event, bar by bar (the bars' ! repeats opened out)
+  const written = []; let bar = 0;
+  for (const [, txt, rep] of line.match(/n\("<([^>]*)>"\)/)[1].matchAll(/\[([^\]]*)\](?:!(\d+))?/g)) {
+    for (let k = 0; k < (rep ? +rep : 1); k++, bar++) { let s = 0; for (const tok of txt.trim().split(/\s+/)) { const [v, L = 1] = tok.split('@'); if (v !== '~') written.push([bar * 16 + s, +L]); s += +L; } }
+  }
+  const want = keys.map((e) => [e.step - r.first, e.steps]).sort((a, b) => a[0] - b[0]);
+  assert.ok(want.every(([, L]) => L > 1), `a keys event plays more than a sixteenth: ${JSON.stringify(want.slice(0, 3))}`);
+  assert.deepEqual(written, want, 'each keys event is written from its step for as many sixteenths as it plays');
+  // the voice lines are not clipped: a phrase plays to its end whatever the next event is
+  for (const l of code.split('\n').filter((l) => l.includes('.s("thisSong_voice")'))) assert.doesNotMatch(l, /clip/, l);
+});
+
+test('the program\'s gains: the sounds landing together stay under full scale, and the sum is as loud as it can be for that', () => {
+  const { r, a, parts } = rebuiltSong(), N = a.length;
+  const mix = (g) => { const m = new Float32Array(N); for (const p of Object.keys(a.parts)) for (let i = 0; i < N; i++) m[i] += a.parts[p][i] * g[p]; return m; };
+  const peak = (x) => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0), rms = (x) => Math.sqrt(x.reduce((s, v) => s + v * v, 0) / x.length);
+  const loud = mix(a.matched), safe = mix(a.gain);
+  assert.ok(peak(loud) > 1.2, `the song as it was in the record peaks over full scale when its sounds land together (${peak(loud).toFixed(2)}): this test needs that`);
+  assert.ok(peak(safe) <= 0.98, `the code's sum peaks at ${peak(safe).toFixed(3)}`);
+  assert.equal(Math.round(a.peak * 1e6), Math.round(peak(safe) * 1e6), 'render reports the peak it measured');
+  assert.ok(peak(safe) >= 0.85, `and not further down than needed (${peak(safe).toFixed(3)})`);
+  // one common factor: the parts keep their balance (to the hundredth the code is written in)
+  const f = a.gain.drums / a.matched.drums;
+  for (const p of Object.keys(a.gain)) assert.ok(Math.abs(a.gain[p] - a.matched[p] * f) <= 0.02, `${p}: ${a.gain[p]} against ${a.matched[p]} x ${f.toFixed(3)}`);
+  assert.ok(rms(safe) < rms(loud));
+  // a song that never goes over is left at the levels it had
+  const quiet = { drums: Float32Array.from(parts.drums, (v) => v * 0.1), bass: Float32Array.from(parts.bass, (v) => v * 0.1), other: Float32Array.from(parts.other, (v) => v * 0.1), vocals: Float32Array.from(parts.vocals, (v) => v * 0.1) };
+  const a2 = render(r, quiet, SR); assert.deepEqual(a2.gain, a2.matched); assert.ok(a2.peak <= 0.97);
+});
+
+test('master: nothing over -1 dBFS, a quiet file untouched, the level back up after a peak', () => {
+  const sr = SR, x = Float32Array.from({ length: 2 * sr }, (_, i) => 0.3 * Math.sin(2 * Math.PI * 110 * i / sr));
+  assert.deepEqual(master(x, sr), x, 'a file under the ceiling is returned as it was');
+  const y = Float32Array.from(x); for (let i = 0; i < 40; i++) y[sr + i] = 2.5 * Math.sin(2 * Math.PI * 800 * i / sr);   // a burst 8 dB over full scale at 1 s
+  const m = master(y, sr), peak = m.reduce((v, s) => Math.max(v, Math.abs(s)), 0);
+  assert.ok(peak <= 0.89 + 1e-6, `peak ${peak}`);
+  assert.ok(peak > 0.85, `the burst is turned down only as far as it needs (${peak})`);
+  for (let i = 0; i < sr / 2; i++) assert.equal(m[i], x[i], `untouched well before the burst, at ${i}`);   // (the look-ahead is milliseconds)
+  const late = Math.round((1 + 1.0) * sr) - 1; assert.ok(Math.abs(m[late] - x[late]) < 0.01 * 0.3 + 1e-4, `back to level a second later (${m[late]} against ${x[late]})`);
+  const rms = (a, from, to) => { let s = 0; for (let i = from; i < to; i++) s += a[i] ** 2; return Math.sqrt(s / (to - from)); };
+  assert.ok(rms(m, 0, 2 * sr) > 0.9 * rms(x, 0, 2 * sr), 'one burst does not turn the whole file down');
+});
+
+test('the saved rebuilt.wav: kept at the song\'s loudness, no sample at full scale, louder than the old peak scale', () => {
+  const { a } = rebuiltSong(), N = a.length, mix = new Float32Array(N);
+  for (const p of Object.keys(a.parts)) for (let i = 0; i < N; i++) mix[i] += a.parts[p][i] * a.matched[p];
+  const file = fileMix(a, SR), rms = (x) => Math.sqrt(x.reduce((s, v) => s + v * v, 0) / x.length), peak = (x) => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  assert.ok(peak(file) <= 0.95, `peak ${peak(file)}`);
+  assert.equal(file.filter((v) => Math.abs(v) >= 1).length, 0);
+  const dB = (v) => 20 * Math.log10(v);
+  assert.ok(Math.abs(dB(rms(file)) - dB(rms(mix))) <= 2, `the file's level ${dB(rms(file)).toFixed(1)} dB against the parts at theirs ${dB(rms(mix)).toFixed(1)}`);
+  const old = rms(mix) * 0.9 / peak(mix);   // what the file was: the whole mix scaled so its peak is 0.9
+  assert.ok(rms(file) > old * 1.2, `louder than the peak scale (${dB(rms(file)).toFixed(1)} against ${dB(old).toFixed(1)} dB)`);
 });
