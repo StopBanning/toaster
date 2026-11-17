@@ -12,6 +12,8 @@ permissions:
   contents: read
 jobs:
   windows:
+    # a release whose tag isn't vX.Y.Z (splitter-1 holds the voice splitter's model) is a file store, not a build
+    if: github.event_name == 'push' || startsWith(github.event.release.tag_name, 'v')
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
@@ -45,6 +47,8 @@ jobs:
           "STRUDEL_TEST_MODULES=$(Join-Path $scratch 'node_modules')" >> $env:GITHUB_ENV
       - name: Tests on Windows
         run: node --test tools/*.test.mjs
+      - name: The voice splitter's model, from Toaster's own release, checked against its SHA-256
+        run: node tools/fetch-splitter.mjs
       - run: npm run package:win
       - name: Check and zip it
         id: zip

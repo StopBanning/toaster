@@ -103,7 +103,7 @@ async function ({ job, sources, sr }, audio) {
     // (bench instrumentation) each bar's harmony as the engine filed it: the bar's start and length, the chord found in it
     // (null: none) and the one its slot writes, the bass found in it (per beat, filled forward as the code writes them, else
     // the bar's one note; null: none new) and the one its slot writes, and the key shown after it
-    const harmony = [], tuning = [], SENT = {}, harmonyBar = e.harmonyBar;
+    const harmony = [], bass16 = [], tuning = [], SENT = {}, harmonyBar = e.harmonyBar;
     e.harmonyBar = function (prevBar) {
       const T = this.tempo, slot = ((prevBar % 4) + 4) % 4, chord0 = this.lastChord, beats0 = this.bassBeats[slot];
       const start = T.t0 + (prevBar * 4 + T.down - T.n0) * T.P, len = 4 * T.P;
@@ -121,6 +121,8 @@ async function ({ job, sources, sr }, audio) {
       const fill = (bs) => { let cur = bs.find((m) => m !== null); return bs.map((m) => (m !== null ? (cur = m) : cur)); };
       const bb = this.bassBeats[slot], written = bb?.some((m) => m !== null) ? fill(bb) : this.slots[slot]?.bass ?? null;
       const fresh = got && got !== SENT ? fill(got) : got === null ? this.slots[slot]?.bass ?? null : null;
+      // (bench instrumentation: the bar's bass as the live code can write it, by the beat and by the 16th: riff16.mjs scores both)
+      bass16.push([+(start + from).toFixed(3), +len.toFixed(4), this.bassSteps?.[slot] ? this.bassSteps[slot].slice() : null, this.bassBeats[slot] ? this.bassBeats[slot].slice() : null, this.slots[slot]?.bass ?? null, this.v?.bass?.shown ? this.v.bass.shown.map(Boolean) : null, this.v?.bd?.shown ? this.v.bd.shown.map(Boolean) : null]);
       harmony.push([+(start + from).toFixed(3), +len.toFixed(4), this.lastChord !== chord0 ? this.lastChord.name : null, this.slots[slot]?.chord?.name ?? null,
         fresh, written, this.key ? this.key.root + (this.key.mode === 'minor' ? 'm' : '') : null, inputs]);
     };
@@ -162,7 +164,7 @@ async function ({ job, sources, sr }, audio) {
       }
       if (k++ % 3 === 0) {
         const L = buildLines(e, { song: null, source: 'file' }, now);
-        for (const id of ['tempo', 'scale', 'bd', 'sd', 'hhc', 'hho', 'bassline']) {
+        for (const id of ['tempo', 'scale', 'bd', 'sd', 'hhc', 'hho', 'bassline', 'chords']) {
           const text = (L[id] || []).map((p) => p.text).join('');
           if (text !== last[id]) { lines.push([+(now + from).toFixed(3), id, text]); last[id] = text; }
         }
@@ -177,6 +179,6 @@ async function ({ job, sources, sr }, audio) {
     const best = stretches[(song?.coverage?.selectedStretch ?? 1) - 1] || stretches.reduce((a, b) => !a || b.patterns > a.patterns ? b : a, null);
     const origin = song?.origin != null ? +(from + song.origin).toFixed(4) : (song ? (best && best.patterns >= 4 ? calcOrigin(song, best) : beforeOrigin) : null);
     tapeLog.push(['song', e.tempo.down]);
-    return { key: job.key, from: job.from || 0, seconds: duration, sr, beats, tempo, lines, notes: notes.slice(0, 400), truth, harmony, tuning, keylog, song, origin, tapeLog };
+    return { key: job.key, from: job.from || 0, seconds: duration, sr, beats, tempo, lines, notes: notes.slice(0, 400), truth, harmony, bass16, tuning, keylog, song, origin, tapeLog };
   } catch (error) { return { error: String(error.stack || error) }; }
 }

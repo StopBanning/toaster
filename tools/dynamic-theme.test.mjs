@@ -73,7 +73,7 @@ test('each frame: the ease steps while the theme is dynamic, applying its colour
 });
 
 test('where the cover comes from: the system\'s, the radio\'s and a file\'s own, the last whatever the song is called; let go of with the source', () => {
-  assert.match(body('songArt'), /if \(state\.source === 'file'\) return fileArt;\s*return state\.manual \? null : state\.source === 'system' \? artImg : state\.source === 'radio' \? radioArt : null;/);
+  assert.match(body('songArt'), /if \(state\.source === 'file'\) return fileArt;\s*return state\.manual \? null : state\.source === 'system' \? \(pausedButHeardElsewhere\(\) \? null : artImg\) : state\.source === 'radio' \? radioArt : null;/);
   const use = body('useFile');
   assert.match(use, /const cover = fileCover\(file\)\.catch\(\(\) => null\);/);
   assert.match(use, /await playElement\('file', file\.name, \(el\) => \{ mine = el; el\.src = URL\.createObjectURL\(file\); el\.loop = true; \}\);/);

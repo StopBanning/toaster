@@ -97,7 +97,7 @@ export async function writerScores(capture, accepted) {
   native = (pattern ? events(pattern, 0, song.bars.length) : []).map((n) => {
     const s = n.value.s, value = String(s ?? '');
     const part = ({ bd: 'bd', cp: 'sd', hh: 'hhc', oh: 'hho' })[value]
-      ?? (value === 'sawtooth' ? 'bass' : value === 'triangle' ? 'vox' : 'chords');
+      ?? (value === 'sawtooth' ? 'bass' : value === 'triangle' || value === 'square' ? 'vox' : 'chords'); // (the export's lead: a square since Nov 12, a triangle before)
     return { start: origin + n.begin * barSeconds, end: origin + n.end * barSeconds, midi: noteNumber(n.value.note), part, value: n.value };
   });
   return { status: 'scored', origin, duration, evaluatedCaptureSeconds: captureDuration,

@@ -111,5 +111,5 @@ test('app.js hands the bar the queue\'s shuffle and repeat only while a queue pl
   const app = fs.readFileSync(new URL('../renderer/app.js', import.meta.url), 'utf8'), css = fs.readFileSync(new URL('../renderer/style.css', import.meta.url), 'utf8');
   assert.match(app, /get shuffle\(\) \{ return liveQueue\(\) \? \(\) => state\.queueShuffle : undefined; \}/);
   assert.match(app, /get repeat\(\) \{ return liveQueue\(\) \? \(\) => state\.queueRepeat : undefined; \}/);
-  assert.match(css, /#player \.pl-mode\.on \{ color: var\(--accent\); \}/);
+  assert.match(css, /#player \.pl-mode\.on \{ color: var\(--accent\); border-color: var\(--accent\); \}/);
 });

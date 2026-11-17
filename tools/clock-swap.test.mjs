@@ -91,6 +91,12 @@ const ALLOWED = {
   'renderer/stars.js': { 'performance.now': 'the star count rolling up on the button, a UI one-shot on the page\'s own time', requestAnimationFrame: 'that same roll', 'Math.random': 'where that burst of glyphs flies, from a button\'s click: not part of a frame' },
   'renderer/tracking.js': { 'performance.now': 'the camera\'s sensors: when a hand, a face or a mask was last seen is the camera\'s own clock' },
   'renderer/visuals.js': { 'performance.now': 'the camera: when a face was last looked for or seen, and the camera\'s own frame pace (the camera is left out of the clock\'s pictures)' },
+  'renderer/tune-worker.js': { 'performance.now': 'a worker: it has no clock of the page\'s, and times how long Basic Pitch took over the export\'s sound (real time, for the log)' },
+  'renderer/stems-worker.js': { 'performance.now': 'a worker: it has no clock of the page\'s, and times how long the voice splitter took over the export\'s sound (real time, for the log)' },
+  'renderer/voice.js': { 'performance.now': 'the sliced pitch read: how long a slice has run before the page is given its turn (real time, a parameter in the tests; no picture reads it)' },
+  'renderer/song-memory.js': { 'Date.now': 'the stamp of when a song was last heard: the least recently heard go first when there are too many (a parameter in the tests)' },
+  'renderer/preanalyse.js': { 'Date.now': 'how long the scheduler has waited for the app to be idle (real time; no picture reads it)' },
+  'renderer/rebuild-worker.js': { 'performance.now': 'a worker: it has no clock of the page\'s, and times how long rebuilding the song from its own sounds took (real time, for the log)' },
   'renderer/track-worker.js': { 'performance.now': 'a worker: it has no clock of the page\'s, and times its own model loads and retries' },
   'renderer/library-core.js': { 'Date.now': 'when a scene or a station was saved: a stamp (and the shuffle\'s dice are a parameter, Math.random by default, which a test replaces)' },
   'renderer/library-panel.js': { 'Date.now': 'when the folder was last scanned, and the panel\'s own wall clock', 'new Date': 'the panel\'s wall clock', requestAnimationFrame: 'the panel\'s own slide-in' },
@@ -122,11 +128,14 @@ test('no renderer file reads the browser\'s time or rolls Math.random() except t
 // a setTimeout fires in real time, which a render (a frame at a time, faster or slower than the song) is not. So no file that
 // draws calls setTimeout() or setInterval(), except the ones below. The files that are not pictures (the page's shell and
 // its panels, the recorder, the library, the camera's tracking, the demo) are named, so a new file is checked by default.
+// (the export's tune is no picture either: ear.js notes the clock's offset four times a second and gives the audio thread ten
+// seconds to answer, tune.js gives Basic Pitch's worker a deadline and stems.js the voice splitter's, all in real time, when X is pressed)
 // (the perfect take's encoder, sound tap and render driver are the recorder's: take-encode waits for room in the encoder's queue,
 // take-replay gives the page a turn between the run-up's frames, both in real time)
-const NOT_PICTURES = new Set(['app', 'clips', 'take-encode', 'take-encoder', 'take-tap', 'take-tap-worklet', 'take-replay', 'clock', 'controls', 'demo', 'library', 'library-core', 'library-panel', 'library-source', 'stars', 'tape-export', 'tracking', 'track-worker', 'news', 'firstrun', 'bug-report', 'player', 'handlog', 'engine', 'program', 'codegen', 'presets', 'gestures', 'tape', 'tape-worker', 'audio-tags', 'embedded-cover', 'cover-palette', 'palette']);
+const NOT_PICTURES = new Set(['app', 'clips', 'ear', 'tune', 'tune-worker', 'stems', 'stems-worker', 'rebuild', 'rebuild-worker', 'take-encode', 'take-encoder', 'take-tap', 'take-tap-worklet', 'take-replay', 'clock', 'controls', 'demo', 'library', 'library-core', 'library-panel', 'library-source', 'stars', 'tape-export', 'tracking', 'track-worker', 'news', 'firstrun', 'bug-report', 'player', 'handlog', 'engine', 'program', 'codegen', 'presets', 'gestures', 'tape', 'tape-worker', 'audio-tags', 'embedded-cover', 'cover-palette', 'palette']);
 const TIMERS = { setTimeout: /\bsetTimeout\s*\(/, setInterval: /\bsetInterval\s*\(/ };
 const TIMERS_ALLOWED = {
+  'renderer/preanalyse.js': { setTimeout: 'the scheduler\'s pauses between steps and tracks, and the page\'s turn in the middle of a song (real time; nothing is drawn by it)' },
   'renderer/fx.js': { setInterval: 'the machine-info readout (createSysinfo): live numbers from the machine, read in real time' },
   'renderer/visuals.js': { setTimeout: 'tries the game screens\' import again 5 s after it failed: loading code, not a picture' },
   'renderer/worlds.js': { setTimeout: 'checks again in a second whether its programs have finished compiling (real time, for the driver)' },
@@ -175,7 +184,7 @@ test('the page starts the clock before anything that reads it, and the engine re
   assert.ok(at("from './clock.js'") >= 0, 'app.js imports the clock');
   assert.ok(at("from './clock.js'") < at("from './engine.js'"), 'the clock is the first thing the page imports');
   const engine = fs.readFileSync(path.join(root, 'renderer/engine.js'), 'utf8');
-  assert.match(engine, /export const nowSec = \(\) => globalThis\.clock\?\.now\(\) \?\? performance\.now\(\) \/ 1000;/);
+  assert.match(engine, /export const nowSec = \(\) => \(ownTime \? ownTime\(\) : globalThis\.clock\?\.now\(\) \?\? performance\.now\(\) \/ 1000\);/); // (ownTime: only the pre-analysis's second copy of the engine sets one)
   assert.doesNotMatch(engine, /^import /m, 'the engine stands alone: tests load it as plain text');
 });
 

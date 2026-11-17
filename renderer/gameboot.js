@@ -158,6 +158,7 @@ function paint(c, lw, lh, which, bt, pal, info) {
 // count, then GAME OVER); 'reading', a song coming in whose beat it's still finding (the self-test reading the new
 // cartridge). info as for paint. In the Japan edition's words when it's the one shown.
 function paintIdle(c, lw, lh, which, it, pal, info, mode) {
+  it = Math.max(0, it); // (a take or a seek can start a hair before the beat was lost: a negative it made the dots' count -1, which throws)
   c.fillStyle = hex(pal.bg); c.fillRect(0, 0, lw, lh);
   const k = lw >= (ja() ? 212 : 190) ? 2 : 1, cx = lw / 2, blink = Math.floor(it / 0.5) % 2 === 0, dots = '.'.repeat(1 + (Math.floor(it / 0.35) % 3));
   if (which === 'top') {

@@ -9,6 +9,36 @@ MediaPipe models, in renderer/models, unchanged
   Copyright Google LLC. Apache License 2.0: licenses/Apache-2.0.txt
   From https://storage.googleapis.com/mediapipe-models/
 
+Basic Pitch (@spotify/basic-pitch 1.0.1), its note-making (toMidi.js) in renderer/vendor/basic-pitch.mjs,
+and its model, in renderer/models/basic-pitch, unchanged
+  Copyright 2022 Spotify AB. Apache License 2.0: licenses/Apache-2.0.txt
+  Hears the notes in what Toaster heard, for the tune in the exported song (X). The way it runs the model,
+  written out in renderer/tune-worker.js, follows its inference.js.
+  From https://github.com/spotify/basic-pitch-ts
+
+TensorFlow.js 3.21.0 (@tensorflow/tfjs-core, -backend-webgl, -backend-cpu, -converter), in
+renderer/vendor/basic-pitch.mjs (bundled by tools/vendor-basic-pitch.mjs, one line of its timer changed to
+work in a worker, as later versions do)
+  Copyright Google LLC. Apache License 2.0: licenses/Apache-2.0.txt
+  Runs Basic Pitch's model on the graphics card.
+
+Demucs (Hybrid Transformer Demucs, htdemucs), its trained model, in renderer/models/htdemucs (put there by
+tools/fetch-splitter.mjs), converted for onnxruntime-web and its weights stored at half precision
+  Copyright (c) Meta Platforms, Inc. and affiliates. MIT License: licenses/demucs-MIT.txt
+  Takes the song apart (drums, bass, the voice and the rest) for the exported song rebuilt from its own
+  sounds (X). By Simon Rouard, Francisco Massa and Alexandre Défossez.
+  From https://github.com/facebookresearch/demucs
+
+demucs-web, its conversion of htdemucs to ONNX (htdemucs_embedded.onnx), and the framing our own
+spectrograms follow (renderer/stems-stft.js)
+  Copyright (c) 2024 (its licence names no one; the package is by timcsy). MIT License: licenses/demucs-web-MIT.txt
+  From https://github.com/timcsy/demucs-web
+
+ONNX Runtime Web (onnxruntime-web 1.31.1)
+  Copyright (c) Microsoft Corporation. MIT License: licenses/onnxruntime-MIT.txt
+  Runs the Demucs model on the graphics card (or the processor). The code it bundles is listed in
+  https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt
+
 mp4-muxer
   Copyright (c) 2023 Vanilagy. MIT License: licenses/mp4-muxer-MIT.txt
   Puts the perfect copy of a recording together as an MP4 file.

@@ -5,6 +5,11 @@ live Strudel code in front of you: named lines typed into a blank window and lig
 play. Around the code: every hit as a domino, a little world, a handheld rhythm game, or your webcam
 with effects you work with your hands. Toaster, as in Toaster Strudel.
 
+In the app, press **X** and Toaster takes the song apart on your own computer (drums, bass, voice and the rest, with Meta's open-source
+Demucs model) and saves it as code that plays the song's own sounds; **O** opens it at strudel.cc. The drums and the bass come
+out strongest; the voice and the keys are the record's own pieces replayed. Toaster also remembers a song it has heard, so the
+second play locks faster, and reads the songs in your music folder ahead.
+
 **[Try it in your browser](https://toaster.locust.lol)** · **[Download for Windows or Mac](../../releases/latest)**
 
 ![Toaster writing out Robin S's "Show Me Love" as code, every hit a domino knocked over as it plays](docs/hero-code.webp)
@@ -29,11 +34,14 @@ Client ID, see [Search Spotify](#search-spotify)), the library's spotify tab bro
 inside Toaster. Without a connection, its search opens Spotify's own search page. Spotify asks each listener for a free developer
 app of their own (and Premium); the spotify tab walks you through making it, one step at a time, with a picture of each page.
 
-**Does it split the song into stems?** No stems. It listens to the whole mix as it plays and picks out the kick, snare, hats,
-bass and chords from their frequencies and timing, then writes them as code that plays back on drum-machine samples and synths.
+**Does it split the song into stems?** Not while it plays: live, it listens to the whole mix and picks out the kick, snare,
+hats, bass and chords from their frequencies and timing, then writes them as code that plays back on drum-machine samples and
+synths. When you press X, yes: it takes the song apart into drums, bass, voice and the rest (Meta's open-source Demucs model,
+on your machine) and also saves the song rebuilt from its own sounds.
 
-**Will the code sound exactly like the song?** No: it's a sketch of the song's parts. The rhythm and the bass line come
-closest, the sounds are stand-ins, and a busy or sidechained bass can fool its kick ([Good to know](#good-to-know)).
+**Will the code sound exactly like the song?** The live code doesn't: it's a sketch of the song's parts, the sounds are
+stand-ins, and a busy or sidechained bass can fool its kick ([Good to know](#good-to-know)). The rebuilt song (X) comes much
+closer, because it plays the song's own drum hits, its own bass and the singer's own phrases, placed by the code.
 
 ## What it does
 
@@ -200,8 +208,13 @@ then the caret goes back to fix it.
 - **X** exports the song so far into `Music\Toaster` on Windows, or `Music/Toaster` on a Mac: a
   MIDI file (drums, bass, chords and lead on their own tracks) and Strudel code, each phrase
   written once and played in order with `arrange()`. Paste it into strudel.cc and press
-  ctrl+enter. What it exports is an approximate musical sketch of the song you played: permission to
-  publish or distribute it depends on the source music and your intended use.
+  ctrl+enter. Beside them, a folder ending in `rebuilt`: the song rebuilt from its own sounds, its
+  code (`song.strudel.js`), the sounds it plays (cut from the song) and `rebuilt.wav`, what it sounds
+  like. Press **O** afterwards and the rebuilt song opens in strudel.cc; its sounds come from Toaster
+  while Toaster is open (Chrome asks once whether strudel.cc may reach apps on your computer: allow it).
+  What it exports is an approximate musical sketch of the song you played, and the rebuilt song carries
+  pieces of the recording itself: permission to publish or distribute either depends on the source
+  music and your intended use.
 
 More on all three in [docs/how-it-works.md](docs/how-it-works.md). Filming Toaster for a video?
 [docs/creators.md](docs/creators.md) has the setup, the take, and how to carry on in Strudel.
@@ -225,7 +238,11 @@ Toaster makes live visuals for a set: it follows the beat, and the scenes answer
 Everything Toaster hears and sees stays on your machine. The sound is worked out in the app, and the
 camera (off until you press C) is looked at by the system's own face detector (Windows' face
 detector, or the Mac's Vision framework) and by Google's MediaPipe, both running on your machine.
-Nothing is uploaded. It goes online only for these:
+Nothing is uploaded. For the tune in a saved song (X), the app keeps the last ten minutes of what it heard in memory only,
+never in a file, and it is gone when you quit; when you press X, Spotify's open-source Basic Pitch model listens to that
+stretch and Meta's open-source Demucs model takes it apart, both on your machine. While Toaster is open it serves the
+rebuilt songs' sounds to strudel.cc from your own computer (`localhost`, port 47283: only `.wav` files in the `rebuilt` folders,
+and nothing outside your computer can reach it). It goes online only for these:
 
 - **Updates and stars:** GitHub, when it starts, to see whether there's a newer Toaster (turn that off in the help, under
   Updates), and for the project's star count on the header's star button (asked at most every ten minutes).

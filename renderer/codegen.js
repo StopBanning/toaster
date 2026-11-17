@@ -98,8 +98,89 @@ function bassExportStruct(on) {
   return tokens.join(' ');
 }
 
+// (moved here from tape.js so the live code can use it too: the bass by the 16th, the way the export writes it)
+// kick: the kick's 16 steps. Under a kick the tracker can't hear the bass for a moment: it reads nothing, or the kick's own
+// note for that one step, and the bass note that started there shows up a step late (measured Nov 10: Ra Ma La Ma's riff
+// came out right but a 16th late on every beat and on time between them; Technologic got a G, its kick's note, on every
+// beat). So on a kick's step, a note that begins on the next step began here; and one step's note alone on a kick's step,
+// with no note carrying on from it, is the kick's.
+// beats: the bar's note by the beat (the tracker's commonest note in each). Where the kick still leaves a hole (its step, or
+// the step after it, with no note), the beat's note fills it as a note of its own: the tracker lost the bass there, the record
+// didn't (measured Nov 10 on the bench: 10% of the record's bass notes started in such a hole and the export played nothing).
+// And a note held 4 steps or more through a kick is struck again on the kick (bass lines re-strike on the kick far more often
+// than they hold through it; the tracker can't hear a re-strike of the same note).
+export function riffNotes(steps, on = null, kick = null, beats = null) {
+  if (!steps || steps.filter((m) => m !== null && m !== undefined).length < 4) return null;
+  const st = steps.map((m) => (m === undefined ? null : m));
+  for (let s = 1; s < 15; s++) if (st[s - 1] !== null && st[s - 1] === st[s + 1] && st[s] !== st[s - 1]) st[s] = st[s - 1];
+  if (kick) for (let s = 0; s < 16; s++) {
+    if (!kick[s]) continue;
+    const before = s > 0 ? st[s - 1] : null, after = s < 15 ? st[s + 1] : null;
+    if (st[s] !== null && st[s] === before) continue; // (a note held through the kick)
+    if (after !== null && st[s] !== after) st[s] = after; // (the note that shows up after the kick began under it)
+    else if (after === null && st[s] !== null && st[s] !== before) st[s] = null; // (one step alone on a kick: the kick's own note)
+  }
+  // (a note's own number for each step: a new number starts a note, so a filled hole or a re-strike is a note of its own)
+  const id = st.map((m) => m);
+  let next = 1000;
+  if (kick) {
+    for (let s = 1; s < 16; s++) {
+      if (!kick[s] || st[s] === null || st[s] !== st[s - 1]) continue;
+      let a = s, e = s;
+      while (a > 0 && st[a - 1] === st[s]) a--;
+      while (e < 16 && st[e] === st[s]) e++;
+      if (e - a < 4) continue;
+      const was = id[s], n = next++;
+      for (let k = s; k < e && id[k] === was; k++) id[k] = n;
+    }
+    const filled = new Set();
+    if (beats) for (let s = 0; s < 16; s++) {
+      const m = beats[s >> 2];
+      if (st[s] !== null || m === null || m === undefined) continue;
+      if (!kick[s] && !(s > 0 && kick[s - 1] && st[s - 1] !== null)) continue;
+      st[s] = m;
+      id[s] = filled.has(s - 1) && st[s - 1] === m ? id[s - 1] : next++;
+      filled.add(s);
+    }
+  }
+  if (st.filter((m) => m !== null).length < 4) return null;
+  const notes = [];
+  let cur = null;
+  for (let s = 0; s < 16; s++) {
+    const m = st[s];
+    if (m === null) { cur = null; continue; }
+    if (!cur || cur.id !== id[s] || (on?.[s] && s > cur.start)) { cur = { part: 'bass', pitch: m, id: id[s], start: s, len: 0, riff: true }; notes.push(cur); }
+    cur.len++;
+  }
+  return notes.map(({ start, len, id: _id, ...n }) => ({ ...n, onset: start / 16, duration: len / 16, velocity: 95 }));
+}
+
 // A run's length in the bar's mini-notation: [a b] when the runs are even, [a@3 b] when not.
 export const runWeight = (runs, r) => (runs.every((x) => x.beats.length === runs[0].beats.length) || r.beats.length === 1 ? '' : '@' + r.beats.length);
+
+// A bar's bass by the 16th (engine.js bassSteps, read as the export reads them: riffNotes): [{ name, beats, w }] with ~ for the rests, each
+// token's length in 16ths over the gcd of them all (a bar of [e2@3 ~ g2@4]-like lengths becomes the smallest weights that say it). null where
+// the bar hasn't been heard by the 16th (fewer than four steps with a note) or is one note all the way through (the plain note says that).
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+function riffBar(eng, slot) {
+  const steps = eng.bassSteps?.[slot];
+  if (!steps) return null;
+  const notes = riffNotes(steps, eng.v?.bass?.shown || null, eng.v?.bd?.shown || null, eng.bassBeats?.[slot] || null);
+  if (!notes?.length) return null;
+  const name = (m) => NOTES[m % 12].toLowerCase() + (Math.floor(m / 12) - 1);
+  const segs = [];
+  let end = 0;
+  for (const n of notes) {
+    const s = Math.round(n.onset * 16), l = Math.max(1, Math.round(n.duration * 16));
+    if (s > end) segs.push({ name: '~', s: end, l: s - end });
+    segs.push({ name: name(n.pitch), s, l });
+    end = s + l;
+  }
+  if (end < 16) segs.push({ name: '~', s: end, l: 16 - end });
+  if (segs.length === 1) return null;
+  const g = segs.reduce((a, x) => gcd(a, x.l), 16);
+  return segs.map((x) => ({ name: x.name, beats: x.name === '~' ? [] : Array.from({ length: ((x.s + x.l - 1) >> 2) - (x.s >> 2) + 1 }, (_, k) => (x.s >> 2) + k), w: x.l / g === 1 ? '' : '@' + x.l / g }));
+}
 
 // The bass line's notes for the 4 bars: each bar's note, or where the bass moves within the bar its
 // notes by the beat (beatRuns: <c2 [c2@3 g1]>, the second bar c2 for three beats, then g1). Repeated
@@ -107,12 +188,17 @@ export const runWeight = (runs, r) => (runs.every((x) => x.beats.length === runs
 // its beats, for highlighting.
 function bassParts(eng) {
   const name = (m) => NOTES[m % 12].toLowerCase() + (Math.floor(m / 12) - 1);
+  let riffed = false;
   const bars = eng.slots.map((s, slot) => {
+    // (the bar's bass by the 16th once it has been heard that closely: the notes where they start, rests between, as the export writes them)
+    const riff = riffBar(eng, slot);
+    if (riff) { riffed = true; return riff; }
     const runs = beatRuns(eng.bassBeats?.[slot]);
     if (!runs) return s?.bass ? [{ name: s.bass, beats: null }] : null;
     return runs.length === 1 ? [{ name: name(runs[0].m), beats: null }] : runs.map((r) => ({ name: name(r.m), beats: r.beats, w: runWeight(runs, r) }));
   });
   if (!bars.some(Boolean)) return null;
+  const done = (parts) => { parts.riff = riffed; return parts; };
   const text = (b) => (!b ? '~' : b.length === 1 ? b[0].name : '[' + b.map((r) => r.name + r.w).join(' ') + ']');
   const texts = bars.map(text);
   const barParts = (b, slots) => {
@@ -127,9 +213,9 @@ function bassParts(eng) {
     out.push({ text: ']' });
     return out;
   };
-  if (texts.every((x) => x === texts[0])) return barParts(bars[0], [0, 1, 2, 3]);
+  if (texts.every((x) => x === texts[0])) return done(barParts(bars[0], [0, 1, 2, 3]));
   // two bars taking turns: <a b>
-  if (texts[0] === texts[2] && texts[1] === texts[3]) return [{ text: '<' }, ...barParts(bars[0], [0, 2]), { text: ' ' }, ...barParts(bars[1], [1, 3]), { text: '>' }];
+  if (texts[0] === texts[2] && texts[1] === texts[3]) return done([{ text: '<' }, ...barParts(bars[0], [0, 2]), { text: ' ' }, ...barParts(bars[1], [1, 3]), { text: '>' }]);
   const parts = [{ text: '<' }];
   for (let i = 0; i < 4;) {
     let j = i + 1;
@@ -140,7 +226,7 @@ function bassParts(eng) {
     i = j;
   }
   parts.push({ text: '>' });
-  return parts;
+  return done(parts);
 }
 
 // "The Weeknd" -> TheWeeknd, for the x = x.Artist("Song") header.
@@ -260,7 +346,7 @@ export function buildLines(eng, meta, t) {
   // (.struct, the Strudel way: note("<f2 c2>").struct("[~ ~ x ~]*4")). Just the downbeat says
   // nothing a plain note per bar doesn't.
   const rv = eng.v.bass, onSteps = rv.shown && eng.present('bass', t) ? rv.shown.map((x) => (x ? 'x' : null)) : null;
-  const rhythm = onSteps && onSteps.some((x, s) => x && s) ? stepParts(onSteps) : null;
+  const rhythm = !bass?.riff && onSteps && onSteps.some((x, s) => x && s) ? stepParts(onSteps) : null; // (the riff's own rests say it)
   const struct = rhythm ? [{ text: '").struct("' }, ...rhythm, { text: '")' }] : [{ text: '")' }];
   const orbit = (n) => (eng.ducking ? [{ text: `.orbit(${n})` }] : []);
   out.bassline = bass ? [{ text: 'bassline: note("' }, ...bass, ...struct, { text: '.s("sawtooth").lpf(' }, slider(k.bassLpf, 100, 4000), { text: ')' + wobble(eng.bassSound?.wobble) }, ...orbit(2)] : plain('bassline: note("~").s("sawtooth")');

@@ -13,7 +13,7 @@
 // own, bar by bar as heard) to take into a DAW, and Strudel code: exact phrases written once
 // as named stacks and played in order with arrange(), retaining each variation.
 import { NOTES } from './engine.js';
-import { wobble, beatRuns, bassRhythmEvents, MELODY_OCTAVE } from './codegen.js';
+import { wobble, beatRuns, bassRhythmEvents, riffNotes, MELODY_OCTAVE } from './codegen.js';
 
 const nameOf = (midi) => NOTES[((midi % 12) + 12) % 12].toLowerCase() + (Math.floor(midi / 12) - 1);
 
@@ -105,7 +105,12 @@ export function createTape() {
       for (const e of shifted) {
         const i = Math.floor(e.onset), target = bars[i - first];
         const { wob, ...note } = e;
-        target.events.push({ ...note, onset: e.onset - i });
+        // Two recorded bars can land on one bar of the song (the bar line moved between them). The same sound at the same
+        // moment twice is one sound, at its longer length: written twice it plays twice as loud (Delilah's bar 18 had every
+        // kick doubled, 27 doubled notes in 6 of the bench's 36 songs, and the drums alone hit full scale there).
+        const twin = target.events.find((x) => x.part === e.part && x.pitch === e.pitch && Math.abs(x.onset - (e.onset - i)) < 1e-9);
+        if (twin) twin.duration = Math.max(twin.duration, e.duration);
+        else target.events.push({ ...note, onset: e.onset - i });
         if (e.part === 'bass') target.wob = wob;
         // The grids remain a convenient inspection view; writers use the timed events.
         const step = Math.round((e.onset - i) * 16);
@@ -132,7 +137,13 @@ export function createTape() {
       // origin: where the export's first beat falls, in the engine's seconds, on that fitted line (for laying it over the sound).
       const fit = fitTempo(best.bars, best.bpm);
       // (to a thousandth of a BPM either way: the last reading comes with fourteen decimals, which is noise in a file someone reads)
-      if (!fit) return { bpm: Math.round(best.bpm * 1000) / 1000, bars, who: best.who || null, coverage, timeline };
+      if (!fit) {
+        // (no fitted line to trust: the last tempo is kept, and where the first beat falls on the last tempo's line, from the bar
+        // lines heard, goes with it as originLast, for the tune (tune.js) only; origin stays the fitted line's, which the bench scores)
+        const P = 60 / best.bpm, ts = best.bars.filter((r) => Number.isFinite(r.t) && Number.isFinite(r.b)).map((r) => r.t - P * r.b).sort((x, y) => x - y);
+        const at = ts.length >= 4 ? (ts.length % 2 ? ts[(ts.length - 1) / 2] : (ts[ts.length / 2 - 1] + ts[ts.length / 2]) / 2) : NaN;
+        return { bpm: Math.round(best.bpm * 1000) / 1000, bars, who: best.who || null, coverage, timeline, ...(Number.isFinite(at) && { originLast: at + P * (first * 4 + d + off) }) };
+      }
       return { bpm: fit.bpm, bpmLast: best.bpm, origin: fit.at + fit.P * (first * 4 + d + off), bars, who: best.who || null, coverage, timeline };
     },
   };
@@ -191,62 +202,7 @@ const named = (name) => [0, 0xff, 0x03, ...vlq(text(name).length), ...text(name)
 // steps of the same note is that note (a tracker's octave slip, not a note). null when fewer than four steps had a note:
 // the bar's beats or its one note say more then. (Before 0.5.7 the export had at most one bass note a beat, so a riff came
 // out as its root notes: Colin on Around the World, Nov 10: "it's not the song, but it's not a bad song".)
-// kick: the kick's 16 steps. Under a kick the tracker can't hear the bass for a moment: it reads nothing, or the kick's own
-// note for that one step, and the bass note that started there shows up a step late (measured Nov 10: Ra Ma La Ma's riff
-// came out right but a 16th late on every beat and on time between them; Technologic got a G, its kick's note, on every
-// beat). So on a kick's step, a note that begins on the next step began here; and one step's note alone on a kick's step,
-// with no note carrying on from it, is the kick's.
-// beats: the bar's note by the beat (the tracker's commonest note in each). Where the kick still leaves a hole (its step, or
-// the step after it, with no note), the beat's note fills it as a note of its own: the tracker lost the bass there, the record
-// didn't (measured Nov 10 on the bench: 10% of the record's bass notes started in such a hole and the export played nothing).
-// And a note held 4 steps or more through a kick is struck again on the kick (bass lines re-strike on the kick far more often
-// than they hold through it; the tracker can't hear a re-strike of the same note).
-export function riffNotes(steps, on = null, kick = null, beats = null) {
-  if (!steps || steps.filter((m) => m !== null && m !== undefined).length < 4) return null;
-  const st = steps.map((m) => (m === undefined ? null : m));
-  for (let s = 1; s < 15; s++) if (st[s - 1] !== null && st[s - 1] === st[s + 1] && st[s] !== st[s - 1]) st[s] = st[s - 1];
-  if (kick) for (let s = 0; s < 16; s++) {
-    if (!kick[s]) continue;
-    const before = s > 0 ? st[s - 1] : null, after = s < 15 ? st[s + 1] : null;
-    if (st[s] !== null && st[s] === before) continue; // (a note held through the kick)
-    if (after !== null && st[s] !== after) st[s] = after; // (the note that shows up after the kick began under it)
-    else if (after === null && st[s] !== null && st[s] !== before) st[s] = null; // (one step alone on a kick: the kick's own note)
-  }
-  // (a note's own number for each step: a new number starts a note, so a filled hole or a re-strike is a note of its own)
-  const id = st.map((m) => m);
-  let next = 1000;
-  if (kick) {
-    for (let s = 1; s < 16; s++) {
-      if (!kick[s] || st[s] === null || st[s] !== st[s - 1]) continue;
-      let a = s, e = s;
-      while (a > 0 && st[a - 1] === st[s]) a--;
-      while (e < 16 && st[e] === st[s]) e++;
-      if (e - a < 4) continue;
-      const was = id[s], n = next++;
-      for (let k = s; k < e && id[k] === was; k++) id[k] = n;
-    }
-    const filled = new Set();
-    if (beats) for (let s = 0; s < 16; s++) {
-      const m = beats[s >> 2];
-      if (st[s] !== null || m === null || m === undefined) continue;
-      if (!kick[s] && !(s > 0 && kick[s - 1] && st[s - 1] !== null)) continue;
-      st[s] = m;
-      id[s] = filled.has(s - 1) && st[s - 1] === m ? id[s - 1] : next++;
-      filled.add(s);
-    }
-  }
-  if (st.filter((m) => m !== null).length < 4) return null;
-  const notes = [];
-  let cur = null;
-  for (let s = 0; s < 16; s++) {
-    const m = st[s];
-    if (m === null) { cur = null; continue; }
-    if (!cur || cur.id !== id[s] || (on?.[s] && s > cur.start)) { cur = { part: 'bass', pitch: m, id: id[s], start: s, len: 0, riff: true }; notes.push(cur); }
-    cur.len++;
-  }
-  return notes.map(({ start, len, id: _id, ...n }) => ({ ...n, onset: start / 16, duration: len / 16, velocity: 95 }));
-}
-
+export { riffNotes };
 
 // Shared accepted export notes. onset/duration are in bars, relative to this bar.
 // This is an export view of learned patterns, not a new detector/event ledger.
@@ -370,18 +326,24 @@ function eventCode(es, bars, value) {
   });
 }
 
+// The drums' level in the export. At full level (no gain on the kick and the clap) the drums alone went 3.6 dB over full scale
+// wherever kick and clap land together, so every four-on-the-floor export clipped; and the kick sat 6 dB over the tune and 11 dB over
+// the chords and the bass in each of 16 songs (Nov 12, part-by-part renders). Colin on One More Time: "I can't really hear
+// underneath it". At .4 the drums are level with the tune, the whole export peaks at -1.8 dBFS (Gypsy Woman, 56-71 s), and the
+// hats keep their old ratio to the kick (.5 and .4 of it).
+const DRUM_GAIN = { bd: '.4', sd: '.4', hhc: '.2', hho: '.16' };
 function blockCode(block) {
   const es = block.flatMap((b, i) => barEvents(b).map((e) => ({ ...e, onset: i + e.onset, wob: b.wob || 0 })));
   const lines = [];
   for (const id of DRUMS) {
     const code = eventCode(es.filter((e) => e.part === id), block.length, () => TOKEN[id]);
-    if (code) lines.push(...code.map((c) => c.replace(/^note\(/, 's(') + `.bank("RolandTR909")${id === 'hhc' ? '.gain(.5)' : id === 'hho' ? '.gain(.4)' : ''}`));
+    if (code) lines.push(...code.map((c) => c.replace(/^note\(/, 's(') + `.bank("RolandTR909").gain(${DRUM_GAIN[id]})`));
   }
-  for (const [id, sound] of [['bass', 'sawtooth'], ['chords', 'supersaw'], ['lead', 'triangle']]) {
+  for (const [id, sound] of [['bass', 'sawtooth'], ['chords', 'supersaw'], ['lead', 'square']]) {
     const selected = es.filter((e) => e.part === id);
     for (const wob of id === 'bass' ? new Set(selected.map((e) => e.wob)) : [0]) {
       const code = eventCode(selected.filter((e) => id !== 'bass' || e.wob === wob), block.length, (e) => nameOf(e.pitch));
-      const effect = id === 'bass' ? `.lpf(${wob ? 400 : 800})` + wobble(wob) : id === 'chords' ? '.lpf(2000).gain(.6)' : '.clip(1)';
+      const effect = id === 'bass' ? `.lpf(${wob ? 400 : 800})` + wobble(wob) : id === 'chords' ? '.lpf(2000).gain(.6)' : '.lpf(3000).clip(1)'; // (the lead: a square under 3 kHz. As a triangle it sat 6 dB under the rest and 9 dB under it between 1 and 4 kHz, where a tune is heard: Colin could not hear it "underneath". Measured Nov 12 on Starships: 2 dB under the rest, 3 dB over it in that band)
       if (code) lines.push(...code.map((c) => c + `.s("${sound}")` + effect));
     }
   }
@@ -484,8 +446,10 @@ function compactFromExact(song, about, exact) {
     if (order.some((o) => o.name !== 'silence')) tracks.push(`  arrange(${order.map((o) => `[${o.bars}, ${o.name}]`).join(', ')}), // ${id}`);
   }
   const helpers = [...renderers.values()].map((r) => `const ${r.name} = (p, t = 0) => ${r.constructor}(p).slow(1).late(t)${r.effects}`);
-  // Break long strings into concatenated chunks and arrangement arguments at commas;
-  // concatenation preserves mini-notation whitespace and the resulting events.
+  // Break long strings over several lines and arrangement arguments at commas. A long mini-notation string goes inside backticks,
+  // broken only between its tokens: strudel.cc reads each "..." literal as a pattern of its own, so the old "a b" + "c d" became one
+  // note named [object Object][object Object], and a cut before an @ a parse error (measured on strudel.cc, Nov 11; no export had
+  // a string that long until the melody). In backticks it stays one string, and a line break is whitespace to mini-notation.
   const wrap = (line) => {
     if (line.startsWith('//') && line.length > 100) {
       // at a space, or after a comma inside the record's JSON, never in the middle of a word
@@ -502,8 +466,13 @@ function compactFromExact(song, about, exact) {
     }
     if (line.startsWith('const voice') && line.length > 100) line = line.replace('.velocity(', '\n  .velocity(');
     line = line.replace(/"([^"\n]{75,})"/g, (_, value) => {
-      const chunks = value.match(/.{1,70}/g);
-      return chunks.map((c) => JSON.stringify(c)).join(' +\n    ');
+      const rows = [];
+      let row = '';
+      for (const token of value.split(' ')) {
+        if (row && (row + ' ' + token).length > 70) { rows.push(row); row = token; } else row = row ? row + ' ' + token : token;
+      }
+      if (row) rows.push(row);
+      return '`' + rows.join('\n    ') + '`';
     });
     return line.replace(/, (?=\[\d+, )/g, ',\n    ').replace(/, (?=voice\d+\()/g, ',\n    ');
   };

@@ -14,6 +14,8 @@ permissions:
   contents: write
 jobs:
   mac:
+    # a release whose tag isn't vX.Y.Z (splitter-1 holds the voice splitter's model) is a file store, not a build
+    if: github.event_name == 'push' || startsWith(github.event.release.tag_name, 'v')
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
@@ -22,6 +24,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: The voice splitter's model, from Toaster's own release, checked against its SHA-256
+        run: node tools/fetch-splitter.mjs
       - run: npm run package:mac
       - name: Sign it (Toaster's own identity, else ad hoc), check it, zip it
         env:

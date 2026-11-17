@@ -718,10 +718,17 @@ test('Spotify covers share the library glyph renderer, with data from main and c
   assert.match(spotifyPart, /if \(gen !== X\.gen \|\| typeof data !== 'string'\) return;/);
   assert.match(spotifyPart, /want = song \? song\.big \|\| song\.cover : coll\?\.big \|\| coll\?\.cover;/);
   assert.match(spotifyPart, /return \(want && X\.covers\.get\(want\)\) \|\| \(song\?\.cover && X\.covers\.get\(song\.cover\)\) \|\| /, 'fall back to the collection until the song artwork arrives');
-  assert.match(panel, /if \(S\.section === 'spotify'\) \{ const key = spotifyKey\(rows\(\)\[i\]\); if \(key !== X\.cursorKey\) X\.bigFrom = 'cursor'; X\.cursorKey = key; paintBig\(\); \}/, 'the big cover follows the cursor, once it moves');
+  assert.match(panel, /if \(S\.section === 'spotify'\) \{ const key = spotifyKey\(rows\(\)\[i\]\); if \(key !== X\.cursorKey\) \{ X\.bigFrom = 'cursor'; X\.collFirst = false; \} X\.cursorKey = key; paintBig\(\); \}/, 'the big cover follows the cursor, once it moves');
+  // a collection opened shows its own cover till the cursor moves (not its first song's: the gym playlist opened showing (III)'s red, Nov 14)
+  assert.match(panel, /X\.collFirst = !!change\.open;/);
+  assert.equal((panel.match(/song = \(coll && !X\.collFirst\) \|\| \(!coll && search\.q\) \? cursorSong\(\) : null;/g) || []).length, 2, 'both the glyphs and the big cover');
+  assert.match(panel, /song = coll && X\.collFirst \? null : cursorSong\(\)/, 'on an artist page too');
+  // the mini player turned on or off redraws the big cover at once (it waited for a resize, Nov 14)
+  assert.match(panel, /new win\.MutationObserver\(\(\) => \{ const mini = doc\.body\.classList\.contains\('mini'\); if \(mini === wasMini\) return; wasMini = mini; if \(S\.open\) \{ S\.artKey = ''; paintArt\(\); paintBig\(\); \} \}\)/);
   // and the song that's playing, whichever changed last: a new song (or its cover coming in) shows its own cover, till the cursor moves
   assert.match(panel, /const playingArt = \(\) => \(\(X\.bigFrom === 'playing' \|\| !!doc\.body\?\.classList\?\.contains\?\.\('mini'\)\) && host\.playing\(\)\.art\) \|\| '';/);
-  assert.match(panel, /function spArtSrc\(\) \{\n    if \(X\.artist\) \{\n[^]*?return \(want && X\.covers\.get\(want\)\) \|\| \(X\.artist\.cover && X\.covers\.get\(X\.artist\.cover\)\) \|\| null;\n    \}\n    const now = playingArt\(\);\n    if \(now\) return now;/, 'an artist\'s page: the song or album under the cursor, else the artist; elsewhere the playing song\'s cover first, when it changed last');
+  assert.match(panel, /function spArtSrc\(\) \{\n(?:    \/\/ .*\n)*    const mini = !!doc\.body\?\.classList\?\.contains\?\.\('mini'\) && playingArt\(\);\n    if \(mini\) return mini;\n    if \(X\.artist\) \{/, 'the mini player (W): the song playing, before an artist page left open behind it (Baby Jane\'s photo over telepatía, Nov 13)');
+  assert.match(panel, /function spArtSrc\(\) \{\n[^]*?    if \(X\.artist\) \{\n[^]*?return \(want && X\.covers\.get\(want\)\) \|\| \(X\.artist\.cover && X\.covers\.get\(X\.artist\.cover\)\) \|\| null;\n    \}\n    const now = playingArt\(\);\n    if \(now\) return now;/, 'an artist\'s page: the song or album under the cursor, else the artist; elsewhere the playing song\'s cover first, when it changed last');
   assert.match(panel, /if \(artSig !== X\.artSig\) \{ const was = X\.artSig; X\.artSig = artSig; if \(was !== undefined && p\.art\) \{ X\.bigFrom = 'playing';/, 'not on the first reading: the tab opens on its collection');
   assert.match(panel, /X\.bigFrom = 'cursor'; \/\/ \(a collection opened or closed by hand/);
   assert.match(app, /art: state\.source === 'system' && artSrc\.startsWith\('data:'\) \? artSrc : '',/, 'the system\'s song\'s cover, a data: address only');

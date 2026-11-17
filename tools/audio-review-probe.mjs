@@ -72,11 +72,11 @@ if (hasStrudel) {
   const e4 = events(await runtime.evaluate(songStrudel(four, 'four bars')), 0, 4);
   const e8 = events(await runtime.evaluate(songStrudel(eight, 'eight bars')), 0, 8);
   assert.equal(e4.filter((e) => e.value.s === 'supersaw').length, 12);
-  assert.equal(e4.filter((e) => e.value.s === 'triangle').length, 4);
-  assert.equal(e8.filter((e) => e.value.s === 'triangle').length, 8);
+  assert.equal(e4.filter((e) => e.value.s === 'square').length, 4);
+  assert.equal(e8.filter((e) => e.value.s === 'square').length, 8);
   const o = await runtime.evaluate(writer.strudelProgram({ tempo: 'setcpm(120/4)', vox: 'vox: s("vox").slice(16, "0").clip(1)' }, null));
   const oNote = events(o, 0).find((e) => e.value.s === 'triangle').value.note;
-  const xNote = e8.find((e) => e.value.s === 'triangle').value.note;
+  const xNote = e8.find((e) => e.value.s === 'square').value.note; // (the export's lead is a square since Nov 12; O's own vox line is still a triangle)
   assert.equal(oNote, 'c4'); assert.equal(xNote, 'c4');
   assert.equal(midiNotes(songMidi(eight, 'eight'), 4)[0].note, 60);
   const syncBass = { bpm: 120, bars: Array.from({ length: 8 }, () => bar({ bass: 36, parts: { bass: grid(0, 6, 8) } })) };

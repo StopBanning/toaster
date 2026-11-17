@@ -86,13 +86,17 @@ test('the tape keeps the steps with the bar, and the song carries the riff out',
   assert.equal(old.song(0).bars[2].events.filter((e) => e.part === 'bass').length, 4);
 });
 
-test('the engine counts the bass by the 16th beside its count by the beat, and only the tape is handed it', () => {
+test('the engine counts the bass by the 16th beside its count by the beat; the tape and the live code (codegen.js riffBar) read it', () => {
   const eng = readFileSync(new URL('../renderer/engine.js', import.meta.url), 'utf8');
   assert.match(eng, /sn: new Uint16Array\(16\), steps: Array\.from\(\{ length: 16 \}, \(\) => new Map\(\)\)/);
   assert.match(eng, /stepOf\(t\) \{/);
   assert.match(eng, /this\.tape\?\.harmony\([^\n]*steps\?\.some\(\(m\) => m !== null\) \? steps : null\);/);
-  // nothing the page draws reads the steps: the live code's bass line is as it was (codegen.js reads eng.bassBeats)
-  for (const f of ['codegen.js', 'codeview.js', 'app.js', 'visuals.js', 'dominoes.js', 'game.js']) {
+  assert.match(eng, /this\.bassSteps\[slot\] = steps\?\.some\(\(m\) => m !== null\) \? this\.liveRiff\(steps, tb, beats\) : null;/);
+  assert.match(eng, /liveRiff\(steps, tb, beats\) \{/);
+  // the live bass line reads the riff (codegen.js riffBar, the export's riffNotes); nothing else the page draws does
+  const gen = readFileSync(new URL('../renderer/codegen.js', import.meta.url), 'utf8');
+  assert.match(gen, /const riff = riffBar\(eng, slot\);/);
+  for (const f of ['codeview.js', 'app.js', 'visuals.js', 'dominoes.js', 'game.js']) {
     const src = readFileSync(new URL('../renderer/' + f, import.meta.url), 'utf8');
     assert.ok(!/riffNotes|\.steps\b[^;\n]*bass|bt\.bars/.test(src), f + ' reads the riff');
   }

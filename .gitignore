@@ -17,3 +17,6 @@ tools/release/config.json
 
 # Local comparison videos
 demo/
+
+# the voice splitter's model: put in place by tools/fetch-splitter.mjs, never tracked (88 MB)
+/renderer/models/htdemucs/

@@ -26,7 +26,7 @@ const midi = (v) => {
   if (!m) throw Error('unrecognized pitch ' + v);
   return (+m[3] + 1) * 12 + { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1].toLowerCase()] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
 };
-const sounds = { bd: ['bd', 36], cp: ['sd', 39], hh: ['hhc', 42], oh: ['hho', 46], sawtooth: ['bass'], supersaw: ['chords'], triangle: ['lead'] };
+const sounds = { bd: ['bd', 36], cp: ['sd', 39], hh: ['hhc', 42], oh: ['hho', 46], sawtooth: ['bass'], supersaw: ['chords'], triangle: ['lead'], square: ['lead'] };
 const rounded = (n) => Math.round(n * 1e8) / 1e8;
 const key = (e, full = false) => JSON.stringify([e.part, e.pitch, rounded(e.onset), ...(full ? [rounded(e.duration), e.velocity] : [])]);
 function compare(ref, pred, full = false) {
