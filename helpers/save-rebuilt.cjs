@@ -6,11 +6,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const PLAIN = /^(?:[A-Za-z0-9_-]+\/)?[A-Za-z0-9_-]+\.wav$/;
+const LIST = 'strudel.json';   // (the one other file: the list that names the sounds, for samples('.../strudel.json'))
+const allowed = (n) => PLAIN.test(n) || n === LIST;
 
 function saveRebuilt(dir, code, files, f = fs) {
   if (typeof code !== 'string' || !code) throw new Error('no program to save');
   const names = Object.keys(files || {});
-  for (const n of names) if (!PLAIN.test(n)) throw new Error(`not a plain sample name: ${n}`);
+  for (const n of names) if (!allowed(n)) throw new Error(`not a plain sample name: ${n}`);
   f.mkdirSync(dir);   // (not recursive: an existing folder is refused, and its parent must be there)
   try {
     for (const sub of new Set(names.filter((n) => n.includes('/')).map((n) => n.split('/')[0]))) f.mkdirSync(path.join(dir, sub));
@@ -23,4 +25,12 @@ function saveRebuilt(dir, code, files, f = fs) {
   return path.join(dir, 'song.strudel.js');
 }
 
-module.exports = { saveRebuilt, PLAIN };
+// strudel.json as the page wrote it has {{base}} for the address its sounds are fetched from; the files with that address in (base is the folder's
+// address, or '' where nothing serves it). Nothing else changes; a list that is not text is left as it came.
+function withBase(files, base) {
+  const out = { ...files }, raw = out[LIST];
+  if (raw != null) { try { out[LIST] = Buffer.from(Buffer.from(raw).toString('utf8').replace('{{base}}', () => String(base))); } catch { /* (left as it came) */ } }
+  return out;
+}
+
+module.exports = { saveRebuilt, withBase, PLAIN, LIST, allowed };

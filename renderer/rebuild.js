@@ -9,7 +9,8 @@
 //          a Face's hats 21 ms, Somebody That I Used to Know's 30 ms) while the beat itself sits on time; one feel per sound played
 //          those hits 10 to 16 ms late (Colin, Nov 13: "maybe the drums are a little bit off"; backlog/engineering/drum-check.mjs).
 //   bass:  real notes (YIN on the bass part, a note held while its pitch holds), all played from ONE cut of the song's bass.
-//   voice: the singer's phrases, each a sample at its true start.
+//   voice: the singer's phrases, each a sample cut from the 16th's line at or before its start (so its own push is inside the sound
+//          file, not a .early/.late in the code), all of them on one line.
 //   keys:  the rest in half-bar slices; a slice that looks like an earlier one is played from that one.
 //
 // The recipe and its numbers are the offline proof's (backlog/engineering/rebuild-v2.py, measured on two songs against the record
@@ -299,9 +300,9 @@ export function readBass(bass, sr, grid, { maxSample = 1.6 } = {}) {
   return { notes: at, root, sample };
 }
 
-// ---------------------------------------------------------------- voice: phrases at their true starts
+// ---------------------------------------------------------------- voice: phrases cut from the 16th's line before their start
 export function readVoice(vocals, sr, grid, { from = 0 } = {}) {
-  const { step, origin } = grid, stepOf = (t) => Math.round((t - origin) / step), tOf = (s) => origin + s * step;
+  const { step, origin } = grid, tOf = (s) => origin + s * step;
   const w = Math.round(0.02 * sr), env = new Float64Array(vocals.length);
   { let s = 0; for (let i = 0; i < vocals.length; i++) { s += vocals[i] ** 2; if (i >= w) s -= vocals[i - w] ** 2; env[Math.max(0, i - (w >> 1))] = Math.sqrt(Math.max(0, s) / w); } }
   let max = 0; for (const v of env) max = Math.max(max, v);
@@ -317,11 +318,17 @@ export function readVoice(vocals, sr, grid, { from = 0 } = {}) {
   }
   const T0 = tOf(from);   // a phrase over the program's first bar line is cut there, not lost
   phrases = phrases.flatMap(([a, b]) => (a < T0 - 0.02 && T0 - 0.02 < b - 0.1 ? [[a, T0], [T0, b]] : [[a, b]]));
+  // Each phrase is a sample that starts on a 16th's line (the one at or before where the voice begins) and holds the push inside it as
+  // silence ahead of the voice, so the program needs no .early or .late for it and every phrase can sit on one line. (The voice itself is
+  // cut from 20 ms before its start, as before; the lead is that and whatever the voice sits after the line: up to a 16th and 20 ms.)
   const sounds = [], at = new Map();
   for (const [a, b] of phrases) {
-    const a0 = a === T0 ? a : Math.max(0, a - 0.02), s = stepOf(a);
-    let off = a0 - tOf(s); off = Math.abs(off) < 0.004 ? 0 : Math.round(off / 0.005) * 0.005;   // (the code says it in 5 ms steps; so does the audio)
-    if (!at.has(s)) { at.set(s, [sounds.length, off]); sounds.push(cut(vocals, sr, a0, b - a0 + 0.05, { fadeIn: 0.03, fadeOut: 0.03 })); }
+    let a0 = a === T0 ? a : Math.max(0, a - 0.02), s = Math.floor((a0 - origin) / step + 1e-6);
+    if (s < from && a >= T0 - 0.02 && b > T0 + 0.05) { s = from; a0 = T0; }   // (a hair before the program's first bar line: it starts at the line)
+    if (at.has(s)) continue;
+    const lead = Math.max(0, a0 - tOf(s)), pad = Math.round(lead * sr), voice = cut(vocals, sr, a0, b - a0 + 0.05, { fadeIn: 0.03, fadeOut: 0.03 }), y = new Float32Array(pad + voice.length);
+    y.set(voice, pad);
+    at.set(s, [sounds.length, pad / sr]); sounds.push(y);
   }
   return { phrases: at, sounds };
 }
@@ -374,9 +381,9 @@ export function rebuild(parts, sr, { bpm = null, origin = null, from = 0, bars =
   const inWin = (s) => s >= S0 && s < S1, events = [];
   for (const [k, ss] of Object.entries(drums.steps)) for (const s of ss) if (inWin(s)) events.push({ part: 'drums', sound: k, step: s, shift: drums.place[k]?.[((s % 4) + 4) % 4] ?? drums.feel[k] });
   for (const [s, [m, L]] of bass.notes) if (inWin(s)) events.push({ part: 'bass', sound: 'bass', step: s, midi: m, steps: L, rate: 2 ** ((m - bass.root) / 12), shift: 0 });
-  for (const [s, [i, off]] of voice.phrases) if (inWin(s)) events.push({ part: 'voice', sound: i, step: s, shift: off });
+  for (const [s, [i, lead]] of voice.phrases) if (inWin(s)) events.push({ part: 'voice', sound: i, step: s, shift: 0, lead });   // (a phrase's push is inside its sound: see readVoice)
   for (const [s, i] of keys.slices) if (inWin(s)) events.push({ part: 'keys', sound: i, step: s, steps: 8, shift: 0 });
-  return { grid, first: S0, count, drums, bass, voice, keys, events };
+  return { grid, first: S0, count, drums, bass, voice, keys, events, appBpm: Number.isFinite(bpm) ? bpm : null };
 }
 
 // The audio the program plays, part by part (Float32Array each), from the events alone; and one level per part so each sits
@@ -412,8 +419,10 @@ export function render(r, parts, sr) {
   return { parts: out, gain, matched, peak, start: T0, length: N };
 }
 
-// The highest the code's sum may go (the sixteenth bit's full scale is 1).
-export const PEAK = 0.97;
+// The highest the code's sum may go (the sixteenth bit's full scale is 1). Not 0.97: where a kick, the bass and the voice land together a few
+// tenths of a millisecond apart, strudel.cc's own output came out 4.6% over what the sum of the sounds says (Blinding Lights at 45.29 s: 1.003 against
+// 0.958), a sample at full scale; this leaves that much room.
+export const PEAK = 0.93;
 
 // A soft limiter for the saved rebuilt.wav: nothing over `ceil` (-1 dBFS), by turning the level down a little ahead of each peak and
 // letting it back up over `release` seconds. The gain wanted at each sample is ceil / |x| (or 1); the lowest wanted within `look` seconds either
@@ -448,9 +457,30 @@ export function fileMix(audio, sr) {
   return master(mix, sr);
 }
 
-// The Strudel program: the samples, the tempo, a line per sound, each bar a 16-weight sequence (`<...>` one bar after another).
-// Only documented Strudel: samples, setcpm, stack, s, n, note, struct, clip, gain, early, late (Strudel documents no `nudge`).
-export function program(r, gain, { base = '', title = '' } = {}) {
+// The name the song's sounds carry in Strudel: the song's title with its spaces and punctuation taken out ("Blinding Lights" -> BlindingLights).
+// The program ends .bank("BlindingLights"), which puts it in front of every sound's name (Strudel: "bank will just prepend the drum machine
+// name to the sample name with _"), the way the live code's .bank("RolandTR909") does; strudel.json names the sounds that way.
+// Three things a title can do to that: Strudel's notation turns a word that reads as a number into the number (.bank("007") asks for "7_kick",
+// and "1e3", "0x10", "08" and "Infinity" go the same way, while plain "1979" comes back as the same text), and a digit outside 0-9 (Arabic-Indic
+// and the like) is a parse error that stops the whole program; so those get "Song" in front, and such digits are left out.
+export const bankName = (title) => {
+  const raw = String(title || '').normalize('NFKD'), name = raw.replace(/[^\p{L}0-9]/gu, ''), n = Number(name);
+  const otherDigits = /\p{N}/u.test(raw.replace(/[0-9]/g, '')), number = name !== '' && !Number.isNaN(n) && (!Number.isFinite(n) || String(n) !== name);
+  return !name ? 'Song' : otherDigits || number ? `Song${name}` : name;
+};
+
+// The song's own title, for the bank. A file with no tags has its file name for a title ("The Weeknd - Blinding Lights") and "File" in an
+// artist's place (audio-tags.js songOfFile): what follows the last " - " is the song then.
+export const songTitle = (artist, title) => {
+  const t = String(title || '').replace(/\s+/g, ' ').trim();
+  return String(artist || '').trim() === 'File' && t.includes(' - ') ? t.slice(t.lastIndexOf(' - ') + 3).trim() || t : t;
+};
+
+// The Strudel program: the samples (one strudel.json that names every sound), the tempo, a line per sound, each bar a 16-weight sequence (`<...>` one
+// bar after another), the song's name as the bank at the end. Only documented Strudel: samples, setcpm, stack, s, n, note, struct, clip, gain, bank,
+// early, late (Strudel documents no `nudge`).
+// song: the song's own title, for the bank (title is the heading's: "artist - title"). Returns { code, files (WAVs by name), samples (strudel.json's map) }.
+export function program(r, gain, { base = '', title = '', song = '' } = {}) {
   const { grid, first, count } = r, S0 = first, S1 = first + count * 16;
   const seq = (cells) => {
     const out = []; let s = 0;
@@ -471,35 +501,48 @@ export function program(r, gain, { base = '', title = '' } = {}) {
     return `<${runs.map(([bar, n]) => (n > 1 ? `${bar}!${n}` : bar)).join(' ')}>`;
   };
   const shift = (x) => (Math.abs(x) <= 0.002 ? '' : x > 0 ? `.late(${(x / grid.bar).toFixed(4)})` : `.early(${(-x / grid.bar).toFixed(4)})`);
+  // The tempo: a cycle is one of this program's bars, 60 / bar cycles a minute. Written as the song's BPM over the beats a bar holds when
+  // the app's tempo says it that way (171/8: this grid reads the song at half speed, so its bar is eight of the song's beats), else as the grid's.
+  const cpm = 60 / grid.bar, close = (x) => Math.abs(x - cpm) <= 0.0006;
+  const tempo = () => {
+    if (r.appBpm) for (const n of [4, 8]) for (const d of [0, 1, 2, 3]) { const v = +r.appBpm.toFixed(d); if (v > 0 && close(v / n)) return `${v}/${n}`; }
+    for (const d of [0, 1, 2, 3]) { const v = +(60 / grid.beat).toFixed(d); if (close(v / 4)) return `${v}/4`; }
+    return `${+(60 / grid.beat).toFixed(3)}/4`;
+  };
   const ev = (p) => r.events.filter((e) => e.part === p);
   const vUsed = [...new Set(ev('voice').map((e) => e.sound))].sort((a, b) => a - b), kUsed = [...new Set(ev('keys').map((e) => e.sound))].sort((a, b) => a - b);
   const vn = new Map(vUsed.map((o, i) => [o, i])), kn = new Map(kUsed.map((o, i) => [o, i]));
-  const drumNames = Object.keys(r.drums.sounds), lines = [];
+  const drumNames = Object.keys(r.drums.sounds), bank = bankName(song || title), lines = [];
   lines.push(`// ${title ? `${title}: ` : ''}rebuilt from its own sounds by Toaster. ${count} bars; every sound below was cut from the song itself.`);
-  lines.push(`samples({`);
-  lines.push(`  ${drumNames.map((k) => `thisSong_${k}: '${k}.wav'`).join(', ')},`);
-  if (r.bass.root != null) lines.push(`  thisSong_bass: { ${noteName(r.bass.root)}: 'bass.wav' },`);
-  lines.push(`  thisSong_voice: [${vUsed.map((_, i) => `'voice/${i}.wav'`).join(', ')}],`);
-  lines.push(`  thisSong_keys: [${kUsed.map((_, i) => `'keys/${i}.wav'`).join(', ')}],`);
-  lines.push(`}${base ? `, '${base}'` : ''})`);
-  lines.push(`setcpm(${(60 / grid.beat / 4).toFixed(3)})`, `stack(`);
+  // (strudel.json is beside the sounds: it names each one, as ${bank}_kick and so on. await: Strudel registers the names only when the list has come
+  // back, and without it the first notes of a first play, with the sounds not yet known, are dropped.)
+  lines.push(`await samples('${base}strudel.json')`);
+  lines.push(`setcpm(${tempo()})`, `stack(`);
   for (const k of drumNames) {
     // a line per feel: the sound's hits that sit at one place in the beat with their own push get their own line
     const byFeel = new Map(); for (const e of ev('drums').filter((x) => x.sound === k)) { const f = e.shift.toFixed(4); byFeel.set(f, [...(byFeel.get(f) || []), e]); }
-    for (const [f, e] of [...byFeel.entries()].sort((a, b) => b[1].length - a[1].length)) lines.push(`  s("thisSong_${k}").struct("${bars(e, () => 'x')}")${shift(+f)}.gain(${gain.drums}),`);
+    for (const [f, e] of [...byFeel.entries()].sort((a, b) => b[1].length - a[1].length)) lines.push(`  s("${k}").struct("${bars(e, () => 'x')}")${shift(+f)}.gain(${gain.drums}),`);
   }
-  if (ev('bass').length) lines.push(`  note("${bars(ev('bass'), (e) => noteName(e.midi), (e) => e.steps)}").s("thisSong_bass").clip(1).gain(${gain.bass}),`);
-  const byShift = new Map(); for (const e of ev('voice')) { const k = e.shift.toFixed(3); byShift.set(k, [...(byShift.get(k) || []), e]); }
-  for (const [k, e] of [...byShift.entries()].sort((a, b) => a[0] - b[0])) lines.push(`  n("${bars(e, (x) => String(vn.get(x.sound)))}").s("thisSong_voice")${shift(+k)}.gain(${gain.voice}),`);
-  if (ev('keys').length) lines.push(`  n("${bars(ev('keys'), (x) => String(kn.get(x.sound)), (x) => x.steps)}").s("thisSong_keys").clip(1).gain(${gain.keys}),`);
-  lines.push(`)`);
-  // the files the program names, by the names it uses
-  const files = {};
-  for (const k of drumNames) files[`${k}.wav`] = r.drums.sounds[k];
-  if (r.bass.sample) files['bass.wav'] = r.bass.sample;
+  if (ev('bass').length) lines.push(`  note("${bars(ev('bass'), (e) => noteName(e.midi), (e) => e.steps)}").s("bass").clip(1).gain(${gain.bass}),`);
+  if (ev('voice').length) lines.push(`  n("${bars(ev('voice'), (x) => String(vn.get(x.sound)))}").s("voice").gain(${gain.voice}),`);   // (every phrase's push is inside its sound: one line, no .early or .late)
+  if (ev('keys').length) lines.push(`  n("${bars(ev('keys'), (x) => String(kn.get(x.sound)), (x) => x.steps)}").s("keys").clip(1).gain(${gain.keys}),`);
+  lines.push(`).bank("${bank}")`);
+  // the files the program names, by the names strudel.json gives them
+  const files = {}, samples = {};
+  for (const k of drumNames) { files[`${k}.wav`] = r.drums.sounds[k]; samples[`${bank}_${k}`] = `${k}.wav`; }
+  if (r.bass.sample) { files['bass.wav'] = r.bass.sample; samples[`${bank}_bass`] = { [noteName(r.bass.root)]: 'bass.wav' }; }
   vUsed.forEach((o, i) => { files[`voice/${i}.wav`] = r.voice.sounds[o]; });
+  if (vUsed.length) samples[`${bank}_voice`] = vUsed.map((_, i) => `voice/${i}.wav`);
   kUsed.forEach((o, i) => { files[`keys/${i}.wav`] = r.keys.sounds[o]; });
-  return { code: lines.join('\n') + '\n', files };
+  if (kUsed.length) samples[`${bank}_keys`] = kUsed.map((_, i) => `keys/${i}.wav`);
+  return { code: lines.join('\n') + '\n', files, samples };
+}
+
+// strudel.json's text: what samples('<address>/strudel.json') reads. "_base" is the address the files are fetched from (Strudel puts it in front of
+// each file's name, so it ends in a /; the file is saved with the page's {{base}} and main.js puts the served address in); then each sound under
+// the name .bank gives it, one to a line so it can be read.
+export function samplesJson(samples, base = '') {
+  return `{\n${Object.entries({ _base: base, ...samples }).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(',\n')}\n}\n`;
 }
 
 // A sample as a WAV file's bytes (16-bit, mono): what strudel.cc and any player read.

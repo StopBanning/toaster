@@ -14,6 +14,8 @@ fs.mkdirSync(path.join(root, song, 'voice'), { recursive: true });
 fs.writeFileSync(path.join(root, song, 'kick.wav'), 'RIFFkick');
 fs.writeFileSync(path.join(root, song, 'voice', '0.wav'), 'RIFFvoice');
 fs.writeFileSync(path.join(root, song, 'song.strudel.js'), 'stack()');
+fs.writeFileSync(path.join(root, song, 'strudel.json'), '{"A_kick": "kick.wav"}');
+fs.writeFileSync(path.join(root, song, 'other.json'), '{}');
 fs.writeFileSync(path.join(root, 'secret.wav'), 'no');
 fs.mkdirSync(path.join(root, 'other'), { recursive: true }); fs.writeFileSync(path.join(root, 'other', 'kick.wav'), 'no');
 
@@ -26,6 +28,9 @@ test('a sound of a rebuilt song is served, with the headers strudel.cc needs; no
     assert.equal(r.status, 200); assert.equal(await r.text(), 'RIFFkick');
     assert.equal(r.headers.get('access-control-allow-origin'), '*'); assert.equal(r.headers.get('content-type'), 'audio/wav');
     r = await fetch(base + 'voice/0.wav'); assert.equal(await r.text(), 'RIFFvoice');
+    // the list that names the sounds, for samples('.../strudel.json'): served as JSON; no other .json is
+    r = await fetch(base + 'strudel.json'); assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'application/json'); assert.deepEqual(await r.json(), { A_kick: 'kick.wav' });
+    assert.equal(r.headers.get('access-control-allow-origin'), '*'); assert.equal((await fetch(base + 'other.json')).status, 404);
     r = await fetch(base + 'kick.wav', { method: 'OPTIONS' });
     assert.equal(r.status, 204); assert.equal(r.headers.get('access-control-allow-private-network'), 'true');
     const at = `http://localhost:${s.port}`;

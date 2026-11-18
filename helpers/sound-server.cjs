@@ -1,12 +1,12 @@
 // The rebuilt songs' sounds, for strudel.cc (Colin's pick, Nov 13: "Toaster serves"). While Toaster is open, a song rebuilt from its
 // own sounds (helpers/save-rebuilt.cjs) plays at strudel.cc with its sounds fetched from here: http://localhost:PORT/<folder>/<sound>.
-// Only this computer can reach it (127.0.0.1), only GET and the browser's preflight, only a .wav with a plain name inside a folder
+// Only this computer can reach it (127.0.0.1), only GET and the browser's preflight, only a .wav with a plain name (or strudel.json, which lists them) inside a folder
 // whose name ends in " rebuilt", directly inside the songs folder. Nothing else is ever read. Chrome asks the listener once whether
 // strudel.cc may reach "apps on this device"; the private-network header below is what it wants to hear from us.
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { PLAIN } = require('./save-rebuilt.cjs');
+const { allowed, LIST } = require('./save-rebuilt.cjs');
 
 const PORT = 47283;   // (fixed, so a saved song's code still finds its sounds after Toaster restarts)
 const HEAD = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Private-Network': 'true', 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Allow-Headers': '*' };
@@ -16,7 +16,7 @@ function fileFor(root, urlPath) {
   let p;
   try { p = decodeURIComponent(urlPath); } catch { return null; }
   const m = /^\/([^/]+ rebuilt)\/(.+)$/.exec(p);
-  if (!m || !PLAIN.test(m[2]) || m[1].includes('..') || /[\\\x00-\x1f]/.test(m[1])) return null;
+  if (!m || !allowed(m[2]) || m[1].includes('..') || /[\\\x00-\x1f]/.test(m[1])) return null;
   const file = path.join(root, m[1], m[2]);
   if (path.relative(root, file).startsWith('..') || path.isAbsolute(path.relative(root, file))) return null;
   return file;
@@ -30,7 +30,7 @@ function handler(root) {
     let st = null;
     try { st = file && fs.statSync(file); } catch { /* not there */ }
     if (!st || !st.isFile()) { res.writeHead(404, HEAD); res.end(); return; }
-    res.writeHead(200, { ...HEAD, 'Content-Type': 'audio/wav', 'Content-Length': st.size, 'Cache-Control': 'no-cache' });
+    res.writeHead(200, { ...HEAD, 'Content-Type': file.endsWith(LIST) ? 'application/json' : 'audio/wav', 'Content-Length': st.size, 'Cache-Control': 'no-cache' });
     fs.createReadStream(file).pipe(res);
   };
 }

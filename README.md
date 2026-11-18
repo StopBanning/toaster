@@ -209,8 +209,8 @@ then the caret goes back to fix it.
   MIDI file (drums, bass, chords and lead on their own tracks) and Strudel code, each phrase
   written once and played in order with `arrange()`. Paste it into strudel.cc and press
   ctrl+enter. Beside them, a folder ending in `rebuilt`: the song rebuilt from its own sounds, its
-  code (`song.strudel.js`), the sounds it plays (cut from the song) and `rebuilt.wav`, what it sounds
-  like. Press **O** afterwards and the rebuilt song opens in strudel.cc; its sounds come from Toaster
+  code (`song.strudel.js`), the sounds it plays (cut from the song), `strudel.json` (the list that names
+  them, which the code's `samples(...)` line reads) and `rebuilt.wav`, what it sounds like. Press **O** afterwards and the rebuilt song opens in strudel.cc; its sounds come from Toaster
   while Toaster is open (Chrome asks once whether strudel.cc may reach apps on your computer: allow it).
   What it exports is an approximate musical sketch of the song you played, and the rebuilt song carries
   pieces of the recording itself: permission to publish or distribute either depends on the source
@@ -241,7 +241,7 @@ detector, or the Mac's Vision framework) and by Google's MediaPipe, both running
 Nothing is uploaded. For the tune in a saved song (X), the app keeps the last ten minutes of what it heard in memory only,
 never in a file, and it is gone when you quit; when you press X, Spotify's open-source Basic Pitch model listens to that
 stretch and Meta's open-source Demucs model takes it apart, both on your machine. While Toaster is open it serves the
-rebuilt songs' sounds to strudel.cc from your own computer (`localhost`, port 47283: only `.wav` files in the `rebuilt` folders,
+rebuilt songs' sounds to strudel.cc from your own computer (`localhost`, port 47283: only the `.wav` files and the `strudel.json` list in the `rebuilt` folders,
 and nothing outside your computer can reach it). It goes online only for these:
 
 - **Updates and stars:** GitHub, when it starts, to see whether there's a newer Toaster (turn that off in the help, under
