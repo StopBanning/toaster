@@ -4,6 +4,10 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.10', items: [
+    { act: 'export', text: "the rebuilt song's code reads clean: the song's name once, as its bank (s(\"kick\"), s(\"voice\") and the rest, then .bank(\"BlindingLights\")), one line for its sounds' list, every sung phrase on one line, and the tempo as the song's own (setcpm(171/8)); about half as many lines, and it plays the same" },
+    { act: 'strength', in: 'earth', text: "the four aurora views are sharper: their loop no longer blends two moments into a smear, and the motion keeps its detail" },
+  ] },
   { version: '0.5.9', items: [
     { act: 'export', text: "the rebuilt song's code plays every voice and keys sound it writes at strudel.cc (on one song 26 of 591 were silent before), and its sound no longer goes past full scale, so it plays clean, quieter than the record" },
     { act: 'export', text: "the rebuilt song X saves as a sound file is louder: about 3 dB under the record on the song measured, where it was 7 to 8" },

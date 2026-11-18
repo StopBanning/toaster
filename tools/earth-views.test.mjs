@@ -61,6 +61,19 @@ test('every view is on one shelf, in the tour once, and has its poster and its c
   EARTH_TOUR.forEach((c, i) => assert.notEqual(shelfOf(c), shelfOf(EARTH_TOUR[(i + 1) % EARTH_TOUR.length]), `${c} then ${EARTH_TOUR[(i + 1) % EARTH_TOUR.length]}`));
 });
 
+test('the four recut aurora views play from new -2 files (the old names stay for old apps), each pinned, with the poster unchanged', () => {
+  const earthJs = read('renderer/earth.js');
+  assert.match(earthJs, /const RECUT = new Set\(\['aurora', 'northern lights', 'aurora ribbon', 'aurora arm'\]\);/);
+  assert.match(earthJs, /const clipFile = \(name\) => file\(name\) \+ \(RECUT\.has\(name\) \? '-2' : ''\);/);
+  assert.match(earthJs, /await kept\(clipFile\(n\)\)/, "the app's kept copy is asked for by the clip's file");
+  assert.match(earthJs, /\/media\/earth\/\$\{clipFile\(n\)\}\.mp4/, "the web's URL too");
+  assert.match(earthJs, /earth\/\$\{file\(n\)\}\.jpg/, 'the poster keeps the view name');
+  for (const f of ['earth-aurora', 'earth-northern-lights', 'earth-aurora-ribbon', 'earth-aurora-arm']) {
+    assert.match(main, new RegExp(`'${f}-2': '[0-9a-f]{64}',`), f + '-2 checksum');
+    assert.match(main, new RegExp(`'${f}': '[0-9a-f]{64}',`), f + ' old checksum stays');
+  }
+});
+
 test("the tour goes round in its own order; the kept clips in memory are capped", () => {
   assert.match(body('nextEarthClip'), /state\.earthClip = EARTH_TOUR\[\(EARTH_TOUR\.indexOf\(state\.earthClip\) \+ 1\) % EARTH_TOUR\.length\];/);
   const earthJs = read('renderer/earth.js');

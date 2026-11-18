@@ -1,5 +1,6 @@
 // Toaster: wires the audio sources, the listening engine, the code view and the visuals.
 import { clock } from './clock.js';
+import { songTitle } from './rebuild.js';
 import { createAnimationDriver } from './dom-time.js';
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
@@ -1586,6 +1587,7 @@ function songNames(s) {
   const one = (x) => String(x || '').replace(/\s+/g, ' ').trim();
   return {
     name: s?.title ? `${s.artist ? one(s.artist) + ' - ' : ''}${one(s.title)}` : one(state.label) || 'song',
+    song: s?.title ? songTitle(s.artist, s.title) : one(state.label).split(' - ').pop(),   // (the song's own title, which the rebuilt code names its sounds after; a file with no tags: what follows its last ' - ')
     about: s?.title ? `"${one(s.title)}"${s.artist ? ' by ' + one(s.artist) : ''}` : 'whatever was playing',
   };
 }
@@ -1605,7 +1607,7 @@ async function exportSong() {
   try {
     // song() makes a snapshot; the worker owns a copy while listening keeps adding to the tape.
     // (named after the song it was: X just after a song ends exports that one)
-    const { name, about } = song.who || songNames(currentSong());
+    const { name, about, song: songTitle } = song.who || songNames(currentSong());
     // the tune: Spotify's Basic Pitch on the stretch of sound the song covers, its top line written as the lead (tune.js)
     const tune = await tuneFor(song, await ear, (done) => { $('status').textContent = `listening for the tune… ${Math.round(done * 100)}%`; },
       { keep: !!window.nc.saveRebuilt, onVoice: (done) => { $('status').textContent = `pulling the voice out… ${Math.round(done * 100)}%`; } });
@@ -1619,7 +1621,7 @@ async function exportSong() {
     if (tune.parts) {
       $('status').textContent = 'rebuilding it from its own sounds…';
       const origin = (Number.isFinite(song.origin) ? song.origin : song.originLast) - tune.t0;
-      const made = await rebuildSong({ parts: tune.parts, sr: 22050, bpm: song.bpm, origin, from: origin + 0.01, bars: song.bars.length, title: name, base: '{{base}}' });
+      const made = await rebuildSong({ parts: tune.parts, sr: 22050, bpm: song.bpm, origin, from: origin + 0.01, bars: song.bars.length, title: name, song: songTitle, base: '{{base}}' });
       if (made.code) {
         rebuilt = await window.nc.saveRebuilt(file, made.code, made.files).catch((err) => { console.warn('the rebuilt song could not be saved:', err); rebuildWhy = `it could not be saved (${String(err?.message || err).slice(0, 100)})`; return null; });
         if (rebuilt) {

@@ -17,7 +17,7 @@ const mix = load(mixFile);
 const t0 = performance.now();
 const r = rebuild(parts, sr, { from: +fromS, bars: +barsS, bpm: bpmS ? +bpmS : null });
 const audio = render(r, parts, sr);
-const { code, files } = program(r, audio.gain);
+const { code, files, samples } = program(r, audio.gain);
 const ms = Math.round(performance.now() - t0);
 const N = audio.length, mixed = new Float32Array(N);
 for (const p of Object.keys(audio.parts)) for (let i = 0; i < N; i++) mixed[i] += audio.parts[p][i] * audio.matched[p];   // (the parts at their record levels, as before the code's gains came down for headroom)
@@ -52,6 +52,7 @@ const wav = (f, x, scale = 1) => execFileSync('ffmpeg', ['-v', 'error', '-y', '-
 wav(path.join(out, 'rebuilt.wav'), mixed, 0.9 / peak);
 for (const [f, x] of Object.entries(files)) wav(path.join(out, 'samples', f), x);
 fs.writeFileSync(path.join(out, 'code.js'), code);
+fs.writeFileSync(path.join(out, 'samples', 'strudel.json'), `{\n${Object.entries(samples).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(',\n')}\n}\n`);
 const g = r.grid, line = (k) => [0, 1].map((b) => Array.from({ length: 16 }, (_, i) => (r.drums.steps[k].includes(r.first + b * 16 + i) ? 'x' : '.')).join(''));
 const info = {
   rate: sr, ms, bpm: +g.bpm.toFixed(3), bar_start_s: +audio.start.toFixed(3), seconds: +(r.count * g.bar).toFixed(2), match: +match.toFixed(3),

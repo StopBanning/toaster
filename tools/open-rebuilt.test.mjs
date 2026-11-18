@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { songTitle } from '../renderer/rebuild.js';   // (app.js imports it; the page's other imports are stand-ins here)
 
 const text = fs.readFileSync(new URL('../renderer/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const slice = (from, to) => { const a = text.indexOf(from), b = text.indexOf(to, a); assert.ok(a >= 0 && b > a, `found ${from}`); return text.slice(a, b); };
@@ -12,7 +13,7 @@ const slice = (from, to) => { const a = text.indexOf(from), b = text.indexOf(to,
 function page() {
   const opened = [], said = [];
   const state = { label: 'system audio' };
-  const context = { state, song: null, opened, said, strudelLink: (c) => 'link:' + c, flashStatus: (s) => said.push(s), window: { nc: { openStrudel: (u) => opened.push(u) } }, currentSong: () => context.song };
+  const context = { state, song: null, opened, said, songTitle, strudelLink: (c) => 'link:' + c, flashStatus: (s) => said.push(s), window: { nc: { openStrudel: (u) => opened.push(u) } }, currentSong: () => context.song };
   vm.runInNewContext(slice('function songNames(s) {', '\n}\n') + '\n}\n' + slice('let lastRebuilt = null;', '// O: the code as it is now') + ';globalThis.openRebuilt = openRebuilt; globalThis.setRebuilt = (r) => { lastRebuilt = r; };', context);
   return { context, opened, said, state, play: (s) => { context.song = s; } };
 }
