@@ -427,6 +427,10 @@ const iosBrowser = () => (/CriOS/.test(navigator.userAgent) ? 'Chrome' : /FxiOS/
 let picking = 0;
 const outdated = (ticket) => ticket !== picking;
 
+// iPhone Safari mutes Web Audio while the silent switch is on, unless the page says it plays media (Safari 17's
+// navigator.audioSession). 'playback' when the demo, a file or the radio is picked; 'auto' again for the mic.
+const audioSession = (type) => { try { if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type; } catch {} };
+
 async function useSystem() {
   const ticket = ++picking;
   await ac.resume();
@@ -454,6 +458,7 @@ async function useSystem() {
 
 async function useDemo() {
   const ticket = ++picking;
+  audioSession('playback');
   await ac.resume();
   if (outdated(ticket)) return;
   detach();
@@ -465,6 +470,7 @@ async function useDemo() {
 // gives it what to play, once it's this pick's turn.
 async function playElement(source, label, load) {
   const ticket = ++picking;
+  audioSession('playback');
   await ac.resume();
   if (outdated(ticket)) return;
   detach();
@@ -701,6 +707,7 @@ function micTrouble(err, refused) {
     + (b === 'Safari' ? ' (In Safari you can also tap aA in the address bar, then Website Settings, then Microphone, then Allow.)' : '');
 }
 const openMic = async (audio, refused) => {
+  audioSession('auto');
   try { return await navigator.mediaDevices.getUserMedia({ audio }); }   // (no mediaDevices at all on an insecure page: it throws, so the words come from here too)
   catch (err) { throw new Error(micTrouble(err, refused)); }
 };
