@@ -419,7 +419,26 @@ function createWebApi({ accessToken, fetch = globalThis.fetch, api = API }) {
     }
     return { ok: true };
   }
-  return { list, play, playback, control };
+  // Spotify's queue, as Spotify will play it: the song on now and what comes after it (the songs added to the queue first, then the
+  // rest of the album or playlist), songs only and at most ten. Spotify's Web API can read the queue and add to its end; it has no way
+  // to reorder it, take a song out, or put one next. (Colin, Sun Nov 22: the queue, after a reel on how Spotify and YT Music queue)
+  async function queue() {
+    const r = await call('GET', '/v1/me/player/queue');
+    const now = r?.currently_playing?.type === 'track' ? track(r.currently_playing) : null;
+    const next = (Array.isArray(r?.queue) ? r.queue : []).map(track).filter(Boolean).slice(0, 10);
+    return { now, next };
+  }
+  // enqueue({ uri: 'spotify:track:…' }) adds that song to the end of Spotify's queue, on whichever device Spotify is active on: this
+  // computer, or a speaker or a phone (the queue is the listener's, wherever it plays; Colin's was a living room speaker, paused, Sun Nov 22).
+  async function enqueue(request = {}) {
+    if (!TRACK_URI.test(request.uri || '')) throw new Error('That isn\'t a Spotify song.');
+    const r = await call('GET', '/v1/me/player');
+    const device = r?.device?.is_active && !r.device.is_restricted && typeof r.device.id === 'string' ? r.device : null;
+    if (!device) throw new Error('Start a song in Spotify first (on this computer or any speaker), then add to its queue.');
+    await call('POST', '/v1/me/player/queue', { query: { uri: request.uri, device_id: device.id } });
+    return { ok: true, device: device.name || '' };
+  }
+  return { list, play, playback, control, queue, enqueue };
 }
 
 // ---------------------------------------------------------------- the first tier: a pasted link (no sign-in, no Web API)

@@ -936,6 +936,8 @@ function setUpIpc() {
   ipcMain.handle('spotify:playback', () => spotify().connection.status().connected ? spotify().web.playback() : null);
   ipcMain.handle('spotify:control', (_e, request) => spotify().web.control(plainObject(request)));
   ipcMain.handle('spotify:play', (_e, request) => spotify().web.play(plainObject(request)));
+  ipcMain.handle('spotify:queue', () => spotify().connection.status().connected ? spotify().web.queue() : null);
+  ipcMain.handle('spotify:enqueue', (_e, request) => spotify().web.enqueue(plainObject(request)));
   // (the Spotify app comes to the front when it's told to play: Toaster, if it was in front, takes the front back, now and once more
   // after Spotify's own window has had a moment, so the song plays in the Spotify app behind the visuals; Colin, Nov 4)
   ipcMain.handle('spotify:open', (_e, text) => {

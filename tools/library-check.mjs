@@ -161,7 +161,7 @@ const bar = () => ev(`(() => { const q = (s) => document.querySelector('#player 
 // What a person puts away by hand: the source menu, where an error from a source ends up (a copy that may not hear the Mac's sound says so there
 // when a play takes the system's sound for its source), which would take the library's keys. Says whether it was up.
 const clearMenu = () => ev(`(() => { const menu = document.getElementById('menu'); const up = !menu.hidden; if (up) { menu.hidden = true; document.getElementById('alerts').innerHTML = ''; } return up; })()`);
-const spRowTexts = () => ev(`[...document.querySelectorAll('#library .lib-row')].map((r) => ({ i: +r.dataset.i, cls: r.className, text: r.innerText.replace(/\\s*▶ preview/g, '').replace(/\\s+/g, ' ').trim(), field: r.querySelector('input')?.dataset.field || null, value: r.querySelector('input')?.value ?? null }))`);
+const spRowTexts = () => ev(`[...document.querySelectorAll('#library .lib-row')].map((r) => ({ i: +r.dataset.i, cls: r.className, text: r.innerText.replace(/\\s*▶ preview/g, '').replace(/\\s*\\+ queue/g, '').replace(/\\s+/g, ' ').trim(), field: r.querySelector('input')?.dataset.field || null, value: r.querySelector('input')?.value ?? null }))`);
 const spLabels = () => ev(`[...document.querySelectorAll('#library .lib-label')].map((n) => n.textContent.trim())`);
 const spError = () => ev(`document.querySelector('#library .lib-err')?.textContent.trim() || ''`);
 // the AppleScript lines a copy with --player-dry-run was asked to send to tell the Spotify app to play something (it sends none of them)
@@ -764,7 +764,7 @@ if (phase === 'main') {
     expect('the status: connected and the Client ID; no token', /"connected":true/.test(status) && status.includes(CLIENT) && !/fake-access|fake-refresh|access_token|refresh_token/.test(status), status);
     expect('no token anywhere on the page: not in its DOM, its storage, or what its calls return', await ev(`(async () => { const all = document.documentElement.outerHTML + JSON.stringify({ ...localStorage }) + JSON.stringify(await window.nc.spotifyList({ list: 'playlists' })); return !/fake-access|fake-refresh/.test(all); })()`));
     const calls = await ev(`Object.keys(window.nc).filter((k) => /spotify/i.test(k)).sort().join()`);
-    expect('the page has its calls and no more (0.5.2 adds control, dashboard, playback for the mini player, search came in 0.5.0)', calls === 'spotifyConnect,spotifyControl,spotifyCover,spotifyDashboard,spotifyDisconnect,spotifyList,spotifyOpen,spotifyPlay,spotifyPlayback,spotifySearch,spotifyStatus', calls);
+    expect('the page has its calls and no more (0.5.2 adds control, dashboard, playback for the mini player, search came in 0.5.0, queue and enqueue after 0.5.10)', calls === 'spotifyConnect,spotifyControl,spotifyCover,spotifyDashboard,spotifyDisconnect,spotifyEnqueue,spotifyList,spotifyOpen,spotifyPlay,spotifyPlayback,spotifyQueue,spotifySearch,spotifyStatus', calls);
     const file = path.join(copy.profile, 'spotify.bin');
     expect('main kept the sign-in in the settings folder, as safeStorage gave it (here the fake\'s scrambling), not in the clear', fs.existsSync(file) && !/fake-access|fake-refresh|access/.test(fs.readFileSync(file).toString('latin1')));
     // and main refuses what it was not made for, whatever the page asks
@@ -854,6 +854,44 @@ if (phase === 'main') {
     await ev('__nc.library.close()');
   });
 
+  await step('spotify, the queue: Q on a song adds it to the end of Spotify\'s queue (said in the status line), the row\'s "+ queue" does the same, and the player bar shows what comes next', async () => {
+    const f = await spotifyReady();
+    f.state.queue.length = 0;
+    await openLibrary('spotify');
+    await sleep(500);
+    const posts = () => f.seen.filter((r) => r.method === 'POST' && r.path === '/v1/me/player/queue');
+    const plays = () => f.seen.filter((r) => r.method === 'PUT' && r.path === '/v1/me/player/play').length;
+    const here = async (fn, ms) => { for (let t = 0; t < ms; t += 100) { if (fn()) return true; await sleep(100); } return false; };
+    const album = ALBUMS[0];
+    await spGoto(`(r) => r.kind === 'coll' && r.coll.name === '(III)'`);
+    await key('ArrowRight');
+    await until(`__nc.library.rows().filter((r) => r.kind === 'strack').length === 12`, 8000);
+    await key('ArrowDown'); await key('ArrowDown'); // (the third song)
+    const playsBefore = plays();
+    await key('q');
+    expect('Q asks Spotify to add that song to its queue, once, on the active device', await here(() => posts().length === 1, 5000) && posts()[0].query.uri === `spotify:track:${album.tracks[2].id}` && posts()[0].query.device_id === 'fake-device-1', posts().map((r) => r.query));
+    expect('the status line says so, with the song', await until(`/^added to Spotify's queue: /.test(document.getElementById('status').textContent)`, 4000), await ev(`document.getElementById('status').textContent`));
+    expect('nothing started playing: no play was sent', plays() === playsBefore);
+    const buttons = await ev(`document.querySelectorAll('#library .lib-row.track.sp [data-do="queue"]').length`);
+    expect('each song row has a "+ queue" (the account is connected)', buttons === 12, buttons);
+    await clickOn(`#library .lib-row.track.sp[data-i="${await cursorIndex() + 1}"] [data-do="queue"]`);
+    expect('its "+ queue" adds the next song', await here(() => posts().length === 2, 5000) && posts()[1].query.uri === `spotify:track:${album.tracks[3].id}`, posts().map((r) => r.query.uri));
+    expect('the keys line offers Q', /Q queue/.test(await ev(`document.querySelector('#library').innerText`)));
+    await clearMenu();
+    await ev('__nc.library.close()');
+    // the player bar on a Spotify song: its line of what's next is Spotify's queue, the two songs added first
+    // (at desktop width: under 600 px the Spotify bar keeps its song's two lines and the queue's line gives way)
+    await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+    const on = LIKED[0];
+    await ev(`__nc.nowPlaying({ title: ${JSON.stringify(on.title)}, artist: ${JSON.stringify(on.artist)}, app: 'Spotify', playing: true, art: '' }); true`);
+    const want = `next "${album.tracks[2].title}" , "${album.tracks[3].title}"`;
+    const shown = await until(`(() => { const n = document.querySelector('#player .pl-near'); return !!n && !n.hidden && n.textContent === ${JSON.stringify(want)} && getComputedStyle(n).display !== 'none' && n.getBoundingClientRect().width > 80; })()`, 20000);
+    expect('the player bar shows what Spotify plays next: the two songs just added', shown, await ev(`(() => { const n = document.querySelector('#player .pl-near'); return n && [n.hidden, n.textContent, getComputedStyle(n).display]; })()`));
+    facts.queuePicture = await shot('spotify-queue-bar', { x: 0, y: 620, width: 1280, height: 180, scale: 1 });
+    await send('Emulation.clearDeviceMetricsOverride');
+    f.state.queue.length = 0;
+  });
+
   await step('spotify, what goes wrong is said as main says it: no Premium, no open player, a slow-down, a token that lapsed early (one fresh try), a connection that is gone (the field comes back, and signing in again works)', async () => {
     const f = await spotifyReady();
     await openLibrary('spotify');
@@ -877,7 +915,7 @@ if (phase === 'main') {
     const refreshed = refreshes();
     f.state.expire401 = 1;
     await play();
-    expect('a token that lapsed early: one refresh (the refresh token, no secret), then the same play, and nothing to say', refreshes() === refreshed + 1 && (await spError()) === '' && f.seen.at(-1).auth === `Bearer fake-access-${f.state.tokens}`, { refreshes: refreshes(), last: f.seen.at(-1) });
+    expect('a token that lapsed early: one refresh (the refresh token, no secret), then the same play, and nothing to say', refreshes() === refreshed + 1 && (await spError()) === '' && f.seen.filter((r) => r.path.startsWith('/v1/')).at(-1).auth === `Bearer fake-access-${f.state.tokens}`, { refreshes: refreshes(), last: f.seen.at(-1) });
     // a sign-in Spotify no longer takes: the refresh is refused, the kept sign-in goes, and the way back is shown
     // a network that is gone: the connection is cut, and it is said so in Toaster's words, not as the browser's "fetch failed"
     f.state.drop = 1;

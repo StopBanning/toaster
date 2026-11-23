@@ -362,23 +362,24 @@ test('the fake-Spotify switch takes only a loopback address, maps Spotify\'s pic
 
 // ---------------------------------------------------------------- what the page asks main for
 
-test('the page has eleven Spotify calls and nothing else, none of them a token, and main has a handler for each and no more', () => {
+test('the page has thirteen Spotify calls and nothing else, none of them a token, and main has a handler for each and no more', () => {
   const preload = read('preload.js'), main = read('main.js');
   const calls = [...preload.matchAll(/^ {2}(spotify\w+): \(([^)]*)\) => ipcRenderer\.invoke\('(spotify:[a-z]+)'((?:, \w+)*)\),$/gm)].map((m) => [m[1], m[2], m[3], m[4]]);
   assert.deepEqual(calls, [
     ['spotifyStatus', '', 'spotify:status', ''], ['spotifyConnect', 'clientId', 'spotify:connect', ', clientId'], ['spotifyDisconnect', '', 'spotify:disconnect', ''],
-    ['spotifyList', 'request', 'spotify:list', ', request'], ['spotifyPlayback', '', 'spotify:playback', ''], ['spotifyControl', 'request', 'spotify:control', ', request'], ['spotifyPlay', 'request', 'spotify:play', ', request'], ['spotifyOpen', 'text', 'spotify:open', ', text'], ['spotifySearch', 'query', 'spotify:search', ', query'], ['spotifyCover', 'url', 'spotify:cover', ', url'], ['spotifyDashboard', '', 'spotify:dashboard', ''],
+    ['spotifyList', 'request', 'spotify:list', ', request'], ['spotifyPlayback', '', 'spotify:playback', ''], ['spotifyControl', 'request', 'spotify:control', ', request'], ['spotifyPlay', 'request', 'spotify:play', ', request'], ['spotifyQueue', '', 'spotify:queue', ''], ['spotifyEnqueue', 'request', 'spotify:enqueue', ', request'], ['spotifyOpen', 'text', 'spotify:open', ', text'], ['spotifySearch', 'query', 'spotify:search', ', query'], ['spotifyCover', 'url', 'spotify:cover', ', url'], ['spotifyDashboard', '', 'spotify:dashboard', ''],
   ]);
   const code = preload.replace(/\/\/[^\n]*/g, '');
-  assert.equal([...code.matchAll(/'spotify:[a-z]+'/g)].length, 11, 'no extra channel');
+  assert.equal([...code.matchAll(/'spotify:[a-z]+'/g)].length, 13, 'no extra channel');
   assert.doesNotMatch(code, /ipcRenderer\.on\('spotify/, 'nothing pushed to the page');
   assert.doesNotMatch(code.split('\n').filter((l) => /spotify/i.test(l)).join('\n'), /token|safeStorage|secret/i, 'and no word of a token in what it has');
   const handlers = Object.fromEntries([...main.matchAll(/ipcMain\.handle\('(spotify:\w+)', \(([^)]*)\) =>/g)].map((m) => [m[1], m[2]]));
-  assert.deepEqual(handlers, { 'spotify:status': '', 'spotify:connect': '_e, clientId', 'spotify:disconnect': '', 'spotify:list': '_e, request', 'spotify:playback': '', 'spotify:control': '_e, request', 'spotify:play': '_e, request', 'spotify:open': '_e, text', 'spotify:search': '_e, query', 'spotify:cover': '_e, url', 'spotify:dashboard': '' });
+  assert.deepEqual(handlers, { 'spotify:status': '', 'spotify:connect': '_e, clientId', 'spotify:disconnect': '', 'spotify:list': '_e, request', 'spotify:playback': '', 'spotify:control': '_e, request', 'spotify:play': '_e, request', 'spotify:queue': '', 'spotify:enqueue': '_e, request', 'spotify:open': '_e, text', 'spotify:search': '_e, query', 'spotify:cover': '_e, url', 'spotify:dashboard': '' });
   const block = main.slice(main.indexOf("ipcMain.handle('spotify:status'"), main.indexOf('\n}\n', main.indexOf("ipcMain.handle('spotify:cover'")));
   assert.doesNotMatch(block, /accessToken|access_token|refresh|safeStorage|\.bin/, 'no handler hands a token or the store over');
   assert.match(block, /spotify\(\)\.web\.list\(plainObject\(request\)\)/);
   assert.match(block, /spotify\(\)\.web\.play\(plainObject\(request\)\)/);
+  assert.match(block, /spotify\(\)\.web\.enqueue\(plainObject\(request\)\)/);
   assert.match(block, /require\('\.\/helpers\/spotify\.cjs'\)\.openLink\(text, \(uri\) => player\(\)\.playLink\(uri\)\)/, 'a pasted link goes through the player\'s runner, so a dry-run copy sends nothing');
   assert.match(block, /require\('\.\/helpers\/spotify\.cjs'\)\.fetchCover\(url, \{ fetch: spotify\(\)\.fetch \}\)/);
 });
@@ -794,4 +795,19 @@ test('the page keeps the links with the other settings, names one from the song 
   assert.match(csp, /img-src 'self' data: blob:;/);
   assert.match(csp, /frame-src https:\/\/open\.spotify\.com\/embed\/track\/;/);
   assert.doesNotMatch(csp, /img-src[^;]*(?:scdn|spotify)/);
+});
+
+test('Q adds the song under the cursor to Spotify\'s queue, with the account connected; the row\'s "+ queue" does the same and shows only then', () => {
+  const panel = read('renderer/library-panel.js'), app = read('renderer/app.js');
+  const onKey = panel.slice(panel.indexOf('function onKey(e) {'), panel.indexOf("win.addEventListener('keydown', onKey, true);"));
+  assert.match(onKey, /S\.section === 'spotify' && X\.status\?\.connected && k\.toLowerCase\(\) === 'q'\) take\(\(\) => \{ if \(!e\.repeat\) spQueue\(rows\(\)\[cursor\(\)\]\); \}\)/);
+  const fn = panel.slice(panel.indexOf('async function spQueue(row) {'), panel.indexOf('\n  }\n', panel.indexOf('async function spQueue(row) {')));
+  assert.match(fn, /row\?\.kind !== 'strack'/, 'songs only');
+  assert.match(fn, /if \(!X\.status\?\.connected\)/, 'the Web API needs the account');
+  assert.match(fn, /const said = await sp\.enqueue\(row\.track\.uri\)/);
+  assert.match(fn, /toaster:spotify-queued/, 'the player bar reads the queue again at once');
+  assert.match(panel, /X\.status\?\.connected \? `<button type="button" class="lib-sp-action lib-sp-watch lib-sp-queue" data-do="queue"/);
+  assert.match(panel, /if \(act === 'queue'\) \{ spQueue\(row\); return; \}/);
+  assert.match(panel, /\.\.\.\(X\.status\?\.connected \? \['Q queue'\] : \[\]\)/);
+  assert.match(app, /enqueue: \(uri\) => spotifyBridge\(\)\.spotifyEnqueue\(\{ uri \}\),/);
 });

@@ -376,8 +376,13 @@ export function resetCodegen() {
 // sample Strudel doesn't have) is kept as a comment with the same notes on a synth under it.
 // texts: each line's text, by line id. phase: the current four-bar slot when O was pressed;
 // shifting the whole pattern keeps nested notes, rhythms and the punchcard together.
+// The artist as words say it: a file with no artist tag is "File" (audio-tags.js songOfFile, for the code's first line and the
+// card), which isn't anyone to be "by".
+export const realArtist = (artist) => { const a = String(artist || '').replace(/\s+/g, ' ').trim(); return a === 'File' ? '' : a; };
+
 export function strudelProgram(texts, song, phase = 0, bassRhythm = null) {
-  const about = song?.title ? `"${cleanTitle(song.title)}"${song.artist ? ' by ' + song.artist : ''}` : 'whatever was playing';
+  const by = realArtist(song?.artist);
+  const about = song?.title ? `"${cleanTitle(song.title)}"${by ? ' by ' + by : ''}` : 'whatever was playing';
   const out = [`// ${about}, written out by toaster`, '// ctrl+enter plays it, ctrl+. stops'];
   for (const id of LINE_IDS) {
     let line = (texts[id] || '').trim();

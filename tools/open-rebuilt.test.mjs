@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { songTitle } from '../renderer/rebuild.js';   // (app.js imports it; the page's other imports are stand-ins here)
+import { songTitle } from '../renderer/rebuild.js';   // (app.js imports these two; the page's other imports are stand-ins here)
+import { realArtist, strudelProgram } from '../renderer/codegen.js';
 
 const text = fs.readFileSync(new URL('../renderer/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const slice = (from, to) => { const a = text.indexOf(from), b = text.indexOf(to, a); assert.ok(a >= 0 && b > a, `found ${from}`); return text.slice(a, b); };
@@ -13,8 +14,8 @@ const slice = (from, to) => { const a = text.indexOf(from), b = text.indexOf(to,
 function page() {
   const opened = [], said = [];
   const state = { label: 'system audio' };
-  const context = { state, song: null, opened, said, songTitle, strudelLink: (c) => 'link:' + c, flashStatus: (s) => said.push(s), window: { nc: { openStrudel: (u) => opened.push(u) } }, currentSong: () => context.song };
-  vm.runInNewContext(slice('function songNames(s) {', '\n}\n') + '\n}\n' + slice('let lastRebuilt = null;', '// O: the code as it is now') + ';globalThis.openRebuilt = openRebuilt; globalThis.setRebuilt = (r) => { lastRebuilt = r; };', context);
+  const context = { state, song: null, opened, said, songTitle, realArtist, strudelLink: (c) => 'link:' + c, flashStatus: (s) => said.push(s), window: { nc: { openStrudel: (u) => opened.push(u) } }, currentSong: () => context.song };
+  vm.runInNewContext(slice('function songNames(s) {', '\n}\n') + '\n}\n' + slice('let lastRebuilt = null;', '// O: the code as it is now') + ';globalThis.openRebuilt = openRebuilt; globalThis.songNames = songNames; globalThis.setRebuilt = (r) => { lastRebuilt = r; };', context);
   return { context, opened, said, state, play: (s) => { context.song = s; } };
 }
 
@@ -47,4 +48,22 @@ test('a rebuilt song of a named song is not opened once the song playing has no 
   p.context.setRebuilt(null);
   p.play({ title: 'a', artist: 'b' });
   assert.equal(p.context.openRebuilt(), false, 'nothing rebuilt');
+});
+
+test('a file with no artist tag is saved under its title alone, not "File - ..." (its stand-in artist is no one to be "by")', () => {
+  const p = page();
+  const untagged = p.context.songNames({ title: 'The Weeknd - Blinding Lights', artist: 'File' });
+  assert.equal(untagged.name, 'The Weeknd - Blinding Lights');
+  assert.equal(untagged.about, '"The Weeknd - Blinding Lights"');
+  assert.equal(untagged.song, 'Blinding Lights');
+  const tagged = p.context.songNames({ title: 'Blinding Lights', artist: 'The Weeknd' });
+  assert.equal(tagged.name, 'The Weeknd - Blinding Lights');
+  assert.equal(tagged.about, '"Blinding Lights" by The Weeknd');
+  assert.equal(realArtist('  The   Weeknd '), 'The Weeknd');
+  assert.equal(realArtist(undefined), '');
+});
+
+test('O\'s code names a file with no artist tag by its title alone ("by File" before)', () => {
+  assert.match(strudelProgram({}, { title: 'The Weeknd - Blinding Lights', artist: 'File' }).split('\n')[0], /^\/\/ "The Weeknd - Blinding Lights", written out by toaster$/);
+  assert.match(strudelProgram({}, { title: 'Blinding Lights', artist: 'The Weeknd' }).split('\n')[0], /^\/\/ "Blinding Lights" by The Weeknd, written out by toaster$/);
 });

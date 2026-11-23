@@ -61,6 +61,7 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
     expire401: 0, // the next n Web API calls are answered 401 (an expired token): the app should ask for a new one and go on
     refreshFails: false, // the token service refuses a refresh (invalid_grant: the listener took the app's access away)
     playFails: null, // { status, reason, message }: the play call is refused (PREMIUM_REQUIRED, say)
+    queue: [], // the songs added to Spotify's queue (POST /v1/me/player/queue), by uri: GET /v1/me/player/queue lists them, then the liked songs after the one on
     devices: [{ id: 'fake-device-1', name: 'Colin\'s MacBook', is_active: true, is_restricted: false, type: 'Computer' }],
     limit: 0, // when above 0 the next n Web API calls are answered 429, "slow down", with a Retry-After of 7
     extra: 0, // this many more playlists after the real ones (mix 1, mix 2...), for a list that goes on over more than one page
@@ -173,6 +174,16 @@ export async function startFakeSpotify({ port = 0, images = {} } = {}) {
       if (req.method === 'POST' && ['/v1/me/player/next', '/v1/me/player/previous'].includes(url.pathname)) {
         const step = url.pathname.endsWith('next') ? 1 : -1, at = LIKED.indexOf(state.playbackTrack);
         state.playbackTrack = LIKED[(at + step + LIKED.length) % LIKED.length]; state.playbackPosition = 0; return send(res, 204, null);
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/me/player/queue') {
+        if (!state.playbackTrack) return ok({ currently_playing: null, queue: [] });
+        const all = [...LIKED, ...ALBUMS.flatMap((a) => a.tracks)], at = LIKED.indexOf(state.playbackTrack);
+        const added = state.queue.map((uri) => all.find((t) => trackOf(t).uri === uri)).filter(Boolean);
+        return ok({ currently_playing: trackOf(state.playbackTrack), queue: [...added, ...LIKED.slice(at + 1)].slice(0, 20).map((t) => trackOf(t)) });
+      }
+      if (req.method === 'POST' && url.pathname === '/v1/me/player/queue') {
+        if (!/^spotify:track:[A-Za-z0-9]{22}$/.test(url.searchParams.get('uri') || '')) return send(res, 400, { error: { status: 400, message: 'Invalid track uri' } });
+        state.queue.push(url.searchParams.get('uri')); return send(res, 204, null);
       }
       if (req.method === 'GET' && url.pathname === '/v1/me') return ok({ id: 'colin', display_name: 'colin', uri: 'spotify:user:colin', type: 'user' });
       if (req.method === 'GET' && url.pathname === '/v1/me/player/devices') return ok({ devices: state.devices });

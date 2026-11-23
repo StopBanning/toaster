@@ -175,3 +175,50 @@ test('zero-setup search opens only a fixed, encoded Spotify search URL and repor
   assert.equal(new URL(searchUrl('https://evil.test/path')).hostname, 'open.spotify.com');
   await assert.rejects(openSearch('Air', async () => { throw new Error('OS failure'); }), /could not open Spotify search/);
 });
+
+// ---------------------------------------------------------------- the queue (Sun Nov 22)
+const song = (n, extra = {}) => ({ type: 'track', id: String(n).padStart(22, 'T'), uri: TRACK(n), name: `Song ${n}`, artists: [{ id: id('R'), name: 'Band' }], duration_ms: 1000, album: { images: [] }, ...extra });
+const playing = { device: { id: 'mac', type: 'Computer', is_active: true, is_restricted: false }, is_playing: true, progress_ms: 0, item: song(1), actions: {} };
+
+test('the queue: the song on now and up to ten songs after it, as Spotify will play them; episodes and local files are left out', async () => {
+  const f = await fakeApi({ 'GET /v1/me/player/queue': () => [200, { currently_playing: song(1),
+    queue: [song(2), { type: 'episode', uri: 'spotify:episode:x' }, song(3, { is_local: true }), ...Array.from({ length: 12 }, (_, i) => song(10 + i))] }] });
+  try {
+    const q = await createWebApi({ ...tokens(), api: f.api }).queue();
+    assert.equal(q.now.name, 'Song 1');
+    assert.deepEqual(q.next.map((t) => t.name), ['Song 2', ...Array.from({ length: 9 }, (_, i) => `Song ${10 + i}`)]);
+    assert.equal(q.next[0].by, 'Band');
+  } finally { await f.close(); }
+});
+
+test('the queue with nothing playing: no song on now, nothing next', async () => {
+  const f = await fakeApi({ 'GET /v1/me/player/queue': () => [200, { currently_playing: null, queue: [] }] });
+  try { assert.deepEqual(await createWebApi({ ...tokens(), api: f.api }).queue(), { now: null, next: [] }); } finally { await f.close(); }
+});
+
+test('enqueue adds the song to the end of the queue on the device Spotify is active on; anything but a song is refused first', async () => {
+  const f = await fakeApi({ 'GET /v1/me/player': () => [200, playing], 'POST /v1/me/player/queue': () => [204] });
+  try {
+    const web = createWebApi({ ...tokens(), api: f.api });
+    assert.deepEqual(await web.enqueue({ uri: TRACK(7) }), { ok: true, device: '' });
+    const sent = f.seen.find((r) => r.method === 'POST');
+    assert.equal(sent.path, '/v1/me/player/queue');
+    assert.deepEqual(sent.query, { uri: TRACK(7), device_id: 'mac' });
+    const before = f.seen.length;
+    for (const uri of ['spotify:album:' + ALBUM, 'spotify:track:short', '', undefined]) await assert.rejects(web.enqueue({ uri }), /isn't a Spotify song/);
+    assert.equal(f.seen.length, before, 'nothing reached Spotify');
+  } finally { await f.close(); }
+});
+
+test('enqueue with no active device says to start a song first, and adds nothing; a paused speaker that is active takes it', async () => {
+  const f = await fakeApi({ 'GET /v1/me/player': () => [204], 'POST /v1/me/player/queue': () => [204] });
+  try {
+    await assert.rejects(createWebApi({ ...tokens(), api: f.api }).enqueue({ uri: TRACK(7) }), /Start a song in Spotify first/);
+    assert.ok(!f.seen.some((r) => r.method === 'POST'));
+  } finally { await f.close(); }
+  const g = await fakeApi({ 'GET /v1/me/player': () => [200, { ...playing, is_playing: false, device: { id: 'lr', name: 'Living Room', type: 'Speaker', is_active: true, is_restricted: false } }], 'POST /v1/me/player/queue': () => [204] });
+  try {
+    assert.deepEqual(await createWebApi({ ...tokens(), api: g.api }).enqueue({ uri: TRACK(7) }), { ok: true, device: 'Living Room' });
+    assert.equal(g.seen.find((r) => r.method === 'POST').query.device_id, 'lr');
+  } finally { await g.close(); }
+});
