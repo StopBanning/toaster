@@ -17,6 +17,11 @@ const REPO_PAGE = 'https://github.com/StopBanning/toaster';
 const EARTH_SUMS = {
   'earth-aurora': '7e18fe8b83f26155c50e66d53372f95728e6098306a6abccdfee96c9b3b75c7b',
   'earth-northern-lights': '8181248931a137dce2a3839f345e5295b44404e17570ea903bf6d7ff99e42d4f',
+  // (the four aurora views, cut again: new names, so the old files stay for the apps that ask for them)
+  'earth-aurora-2': '635f44cbbf767b6bea360f0114367039759aa57e7f48327b4169165c238e2bbf',
+  'earth-northern-lights-2': '69a73b330d44d919af5d7f273995a92028c6ec172bd7ce45c47cf183af42298f',
+  'earth-aurora-ribbon-2': 'f3c06031ecb4d1b951005ff0cf034fe0760ecec826aab9ef1f1e8ac3a82c70e8',
+  'earth-aurora-arm-2': '4d5ba88d5e56fa7c5078f91b7eef4974ff5d3247e5500ba446f95be683457bbb',
   'earth-city-lights': 'c1e4342f92a1d8ca8d722b217f107db4a10dbea36fbd2cacc3d6cd8129ec1cf5',
   'earth-dawn': 'ca3f6b0f8a84aed35a11d5fb6caebbd4eb2b9eec3f65d762d721f41995296a8a',
   'earth-day': '40d0fd820153b5008e1a0bbb8d9b35e5b732bf0f2aa81758b1764c3a39c32672',
@@ -902,13 +907,14 @@ function setUpIpc() {
   });
   // The song rebuilt from its own sounds (helpers/save-rebuilt.cjs): a folder beside the MIDI file X just saved, named after it. The
   // page gives that file's path back; anything not a .mid file directly in the songs folder is refused.
-  // Its code names where its sounds are served from while Toaster is open (helpers/sound-server.cjs): the page writes '{{base}}'.
+  // Its code names where its sounds are served from while Toaster is open (helpers/sound-server.cjs): the page writes {{base}} (samples('{{base}}strudel.json')).
   ipcMain.handle('song:save-rebuilt', async (_e, midiFile, code, files) => {
     const dir = songsDir(), file = path.resolve(String(midiFile || ''));
     if (path.dirname(file) !== path.resolve(dir) || !file.endsWith('.mid')) throw new Error('not a song X saved');
     const folder = path.basename(file.slice(0, -4)) + ' rebuilt', server = await (soundServer ??= require('./helpers/sound-server.cjs').start(songsDir));
-    const final = String(code || '').replace("'{{base}}'", server ? `'${server.base(folder)}'` : "''");
-    return { file: require('./helpers/save-rebuilt.cjs').saveRebuilt(path.join(dir, folder), final, plainObject(files)), code: final, served: !!server };
+    const address = server ? server.base(folder) : '', saver = require('./helpers/save-rebuilt.cjs');
+    const final = String(code || '').replace('{{base}}', () => address);   // (the list of sounds, strudel.json, gets it too)
+    return { file: saver.saveRebuilt(path.join(dir, folder), final, saver.withBase(plainObject(files), address)), code: final, served: !!server };
   });
   // The library (above): the folder in force, choosing another (the system's dialog), what the last scan kept, a scan (its progress
   // goes to the page that asked), and the bytes of one audio file of that folder, which helpers/library.cjs refuses unless it is
@@ -930,6 +936,8 @@ function setUpIpc() {
   ipcMain.handle('spotify:playback', () => spotify().connection.status().connected ? spotify().web.playback() : null);
   ipcMain.handle('spotify:control', (_e, request) => spotify().web.control(plainObject(request)));
   ipcMain.handle('spotify:play', (_e, request) => spotify().web.play(plainObject(request)));
+  ipcMain.handle('spotify:queue', () => spotify().connection.status().connected ? spotify().web.queue() : null);
+  ipcMain.handle('spotify:enqueue', (_e, request) => spotify().web.enqueue(plainObject(request)));
   // (the Spotify app comes to the front when it's told to play: Toaster, if it was in front, takes the front back, now and once more
   // after Spotify's own window has had a moment, so the song plays in the Spotify app behind the visuals; Colin, Nov 4)
   ipcMain.handle('spotify:open', (_e, text) => {

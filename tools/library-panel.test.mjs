@@ -337,3 +337,25 @@ test('C3: changing tracks within an album preserves album rows and replaces only
     assert.ok([...changed.values()].every((s) => !/class="lib-row album/.test(s)));
   } finally { f.panel.close(); }
 });
+
+test('your music with no music yet has no repeat or order buttons ("plays the album through, then repeats  in order" over nothing); they come with the albums', async () => {
+  const { nc, scans, dialog, end } = bridge();
+  const { panel, meta } = page(desktopSource(nc));
+  try {
+    panel.open('music');
+    await until(() => scans.length === 1, 'the folder is being scanned');
+    assert.doesNotMatch(meta.innerHTML, /data-do="(repeat|shuffle)"/, 'no albums yet: no buttons');
+    end(scans[0], { folder: '~/Old', tracks: [], covers: {} });
+    await until(() => !panel.state.scanning, 'the scan ends');
+    assert.doesNotMatch(meta.innerHTML, /data-do="(repeat|shuffle)"/, 'an empty folder: still none');
+    const choosing = panel.choose();   // (another folder, with music in it)
+    await until(() => dialog.asked === 1, 'the dialog is asked for');
+    dialog.answer('Other');
+    await until(() => scans.length === 2, 'the new folder is scanned');
+    end(scans[1], tracksIn('Other', 'Home'));
+    await choosing;
+    await until(() => !panel.state.scanning && panel.state.albums.length === 1, 'the albums are in');
+    assert.match(meta.innerHTML, /data-do="repeat"[^>]*>plays the album through, then repeats</);
+    assert.match(meta.innerHTML, /data-do="shuffle"[^>]*>in order</);
+  } finally { panel.close(); }
+});

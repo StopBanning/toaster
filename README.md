@@ -139,7 +139,9 @@ Open the library (**G**) and choose **spotify**. No setup is needed: type a quer
 
 Open the artist result, choose an artist beside a song, or press **A** on a song to see their page. You can also choose the artist in the now-playing strip or paste an artist link. Albums, singles and EPs, appearances and compilations open with **→**; Enter plays a song inside its album. Artist songs come from Spotify search, rather than its unavailable top-tracks list. **Esc** returns to your previous list and cursor. Artist pages show Spotify's original pictures; album headers show the year when supplied. **Open Spotify** keeps exploring in Spotify's app.
 
-When the system's player is Spotify, the player bar becomes a compact Spotify player: cover, title and artist, play/pause, back and next, and timing when available. Tab to a button and press Space or Enter to use it. With your account connected, it reads the current song's position and available buttons from Spotify; without a connection it keeps the native controls. Progress is read-only. The Spotify mark opens the song, or searches for it when only the system's song name is known. It follows the theme and the player bar's hide and recording settings. **W** keeps its existing small visual panel.
+When the system's player is Spotify, the player bar becomes a compact Spotify player: cover, title and artist, play/pause, back and next, and timing when available. Tab to a button and press Space or Enter to use it. With your account connected, it reads the current song's position and available buttons from Spotify; without a connection it keeps the native controls. Progress is read-only. The Spotify mark opens the song, or searches for it when only the system's song name is known. It follows the theme and the player bar's hide and recording settings. **W** keeps its existing small visual panel. With your account connected and the bar wide enough, it also shows what Spotify plays next (next "Jóga" , "Hunter"), read from Spotify's queue.
+
+**Q** on a Spotify song in the library (or its **+ queue**) adds it to the end of Spotify's queue instead of playing it now. This needs your account connected. Spotify lets apps add to the end of the queue, but not reorder it, take songs out or put one next.
 
 On a Spotify song, choose **▶ preview** or press **V** and Spotify's own player opens inside Toaster with a 30-second preview of the song. **open in Spotify** plays the whole song, and its music video when it has one, in the Spotify app (Spotify's full songs and videos need DRM that Toaster's app doesn't include). **Esc** closes it. It needs an internet connection; pause any other player first.
 
@@ -148,6 +150,12 @@ On a Spotify song, choose **▶ preview** or press **V** and Spotify's own playe
 V steps through them, best first: the scenery, the Earth, the backrooms, worlds, chrome, the spaghetti, the spectrogram, lanes, cuts, fire, the code rain, off. A changes the scene or
 the look (see the keys above).
 
+- **The Earth** is NASA's own footage from the space station, twenty views: auroras, city lights and moonlit clouds on the
+  night side; deserts, oceans, mountains and a hurricane by day; the whole Earth, the sun rising as a star and a capsule
+  arriving. The bass brightens the auroras and the kick twinkles the cities. A picks the view, or all of them, a new one every
+  8 bars. Each view downloads the first time you pick it.
+- **The backrooms** is an endless walk through yellow rooms: the kick brightens the lights, a drop blows them out.
+- **Lanes** flies the song's patterns at you down a tunnel, each part a lane, each step a tile that flashes as it plays.
 - **Spectrogram** is what Toaster hears, as a landscape, and what it makes of it: the sound rises out of a floor in glossy hills, the frequencies across it (the bass at the right, the highs far off to the left), a bar of time rolling toward you from the back, louder taller and further up a rainbow from orange through green and blue to violet and white (after the 3D spectrum analysers); a faint line crosses it on each beat and a bright one where the chord changes, named at its end, and each time Toaster recognises something a pin rides along with the code it became, bd on a kick, cp on a clap, hh on the hats, each bass note as the code writes it (e1, a3).
 - **Cuts** gives each drum a scene of its own, cut to on its hits, each a view of the song in Toaster's look: the drum's word huge, its line of code magnified, its 16 steps as a punchcard, the spectrum falling in dots, the waveform, you or the cover in big dots, the tempo and key, the spectrum as text mirrored both ways like a kaleidoscope, a tunnel of rectangles flowing out (those two after rentalunit5's video-synth pieces).
 - **Fire** is the old Doom fire in square pixels, lit by the song: it burns steady along the bottom, a little lower where the spectrum is quiet (the bass in the middle, the highs out at the sides); the song sets how high it reaches, the kick lifts it and the hats spit sparks. It burns low under the code, and smoulders while the song is quiet. When it comes on, and on every drop, it flares, leaping to twice its height and dying back (an idea from not.axel on Threads).
@@ -168,6 +176,8 @@ the look (see the keys above).
   - The sharks (after stackedlol's ascii-sharks), shallow water seen from above, a hammerhead, a blacktip reef shark and a zebra shark circling the toaster on its float, each drawn as tiles of colour with a glyph on each, its hide shimmering, schools of little fish (a stroke each, along its way) scattering from them, a bait ball of them circling the float, pulsing on each kick, which the sharks charge on a drop (and every 8 bars, when the toast pops), cutting through it over the toaster till it scatters, after which it gathers again, each kick rippling out from the float and making the fish flinch; by day the light's net drifts on the sand beside their shadows, by night their wakes light up the plankton
   - The festival, always at night, a stage on the far shore of a lake in the mountains, the toaster DJing at its decks in headphones, a sign on the truss lit up (TOASTER), its lights' beams fanning up into the sky and sweeping round every two bars, flaring on the kicks, the screen behind the decks playing the music as bars, the speakers thumping, the show's colours changing every 8 bars; fireworks going up over the mountains every 8 bars and on a drop, bursting into streaking sparks; the crowd at the water's edge against the light, heads bobbing on the beat, glow sticks and phones up, every arm in the air when the fireworks go; the lake mirroring all of it
   - The koi pond, seen from above, five koi (a kohaku, a showa, a sanke, a yamabuki and an orange ogon) swimming slow rounds of it, each drawn as tiles of colour with a glyph on each, their fins and tails see-through, a little faster on the kicks; lily pads in the corners, two in flower, the koi passing under them; the toaster on a lily pad of its own, a ripple spreading from it on each kick; when the toast pops (every 8 bars) the nearest koi comes for the crumbs, and on a drop they all do, gathering round the pad like the petals of a flower; click the water to drop food there and the three nearest come to it; by day the light's net drifts over the pebbles beside their shadows, by night fireflies glow over the water
+  - Space, on the moon, always at night: craters in the grey ground, a lander, an astronaut, the Earth and Saturn in the sky over the Milky Way and Andromeda, the stars twinkling with the loudness, a star falling every 8 bars, the toaster floating on its cord; on a drop, a shower of meteors
+  - The eye, a real eye drawn in characters, looking out at you, calm, blinking now and then; on a drop the window glides into its pupil, onto a galaxy and Saturn, and comes back out 8 bars later
 
 ## What you'll see in the code
 
@@ -209,8 +219,8 @@ then the caret goes back to fix it.
   MIDI file (drums, bass, chords and lead on their own tracks) and Strudel code, each phrase
   written once and played in order with `arrange()`. Paste it into strudel.cc and press
   ctrl+enter. Beside them, a folder ending in `rebuilt`: the song rebuilt from its own sounds, its
-  code (`song.strudel.js`), the sounds it plays (cut from the song) and `rebuilt.wav`, what it sounds
-  like. Press **O** afterwards and the rebuilt song opens in strudel.cc; its sounds come from Toaster
+  code (`song.strudel.js`), the sounds it plays (cut from the song), `strudel.json` (the list that names
+  them, which the code's `samples(...)` line reads) and `rebuilt.wav`, what it sounds like. Press **O** afterwards and the rebuilt song opens in strudel.cc; its sounds come from Toaster
   while Toaster is open (Chrome asks once whether strudel.cc may reach apps on your computer: allow it).
   What it exports is an approximate musical sketch of the song you played, and the rebuilt song carries
   pieces of the recording itself: permission to publish or distribute either depends on the source
@@ -241,7 +251,7 @@ detector, or the Mac's Vision framework) and by Google's MediaPipe, both running
 Nothing is uploaded. For the tune in a saved song (X), the app keeps the last ten minutes of what it heard in memory only,
 never in a file, and it is gone when you quit; when you press X, Spotify's open-source Basic Pitch model listens to that
 stretch and Meta's open-source Demucs model takes it apart, both on your machine. While Toaster is open it serves the
-rebuilt songs' sounds to strudel.cc from your own computer (`localhost`, port 47283: only `.wav` files in the `rebuilt` folders,
+rebuilt songs' sounds to strudel.cc from your own computer (`localhost`, port 47283: only the `.wav` files and the `strudel.json` list in the `rebuilt` folders,
 and nothing outside your computer can reach it). It goes online only for these:
 
 - **Updates and stars:** GitHub, when it starts, to see whether there's a newer Toaster (turn that off in the help, under

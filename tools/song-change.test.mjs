@@ -92,7 +92,7 @@ function player() {
     attach: (n, source, label) => { log.attached.push(source); state.node = n; state.source = source; state.label = label; },
     $: el, document: { body: el() }, nowSec: () => clock.t, takeRec, TAKE_RUNUP: 30,
   };
-  vm.runInNewContext('const outdated = (ticket) => ticket !== picking;\n' + slice('async function playElement(', '\nasync function useFile(') + ';globalThis.playElement = playElement;', context);
+  vm.runInNewContext('const outdated = (ticket) => ticket !== picking;\nconst audioSession = () => {};\n' + slice('async function playElement(', '\nasync function useFile(') + ';globalThis.playElement = playElement;', context);
   return { context, state, eng, log, clock, takeRec, play: (source) => context.playElement(source, source, () => {}), start: () => started.resolve(), refuse: (e) => started.reject(e) };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r)); };

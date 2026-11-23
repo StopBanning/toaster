@@ -847,3 +847,33 @@ test('Spotify mini player ignores foreign songs and late replies, and does not p
   assert.notEqual(p.bar.controls.player, 'spotify-api', 'a different Connect song never takes over');
   assert.equal(p.part('pl-spotify-cover').hidden, true);
 });
+
+// Spotify's queue (Sun Nov 22): the next two songs after the bar's own song, read with the account connected, again every 15 s
+test('the Spotify bar shows what Spotify plays next, from its queue; a queue read for another song shows nothing', async () => {
+  const p = page({ platform: 'win32' }), asks = [];
+  const near = () => ['pl-sep', 'pl-mark', 'pl-label'].map((c) => p.root.find(c)).reduce((o, l) => o.map((x, i) => x + l[i].textContent), ['', '', '', '']).join('');
+  let q = { now: { name: 'Kerosene', by: 'Crystal Castles' }, next: [{ name: 'Baptism', by: 'Crystal Castles' }, { name: 'Not in Love', by: 'Crystal Castles' }, { name: 'Celestica', by: 'Crystal Castles' }] };
+  p.nc.spotifyPlayback = async () => null;
+  p.nc.spotifyQueue = async () => { asks.push('queue'); return q; };
+  const s = snap({ t: 10, source: 'system', app: 'Spotify', session: true, song: { title: 'Kerosene', artist: 'Crystal Castles' } });
+  p.bar.update({ ...s, active: false }); await flush(); assert.equal(asks.length, 0, 'not read while the bar is away');
+  p.bar.update(s); await flush(); p.bar.update({ ...s, t: 11 });
+  assert.equal(near(), 'next "Baptism" , "Not in Love"');
+  assert.equal(p.part('pl-near').hidden, false);
+  p.bar.update({ ...s, t: 20 }); await flush(); assert.equal(asks.length, 1, 'not read again inside 15 s');
+  q = { now: { name: 'Kerosene', by: 'Crystal Castles' }, next: [{ name: 'Added', by: 'Me' }] };
+  p.bar.update({ ...s, t: 26 }); await flush(); p.bar.update({ ...s, t: 26.5 });
+  assert.equal(asks.length, 2); assert.equal(near(), 'next "Added"');
+  q = { now: { name: 'Something else', by: 'Someone' }, next: [{ name: 'X', by: 'Y' }] };
+  p.bar.update({ ...s, t: 42 }); await flush(); p.bar.update({ ...s, t: 42.5 });
+  assert.equal(p.part('pl-near').hidden, true, 'a queue for a song other than the bar\'s is not shown');
+  p.bar.update(snap({ t: 43, source: 'file', song: { title: 'Local', artist: 'Someone' }, el: audio() }));
+  assert.equal(p.part('pl-near').hidden, true, 'a file without a library queue shows no line');
+});
+
+test('preload and main carry the queue: read only with the account connected, and the add goes to the Web API', () => {
+  assert.ok(read('preload.js').includes("spotifyQueue: () => ipcRenderer.invoke('spotify:queue'),"));
+  assert.ok(read('preload.js').includes("spotifyEnqueue: (request) => ipcRenderer.invoke('spotify:enqueue', request),"));
+  assert.ok(read('main.js').includes("ipcMain.handle('spotify:queue', () => spotify().connection.status().connected ? spotify().web.queue() : null);"));
+  assert.ok(read('main.js').includes("ipcMain.handle('spotify:enqueue', (_e, request) => spotify().web.enqueue(plainObject(request)));"));
+});

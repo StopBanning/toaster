@@ -1,8 +1,9 @@
 // Toaster: wires the audio sources, the listening engine, the code view and the visuals.
 import { clock } from './clock.js';
+import { songTitle } from './rebuild.js';
 import { createAnimationDriver } from './dom-time.js';
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
-import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink } from './codegen.js';
+import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink, realArtist } from './codegen.js';
 import { createCodeView, nextCodeSetting } from './codeview.js';
 import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens, setGameCode } from './visuals.js';
 import { readMirror } from './camview.js';
@@ -426,6 +427,13 @@ const iosBrowser = () => (/CriOS/.test(navigator.userAgent) ? 'Chrome' : /FxiOS/
 let picking = 0;
 const outdated = (ticket) => ticket !== picking;
 
+// iPhone Safari mutes Web Audio while the silent switch is on, unless the page says it plays media (Safari 17's
+// navigator.audioSession). The demo beat is Web Audio only, and a file or the radio reach the speakers through the
+// same context, so all three were silent on a muted iPhone (r/InternetIsBeautiful, Nov 22: "can't hear anything but
+// also can't unmute anywhere"). 'playback' when one of them is picked (inside the tap); 'auto' again for the mic, since a
+// playback session can't record. Browsers without it are left alone.
+const audioSession = (type) => { try { if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type; } catch {} };
+
 async function useSystem() {
   const ticket = ++picking;
   await ac.resume();
@@ -447,6 +455,7 @@ async function useSystem() {
 
 async function useDemo() {
   const ticket = ++picking;
+  audioSession('playback');
   await ac.resume();
   if (outdated(ticket)) return;
   detach();
@@ -458,6 +467,7 @@ async function useDemo() {
 // gives it what to play, once it's this pick's turn.
 async function playElement(source, label, load) {
   const ticket = ++picking;
+  audioSession('playback');
   await ac.resume();
   if (outdated(ticket)) return;
   detach();
@@ -694,6 +704,7 @@ function micTrouble(err, refused) {
     + (b === 'Safari' ? ' (In Safari you can also tap aA in the address bar, then Website Settings, then Microphone, then Allow.)' : '');
 }
 const openMic = async (audio, refused) => {
+  audioSession('auto');
   try { return await navigator.mediaDevices.getUserMedia({ audio }); }   // (no mediaDevices at all on an insecure page: it throws, so the words come from here too)
   catch (err) { throw new Error(micTrouble(err, refused)); }
 };
@@ -1581,12 +1592,14 @@ async function toggleHandLog() {
   if (file) flashStatus(handLog.on ? 'hand log on' : 'hand log saved');
 }
 
-// A song's names: for its files ("artist - title"), and for the first line of its code.
+// A song's names: for its files ("artist - title"), and for the first line of its code. (A file with no artist tag has "File"
+// for its artist: its files are named by the title alone, "File - The Weeknd - Blinding Lights" was how they read.)
 function songNames(s) {
-  const one = (x) => String(x || '').replace(/\s+/g, ' ').trim();
+  const one = (x) => String(x || '').replace(/\s+/g, ' ').trim(), by = realArtist(s?.artist);
   return {
-    name: s?.title ? `${s.artist ? one(s.artist) + ' - ' : ''}${one(s.title)}` : one(state.label) || 'song',
-    about: s?.title ? `"${one(s.title)}"${s.artist ? ' by ' + one(s.artist) : ''}` : 'whatever was playing',
+    name: s?.title ? `${by ? by + ' - ' : ''}${one(s.title)}` : one(state.label) || 'song',
+    song: s?.title ? songTitle(s.artist, s.title) : one(state.label).split(' - ').pop(),   // (the song's own title, which the rebuilt code names its sounds after; a file with no tags: what follows its last ' - ')
+    about: s?.title ? `"${one(s.title)}"${by ? ' by ' + by : ''}` : 'whatever was playing',
   };
 }
 
@@ -1602,10 +1615,11 @@ async function exportSong() {
   exporting = true;
   clearTimeout(statusTimer);
   $('status').textContent = 'exporting…';
+  document.body.classList.add('exporting'); // (a narrow window gives the status its header while it works: style.css)
   try {
     // song() makes a snapshot; the worker owns a copy while listening keeps adding to the tape.
     // (named after the song it was: X just after a song ends exports that one)
-    const { name, about } = song.who || songNames(currentSong());
+    const { name, about, song: songTitle } = song.who || songNames(currentSong());
     // the tune: Spotify's Basic Pitch on the stretch of sound the song covers, its top line written as the lead (tune.js)
     const tune = await tuneFor(song, await ear, (done) => { $('status').textContent = `listening for the tune… ${Math.round(done * 100)}%`; },
       { keep: !!window.nc.saveRebuilt, onVoice: (done) => { $('status').textContent = `pulling the voice out… ${Math.round(done * 100)}%`; } });
@@ -1619,7 +1633,7 @@ async function exportSong() {
     if (tune.parts) {
       $('status').textContent = 'rebuilding it from its own sounds…';
       const origin = (Number.isFinite(song.origin) ? song.origin : song.originLast) - tune.t0;
-      const made = await rebuildSong({ parts: tune.parts, sr: 22050, bpm: song.bpm, origin, from: origin + 0.01, bars: song.bars.length, title: name, base: '{{base}}' });
+      const made = await rebuildSong({ parts: tune.parts, sr: 22050, bpm: song.bpm, origin, from: origin + 0.01, bars: song.bars.length, title: name, song: songTitle, base: '{{base}}' });
       if (made.code) {
         rebuilt = await window.nc.saveRebuilt(file, made.code, made.files).catch((err) => { console.warn('the rebuilt song could not be saved:', err); rebuildWhy = `it could not be saved (${String(err?.message || err).slice(0, 100)})`; return null; });
         if (rebuilt) {
@@ -1630,7 +1644,7 @@ async function exportSong() {
     } else if (window.nc.saveRebuilt) rebuildWhy = tune.partsWhy || tune.why || 'the voice could not be pulled out';
     const said = rebuildSaid(rebuilt, rebuildWhy);
     showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}${tune.notes ? ', with the tune it heard' : ''}${said.mid}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')} (an approximate sketch of the song: whether you can share it depends on the music's rights)${said.end}`, file);
-  } finally { exporting = false; $('status').textContent = restingStatus(); }
+  } finally { exporting = false; document.body.classList.remove('exporting'); $('status').textContent = restingStatus(); }
 }
 
 // The song rebuilt from its own sounds, in its worker (rebuild-worker.js): { code, files, bars, sounds, ms } or { code: null, why }.
@@ -3174,6 +3188,7 @@ async function makeLibrary() {
         disconnect: () => spotifyBridge().spotifyDisconnect(),
         list: (request) => spotifyBridge().spotifyList(request),
         play: spotifyPlay,
+        enqueue: (uri) => spotifyBridge().spotifyEnqueue({ uri }),
         prepareVideo: () => { stopPlayback(); hearSystem(); },
         cover: (url) => spotifyBridge().spotifyCover(url),
         dashboard: () => (window.nc?.spotifyDashboard ? window.nc.spotifyDashboard() : window.open('https://developer.spotify.com/dashboard', '_blank', 'noopener')),
@@ -3423,6 +3438,24 @@ applyCard();
 // the first time Toaster opens, a word on where to start (it's already listening to the PC)
 window.nc?.onFullScreen?.((on) => document.documentElement.classList.toggle('full', !!on));
 if (state.firstRun && window.nc) setTimeout(() => showNotice(`Toaster is listening to whatever your ${onMac() ? 'Mac' : 'PC'} plays and writing it as code. ? shows the keys and how it works; ${K('source')} picks another source; ${K('cam')} turns on the camera.`), 2500);
+// ...and if nothing has played by 20 seconds in, the demo beat on offer, as the site's welcome leads with it: with nothing
+// playing, a first launch was that note, then a page saying "listening" and nothing to do. Once, and only while the system's
+// sound is still silent and nothing else holds the corner.
+if (state.firstRun && window.nc) setTimeout(() => {
+  if (state.source !== 'system' || !eng.silent || nowSec() - (eng.lastSound ?? -Infinity) < 15 || rec.mr || !$('notice').hidden) return;
+  showNotice('Nothing playing yet? Play a song in any app and Toaster starts writing, or');
+  const b = document.createElement('button');
+  b.textContent = 'hear the demo beat';
+  b.onclick = () => { hideNotice(); useDemo(); };
+  $('notice').append(' ', b);
+  clearTimeout(rec.noticeTimer);
+  rec.noticeTimer = setTimeout(hideNotice, 30000);
+  // (music starting takes it away: the offer is done)
+  const heard = setInterval(() => {
+    if (!b.isConnected || $('notice').hidden) clearInterval(heard);
+    else if (!eng.silent) { clearInterval(heard); hideNotice(); }
+  }, 1000);
+}, 20000);
 requestAnimationFrame(draw);
 if (!window.nc && !TAKE) showMenu('Running outside the desktop app: pick a source.', 'info');
 

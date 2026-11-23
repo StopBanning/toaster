@@ -73,7 +73,7 @@ test('drums: a push on the "e" of each beat is kept for those hits alone, on the
   assert.ok(by[1].length && by[1].every((v) => Math.abs(v + 20) <= 4), `the "e" hats pushed 20 ms early: ${by[1]}`);
   for (const p of [0, 2, 3]) assert.ok(by[p].length && by[p].every((v) => Math.abs(v - 2) <= 4), `place ${p} on time: ${by[p]}`);
   const a = render(r, parts, SR), { code } = program(r, a.gain);
-  const lines = code.split('\n').filter((l) => l.includes(`thisSong_${hatName}")`));
+  const lines = code.split('\n').filter((l) => l.includes(`s("${hatName}")`));
   assert.equal(lines.length, 2, `two lines for ${hatName}:\n${lines.join('\n')}`);
   assert.ok(lines.some((l) => /\.early\(0\.0(09|10)\d\)/.test(l)), `one line 20 ms early (0.0100 of a 2 s bar):\n${lines.join('\n')}`);
 });
@@ -101,12 +101,21 @@ test('voice: phrases at their true starts, and one over the first bar line cut t
   const tone = (secs) => Float32Array.from({ length: Math.round(secs * SR) }, (_, i) => 0.5 * Math.sin(2 * Math.PI * 330 * i / SR) * Math.min(1, i / 200, (secs * SR - i) / 200));
   put(out, tone(1.0), O + 3 * STEP + 0.04);   // starts 40 ms after a 16th
   put(out, tone(1.5), O + 14 * STEP);          // runs over the bar line at step 16
+  put(out, tone(0.5), O + 34 * STEP - 0.03);   // starts 30 ms before a 16th's line
   const r = readVoice(out, SR, g, { from: 16 });
   const starts = [...r.phrases.entries()].map(([s, [, off]]) => [s, off]);
   const p = starts.find(([s]) => s === 3);
   assert.ok(p, `a phrase on step 3: ${JSON.stringify(starts)}`);
-  assert.ok(Math.abs(p[1] - 0.02) <= 0.006, `its start kept (sample from 20 ms before the voice, at +40 ms): ${p[1]}`);
+  assert.ok(Math.abs(p[1] - 0.02) <= 0.008, `its start kept (sample from 20 ms before the voice, at +40 ms; the lead is no longer rounded to 5 ms): ${p[1]}`);
   assert.ok(starts.some(([s, off]) => s === 16 && off === 0), `the long phrase cut at the bar line: ${JSON.stringify(starts)}`);
+  // a phrase before a line starts at the line before it: the push is silence at the front of its sound, so the code needs no .early
+  const early = starts.find(([s]) => s === 33);
+  assert.ok(early, `the phrase 30 ms before step 34 sits on step 33: ${JSON.stringify(starts)}`);
+  assert.ok(Math.abs(O + 33 * STEP + early[1] + 0.02 - (O + 34 * STEP - 0.03)) <= 0.008, `the voice (20 ms into the sound's cut) lands where it began, to within the start's own 8 ms: lead ${early[1]}`);
+  const snd = r.sounds[r.phrases.get(33)[0]], pad = Math.round(early[1] * SR);
+  assert.ok(snd.slice(0, pad).every((v) => v === 0), 'silence in front');
+  assert.ok(snd.slice(pad, pad + Math.round(0.03 * SR)).some((v) => v !== 0), 'then the voice');
+  for (const [s, [, lead]] of r.phrases) if (s >= 16) assert.ok(lead >= 0 && lead < STEP + 0.021, `step ${s}: lead ${lead}`);
 });
 
 test('keys: a half bar that repeats is played from its first time', () => {
@@ -122,7 +131,7 @@ test('keys: a half bar that repeats is played from its first time', () => {
 test('the program: every bar adds up to 16 sixteenths, only documented Strudel, and the audio plays what it says', () => {
   const d = drumMachine(), n = d.length, quiet = new Float32Array(n);
   const parts = { drums: d, bass: quiet, other: quiet, vocals: quiet };
-  const r = rebuild(parts, SR, { bpm: BPM, from: O, bars: 4 }), a = render(r, parts, SR), { code, files } = program(r, a.gain);
+  const r = rebuild(parts, SR, { bpm: BPM, from: O, bars: 4 }), a = render(r, parts, SR), { code, files, samples } = program(r, a.gain);
   assert.equal(r.count, 4);
   for (const m of code.matchAll(/(?:struct|note|n)\("<([^>]*)>"\)/g)) {
     for (const bar of m[1].match(/\[[^\]]*\]/g)) {
@@ -132,8 +141,11 @@ test('the program: every bar adds up to 16 sixteenths, only documented Strudel, 
     assert.equal([...m[1].matchAll(/\[[^\]]*\](?:!(\d+))?/g)].reduce((n, x) => n + (x[1] ? +x[1] : 1), 0), 4, `four bars in ${m[1]}`);
   }
   assert.doesNotMatch(code, /nudge/);
-  assert.match(code, /^samples\(\{/m); assert.match(code, /setcpm\(30\.000\)/); assert.match(code, /\.early\(0\.0[01]\d+\)/);
-  for (const f of code.matchAll(/'([\w/]+\.wav)'/g)) assert.ok(files[f[1]], `the program names ${f[1]} and it is written`);
+  assert.match(code, /^await samples\('strudel\.json'\)$/m); assert.match(code, /^setcpm\(120\/4\)$/m); assert.match(code, /\.early\(0\.0[01]\d+\)/);
+  // every file strudel.json names is written, and every sound it names is one the lines play
+  const names = (v) => (typeof v === 'string' ? [v] : Array.isArray(v) ? v : Object.values(v));
+  for (const [key, v] of Object.entries(samples)) for (const f of names(v)) assert.ok(files[f], `${key} names ${f} and it is written`);
+  assert.ok(Object.keys(files).every((f) => Object.values(samples).some((v) => names(v).includes(f))), 'and every file written is named');
   // each kick event's sound starts exactly at its step plus its group's feel
   const kickName = Object.keys(r.drums.sounds).find((k) => k.startsWith('kick'));
   const ev = r.events.find((e) => e.sound === kickName), x = r.drums.sounds[kickName];
@@ -190,20 +202,20 @@ const startsOf = (line) => {
 test('the program: every voice and keys event starts when Strudel plays it (n() first, the way the bass line is, so its values are the events)', () => {
   const { r, code } = rebuiltSong(), lines = code.split('\n');
   for (const part of ['voice', 'keys']) {
-    const mine = lines.filter((l) => l.includes(`.s("thisSong_${part}")`)), events = r.events.filter((e) => e.part === part).length;
+    const mine = lines.filter((l) => l.includes(`.s("${part}")`)), events = r.events.filter((e) => e.part === part).length;
     assert.ok(events >= 4, `${events} ${part} events in the song`);
     assert.ok(mine.length >= 1, `a ${part} line`);
     for (const l of mine) assert.match(l, /^\s*n\("</, `the line starts with n(): ${l}`);
     assert.equal(mine.reduce((n, l) => n + startsOf(l), 0), events, `${part}: a start for each of ${events} events`);
   }
-  assert.doesNotMatch(code, /s\("thisSong_(voice|keys)"\)\.n\(/);
+  assert.doesNotMatch(code, /s\("(voice|keys)"\)\.n\(/);
   // the same count for the other lines, so the counting itself is checked on lines that always worked
-  const kicks = lines.filter((l) => /^\s*s\("thisSong_kick\d*"\)\.struct/.test(l));
+  const kicks = lines.filter((l) => /^\s*s\("kick\d*"\)\.struct/.test(l));
   assert.ok(kicks.length >= 1);
 });
 
 test('the program: each keys event is written as long as it plays (the line is clipped to its events), and the voice lines are not clipped', () => {
-  const { r, code } = rebuiltSong(), line = code.split('\n').find((l) => l.includes('.s("thisSong_keys")'));
+  const { r, code } = rebuiltSong(), line = code.split('\n').find((l) => l.includes('.s("keys")'));
   const keys = r.events.filter((e) => e.part === 'keys');
   assert.ok(keys.length >= 4 && line && line.includes('.clip(1)'));
   // what the line writes: [step in the song, written length in sixteenths] for every event, bar by bar (the bars' ! repeats opened out)
@@ -215,7 +227,79 @@ test('the program: each keys event is written as long as it plays (the line is c
   assert.ok(want.every(([, L]) => L > 1), `a keys event plays more than a sixteenth: ${JSON.stringify(want.slice(0, 3))}`);
   assert.deepEqual(written, want, 'each keys event is written from its step for as many sixteenths as it plays');
   // the voice lines are not clipped: a phrase plays to its end whatever the next event is
-  for (const l of code.split('\n').filter((l) => l.includes('.s("thisSong_voice")'))) assert.doesNotMatch(l, /clip/, l);
+  for (const l of code.split('\n').filter((l) => l.includes('.s("voice")'))) assert.doesNotMatch(l, /clip/, l);
+});
+
+test("the program reads clean: the song's name once as the bank, one line for the sounds' list, one voice line, no thisSong_", async () => {
+  const { r, a } = rebuiltSong(), { bankName, samplesJson } = await import('../renderer/rebuild.js');
+  const { code, files, samples } = program(r, a.gain, { base: '{{base}}', title: 'The Weeknd - Blinding Lights', song: 'Blinding Lights' }), lines = code.split('\n');
+  assert.doesNotMatch(code, /thisSong/, 'no thisSong_ anywhere');
+  assert.equal(bankName('Blinding Lights'), 'BlindingLights'); assert.equal(bankName("Don't Stop Me Now (Live)!"), 'DontStopMeNowLive'); assert.equal(bankName('!!!'), 'Song');
+  // the header is one line (and the base is the folder's address, which main.js puts in)
+  assert.equal(lines.filter((l) => /samples\(/.test(l)).length, 1);
+  assert.ok(lines.includes("await samples('{{base}}strudel.json')"), lines.slice(0, 4).join(' | '));   // (await: the names are registered when the list has come back; a first play is not missing its first notes)
+  assert.doesNotMatch(code, /samples\(\{/);
+  // the tempo is the song's BPM over what a bar holds (120/4 here), not a decimal
+  assert.ok(lines.includes('setcpm(120/4)'));
+  // the bank ends the stack; the lines name the plain sounds
+  assert.equal(lines.filter((l) => l === ').bank("BlindingLights")').length, 1); assert.equal(lines.at(-2), ').bank("BlindingLights")');
+  assert.equal(lines.filter((l) => /\.bank\(/.test(l)).length, 1, 'the bank is said once');
+  const names = lines.flatMap((l) => [...l.matchAll(/\bs\("([^"]*)"\)/g)].map((m) => m[1]));
+  assert.ok(names.length >= 4); for (const n of names) assert.match(n, /^(kick\d*|snare\d*|hat\d*|bass|voice|keys)$/, n);
+  // strudel.json: each sound under the name .bank makes (BlindingLights_kick), and every one the lines play is there
+  for (const n of new Set(names)) assert.ok(`BlindingLights_${n}` in samples, `BlindingLights_${n} in strudel.json`);
+  assert.ok(Object.keys(samples).every((k) => k.startsWith('BlindingLights_')));
+  assert.ok(Array.isArray(samples.BlindingLights_voice) && Array.isArray(samples.BlindingLights_keys) && typeof samples.BlindingLights_bass === 'object');
+  // ONE voice line, whatever pushes the phrases had (the made-up singer has phrases on the 16th and 20 ms after it), and no early or late on it
+  const voice = lines.filter((l) => l.includes('.s("voice")'));
+  assert.equal(voice.length, 1, voice.join('\n')); assert.doesNotMatch(voice[0], /early|late|clip/); assert.match(voice[0], /^  n\("</);
+  assert.ok(r.events.filter((e) => e.part === 'voice').length >= 4 && r.events.filter((e) => e.part === 'voice').every((e) => e.shift === 0), 'the voice events carry no shift: it is inside the sounds');
+  assert.ok(new Set(r.events.filter((e) => e.part === 'voice').map((e) => e.lead.toFixed(3))).size >= 2, 'while the phrases did have different pushes');
+  // the drums are NOT merged: a line per sound and feel, with their nudges
+  assert.ok(lines.filter((l) => /^  s\("(kick|snare|hat)\d*"\)\.struct/.test(l)).length >= 3);
+  assert.ok(lines.some((l) => /\.early\(0\.0\d+\)/.test(l)) || lines.some((l) => /\.late\(0\.0\d+\)/.test(l)), 'a drum line keeps its nudge');
+  // a tempo that is not a clean count of the song's beats is written from the grid's own
+  const odd = { ...r, appBpm: null, grid: { ...r.grid, bar: 60 / 21.3875, beat: 60 / 21.3875 / 4 } };
+  assert.ok(program(odd, a.gain).code.split('\n').includes('setcpm(85.55/4)'));
+  assert.ok(program({ ...r, appBpm: 100 }, a.gain).code.split('\n').includes('setcpm(120/4)'), 'an app tempo that does not match is not used');
+  assert.ok(program({ ...r, appBpm: 240 }, a.gain).code.split('\n').includes('setcpm(240/8)'), 'one that is eight beats to the bar is written that way (171/8)');
+  // strudel.json's text: the base first (it ends in a slash: Strudel puts it straight in front of each file's name), then the sounds, one to a line
+  const text = samplesJson(samples, '{{base}}'), jl = text.split('\n');
+  assert.deepEqual(JSON.parse(text), { _base: '{{base}}', ...samples }); assert.equal(jl[0], '{'); assert.equal(jl[1], '  "_base": "{{base}}",'); assert.equal(jl.length, 2 + Object.keys(samples).length + 2 + 0, 'a line each');
+  assert.equal(JSON.parse(samplesJson(samples, 'http://localhost:47283/x%20rebuilt/'))._base.endsWith('/'), true);
+  // every file strudel.json names is there
+  const named = (v) => (typeof v === 'string' ? [v] : Array.isArray(v) ? v : Object.values(v));
+  assert.deepEqual(Object.keys(files).sort(), Object.values(samples).flatMap(named).sort());
+});
+
+test('the bank name: a title that would read as a number, or holds a digit outside 0-9, gets "Song" in front; plain ones are kept', async () => {
+  const { bankName, songTitle } = await import('../renderer/rebuild.js');
+  const cases = { 'Blinding Lights': 'BlindingLights', "Don't Stop Me Now (Live)!": 'DontStopMeNowLive', '!!!': 'Song', '': 'Song',
+    // the numbers: Strudel's notation turns each of these into a number, so .bank("007") would ask for "7_kick"
+    '007': 'Song007', '08': 'Song08', '0000': 'Song0000', '1e3': 'Song1e3', '0x10': 'Song0x10', '0b11': 'Song0b11', '5e-1': 'Song5e1', Infinity: 'SongInfinity',
+    '12345678901234567890': 'Song12345678901234567890',
+    // plain numbers come back as the same text, and words that only look like one are words
+    '1979': '1979', '22': '22', '3005': '3005', '1e': '1e', NaN: 'NaN', '3d': '3d', '1_000': '1000',
+    // a digit outside 0-9 stops the program from parsing: it is left out and the name gets its letter
+    'Halo\u0662': 'SongHalo', '\u0662\u0663': 'Song', 'Halo\u00b2': 'Halo2', '\u65e5\u672c\u8a9e': '\u65e5\u672c\u8a9e', '\u041f\u0440\u0438\u0432\u0435\u0442': '\u041f\u0440\u0438\u0432\u0435\u0442' };
+  for (const [title, want] of Object.entries(cases)) assert.equal(bankName(title), want, JSON.stringify(title));
+  // a file with no tags: its name is the title and "File" the artist; what follows the last " - " is the song
+  assert.equal(songTitle('File', 'The Weeknd - Blinding Lights'), 'Blinding Lights');
+  assert.equal(bankName(songTitle('File', 'The Weeknd - Blinding Lights')), 'BlindingLights');
+  assert.equal(songTitle('File', 'A - B - C'), 'C'); assert.equal(songTitle('File', 'Just a Title'), 'Just a Title');
+  assert.equal(songTitle('The Weeknd', 'Blinding Lights'), 'Blinding Lights'); assert.equal(songTitle('Artist', 'Song - Live'), 'Song - Live', 'a song with an artist keeps its whole title');
+  assert.equal(songTitle('', 'X'), 'X'); assert.equal(songTitle('File', ''), '');
+});
+
+// with the test-only Strudel packages: every one of those names comes back from the notation as the text the sounds are named with
+test("a bank name is what Strudel's own notation reads back (with the test-only Strudel packages)", async (t) => {
+  const { hasStrudel, strudelRuntime } = await import('./strudel-test-runtime.mjs');
+  if (!hasStrudel) return t.skip('set STRUDEL_TEST_MODULES');
+  const { bankName } = await import('../renderer/rebuild.js'), rt = await strudelRuntime();
+  for (const title of ['Blinding Lights', '007', '08', '0000', '1e3', '0x10', '1979', 'Infinity', '12345678901234567890', 'Halo\u0662', '\u0662\u0663', '\u65e5\u672c\u8a9e', '\u041f\u0440\u0438\u0432\u0435\u0442', '5-e1']) {
+    const bank = bankName(title), hap = (await rt.evaluate(`s("kick").bank("${bank}")`)).queryArc(0, 1)[0];
+    assert.equal(`${hap.value.bank}_${hap.value.s}`, `${bank}_kick`, `${JSON.stringify(title)} -> ${bank}`);
+  }
 });
 
 test('the program\'s gains: the sounds landing together stay under full scale, and the sum is as loud as it can be for that', () => {

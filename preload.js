@@ -97,6 +97,8 @@ contextBridge.exposeInMainWorld('nc', {
   spotifyPlayback: () => ipcRenderer.invoke('spotify:playback'),
   spotifyControl: (request) => ipcRenderer.invoke('spotify:control', request),
   spotifyPlay: (request) => ipcRenderer.invoke('spotify:play', request),
+  spotifyQueue: () => ipcRenderer.invoke('spotify:queue'),
+  spotifyEnqueue: (request) => ipcRenderer.invoke('spotify:enqueue', request),
   spotifyOpen: (text) => ipcRenderer.invoke('spotify:open', text),
   spotifySearch: (query) => ipcRenderer.invoke('spotify:search', query),
   spotifyCover: (url) => ipcRenderer.invoke('spotify:cover', url),
