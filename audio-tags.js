@@ -259,7 +259,8 @@ async function mp4(blob) {
 
 // The names a played file gives its song, from what readTags found: its own title and artist (the album artist where it has no artist),
 // and where a tag is empty its file's name without the extension, and "File" for the artist. What the code's first line
-// (x = x.DaftPunk("Around the World")), the ID card, the player bar and an export call it by.
+// (x = x.DaftPunk("Around the World")) and the ID card call it by. (The player bar, an export's files and its words leave the
+// stand-in "File" out: codegen.js realArtist.)
 export function songOfFile(tags, fileName) {
   const t = tags || {};
   return { title: t.title || String(fileName || '').replace(/\.[^.]+$/, ''), artist: t.artist || t.albumArtist || 'File' };

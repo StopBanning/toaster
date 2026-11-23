@@ -109,6 +109,14 @@ const MODE_LABEL = { shuffle: { off: 'shuffle', on: 'shuffle: on', smart: 'smart
 // Identify the local system player before consulting the account's Connect state.
 export const isSpotifySong = (s) => s.source === 'system' && /^(spotify(?:\.exe)?|com\.spotify\.client)$/i.test(s.app || '') && !!s.song?.title;
 const sameSong = (a, b) => a?.name === b?.title && (!b?.artist || a.by === b.artist);
+// Spotify's line of what's near, from its queue (helpers/spotify.cjs queue()): the next two songs, in the order Spotify will play them
+// (next "Jóga" , "Hunter"), as the folder's line's parts ([{ text, now }]; the song on now is already the bar's own two lines); none when
+// the queue was read for another song or nothing comes next.
+export function spotifyNear(q, song) {
+  if (!q?.now || !sameSong(q.now, song)) return [];
+  return (q.next || []).slice(0, 2).map((t, i) => ({ text: `${i ? '' : 'next '}"${t.name}"`, now: false }));
+}
+const SPOTIFY_QUEUE_EVERY = 15; // seconds between reading Spotify's queue while one of its songs plays (and at once for a new song)
 const SYSTEM_ACTION = { prev: 'previous', play: 'playpause', next: 'next' };
 const POLL_EVERY = 2; // seconds between asking Music or Spotify where it is (between, the bar counts on by itself)
 const POLL_REFUSED = 60; // ... and between asking one that macOS wouldn't let Toaster ask, in case that's been changed since
@@ -189,6 +197,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
   });
   root.append(el('div', 'pl-id', spotifyCover, spotifyLink, chip, song, near), transport, progress, status, misread);
 
+  let spotifyQ = null, spotifyQAsked = -Infinity, spotifyQAsking = false;
   let spotify = null, spotifyKey = '', spotifyEpoch = 0, spotifyAsked = -Infinity, spotifyAsking = false, spotifyUri = '', spotifyPhoto = '', coverAsked = '', coverData = '';
   let last = null; // the latest snapshot (update)
   let ctl = controlsFor({}); // and what it gets
@@ -243,8 +252,9 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
   function update(s) {
     last = s;
     const mini = isSpotifySong(s), keyNow = mini ? `${s.app}|${s.song.title}|${s.song.artist}` : '';
-    if (keyNow !== spotifyKey) { spotifyKey = keyNow; spotifyEpoch++; spotify = null; spotifyAsked = -Infinity; coverAsked = ''; coverData = ''; }
+    if (keyNow !== spotifyKey) { spotifyKey = keyNow; spotifyEpoch++; spotify = null; spotifyQ = null; spotifyQAsked = -Infinity; spotifyAsked = -Infinity; coverAsked = ''; coverData = ''; }
     if (mini && s.active && typeof nc?.spotifyPlayback === 'function' && !spotifyAsking && s.t - spotifyAsked >= 3) askSpotify(s.t);
+    if (mini && s.active && typeof nc?.spotifyQueue === 'function' && !spotifyQAsking && s.t - spotifyQAsked >= SPOTIFY_QUEUE_EVERY) askQueue(s.t);
     const freshSpotify = mini && spotify && s.t - spotify.at < 7 && sameSong(spotify.track, s.song);
     const who = platform === 'darwin' ? macPlayerOf(s.app) : platform === 'win32' && s.session ? 'keys' : null;
     ctl = controlsFor({ source: s.source, stopped: s.stopped, platform, app: s.app, session: !!s.session, bridge, denied: !!who && refused.has(who), queue: typeof act.next === 'function' });
@@ -265,7 +275,7 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
     setText(artist, line.artist ? ` · ${line.artist}` : '');
     setText(idle, line.idle);
     song.title = line.title ? `${line.title}${line.artist ? ' · ' + line.artist : ''}` : '';
-    const items = s.near && s.source === 'file' ? s.near.slice(0, nearItems.length) : [];
+    const items = s.near && s.source === 'file' ? s.near.slice(0, nearItems.length) : mini ? spotifyNear(spotifyQ, s.song) : [];
     setHidden(near, !items.length);
     nearItems.forEach((item, i) => {
       const it = items[i];
@@ -347,6 +357,14 @@ export function createPlayerBar({ document: doc, root, nc = null, platform = 'we
   }
 
   let spotifySending = false;
+  // (Spotify's queue: read with the account connected only (main answers null without it); a song added from the library asks again at once)
+  function askQueue(t) {
+    const epoch = spotifyEpoch;
+    spotifyQAsking = true; spotifyQAsked = t;
+    Promise.resolve().then(() => nc.spotifyQueue()).then((q) => { if (epoch === spotifyEpoch) spotifyQ = q || null; })
+      .catch(() => { if (epoch === spotifyEpoch) { spotifyQ = null; spotifyQAsked = t + 45; } }).finally(() => { spotifyQAsking = false; });
+  }
+  win.addEventListener?.('toaster:spotify-queued', () => { spotifyQAsked = -Infinity; });
   function askSpotify(t) {
     const epoch = spotifyEpoch;
     spotifyAsking = true; spotifyAsked = t;

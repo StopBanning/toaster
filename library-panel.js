@@ -272,7 +272,9 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     parts.err.hidden = !parts.err.textContent;
     if (S.section === 'spotify') { parts.meta.innerHTML = spMeta(); return; }
     if (S.section === 'music') {
-      left = `<button type="button" class="lib-line lib-mode" data-do="repeat" title="what repeats (shift+R)">${REPEAT_TEXT[host.repeat()]}</button><button type="button" class="lib-line lib-mode" data-do="shuffle" title="the order (shift+S)">${host.shuffle() ? 'shuffled' : 'in order'}</button>`;
+      // (no albums yet, nothing to repeat or shuffle: the two buttons wait for the music, rather than "plays the album through,
+      // then repeats  in order" over a folder not yet chosen)
+      left = !S.albums.length ? '' : `<button type="button" class="lib-line lib-mode" data-do="repeat" title="what repeats (shift+R)">${REPEAT_TEXT[host.repeat()]}</button><button type="button" class="lib-line lib-mode" data-do="shuffle" title="the order (shift+S)">${host.shuffle() ? 'shuffled' : 'in order'}</button>`;
       right = esc(folderWords());
     } else if (S.section === 'radio') { left = 'the stations you have played, the latest first'; right = ''; }
     else { left = 'a scene: the background, theme, code look and layout'; right = ''; }
@@ -318,6 +320,19 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
   const sp = host.spotify, X = S.sp;
   const video = createSpotifyVideo({ document: doc, root, beforeLoad: () => sp.prepareVideo?.(), openSpotify: (uri) => spOpenLink(uri) });
   const spVideo = (row) => { if (row?.kind === 'strack') video.open(row.track); else spSay('pick a Spotify song, then V for its player'); };
+  // Q: the song to the end of Spotify's queue (the account connected: Spotify's Web API does the adding), and the player bar reads the
+  // queue again at once, so its line of what's next shows it. (Colin, Sun Nov 22)
+  async function spQueue(row) {
+    if (row?.kind !== 'strack') { spSay('pick a Spotify song, then Q to add it to the queue'); return; }
+    if (!X.status?.connected) { X.error = 'Connect your Spotify account (the steps in this section) to add songs to its queue.'; spRepaint(); return; }
+    X.error = '';
+    try {
+      const said = await sp.enqueue(row.track.uri);
+      spSay(`added to Spotify's queue: ${row.track.name}${said?.device ? `, on ${said.device}` : ''}`);
+      try { win.dispatchEvent?.(new win.Event('toaster:spotify-queued')); } catch { /* the bar reads it within 15 s anyway */ }
+    } catch (err) { spFail(err); return; }
+    spRepaint();
+  }
   const spModel = () => ({ links: sp.links(), linksAll: X.linksAll, app: sp.app, connected: !!X.status?.connected, lists: X.lists, open: X.open, tracks: X.tracks });
   let search = { q: '', items: [], albums: [], artist: null, loading: false, more: false, next: 0, total: 0 }, searchGeneration = 0;
   // one row per song: Spotify lists the same song more than once (a single and its album's, a re-release), so a song is its title and its
@@ -537,7 +552,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (row.kind === 'strack') {
       const t = row.track, on = spPlaying(t, now), by = row.coll.kind === 'album' ? '' : t.by; // (an album's songs are all by its artist)
       const title = half() ? `"${two(row.index + 1)} ${esc(t.name)}",` : esc(t.name);
-      return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : half() ? '' : two(row.index + 1)}</span><span class="t">${on && half() ? `<u>${title}</u>` : title}${by && !t.artistRefs?.length ? ` <em>${half() ? '// ' : '· '}${esc(by)}</em>` : ''}${spNames(t, half(), row.coll)}</span><span class="d"><button type="button" class="lib-sp-action lib-sp-watch" data-do="video" title="Spotify's 30-second preview, right here (V)">▶ preview</button> ${fmtDuration(t.ms)}</span></div>`;
+      return `<div class="lib-row track sp${on ? ' on' : ''}" data-i="${i}" role="option" aria-selected="${on}"><span class="n">${on ? '▶' : half() ? '' : two(row.index + 1)}</span><span class="t">${on && half() ? `<u>${title}</u>` : title}${by && !t.artistRefs?.length ? ` <em>${half() ? '// ' : '· '}${esc(by)}</em>` : ''}${spNames(t, half(), row.coll)}</span><span class="d"><button type="button" class="lib-sp-action lib-sp-watch" data-do="video" title="Spotify's 30-second preview, right here (V)">▶ preview</button>${X.status?.connected ? `<button type="button" class="lib-sp-action lib-sp-watch lib-sp-queue" data-do="queue" title="Add to the end of Spotify's queue (Q)">+ queue</button>` : ''} ${fmtDuration(t.ms)}</span></div>`;
     }
     if (row.kind === 'more' && row.list === 'links') return `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t">more pasted links</span><span class="d">${count(row.shown)} of ${count(row.total)}</span></div>`;
     if (row.kind === 'more' && row.list === 'search') return `<div class="lib-row add sp" data-i="${i}" role="option"><span class="n">+</span><span class="t">more results</span></div>`;
@@ -997,7 +1012,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     const k = host.key();
     const more = S.section === 'music' ? '←→ fold' : S.section === 'scenes' ? '←→ move' : S.section === 'spotify' ? '←→ open' : '';
     const items = S.find ? ['esc ends find', '↑↓ pick', 'enter plays', 'a click on an album opens it', `${k} library`]
-      : [`${k} library`, S.section === 'spotify' && X.artist ? 'esc back' : 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? ['A artist', 'V preview'] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() ? ['shift+C cover'] : [])];
+      : [`${k} library`, S.section === 'spotify' && X.artist ? 'esc back' : 'esc closes', '↑↓ pick', 'enter plays', ...(S.section === 'music' ? [`${FIND_KEY} find`] : []), ...(more ? [more] : []), 'tab sections', ...(S.section === 'spotify' ? ['A artist', 'V preview', ...(X.status?.connected ? ['Q queue'] : [])] : ['shift+R repeat', 'shift+S shuffle']), ...(coverSection() ? ['shift+C cover'] : [])];
     parts.keys.innerHTML = items.map((t, i) => `<span>${i ? ' · ' : ''}${esc(t)}</span>`).join('');
   }
 
@@ -1259,6 +1274,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     else if (k === 'PageDown' || k === 'PageUp') take(() => move(k === 'PageDown' ? 8 : -8));
     else if (S.section === 'spotify' && k.toLowerCase() === 'a') take(() => { const r = rows()[cursor()]; if (r?.kind === 'artist') openArtist(r.artist); else if (r?.track?.artistRefs?.[0]) openArtist(r.track.artistRefs[0]); else if (r?.track?.by) artistByName(r.track.by); });
     else if (S.section === 'spotify' && k.toLowerCase() === 'v') take(() => spVideo(rows()[cursor()]));
+    else if (S.section === 'spotify' && X.status?.connected && k.toLowerCase() === 'q') take(() => { if (!e.repeat) spQueue(rows()[cursor()]); }); // (not connected: Q stays the page's hush)
     else if (k === 'Enter') take(() => { if (!e.repeat) activate(); });
     else if (k === 'Tab') take(() => setSection(nextSection(S.section, e.shiftKey ? -1 : 1)));
     else e.stopPropagation();
@@ -1340,6 +1356,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     else if (k === 'PageDown' || k === 'PageUp') take(() => move((k === 'PageDown' ? 1 : -1) * 8 * (scenes ? columns() : 1)));
     else if (S.section === 'spotify' && k.toLowerCase() === 'a') take(() => { const r = rows()[cursor()]; if (r?.kind === 'artist') openArtist(r.artist); else if (r?.track?.artistRefs?.[0]) openArtist(r.track.artistRefs[0]); else if (r?.track?.by) artistByName(r.track.by); });
     else if (S.section === 'spotify' && k.toLowerCase() === 'v') take(() => spVideo(rows()[cursor()]));
+    else if (S.section === 'spotify' && X.status?.connected && k.toLowerCase() === 'q') take(() => { if (!e.repeat) spQueue(rows()[cursor()]); }); // (not connected: Q stays the page's hush)
     else if (k === 'Enter') take(() => { if (!e.repeat) activate(); });
     else if (k === 'Tab') take(() => setSection(nextSection(S.section, e.shiftKey ? -1 : 1)));
     else if (e.shiftKey && k.toLowerCase() === 'r') take(cycleRepeat); // (Shift+R and Shift+S: the queue's modes; R and S stay the page's)
@@ -1399,6 +1416,7 @@ export function createLibraryPanel({ document: doc, window: win = globalThis, ro
     if (act === 'artist') { const b = e.target.closest('[data-artist-id]'); openArtist({ id: b.dataset.artistId, name: b.dataset.artistName }); return; }
     if (act === 'artist-name') { artistByName(e.target.closest('[data-name]').dataset.name); return; }
     if (act === 'video') { spVideo(row); return; }
+    if (act === 'queue') { spQueue(row); return; }
     if (act === 'rename') { renameKey(); return; }
     if (act === 'delete') { if (row?.kind === 'scene') askDelete(row.scene.id); return; }
     if (row?.kind === 'album') { if (finding()) openFromFind(row.album); else side(1); } // (a click on a folded album opens it; Enter plays it)

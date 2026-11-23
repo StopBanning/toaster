@@ -34,6 +34,11 @@ export const EARTH_TOUR = ['aurora', 'sahara', 'moonlit clouds', 'whole earth', 
   'dawn', 'day', 'cargo ship', 'aurora arm', 'hurricane'];
 const KEEP_URLS = 4; // (clips held in memory at once: with twenty views, every one's bytes would be 300 MB)
 const file = (name) => 'earth-' + name.replace(/ /g, '-'); // ('northern lights' -> earth-northern-lights)
+// The four aurora views were cut again (a shorter, cleaner loop seam, less smoothing of the motion). The new files have new
+// names, because each installed app pins its clips by checksum (EARTH_SUMS) and an old app asks the site for the old names, so
+// the old files stay on the site. The poster keeps the view's name: only the video comes from the new file.
+const RECUT = new Set(['aurora', 'northern lights', 'aurora ribbon', 'aurora arm']);
+const clipFile = (name) => file(name) + (RECUT.has(name) ? '-2' : '');
 const FADE_OUT = 0.5, FADE_IN = 1.2; // seconds, a clip changing: down to black, then up from it once the next one shows
 
 const VERT = `#version 300 es
@@ -114,7 +119,7 @@ export function createEarth(canvas) {
     const kept = window.nc?.earthClip || window.takeRender?.earthClip;
     if (kept) {
       if (urls.has(n)) return urls.get(n);
-      const bytes = await kept(file(n));
+      const bytes = await kept(clipFile(n));
       if (!urls.has(n)) urls.set(n, URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' })));
       // (the oldest let go, never the one showing or wanted: its kept copy is read again if it's come back to)
       for (const [k, url] of urls) {
@@ -123,7 +128,7 @@ export function createEarth(canvas) {
       }
       return urls.get(n);
     }
-    return new URL(`/media/earth/${file(n)}.mp4`, location.origin).href;
+    return new URL(`/media/earth/${clipFile(n)}.mp4`, location.origin).href;
   }
 
   // Load clip n: its poster at once (it's in the app), its video when it's in.
