@@ -12,7 +12,9 @@ second play locks faster, and reads the songs in your music folder ahead.
 
 **[Try it in your browser](https://toaster.locust.lol)** · **[Download for Windows or Mac](../../releases/latest)**
 
-![Toaster writing out Robin S's "Show Me Love" as code, every hit a domino knocked over as it plays](docs/hero-code.webp)
+![Toaster hearing Daft Punk's "Around the World" from a blank window: the code types itself in as it finds the beat, the kick, the bass and the chords, over a planet that changes with the song](docs/hero-worlds.webp)
+
+**How it works:** while a song plays, Toaster listens with plain signal processing, no AI model, and types what it hears. Only **X** uses models (Meta's Demucs to take the song apart, Spotify's Basic Pitch to hear its notes), and they run on your own computer.
 
 It finds the beat, the kick, clap and hats, the bass line, the chords and the key, and keeps
 rewriting the code as the song moves. It's a live reconstruction for show, not an exact
