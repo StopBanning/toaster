@@ -14,11 +14,7 @@ second play locks faster, and reads the songs in your music folder ahead.
 
 ![Toaster hearing Daft Punk's "Around the World" from a blank window: the code types itself in as it finds the beat, the kick, the bass and the chords, over a planet that changes with the song](docs/hero-worlds.webp)
 
-**How it works:** while a song plays, Toaster listens with plain signal processing, no AI model, and types what it hears. Only **X** uses models (Meta's Demucs to take the song apart, Spotify's Basic Pitch to hear its notes), and they run on your own computer.
-
-It finds the beat, the kick, clap and hats, the bass line, the chords and the key, and keeps
-rewriting the code as the song moves. It's a live reconstruction for show, not an exact
-transcription.
+**How it works:** Toaster listens to whatever your computer is playing and picks the song apart by ear, the way a drummer would. It catches every hit and sorts it: a low thump is the kick, a snap is the clap, a tick is the hi-hat. From where the hits land it finds the tempo and the bar lines, and from the low notes and the harmony it works out the bass line, the chords and the key. Everything it's sure of gets typed in as a line of Strudel code that lights up as it plays, and it keeps rewriting as the song moves. No AI, just listening. It's a live sketch of the song, not a perfect copy.
 
 ## Start here
 
