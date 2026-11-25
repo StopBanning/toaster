@@ -9,8 +9,9 @@
 import { bands } from './visuals.js';
 import { clock, simulate } from './clock.js';
 import { createPulses } from './pulse.js';
+import { DROPS, layout, shyOfCode, keepInside, spikeProfile, spikeEnvelope, fitSpikes, LOBE_N } from './glasshands.js';
+import { FRAG_SPIKY } from './glassspikes.js';
 
-const DROPS = 7;
 
 const VERT = 'attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }';
 
@@ -138,6 +139,9 @@ export function createGlass(canvas, code) {
   let gl = null, prog = null, parallel = null, ready = false, broken = false, loc = {};
   let font = { size: 0, family: '', cw: 0 };
   let spin = 0, low = 0, mid = 0, high = 0, now = null;
+  const lobeData = new Uint8Array(LOBE_N * 4), lobeProf = new Float32Array(LOBE_N); let inset = 0, lastAmp = 0, heavy = 0; // (the spikes' profile; the kick's glow this frame; how heavy the low end has been)
+  let sp = null, current = null; // (the spikes' own program, made the first time the hands have the blob: { prog, loc, ready, broken, warm }; the program in use)
+  const shy = { scale: 1, dx: 0, dy: 0 }; let moved = 0; // (keeping off the code's lines while the hands have it: glasshands.js shyOfCode)
   const kicks = createPulses(0.2); // the middle drop swells on a kick and lets go over a fifth of a second
   // What moves the drops (the three bands' levels easing, the turning, the glide of the area they drift over) goes a step
   // on at each step of the clock's grid, 240 a second (clock.js simulate), from the spectrum as the engine heard it then.
@@ -146,6 +150,7 @@ export function createGlass(canvas, code) {
     bands(eng, band, 40, 14000, st);
     const ease = (v, x, rate) => v + (x - v) * (1 - Math.exp(-h * rate));
     low = ease(low, (band[0] + band[1]) / 2, 6);
+    heavy = ease(heavy, low, 1); // how heavy the low end has been over about the last second
     mid = ease(mid, (band[2] + band[3] + band[4]) / 3, 6);
     high = ease(high, (band[5] + band[6] + band[7]) / 3, 8);
     spin += h * (0.25 + 0.9 * mid);
@@ -156,8 +161,8 @@ export function createGlass(canvas, code) {
   const seen = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
   let hidden = false, wordsShown = true; // (the code hidden (Z); whether the words canvas has it)
 
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; prog = null; });
-  canvas.addEventListener('webglcontextrestored', () => { ready = false; prog = null; });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); ready = false; prog = null; sp = null; current = null; });
+  canvas.addEventListener('webglcontextrestored', () => { ready = false; prog = null; sp = null; current = null; });
 
   // Building the shader takes Windows most of a second the first time, so it's built in the
   // background where the driver allows it, and the glass appears once it's done.
@@ -203,12 +208,53 @@ export function createGlass(canvas, code) {
     gl.uniform1i(loc.words, 1);
     all = true; // a new texture for the code: all of it goes up
     ready = true;
+    current = prog;
+    return true;
+  }
+
+  // The spikes' program (glassspikes.js): made the first time the hands have the blob, in the background like the first, and never otherwise, so what
+  // everyone else's driver builds is the plain program and nothing more. While it is not ready, or refused, the blob is the plain one (no spikes);
+  // `broken` is not touched by it.
+  function buildSpiky() {
+    sp = { prog: gl.createProgram(), loc: null, ready: false, broken: false, warm: false };
+    gl.bindAttribLocation(sp.prog, gl.getAttribLocation(prog, 'p'), 'p'); // (the same place for the one attribute, so the buffer already set up serves both)
+    for (const [type, src] of [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, FRAG_SPIKY]]) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      gl.attachShader(sp.prog, s);
+    }
+    gl.linkProgram(sp.prog);
+  }
+  function readySpiky() {
+    if (!sp || sp.broken) return false;
+    if (sp.ready) return true;
+    if (parallel && !gl.getProgramParameter(sp.prog, parallel.COMPLETION_STATUS_KHR)) return false;
+    if (!gl.getProgramParameter(sp.prog, gl.LINK_STATUS)) {
+      sp.broken = true;
+      console.error('glass spikes:', gl.getProgramInfoLog(sp.prog) || gl.getAttachedShaders(sp.prog).map((s) => gl.getShaderInfoLog(s)).join(' '));
+      return false;
+    }
+    gl.useProgram(sp.prog);
+    // the spikes' profile, on texture unit 2: LOBE_N across, wrapping round (an angle's two ends meet), smooth between the samples
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.REPEAT], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, LOBE_N, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(LOBE_N * 4));
+    gl.activeTexture(gl.TEXTURE0);
+    sp.loc = Object.fromEntries(['size', 'dpr', 'drops', 'thickness', 'depth', 'fg', 'shine', 'scene', 'words', 'lobes', 'lobeOn'].map((k) => [k, gl.getUniformLocation(sp.prog, k)]));
+    gl.uniform1i(sp.loc.scene, 0);
+    gl.uniform1i(sp.loc.words, 1);
+    gl.uniform1i(sp.loc.lobes, 2);
+    gl.uniform1f(sp.loc.lobeOn, 0);
+    gl.useProgram(current);
+    sp.ready = true;
     return true;
   }
 
   // Where the drops are this frame. The middle one drifts slowly about over the code; the others
   // circle it at their own speeds, closer and further, so they keep melting in and pulling away.
-  function move(t, eng, W, H) {
+  function move(t, eng, W, H, follow) {
     const pulse = kicks.at(t), R = 0.18 * Math.min(W, H);
     // (over the code; with it hidden (Z) or none yet, about the middle of the window)
     const code = seen.x1 > seen.x0 && !hidden ? seen : { x0: W * 0.2, x1: W * 0.8, y0: H * 0.2, y1: H * 0.8 };
@@ -217,19 +263,20 @@ export function createGlass(canvas, code) {
     sim.advance(t);
     const cx = (area.x0 + area.x1) / 2 + (area.x1 - area.x0) * 0.3 * Math.sin(t * 0.09) * Math.cos(t * 0.05);
     const cy = (area.y0 + area.y1) / 2 + (area.y1 - area.y0) * 0.22 * Math.sin(t * 0.07 + 0.6);
-    const set = (i, x, y, r) => { drops[i * 3] = x; drops[i * 3 + 1] = y; drops[i * 3 + 2] = r; };
-    set(0, cx, cy, R * (0.95 + 0.12 * low + 0.16 * pulse));
-    for (let i = 1; i <= 4; i++) {
-      const a = spin * (i % 2 ? 1 : -0.7) * (0.6 + 0.15 * i) + i * 1.57;
-      const dist = R * (0.62 + 0.18 * Math.sin(t * 0.37 + i * 1.7) + 0.22 * pulse);
-      set(i, cx + Math.cos(a) * dist, cy + Math.sin(a) * dist * 0.85, R * (0.42 + 0.1 * Math.sin(t * 0.53 + i) + 0.18 * mid));
+    // (following the hands, glasshands.js: where they are the middle drop's place and the size come from them, a little at a time; with none, or the
+    // setting off, nothing below differs from the drift)
+    let x = cx, y = cy, size = R, burst = 0;
+    if (follow && follow.w > 0) {
+      x += (follow.x - cx) * follow.w; y += (follow.y - cy) * follow.w;
+      size += (Math.max(1, follow.r * (1 - follow.gone)) - R) * follow.w;
+      burst = follow.burst * follow.w;
+      // (the code is the proof: over its lines the blob is smaller and slides off them; and stays in the window)
+      const s = shyOfCode(shy, Math.min(0.1, Math.max(0, t - moved)), x, y, size, hidden ? null : [...lineSeen.values()], follow.w), at = keepInside(s.x, s.y, s.r, W, H, inset);
+      x = at.x; y = at.y; size = s.r;
     }
-    for (let i = 5; i < DROPS; i++) {
-      const a = -spin * 0.45 + (i - 5) * Math.PI + Math.sin(t * 0.2 + i);
-      const dist = R * (1.3 + 0.2 * Math.sin(t * 0.21 + i));
-      set(i, cx + Math.cos(a) * dist, cy + Math.sin(a) * dist * 0.8, R * (0.17 + 0.12 * high + 0.05 * pulse));
-    }
-    return R;
+    moved = t;
+    layout(drops, { t, cx: x, cy: y, R: size, pulse, low, mid, high, spin }, burst);
+    return size;
   }
 
   // The picture under the glass: the background layers as the page shows them, and the caret
@@ -396,8 +443,13 @@ export function createGlass(canvas, code) {
     get scene() { return scene; },
     get words() { return words; },
     kick(s) { kicks.hit(Math.min(1, s)); },
+    get spikeAmp() { return lastAmp; },
+    get middle() { return [drops[0], drops[1], drops[2]]; },   // (for the checks: the middle drop's place and radius this frame)
+    // the player bar's height when it is showing (app.js sets it each frame): the blob that follows the hands keeps above it
+    set inset(px) { inset = px > 0 ? px : 0; },   // (for the checks: how far out the spikes are this frame)
     // layers: the background canvases, bottom first.
-    draw(t, eng, col, layers) {
+    // follow: where the hands put the blob (glasshands.js), or null
+    draw(t, eng, col, layers, follow = null) {
       if (canvas.hidden || broken || gl?.isContextLost()) return; // (lost: wait for it to come back, then build again)
       if (!ready) {
         try {
@@ -409,7 +461,7 @@ export function createGlass(canvas, code) {
       const w = Math.round(W * dpr), h = Math.round(H * dpr);
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
       hidden = document.body.classList.contains('nocode');
-      const R = move(t, eng, W, H);
+      const R = move(t, eng, W, H, follow);
       compose(W, H, dpr, col, layers);
       gl.viewport(0, 0, w, h);
       const changed = drawCode(H, dpr);
@@ -425,17 +477,36 @@ export function createGlass(canvas, code) {
           gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
         }
       }
+      // the kick's spikes: only while the hands have the blob (the drift is the blob as it always was) and a kick has landed; a quiet passage only ripples it
+      const gain = 0.3 + 0.7 * Math.min(1, Math.max(0, (heavy - 0.5) / 0.45)), amp = follow && follow.w > 0.01 && kicks.last ? 0.9 * spikeEnvelope(t - kicks.last.t, kicks.last.level) * gain * follow.w : 0;
+      lastAmp = amp;
+      // the program to draw with: the spikes' own while there are spikes (and for the one warming frame, so whatever the driver builds the first time it is used is built
+      // then and not mid-kick), and the plain one, as it always was, in every other frame, with the hands off, and until the spikes' program is ready
+      if (follow && !sp && gl) buildSpiky();
+      const spiky = readySpiky() && (amp > 0.01 || !sp.warm), L = spiky ? sp.loc : loc;
+      if (spiky) {
+        if (amp > 0.01) {
+          spikeProfile(lobeProf, Math.round(kicks.last.t * 1000) | 0, amp);
+          fitSpikes(lobeProf, drops[0], drops[1], drops[2], W, H, inset);
+          for (let j = 0; j < LOBE_N; j++) { lobeData[j * 4] = Math.round(Math.min(1, lobeProf[j] / 2) * 255); lobeData[j * 4 + 3] = 255; }
+          gl.activeTexture(gl.TEXTURE2);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, LOBE_N, 1, gl.RGBA, gl.UNSIGNED_BYTE, lobeData);
+        }
+        sp.warm = true;
+      }
+      if ((spiky ? sp.prog : prog) !== current) { current = spiky ? sp.prog : prog; gl.useProgram(current); }
+      if (spiky) gl.uniform1f(L.lobeOn, 1);
       gl.activeTexture(gl.TEXTURE0);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scene);
-      gl.uniform2f(loc.size, W, H);
-      gl.uniform1f(loc.dpr, dpr);
-      gl.uniform3fv(loc.drops, drops);
-      gl.uniform1f(loc.thickness, R);
-      gl.uniform1f(loc.depth, 1.25);
+      gl.uniform2f(L.size, W, H);
+      gl.uniform1f(L.dpr, dpr);
+      gl.uniform3fv(L.drops, drops);
+      gl.uniform1f(L.thickness, R);
+      gl.uniform1f(L.depth, 1.25);
       const lum = ([r, g, b]) => 0.3 * r + 0.59 * g + 0.11 * b;
       const shine = lum(col.fg) >= lum(col.bg) ? col.fg : col.bg;
-      gl.uniform3f(loc.fg, col.fg[0] / 255, col.fg[1] / 255, col.fg[2] / 255);
-      gl.uniform3f(loc.shine, shine[0] / 255, shine[1] / 255, shine[2] / 255);
+      gl.uniform3f(L.fg, col.fg[0] / 255, col.fg[1] / 255, col.fg[2] / 255);
+      gl.uniform3f(L.shine, shine[0] / 255, shine[1] / 255, shine[2] / 255);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);

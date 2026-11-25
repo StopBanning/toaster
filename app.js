@@ -3,6 +3,7 @@ import { clock } from './clock.js';
 import { songTitle } from './rebuild.js';
 import { createAnimationDriver } from './dom-time.js';
 import { createEngine, NOTES, nowSec, ROLL_COLS } from './engine.js';
+import { createCodeHold, pauseKnown } from './codehold.js';
 import { buildLines, LINE_IDS, resetCodegen, strudelProgram, strudelLink, realArtist } from './codegen.js';
 import { createCodeView, nextCodeSetting } from './codeview.js';
 import { createField, createTunnel, createPunchcard, createWebcam, rgbOf, bands, RAMP, GAME_SCREENS, setGameScreens, setGameCode } from './visuals.js';
@@ -16,6 +17,7 @@ import { createY2k } from './y2k.js';
 import { createCard } from './card.js';
 import { createPost, LOOKS } from './post.js';
 import { createGlass } from './glass.js';
+import { createFollower } from './glasshands.js';
 import { createTracker } from './tracking.js';
 import { createLens } from './lens.js';
 import { createHandPoints } from './handpoints.js';
@@ -41,7 +43,7 @@ import { buildSongFiles } from './tape-export.js';
 import { createEar } from './ear.js';
 import { createSongMemory, keyOf as songKeyOf } from './song-memory.js';
 import { createPreanalysis } from './preanalyse.js';
-import { tuneFor, withTune, rebuildSaid } from './tune.js';
+import { tuneFor, withTune, rebuildSaid, openedSaid, savedSaid } from './tune.js';
 import { createClips } from './clips.js';
 import { createTakeTap } from './take-tap.js';
 import { makeDemo } from './demo.js';
@@ -111,6 +113,10 @@ const eng = createEngine({ fast, mid, slow, sampleRate: ac.sampleRate });
 eng.tape = createTape(); // the song as heard, for X
 eng.tape.who = () => songNames(currentSong());
 const view = createCodeView(LINE_IDS);
+const codeHold = createCodeHold(); // (the code kept on screen while the sound is gone: codehold.js; not in a render, whose silences are the song's)
+let codePaused = false;
+// (not in a render, whose silences are the song's, nor while the app records: a video has its own case for what the code does, as for typing slips)
+const holdOff = () => clock.mode === 'render' || !!rec.mr || !!clips.on;
 setGameCode(() => view.snapshot()); // (the handheld's bottom screen shows the code while it's typed)
 let fieldView = null, fieldPool = '';
 const field = {
@@ -163,6 +169,8 @@ const y2k = createY2k({ back: $('desk-back'), front: $('desk-front'), bsod: $('b
 const sys = createSysinfo($('sys'), () => describeAudio());
 const card = createCard($('card'));
 const glass = createGlass($('glass'), $('code'));
+const glassHands = createFollower(); // the glass blob following the hands (Ctrl+K: the glass blob follows your hands)
+let insetAt = -1; // (the half second the glass's inset was last read, in the draw)
 const orb = createOrb($('orb'));
 const LAYERS = ['cam', 'voxcam', 'dotcam', 'worlds', 'worldwords', 'chrome', 'spaghetti', 'earth', 'backrooms', 'spectro', 'spectrobox', 'scenery', 'lanes', 'vis', 'warp', 'field', 'asciicam', 'orb', 'punch'].map($); // the background canvases, bottom first, for the glass
 const storm = createStorm($('storm')); // the drop effect "not responding"
@@ -196,7 +204,7 @@ const state = {
   source: null, label: '', node: null, stream: null, el: null, demo: null,
   winSong: null, winPausedAt: null, winKey: '', manual: null,
   radioSong: null, radioKey: '', // the radio's song, from the titles in its stream (see radioTitle)
-  visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, glassPlates: true, chromeCollage: true,
+  visual: VISUALS.indexOf('scenery'), strength: 1, blocks: true, blockLook: 'dominoes', gameScreens: GAME_SCREENS[0], orb: false, theme: 0, drop: 0, info: false, vertical: false, glass: false, glassHands: false, glassPlates: true, chromeCollage: true,
   mini: false, // the mini player (W): a small window over everything else
   codeHidden: false, // Z: the code hidden, just the visuals (Toaster as a visualizer)
   stagedTypos: false, // optional theatrical typing mistakes, disabled in recordings
@@ -241,7 +249,7 @@ let col = { bg: [5, 29, 181], fg: [255, 255, 255], ink: [2, 11, 69] };
 
 // The look you picked (background and its strength, blocks, orb, card, glass, theme, drop effect)
 // is remembered between launches. The camera always starts off.
-const SAVED = ['handPoints', 'perfectCopy', 'stagedTypos', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip', 'patternKick', 'earthTour'];
+const SAVED = ['handPoints', 'perfectCopy', 'stagedTypos', 'hintsDone', 'keys', 'codeHidden', 'beatHidden', 'crt', 'look', 'strength', 'blocks', 'blockLook', 'gameScreens', 'orb', 'card', 'cardV', 'cardBig', 'glass', 'glassHands', 'theme', 'drop', 'syncTrim', 'camFx', 'calm', 'updates', 'mirror', 'playerBar', 'playerRec', 'worldLook', 'chromeCollage', 'spectroTheme', 'sceneryTheme', 'sceneryScene', 'spaghettiKind', 'radio', 'seenVersion', 'userScenes', 'radioStations', 'spotifyLinks', 'queueRepeat', 'queueShuffle', 'libCover', 'queueResume', 'recentAlbums', 'glassPlates', 'earthClip', 'patternKick', 'earthTour'];
 function sceneDomains() {
   return { visual: VISUALS, theme: THEMES, blockLook: BLOCK_LOOKS, gameScreens: GAME_SCREENS,
     sceneryScene: ['auto', ...scenery.scenes], blocks: true, vertical: true, orb: true, libCover: ['chars', 'photo'],
@@ -307,6 +315,7 @@ function loadSettings() {
   if (!SPAGHETTI_KINDS.includes(state.spaghettiKind)) state.spaghettiKind = 'snakes';
   state.keys = readKeys(state.keys); // (the keys you changed)
   state.glass = state.glass === true;
+  state.glassHands = state.glassHands === true;
   state.codeHidden = state.codeHidden === true;
   state.beatHidden = state.beatHidden === true && !state.codeHidden;
   state.crt = state.crt === true;
@@ -394,6 +403,7 @@ function attach(node, source, label) {
 // New source or new song: wipe the screen and start typing again from a blank window. top: the
 // song starts now, from its beginning (see listenOpening in engine.js).
 function freshStart(top = false) {
+  codeHold.letGo(); // (a new source or song: what was kept is not this one's)
   clock.newSong(); // the dice of a song (clock.rng) are its own; a take keeps the seed so a render rolls them the same
   if (state.hushed) setHush(false); // a new song comes in unhushed
   punch.newSong(gameShowing() && !eng.silent);
@@ -1043,7 +1053,14 @@ eng.on.drop = (pressed = false) => {
   else if (mode === 'blue screen') showBsod($('bsod'), glitch, eng.tempo.P || 0.35);
   else if (mode === 'not responding') storm.start(t, eng.tempo.locked ? eng.tempo.bpm : 0);
 };
-eng.on.newSong = () => { resetCodegen(); view.clear(); takeover.stop(); y2k.stop(); storm.stop(); glitch(); clipsThisSong = 0; lastClipAt = -99; nextAutoScene(); };
+eng.on.newSong = () => {
+  resetCodegen();
+  // (the engine starts over after a few seconds of silence, as it always has, but a pause is not the end of the song for whoever is reading the
+  // code: the view keeps what it showed when the sound stopped, till sound comes back, codehold.js)
+  const kept = !holdOff() && eng.silent && codeHold.begin(eng.lastSound, nowSec());
+  if (!kept) { view.clear(); glitch(); }
+  takeover.stop(); y2k.stop(); storm.stop(); clipsThisSong = 0; lastClipAt = -99; nextAutoScene();
+};
 // A known song keeps its beat through breakdowns and quiet parts (see tempoUpdate in engine.js). The
 // radio's is known while it has a title: a station going from a song to talking sends an empty one,
 // which lets the song go (radioTitle), and then the beat goes after a minute without one, as on an
@@ -1526,6 +1543,16 @@ function newsRows() {
   $('help').querySelector('table tbody').insertAdjacentHTML('afterbegin', rows.join(''));
 }
 
+// The glass blob follows your hands (Ctrl+K, saved, off by default; glasshands.js, backlog/glass-ball/DESIGN.md): with the camera on and hands in view the
+// blob is between them (on the palm with one hand), sized by their distance; with none it drifts as it always has. Turning it on turns the blob on.
+function setGlassHands(on, say = true) {
+  state.glassHands = on;
+  if (on && !state.glass) setGlass(true);
+  glassHands.reset();
+  saveSettings();
+  if (say) flashStatus(on ? (cam.on ? 'the glass blob follows your hands' : 'the glass blob follows your hands (turn the camera on: C)') : 'the glass blob drifts');
+}
+
 // The glass blob: over the code, under the card and the pop-ups.
 function setGlass(on) {
   state.glass = on;
@@ -1614,11 +1641,13 @@ function songNames(s) {
 // Strudel code (every 4 bars, the different ones named, in order with arrange()), into
 // Music\Toaster.
 let exporting = false;
-async function exportSong() {
-  if (exporting) return; // X held or pressed again mustn't build the same snapshot twice
-  if (!window.nc?.saveSong) { flashStatus('exporting works in the app, not in a browser'); return; }
-  const song = eng.tape.song(eng.tempo.down);
-  if (!song) { flashStatus('nothing to export yet: no beat found'); return; }
+// (forO: O is making the rebuild, because the song playing has none: the same job, its notice says nothing of pressing O, and what it answers is the rebuilt song, or null
+// when none was made or its sounds can't be played, which the notice has said why)
+async function exportSong({ forO = false } = {}) {
+  if (exporting) return null; // X held or pressed again mustn't build the same snapshot twice
+  if (!window.nc?.saveSong) { flashStatus('exporting works in the app, not in a browser'); return null; }
+  const song = eng.tape.song(eng.tempo.down), resets0 = eng.resets;   // (resets0: the engine's start-overs so far: the rebuild is of the tape as it is now)
+  if (!song) { if (forO) showNotice("Toaster hasn't heard enough of this song yet: let it play a little longer, then press O."); else flashStatus('nothing to export yet: no beat found'); return null; }
   exporting = true;
   clearTimeout(statusTimer);
   $('status').textContent = 'exporting…';
@@ -1644,13 +1673,16 @@ async function exportSong() {
       if (made.code) {
         rebuilt = await window.nc.saveRebuilt(file, made.code, made.files).catch((err) => { console.warn('the rebuilt song could not be saved:', err); rebuildWhy = `it could not be saved (${String(err?.message || err).slice(0, 100)})`; return null; });
         if (rebuilt) {
-          lastRebuilt = { name, code: rebuilt.code, titled: name !== songNames(null).name }; // (titled: a song with a name of its own: every song Toaster cannot name is called by its source)
+          lastRebuilt = { name, code: rebuilt.code, file: rebuilt.file, served: rebuilt.served !== false, bars: made.bars, resets: resets0, titled: name !== songNames(null).name, at: Date.now() }; // (titled: a song with a name of its own: every song Toaster cannot name is called by its source; at: when it was made)
           console.info(`the export rebuilt from its own sounds: ${made.bars} bars, ${made.sounds} sounds cut from the song, ${made.ms} ms${rebuilt.served ? '' : ' (its sounds could not be served: the port was taken)'}`);
         }
       } else { console.warn('the song could not be rebuilt from its own sounds:', made.why); rebuildWhy = made.why || 'nothing came out of it'; }
     } else if (window.nc.saveRebuilt) rebuildWhy = tune.partsWhy || tune.why || 'the voice could not be pulled out';
-    const said = rebuildSaid(rebuilt, rebuildWhy);
-    showNotice(`saved ${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}${tune.notes ? ', with the tune it heard' : ''}${said.mid}: ${file.split(/[\\/]/).pop().replace(/\.mid$/, '')} (an approximate sketch of the song: whether you can share it depends on the music's rights)${said.end}`, file);
+    const via = rebuilt ? await Promise.resolve(window.nc.strudelBrowser?.()).catch(() => undefined) : undefined;   // (the browser O will open it in)
+    const said = rebuildSaid(rebuilt, rebuildWhy, via, forO);
+    // (one folder per song: with the rebuild, "show in folder" shows rebuilt.wav, the song, at the folder's top; without it, only the notes were saved, and the notice says so and why)
+    showNotice(savedSaid(file.split(/[\\/]/).pop().replace(/\.mid$/, ''), `${song.bars.length} bars as MIDI${code ? ' and Strudel code' : ''}${tune.notes ? ', with the tune it heard' : ''}`, !!rebuilt, said.end), rebuilt ? rebuiltWav(rebuilt) : file);
+    return rebuilt && rebuilt.served !== false ? lastRebuilt : null;
   } finally { exporting = false; document.body.classList.remove('exporting'); $('status').textContent = restingStatus(); }
 }
 
@@ -1668,29 +1700,81 @@ function rebuildSong(job) {
   });
 }
 
-// O, once X has rebuilt the song playing from its own sounds: that song opens instead of the live code, its sounds served by Toaster
-// while it is open (Colin's pick, Nov 13). True when it opened (or said why it couldn't); false sends O on to the live code.
-let lastRebuilt = null; // { name, code, titled }
-function openRebuilt() {
-  // (only for a song with a real title, then and now: an unnamed song is "system audio", the same for every one, and the sweep, Nov 16, found O opening the first one's rebuild for the next)
-  const now = currentSong();
-  if (!lastRebuilt || !lastRebuilt.titled || !now?.title || lastRebuilt.name !== songNames(now).name) return false;
-  const url = strudelLink(lastRebuilt.code);
-  // (a link is at most 60,000 characters, main.js; a long song's code can be more: then its file, beside its sounds, is the way)
-  if (url.length >= 60000) { flashStatus('the rebuilt song is too long to open by link: paste its song.strudel.js into strudel.cc'); return true; }
-  if (window.nc?.openStrudel) window.nc.openStrudel(url); else window.open(url, '_blank', 'noopener');
-  flashStatus('opened the song rebuilt from its own sounds in strudel.cc');
-  return true;
+// O: the song rebuilt from its own sounds (Colin's pick, Nov 13), its sounds served by Toaster while it is open. It is the song playing now when the engine has not
+// started over since it was made (the same tape; an untitled song is "system audio", the same for every one, so its name says nothing: the sweep, Nov 16, found O
+// opening the first one's rebuild for the next), or, for a song with a title, when the title is the same one.
+// An untitled song's rebuild is only taken again while it is recent (UNTITLED_REUSE_MS): the engine only starts over after 4 s of silence, so two untitled songs
+// less than that apart look like one (Big Brother, Nov 24, fix 3); past two minutes it is a new one, and the words say how old a reopened rebuild is.
+let lastRebuilt = null; // { name, code, file (its song.strudel.js), served, bars, resets, titled, at }
+const UNTITLED_REUSE_MS = 120000;
+function rebuiltNow() {
+  if (!lastRebuilt) return null;
+  const now = currentSong(), named = lastRebuilt.titled && now?.title;
+  if (named && lastRebuilt.name !== songNames(now).name) return null;   // (a different song with a title, whatever the engine says)
+  if (named) return lastRebuilt;
+  return lastRebuilt.resets === eng.resets && Date.now() - lastRebuilt.at < UNTITLED_REUSE_MS ? lastRebuilt : null;
+}
+const rebuiltWav = (r) => r.file.replace(/song\.strudel\.js$/, 'rebuilt.wav');
+// The rebuilt song r in strudel.cc (bars: it was made earlier, and covers that many bars: the words say so). A link is at most 60,000 characters (main.js); a long
+// song's code can be more: then its file, beside its sounds, is the way.
+function openRebuilt(r, bars = 0) {
+  const url = strudelLink(r.code);
+  if (url.length >= 60000) { showNotice('the rebuilt song is too long to open by link: paste its song.strudel.js into strudel.cc'); return; }
+  openStrudelLink(url, true, bars, bars ? Date.now() - (r.at || Date.now()) : 0);
 }
 
 // O: the code as it is now, opened in the Strudel REPL in your browser, to play and change.
 function openInStrudel() {
   const texts = lineTexts();
-  const phase = ((eng.bar % 4) + 4) % 4;
-  const url = strudelLink(strudelProgram(texts, currentSong(), phase, eng.v?.bass?.shown));
-  if (window.nc?.openStrudel) window.nc.openStrudel(url);
-  else window.open(url, '_blank', 'noopener');
-  flashStatus('opened in strudel.cc');
+  // (while the code is held after the engine has started over, the bass rhythm and the bar's phase are the ones held with it: the engine's are gone)
+  const held = codeHold.holding ? codeHold.extra : null;
+  const phase = held ? held.phase : ((eng.bar % 4) + 4) % 4;
+  const url = strudelLink(strudelProgram(texts, currentSong(), phase, held ? held.bass : eng.v?.bass?.shown));
+  openStrudelLink(url, false);
+}
+
+// Opens a strudel.cc link and says where it went: main.js answers { browser, plays } (a Mac opens the rebuilt song in Chrome or Edge, since Safari can't play its sounds;
+// the live code opens the default browser). What explains something (a warning, a failure) goes in the notice box, with a button to the rebuilt folder's
+// rebuilt.wav when the rebuilt song may stay silent; the plain "opened ..." is a flash of the status line. In a plain browser tab nothing is known.
+function openStrudelLink(url, rebuilt, bars = 0, age = 0) {
+  const say = (r) => {
+    const { text, explain } = openedSaid(r, rebuilt, bars, age);
+    if (!explain) { flashStatus(text); return; }
+    showNotice(text, rebuilt && r?.plays === false && lastRebuilt?.file ? lastRebuilt.file.replace(/song\.strudel\.js$/, 'rebuilt.wav') : undefined);
+  };
+  if (!window.nc?.openStrudel) { window.open(url, '_blank', 'noopener'); say(undefined); return; }
+  Promise.resolve(window.nc.openStrudel(url, rebuilt)).catch(() => null).then(say);
+}
+
+// O: the song rebuilt from its own sounds, which it makes first (the same job as X) when the song playing has none (tuni, Nov 24, pressed O with no X, on a file and on
+// Spotify, and expected the real song). One that exists is opened, with how much it covers (X redoes it with more): never a silent re-run. Not while recording (X
+// drops frames while it splits the sound): Shift+O is the live code then. Not enough heard yet: the notice says to let it play longer, and no sketch opens in its place.
+// A second press while it rebuilds does nothing. On a Mac with neither Chrome nor Edge a Safari tab would stay silent, so rebuilt.wav is shown in its folder instead.
+// Shift+O opens the live code in the default browser (openInStrudel). Without the app (the website) O is the live code, as it always was.
+let makingForO = false;
+async function openSong() {
+  if (makingForO) return;
+  if (!window.nc?.saveSong) { openInStrudel(); return; }   // (a browser tab has no app to rebuild with)
+  if (exporting) { flashStatus('still exporting: press O again when it has finished'); return; }
+  makingForO = true;
+  try {
+    const via = await Promise.resolve(window.nc.strudelBrowser?.()).catch(() => undefined);   // (what a Mac opens it in; null: neither Chrome nor Edge)
+    const silent = via === null;
+    const have = rebuiltNow();
+    if (have) {
+      if (silent) { window.nc.recShow?.(rebuiltWav(have)); showNotice('It needs Chrome or Edge to play the rebuilt song: rebuilt.wav is shown in its folder.', rebuiltWav(have)); }
+      else openRebuilt(have, have.bars || 0);
+      return;
+    }
+    if (rec.mr || clips.on) { showNotice(`${rec.mr ? 'Stop recording' : 'Turn off J (drop clips)'} to rebuild, or press Shift+O for the live code.`); return; }
+    const start = silent ? 'Rebuilding. It needs Chrome or Edge to play, so rebuilt.wav will open in its folder.'
+      : `Rebuilding this song from its own sounds: about half a minute (longer without a graphics card), then it opens in ${via || 'your browser'}. The status line shows how far it is.`;
+    showNotice(start, undefined, true);
+    const made = await exportSong({ forO: true });
+    if (!made && !$('notice').hidden && $('notice').textContent === start) hideNotice();   // (nothing answered and nothing replaced it, as when X began in the instant between: it must not stay up)
+    if (made) { if (silent) window.nc.recShow?.(rebuiltWav(made)); else openRebuilt(made); }
+  } catch (err) { console.warn('O could not rebuild the song:', err); showNotice(`couldn't rebuild the song: ${String(err?.message || err).slice(0, 120)}`); }
+  finally { makingForO = false; }
 }
 
 // What went wrong starting the camera, in words, with what to do about it.
@@ -2393,8 +2477,14 @@ function codeTick(t) {
   if (t - codeAt >= 0.04 || t < codeAt) {
     codeAt = t;
     view.slipsOff = !state.stagedTypos || !!rec.mr || clips.on || !!TAKE; // (no staged slips in a video: see codeview.js; a perfect copy is one)
-    const lines = buildLines(eng, { song: currentSong(), source: state.label || 'nothing yet', hushed: state.hushed }, t);
-    view.update(lines, t, state.hushed !== hushWas); // a hush goes in at once
+    const written = buildLines(eng, { song: currentSong(), source: state.label || 'nothing yet', hushed: state.hushed }, t);
+    let shown = { lines: written, paused: false };
+    if (holdOff()) codeHold.letGo();
+    else shown = codeHold.feed(t, written, { silent: eng.silent, lastSound: eng.lastSound, locked: eng.tempo.locked, extra: { bass: eng.v?.bass?.shown ? eng.v.bass.shown.slice() : null, phase: ((eng.bar % 4) + 4) % 4 } });
+    // (the word "paused" only where it is known: a file paused, the player saying so; or once the hold has gone on past a gap in a song)
+    const word = shown.paused && codeHold.wordShown(t, pauseKnown({ source: state.source, el: state.el, winSong: state.winSong, winPlaying: state.winPlaying, stopped: state.stopped }));
+    if (word !== codePaused) { codePaused = word; document.body.classList.toggle('code-paused', codePaused); }
+    view.update(shown.lines, t, state.hushed !== hushWas); // a hush goes in at once
     hushWas = state.hushed;
   }
   view.step(t);
@@ -2568,7 +2658,17 @@ function drawFrame(t) {
     if (state.eyes || windows) segcam.draw(t, { ...where, face: tracker.face, eyes: state.eyes, windows, frame: cam.frame, ascii: state.ascii });
   } else handPoints.clear();
   post.draw(t, eng, col, syncOffset());
-  glass.draw(t, eng, col, LAYERS);
+  // (the hands the glass blob follows: only with the setting on and the blob showing; a portal window open has the hands to itself. __nc.handsFeed,
+  // a test's, stands in for the camera: a function of the time answering { hands, place }, so a replay of recorded hands can drive it with no camera on.
+  // __nc.glassStats counts what drawing the glass costs this page's thread, for the frame-cost checks.)
+  // (the player bar's height, for the blob to keep above while it follows the hands: read twice a second, not every frame, and only with the setting on; none in the mini, where the bar is see-through; the finger frame has the hands like a portal window)
+  if (state.glassHands && Math.floor(t * 2) !== insetAt) { insetAt = Math.floor(t * 2); const pr = playerShowing() && !document.body.classList.contains('mini') ? document.getElementById('player')?.getBoundingClientRect() : null; glass.inset = pr && pr.height ? Math.max(0, innerHeight - pr.top) + 8 : 0; }  // (from the bar's top to the window's bottom: the bar sits above a strip of its own)
+  const fed = window.__nc?.handsFeed?.(t), g0 = window.__nc?.glassStats ? performance.now() : 0;
+  const following = state.glassHands && state.glass
+    ? glassHands.update(t, fed ? { ...fed, W: innerWidth, H: innerHeight, portal: portal.showing || lens.showing } : { hands: cam.on ? tracker.hands : [], place: cam.place, W: innerWidth, H: innerHeight, portal: portal.showing || lens.showing })
+    : null;
+  glass.draw(t, eng, col, LAYERS, following);
+  if (window.__nc?.glassStats) { const g = window.__nc.glassStats, now = performance.now(), ms = now - g0; g.n++; g.ms += ms; if (ms > g.max) g.max = ms; if (g.dts) { if (g.last) g.dts.push(now - g.last); g.last = now; } if (g.amps) g.amps.push([Math.round(now * 10) / 10, Math.round(glass.spikeAmp * 1000) / 1000]); if (g.mid) g.mid.push([Math.round(now * 10) / 10, ...glass.middle.map(Math.round), following ? [following.w, following.x, following.y, following.r, following.gone, following.mode] : null]); }
   storm.draw(t, eng, { layers: STORM_LAYERS, bg: `rgb(${col.bg})`, offset: syncOffset(), calm: state.calm });
   takeover.draw(t, grid, cam.frame, eng.bar, state.calm);
   y2k.draw(t, grid, state.calm);
@@ -2689,7 +2789,7 @@ addEventListener('click', (e) => {
 $('b-blocks').onclick = () => { nextBlocks(); showRound('blocks'); };
 $('b-cam').onclick = () => toggleCam().then(() => showRound('cam'));
 $('b-card').onclick = () => { toggleCard(); showRound('card'); };
-$('b-strudel').onclick = () => openRebuilt() || openInStrudel();
+$('b-strudel').onclick = (e) => (e.shiftKey ? openInStrudel() : openSong());
 $('b-rec').onclick = () => toggleRecording();
 $('b-layout').onclick = () => toggleLayout();
 $('b-mini').onclick = () => (gameShowing() && window.nc?.setWidget ? window.nc.setWidget(true) : toggleMini());
@@ -2745,7 +2845,7 @@ const ACTIONS = [
   { id: 'earlier', key: ']', run: () => nudgeSync(10) },
   { id: 'cam', key: 'c', run: () => toggleCam() },
   { id: 'card', key: 'n', run: () => toggleCard() },
-  { id: 'strudel', key: 'o', run: () => openRebuilt() || openInStrudel() },
+  { id: 'strudel', key: 'o', run: () => openSong() },
   { id: 'rec', key: 'm', run: () => toggleRecording() },
   { id: 'clips', key: 'j', run: () => toggleClips() },
   { id: 'export', key: 'x', run: () => exportSong().catch(showError) },
@@ -2899,6 +2999,7 @@ const paletteEntries = () => [
   { id: 'looks:reload', name: 'reload looks', aliases: ['shaders'], run: () => loadLooks(true) },
   { id: 'hand-points', name: 'hand points (on or off): the tracked hands drawn over the camera', aliases: ['hands', 'hand tracking', 'skeleton', 'landmarks', 'dots'], run: () => { state.handPoints = !state.handPoints; saveSettings(); flashStatus(state.handPoints ? 'hand points on' : 'hand points off'); } },
   { id: 'glass', name: 'the glass blob (on or off)', aliases: ['glass', 'blob', 'liquid', 'lens'], run: () => { setGlass(!state.glass); flashStatus(state.glass ? 'the glass on' : 'the glass off'); } },
+  { id: 'glass-hands', name: 'the glass blob follows your hands (on or off)', aliases: ['glass ball', 'blob hands', 'glass hands', 'ball', 'hands', 'follow'], run: () => setGlassHands(!state.glassHands) },
   { id: 'code:glass', name: 'code on glass (on or off)', aliases: ['glass', 'liquid glass', 'acrylic', 'plates'], run: () => setGlassPlates(!state.glassPlates) },
   // the Earth's views, by name
   ...EARTH_CLIPS.map((c) => ({
@@ -3375,6 +3476,7 @@ addEventListener('keydown', (e) => {
   // second later, which ran on unnoticed for four minutes).
   if (e.repeat && act.id !== 'later' && act.id !== 'earlier') return;
   updateHints({ action: act.id });
+  if (e.shiftKey && act.id === 'strudel') { openInStrudel(); return; }   // (Shift+O: the live code, in the default browser)
   // (Shift with a round's key goes back a step; only a letter's or a digit's, as Shift is part of typing the others)
   if (e.shiftKey && /^[a-z0-9]$/.test(k) && ROUNDS[act.id] && stepRound(act.id, -1)) return;
   const ran = act.run();
@@ -3408,7 +3510,7 @@ window.startSystemAudio = () => useSystem().catch((err) => {
 
 // For testing from tools/cdp.mjs: lets a script drive the app (e.g. run the demo silently).
 const prepareFrame = (t) => Promise.all([scenery.prepare(t), spaghetti.prepare(), earth.prepare(t), backrooms.prepare(t)]);
-window.__nc = { glPool, clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); }, get ear() { return ear; } };
+window.__nc = { codeHold, glPool, clock, drawFrame, codeTick, prepareFrame, analysers: { fast, mid, slow }, get artImg() { return artImg; }, get col() { return col; }, songArt, nowPlaying, radioTitle, radioCovers, coverTheme, useFile, eng, state, view, ac, cam, takeover, y2k, punch, card, glass, orb, cuts, worlds, tracker, lens, portal, segcam, gestures, handLog, setHush, meshFace, openInStrudel, strudelProgram, strudelLink, attach, syncOffset, useDemo, useSystem, useInput, setCalm, setVisual, setBlocks, palette, paletteEntries, updateHints, bugReport, misreadReport, retainBugError, choosePreset, presetSetters, setOrb, setGlass, toggleLayout, toggleCard, showMenu, controls, playerBar, setPlayerBar, setPlayerRec, stopSource, get library() { return libraryPanel.panel; }, get librarySrc() { return librarySrc; }, loadLibrary: () => libraryPanel.ready(), playQueue, nextTrack, previousTrack, stopPlayback, setQueueRepeat, setQueueShuffle, currentSetup, saveSetupAsScene, runPreset, get queue() { return liveQueue(); }, get ear() { return ear; } };
 // (for the clock harness, tools/clock-harness.mjs, and for whatever drives a render: the layers and what a look is made of)
 Object.assign(window.__nc, { setAutoScene: (n, at) => { autoScene = n; if (Number.isFinite(at)) autoSceneAt = at; }, lookWaiting, setPerfectCopy, takeBegin, takeEnd, takeState: () => ({ id: takeRec.id, tapping: !!takeRec.tap, runup: takeRec.blocks.length, making: !!takeRec.making }), VISUALS, BLOCK_LOOKS, THEMES, SPAGHETTI_KINDS, DROPS, scenery, chrome, spaghetti, spectro, warp, fire, tunnel, spiral, wheel, field, wait, storm, sceneShown, applyCard, setCrt, freshStart, setPostLook: (name) => setLook(name === 'none' ? 'off' : name, false), setGlassPlates: (on) => setGlassPlates(on, false) });
 // (the looks as they are now: the ones from outside come in after the page starts)
@@ -3430,6 +3532,14 @@ if (WIDGET) {
 }
 $('radio-url').value = state.radio;
 newsRows();
+if (!window.nc?.saveSong) {   // (the website has no app to rebuild with: O is the live code there, and its words say that, not what the app's O does)
+  $('b-strudel').dataset.title = 'Open this code in Strudel, in your browser';
+  const row = document.querySelector('#help tr[data-act="strudel"]');
+  if (row) row.lastElementChild.textContent = 'open the code in Strudel';
+  $('help-shift-o')?.remove();
+  const x = document.querySelector('#help tr[data-act="export"]');   // (exporting works in the app, not in a browser)
+  if (x) x.lastElementChild.textContent = 'export the song (in the app)';
+}
 $('b-rec').dataset.title = `Record a video of the window, with the sound, into ${onMac() ? 'Movies/Toaster' : 'Videos\\Toaster'}`;
 applyKeys();
 applyTheme();
@@ -3455,7 +3565,7 @@ applyCard();
 // the first time Toaster opens, a word on where to start (it's already listening to the PC)
 window.nc?.onFullScreen?.((on) => document.documentElement.classList.toggle('full', !!on));
 const inBrowser = !window.nc || window.nc.platform === 'web';
-if (state.firstRun && !inBrowser) setTimeout(() => showNotice(`Toaster is listening to whatever your ${onMac() ? 'Mac' : 'PC'} plays and writing it as code. ? shows the keys and how it works; ${K('source')} picks another source; ${K('cam')} turns on the camera.`), 2500);
+if (state.firstRun && !inBrowser) setTimeout(() => showNotice(`Toaster is listening to whatever your ${onMac() ? 'Mac' : 'PC'} plays and writing it as code. ${K('export')} rebuilds the song from its own sounds, ${K('strudel')} plays it in strudel.cc. ? shows the keys; ${K('source')} picks another source.`), 2500);
 // ...and if nothing has played by 20 seconds in, the demo beat on offer, as the site's welcome leads with it: with nothing
 // playing, a first launch was that note, then a page saying "listening" and nothing to do. Once, and only while the system's
 // sound is still silent and nothing else holds the corner.

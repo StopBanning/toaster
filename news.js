@@ -4,6 +4,13 @@
 // it's shown once, in a "toaster updated" box (what came in since the version last opened); the
 // help keeps the last few versions' at its top.
 export const NEWS = [
+  { version: '0.5.11', items: [
+    { act: 'strudel', text: "in the app, O plays the song rebuilt from its own sounds: it rebuilds it first if you haven't pressed X (about half a minute), then opens it at strudel.cc. On a Mac it opens in Chrome or Edge, because Safari stays silent. Shift+O opens the live code" },
+    { act: 'export', text: "X saves one folder per song: rebuilt.wav and the rebuilt code at its top, the MIDI file and the sketch in a notes subfolder" },
+    { key: 'the code', text: "the code stays on screen while the song is paused" },
+    { key: 'the code', text: "the kick line comes back sooner on a drop" },
+    { key: 'Ctrl+K', text: "the glass blob follows your hands (off until you turn it on)" },
+  ] },
   { version: '0.5.10', items: [
     { act: 'export', text: "the rebuilt song's code reads clean: the song's name once, as its bank (s(\"kick\"), s(\"voice\") and the rest, then .bank(\"BlindingLights\")), one line for its sounds' list, every sung phrase on one line, and the tempo as the song's own (setcpm(171/8)); about half as many lines, and it plays the same" },
     { act: 'strength', in: 'earth', text: "the four aurora views are sharper: their loop no longer blends two moments into a smear, and the motion keeps its detail" },
@@ -16,7 +23,7 @@ export const NEWS = [
     { act: 'mini', text: "the mini player has its bar again over plain visuals: play, pause and skip show when the pointer reaches the bottom edge, and H puts them away" },
   ] },
   { version: '0.5.8', items: [
-    { act: 'export', text: "X takes the song apart (drums, bass, voice and the rest, on your own computer: it uses Meta's open-source Demucs) and saves it rebuilt as code that plays the song's own sounds, beside the MIDI file and the sketch; O opens it at strudel.cc. The drums and the bass are the strongest part; the voice and the keys are the record's own pieces replayed" },
+    { act: 'export', text: "X takes the song apart (drums, bass, voice and the rest, on your own computer: it uses Meta's open-source Demucs) and saves it rebuilt as code that plays the song's own sounds, beside the MIDI file and the sketch; O opens it at strudel.cc. The drums and the bass are written out as notes (the bass is the roughest part); the voice and the keys are the record's own pieces replayed" },
     { act: 'export', text: "X writes the tune from the singer's voice alone, where the voice was pulled out" },
     { key: 'G', text: "Toaster remembers a song it has heard (its tempo and drum lines, on your computer only): the second play locks sooner, and the songs in your music folder are read ahead while Toaster has nothing to listen to" },
     { key: 'G', text: "spotify: the cover side shows the song playing when you open the tab with one already on; an opened playlist or album shows its own cover, not its first song's, until the cursor moves; the mini player shows the playing song's cover, not an artist page's" },

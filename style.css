@@ -182,6 +182,8 @@ body.cam-on:not(.cam-cut) #worlds, body.cam-on:not(.cam-cut) #worldwords, body.c
   position: relative; z-index: 2; height: 100%; overflow: hidden;
   padding: 52px 28px 48px; font-size: var(--size); line-height: 1.55;
 }
+/* the code kept on screen while the sound is gone (codehold.js): the lines as they were, to read and copy; a small word says it is held */
+body.code-paused #code::after { content: 'paused'; position: absolute; top: 44px; right: 28px; font-size: .62em; letter-spacing: .18em; text-transform: uppercase; opacity: .5; color: var(--fg); pointer-events: none; }
 .ln { white-space: pre; min-height: 1.55em; overflow: hidden; text-overflow: ellipsis; }
 .ln.gap { min-height: .8em; }
 .ln .txt { background: var(--line-bg); }

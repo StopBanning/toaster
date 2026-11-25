@@ -436,6 +436,7 @@ function makeVoice(id) {
     id, onAt, offAt, holdBars,
     grid: new Float32Array(16), barGrid: new Float32Array(16), on: new Array(16).fill(false), shown: null, sig: null, sigN: 0,
     emptyBars: 0, stale: false,
+    awayOff: 0, provisional: false, dropRun: null, returnAt: -99, // (the kick's set-aside line: kicks off it so far; the line written from a drop's first kicks, not yet checked against a bar; the run of such kicks; when the kick last came back after 3+ s)
     hitBar: new Int32Array(16).fill(-999), tok: new Array(16).fill(null),
     // (the hats' fallback: each step's hits over the last several bars, the last 4 bars' counts, and
     // whether what's shown is that steady subdivision rather than the steps learned)
@@ -638,6 +639,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
     // top: what comes next is a song from its start (a file, the demo, a new song from Windows),
     // so its first chord is worth listening for (see listenOpening)
     reset({ top = false } = {}) {
+      this.resets = (this.resets | 0) + 1; // (how many times it has started over: a rebuild of the song, X's or O's, is of the tape since the last one, and is only that song's while this is the same number)
       this.priorUse = {};
       learnedLog.length = 0; // (a new song: what was learned of the last is no longer a thing to look back at)
       this.det = {
@@ -954,13 +956,15 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       v.prevKnown = v.lastKnown;
       v.last = t;
       v.lastKnown = nowSec(); // (when it was filed: see lastHitAt)
+      if (id === 'bd' && v.prev > 0 && t - v.prev > 3) v.returnAt = t; // (the kick back after 3+ s without one: a drop, a build-up's end, whatever the drop call thought of it)
       const p = this.placeAt(t);
       if (!p || Math.abs(p.off) > 0.38) { v.lastHit = { t, step: -1, known: nowSec() }; return; }
       // The kick back after a break, on the line it had before it (a breakdown, then the drop: nearly always the same beat): its
       // second kick on that line's steps brings the line back, so the code plays from the drop's first beats instead of
-      // relearning the pattern for two bars or more (Glue's drop: muted 6 s). A kick off the line drops it.
+      // relearning the pattern for two bars or more (Glue's drop: muted 6 s). One kick off the line is a stray (Turn Down for What: one weak kick threw
+      // it out); it goes when the kicks off it, two or more, outnumber the kicks on it (as the line from last time does below).
       if (id === 'bd' && v.away && !v.shown) {
-        if (!v.away[p.step]) v.away = null;
+        if (!v.away[p.step]) { if (++v.awayOff >= 2 && v.awayOff > v.awayN) v.away = null; }
         else if (++v.awayN >= 2) {
           for (let s = 0; s < 16; s++) { v.on[s] = v.away[s]; if (v.away[s]) v.grid[s] = Math.max(v.grid[s], 1); }
           v.shown = v.away.slice();
@@ -969,6 +973,33 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           v.stale = false;
           v.emptyBars = 0;
           v.away = null;
+        }
+      }
+      // A drop with no kick line (the build-up's was thrown out, or never written): the drop's first kicks, on the beat and a beat apart, write the four on the
+      // floor at once, from the third (Animals: the line live at about 155.45 s, not 156.33). Not from the second: two kicks a beat apart after a quiet stretch are common in a
+      // break (Kernkraft 400 at 56.57 s, 12 s before its drop, wrote bd*4 into the break that way); three in a row are not. It is provisional: newBar looks at it again at the bar's end and throws it out if
+      // the bar does not bear it out. A drop call alone brings in nothing: 9 PM's drop is called at its big hit, 1.3 s before any kick, and a kick line written
+      // in a breakdown was a bug before (the note in newBar); it takes the kicks, three of them on the beat, each a beat after the last. The drop is the engine's call, or the kick
+      // back after 3+ s without one: the call wants the returning kick to be 0.8 loud with none before it for 3 s, and a quieter pickup kick a 16th ahead (Animals' 154.35 s)
+      // takes that away, so on Animals the engine never calls it.
+      const from = Math.max(this.lastDrop, v.returnAt);
+      if (id === 'bd' && !v.shown && from > 0 && t >= from - 0.05 && t - from < 8 * this.tempo.P) {
+        const P = this.tempo.P, run = v.dropRun;
+        if (p.step % 4 !== 0 || Math.abs(p.off) > 0.3) v.dropRun = null;
+        else if (run && run.drop === from && Math.abs((t - run.t) / P - 1) < 0.2) v.dropRun = { drop: from, t, n: run.n + 1 };
+        else v.dropRun = { drop: from, t, n: 1 };
+        if (v.dropRun && v.dropRun.n >= 3) {
+          for (let s = 0; s < 16; s++) { v.on[s] = s % 4 === 0; if (s % 4 === 0) v.grid[s] = Math.max(v.grid[s], 1); }
+          v.shown = v.on.slice();
+          v.sig = v.on.join();
+          v.sigN = v.holdBars;
+          v.stale = false;
+          v.emptyBars = 0;
+          v.approx = false;
+          v.away = null;
+          v.provisional = true;
+          v.dropRun = null;
+          this.note("bd: the drop's line, from its first kicks");
         }
       }
       // A line this song had last time (song-memory.js): the second hit on its steps brings it in, from the first beats instead of after a few bars; a hit off it more
@@ -1959,6 +1990,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
               // see place(); one off it means a new pattern, learned from scratch as before)
               v.away = v.shown.slice();
               v.awayN = 0;
+              v.awayOff = 0;
               v.shown = null;
             }
           }
@@ -1966,6 +1998,17 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
           continue;
         }
         v.emptyBars = 0;
+        if (v.provisional) {
+          // (the line written from a drop's first kicks, against this bar's hits: more hits off it than on it, or none of them on it, and it goes; what was heard goes on from here)
+          v.provisional = false;
+          let on = 0, off = 0;
+          for (let s = 0; s < 16; s++) if (v.hitBar[s] === ended) { if (v.shown?.[s]) on++; else off++; }
+          if (off > on || (hits >= 3 && on === 0)) {
+            for (let s = 0; s < 16; s++) { v.on[s] = false; g[s] = v.hitBar[s] === ended ? 1 : 0; }
+            v.shown = null; v.sig = null; v.sigN = 0; v.stale = true;
+            this.note("bd: not the drop's line");
+          }
+        }
         if (v.fromPrior) {
           // (the line from last time against this bar's hits: more hits off it than on it, or none of them on it, and it goes; what was heard goes on from here)
           v.fromPrior = false;
@@ -3178,7 +3221,7 @@ export function createEngine({ fast, mid, slow, sampleRate: sr, ledger = createE
       const T = this.tempo;
       if (!T.locked || this.silent || !this.v || t - T.lockedAt < 25) return null;
       const parts = {};
-      for (const id of ['bd', 'sd', 'hhc', 'hho']) { const v = this.v[id]; if (v.shown && !v.fromPrior && !v.tooBusy && v.shown.some(Boolean)) parts[id] = v.shown.map(Boolean); }
+      for (const id of ['bd', 'sd', 'hhc', 'hho']) { const v = this.v[id]; if (v.shown && !v.fromPrior && !v.provisional && !v.tooBusy && v.shown.some(Boolean)) parts[id] = v.shown.map(Boolean); }
       if (!parts.bd && !parts.sd) return null;
       return { bpm: +T.bpm.toFixed(2), parts };
     },
