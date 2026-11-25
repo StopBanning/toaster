@@ -21,7 +21,7 @@ const isStrudelLink = (url) => typeof url === 'string' && url.startsWith('https:
 // The first of Chrome, Edge installed on this Mac (in /Applications or the user's own Applications), or null.
 function macBrowser({ exists = fs.existsSync, home = os.homedir() } = {}) {
   for (const b of BROWSERS) {
-    for (const dir of ['/Applications', path.join(home, 'Applications')]) if (exists(path.join(dir, `${b.app}.app`))) return b;
+    for (const dir of ['/Applications', path.posix.join(home, 'Applications')]) if (exists(path.posix.join(dir, `${b.app}.app`))) return b;   // (Mac paths: posix, whatever the OS running the tests)
   }
   return null;
 }
