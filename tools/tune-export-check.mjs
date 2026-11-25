@@ -74,14 +74,7 @@ try {
   const started = Date.now();
   for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'x', code: 'KeyX', windowsVirtualKeyCode: 88, text: type === 'keyDown' ? 'x' : undefined });
   const songs = path.join(dir, 'profile', 'Music', 'Toaster');
-  let files = [];
-  for (let i = 0; i < 1200; i++) {
-    statuses.add(await ev("document.getElementById('status')?.textContent || ''"));
-    files = fs.existsSync(songs) ? fs.readdirSync(songs) : [];
-    if (files.some((f) => f.endsWith('.strudel.js')) && files.some((f) => f.endsWith('.mid'))) break;
-    await sleep(100);
-  }
-  // (the song rebuilt from its own sounds comes after the pair: wait for the notice that ends the export)
+  // (X saves one folder per song: the rebuilt song at its top, the MIDI and the sketch in 'notes (stand-in sounds)/'. The notice that ends the export comes after both)
   for (let i = 0; i < 1200; i++) {
     statuses.add(await ev("document.getElementById('status')?.textContent || ''"));
     if (/^saved /.test(await ev("document.getElementById('notice')?.textContent || ''"))) break;
@@ -90,24 +83,40 @@ try {
   result.ms = Date.now() - started;
   result.statuses = [...statuses].filter((s) => /listening|exporting|pulling|rebuilding/.test(s)).filter((s, i, a) => i < 3 || i > a.length - 3);
   result.said = said.filter((s) => /export's tune|rebuilt|rebuild/.test(s));
-  files = fs.existsSync(songs) ? fs.readdirSync(songs) : [];
-  const rebuiltDir = files.find((f) => f.endsWith(' rebuilt'));
-  if (rebuiltDir) {
-    const all = fs.readdirSync(path.join(songs, rebuiltDir), { recursive: true });
-    result.rebuilt = { folder: rebuiltDir, sounds: all.filter((f) => f.endsWith('.wav')).length, codeBytes: fs.statSync(path.join(songs, rebuiltDir, 'song.strudel.js')).size,
-      head: fs.readFileSync(path.join(songs, rebuiltDir, 'song.strudel.js'), 'utf8').split('\n').slice(0, 12).map((l) => l.slice(0, 140)) };
-    // (and its sounds, from where its code says they are, while the copy is still open)
-    const base = /\}, '(http:\/\/localhost:\d+\/[^']+)'\)/.exec(fs.readFileSync(path.join(songs, rebuiltDir, 'song.strudel.js'), 'utf8'))?.[1];
-    result.rebuilt.base = base || null;
-    if (base) { try { const r = await fetch(base + 'bass.wav'); result.rebuilt.served = { status: r.status, bytes: (await r.arrayBuffer()).byteLength, cors: r.headers.get('access-control-allow-origin') }; } catch (err) { result.rebuilt.served = String(err); } }
+  const files = fs.existsSync(songs) ? fs.readdirSync(songs) : [];
+  const folders = files.filter((f) => fs.statSync(path.join(songs, f)).isDirectory());
+  const folder = folders[0];
+  result.files = files;
+  if (folders.length !== 1 || files.length !== 1) result.layoutProblem = `expected exactly one folder and nothing loose in Music/Toaster, found: ${files.join(' | ')}`;
+  if (folder) {
+    const at = path.join(songs, folder), notes = path.join(at, 'notes (stand-in sounds)');
+    const tree = fs.readdirSync(at, { recursive: true }).map(String).sort();
+    result.folder = folder;
+    result.tree = tree;
+    const hasCode = fs.existsSync(path.join(at, 'song.strudel.js'));
+    if (hasCode) {
+      const text = fs.readFileSync(path.join(at, 'song.strudel.js'), 'utf8');
+      result.rebuilt = { sounds: tree.filter((f) => f.endsWith('.wav') && f !== 'rebuilt.wav').length, rebuiltWav: fs.existsSync(path.join(at, 'rebuilt.wav')), codeBytes: text.length,
+        head: text.split('\n').slice(0, 12).map((l) => l.slice(0, 140)) };
+      // (and its sounds, from where its code says they are, while the copy is still open)
+      const base = /samples\('(http:\/\/localhost:\d+\/[^']+\/)strudel\.json'\)/.exec(text)?.[1];
+      result.rebuilt.base = base || null;
+      const sound = tree.find((f) => f.endsWith('.wav') && f !== 'rebuilt.wav' && !f.includes('/'));
+      if (base) { try { const r = await fetch(base + 'strudel.json'); result.rebuilt.listServed = { status: r.status, sounds: Object.keys(await r.json()).length }; } catch (err) { result.rebuilt.listServed = String(err); } }
+      if (base && sound) { try { const r = await fetch(base + sound); result.rebuilt.served = { file: sound, status: r.status, bytes: (await r.arrayBuffer()).byteLength, cors: r.headers.get('access-control-allow-origin') }; } catch (err) { result.rebuilt.served = String(err); } }
+    }
+    if (fs.existsSync(notes)) {
+      const inNotes = fs.readdirSync(notes);
+      result.notesFolder = inNotes.slice().sort();
+      result.readme = fs.existsSync(path.join(notes, 'README.txt')) ? fs.readFileSync(path.join(notes, 'README.txt'), 'utf8').trim() : null;
+      const mid = inNotes.find((f) => f.endsWith('.mid'));
+      if (mid) result.midi = midiNotes(fs.readFileSync(path.join(notes, mid)));
+      const sketch = inNotes.find((f) => f.endsWith('.strudel.js'));
+      if (sketch) result.sketchBytes = fs.statSync(path.join(notes, sketch)).size;
+    }
   }
   await sleep(300);
   result.notice = await ev("document.getElementById('notice')?.textContent || ''");
-  result.files = files;
-  const mid = files.find((f) => f.endsWith('.mid'));
-  if (mid) result.midi = midiNotes(fs.readFileSync(path.join(songs, mid)));
-  const code = files.find((f) => f.endsWith('.strudel.js'));
-  if (code) result.codeBytes = fs.statSync(path.join(songs, code)).size;
 } catch (e) { result.error = e?.message || String(e); }
 finally {
   // (quit over the debugging port, as the app's own quit; killed only if it doesn't go)

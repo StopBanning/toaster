@@ -75,6 +75,7 @@ const ALLOWED = {
     'performance.now': 'nowSec() without a clock on the page (a test or a tool loading the file on its own): the performance clock',
   },
   'renderer/app.js': {
+    'performance.now': 'the glass blob\'s cost counter for the frame-cost checks (__nc.glassStats, off unless a test sets it): real time, and nothing drawn reads it',
     'Date.now': 'the recorder\'s watchdog: how long the file has made no progress, in real time',
     'Math.random': 'which track the library\'s shuffle starts a queue on (what plays, not what is drawn)',
     requestAnimationFrame: 'the frame loop itself, and the recorder\'s wait for a frame: the screen asking to be drawn (what a drawn frame shows is the clock\'s)',

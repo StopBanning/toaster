@@ -1,7 +1,8 @@
 // The rebuilt songs' sounds, for strudel.cc (Colin's pick, Nov 13: "Toaster serves"). While Toaster is open, a song rebuilt from its
 // own sounds (helpers/save-rebuilt.cjs) plays at strudel.cc with its sounds fetched from here: http://localhost:PORT/<folder>/<sound>.
 // Only this computer can reach it (127.0.0.1), only GET and the browser's preflight, only a .wav with a plain name (or strudel.json, which lists them) inside a folder
-// whose name ends in " rebuilt", directly inside the songs folder. Nothing else is ever read. Chrome asks the listener once whether
+// that is a song's own: a folder directly inside the songs folder that holds song.strudel.js (a song's folder, since Nov 24) or whose name ends in
+// " rebuilt" (the folders made before: they keep working where they are). Nothing else is ever read. Chrome asks the listener once whether
 // strudel.cc may reach "apps on this device"; the private-network header below is what it wants to hear from us.
 const fs = require('node:fs');
 const http = require('node:http');
@@ -11,12 +12,15 @@ const { allowed, LIST } = require('./save-rebuilt.cjs');
 const PORT = 47283;   // (fixed, so a saved song's code still finds its sounds after Toaster restarts)
 const HEAD = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Private-Network': 'true', 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Allow-Headers': '*' };
 
-// the file a request names, or null: <folder ending " rebuilt">/<plain .wav name>, inside `root`
-function fileFor(root, urlPath) {
+// A song's folder: one Toaster made. Its code is the mark (song.strudel.js at the top), or, for the folders made before, the name's end.
+const isSongFolder = (root, name, exists = fs.existsSync) => name.endsWith(' rebuilt') || exists(path.join(root, name, 'song.strudel.js'));
+
+// the file a request names, or null: <a song's folder>/<plain .wav name>, inside `root`
+function fileFor(root, urlPath, exists = fs.existsSync) {
   let p;
   try { p = decodeURIComponent(urlPath); } catch { return null; }
-  const m = /^\/([^/]+ rebuilt)\/(.+)$/.exec(p);
-  if (!m || !allowed(m[2]) || m[1].includes('..') || /[\\\x00-\x1f]/.test(m[1])) return null;
+  const m = /^\/([^/]+)\/(.+)$/.exec(p);
+  if (!m || !allowed(m[2]) || m[1] === '.' || m[1].includes('..') || /[\\\x00-\x1f]/.test(m[1]) || !isSongFolder(root, m[1], exists)) return null;
   const file = path.join(root, m[1], m[2]);
   if (path.relative(root, file).startsWith('..') || path.isAbsolute(path.relative(root, file))) return null;
   return file;
@@ -54,4 +58,9 @@ function start(root, port = PORT) {
   });
 }
 
-module.exports = { start, fileFor, encodeName, PORT };
+// Whether the songs folder holds any song to serve (so the server is up as soon as Toaster is, where a song's code may be open at strudel.cc already).
+function hasSongs(root) {
+  try { return fs.readdirSync(root, { withFileTypes: true }).some((e) => e.isDirectory() && isSongFolder(root, e.name)); } catch { return false; }
+}
+
+module.exports = { start, fileFor, hasSongs, isSongFolder, encodeName, PORT };

@@ -3,6 +3,7 @@ import vm from 'node:vm';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writer, hasStrudel, strudelRuntime, events } from './strudel-test-runtime.mjs';
+import { openedSaid } from '../renderer/tune.js';
 const { buildLines, resetCodegen, strudelProgram, strudelLink } = writer;
 const app = fs.readFileSync(new URL('../renderer/app.js', import.meta.url), 'utf8');
 const handler = app.slice(app.indexOf('function openInStrudel()'), app.indexOf('// What went wrong starting the camera'));
@@ -10,7 +11,7 @@ const song = { title: 'Phase test', artist: 'Audit' };
 function open(texts, bar, native = true, bassRhythm = null) {
   let url;
   vm.runInNewContext(handler + '\nopenInStrudel();', {
-    eng: { bar, v: { bass: { shown: bassRhythm } } }, lineTexts: () => texts, currentSong: () => song, strudelProgram, strudelLink,
+    eng: { bar, v: { bass: { shown: bassRhythm } } }, codeHold: { holding: false, extra: null }, lineTexts: () => texts, currentSong: () => song, strudelProgram, strudelLink, openedSaid, liveWhy: () => '', lastRebuilt: null, showNotice() {},
     window: native ? { nc: { openStrudel: (link) => { url = link; } } } : { open: (link) => { url = link; } },
     flashStatus() {},
   });

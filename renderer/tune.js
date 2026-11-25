@@ -92,10 +92,54 @@ function runWorker(audio, seconds, onProgress) {
 // reason went to the console, so a failure on a machine nobody had tried looked like the feature not being there). rebuilt: what
 // saveRebuilt answered, or null; why: the reason it was not made or not saved, in words.
 //   -> { mid: said where the notice lists what was saved, end: said after it }
-export function rebuildSaid(rebuilt, why) {
-  if (rebuilt) return { mid: ', and rebuilt from its own sounds', end: rebuilt.served === false ? " Its sounds can't be served (another program has the port they are served from), so the Strudel code can't play them." : '' };
+export function rebuildSaid(rebuilt, why, browser, fromO = false) {
+  if (rebuilt) return { mid: ', and rebuilt from its own sounds', end: rebuilt.served === false ? " Its sounds can't be served (another program has the port they are served from), so the Strudel code can't play them." : pressO(browser, fromO) };
   const w = String(why || '').replace(/\s+/g, ' ').replace(/[.\s]+$/, '').slice(0, 140);
   return { mid: '', end: w ? ` Couldn't rebuild it from its own sounds: ${w}.` : '' };
+}
+
+// How the notice tells how to hear the rebuilt song (Nov 24: O opened Safari on a Mac, which can't play it, and nothing said so). browser: what a Mac would
+// open it in ('Chrome', 'Edge'), null on a Mac with neither, undefined where the browser is not the question (Windows, Linux). fromO: O made this
+// rebuild and opens it next (or, with neither Chrome nor Edge on a Mac, shows rebuilt.wav in its folder), so there is nothing to press: it says what happens next.
+function pressO(browser, fromO) {
+  if (fromO) return browser ? ` Opening it in ${browser} now: say Allow when ${browser} asks.` : browser === null ? ' It needs Chrome or Edge to play: rebuilt.wav is shown in its folder.' : ' Rebuilt: opening it now.';
+  if (browser) return ` Press O to hear it (opens in ${browser}; say Allow when it asks).`;
+  if (browser === null) return ' To hear it you need Chrome or Edge (Safari stays silent). rebuilt.wav in its folder is how it sounds.';
+  return ' Press O to hear it.';
+}
+
+// What O says it did. result: what main.js answered, { browser, plays }; null when it refused the link or the call failed; undefined when nothing is known (a plain
+// browser tab). rebuilt: whether it opened the rebuilt song (else the live code, which Shift+O opens). bars: for a rebuild opened again, how many bars it covers.
+//   -> { text, explain }: explain is true for the words that tell something (a warning, a failure), which go in the notice box (8 s) and not in the status line's
+//      1.6 s flash, which a browser coming to the front covers.
+// How long ago, for a rebuild opened again ("just now" under 45 s, then minutes, then hours).
+export function agoSaid(ms) {
+  const s = Math.max(0, ms) / 1000;
+  if (s < 45) return 'just now';
+  if (s < 5400) return `${Math.max(1, Math.round(s / 60))} min ago`;
+  return `${Math.round(s / 3600)} h ago`;
+}
+
+// What X's notice says it saved (one folder per song, Nov 24). name: the song's folder; notes: what the notes hold ("20 bars as MIDI and Strudel code, ..."); rebuilt: whether the
+// song was rebuilt from its own sounds (its notes are in a subfolder); end: what rebuildSaid said after (how to hear it, or why it could not be made). With no rebuild, only the
+// notes were saved, and it says so and why.
+export function savedSaid(name, notes, rebuilt, end = '') {
+  const rights = "an approximate sketch of the song: whether you can share it depends on the music's rights";
+  return rebuilt
+    ? `saved ${name}, rebuilt from its own sounds, with its notes (${notes}) in a subfolder (${rights}).${end}`
+    : `saved only the notes for ${name}: ${notes}, on stand-in sounds, so it won't sound like the song (${rights}).${end || " It wasn't rebuilt from its own sounds this time."}`;
+}
+
+export function openedSaid(result, rebuilt, bars = 0, age = 0) {
+  if (result === null) return { text: rebuilt ? "couldn't open it in a browser: paste song.strudel.js, in the song's folder, into strudel.cc in Chrome" : "couldn't open strudel.cc in a browser", explain: true };
+  const where = result?.browser && result.browser !== 'default' ? `in ${result.browser}` : 'in strudel.cc';
+  // (Shift+O in the app: the live code is the stand-in sketch, not the song. It says so in a notice, which also replaces what O last said about the rebuild; a plain browser tab, the website, has only the flash)
+  if (!rebuilt) return result ? { text: 'Opened the live code (the stand-in sketch) in your browser.', explain: true } : { text: `opened the live code ${where}`, explain: false };
+  if (result?.plays === false) return { text: "If this opened in Safari it will stay silent: Safari can't load the sounds. Use Chrome or Edge. rebuilt.wav in its folder is how it sounds.", explain: true };
+  // (bars: an earlier rebuild of this song was opened again, not made again: it covers that many bars, and X makes a new one with more)
+  // (a rebuild under a minute old is the one X just made: no bar count and no "redo it" for someone who just pressed X, Nov 24)
+  if (bars && age < 60000) return { text: `opened the rebuild ${where}`, explain: true };
+  return bars ? { text: `opened the rebuild made ${agoSaid(age)} (${bars} bars). Press X to redo it with more.`, explain: true } : { text: `opened the song rebuilt from its own sounds ${where}`, explain: false };
 }
 
 export function withTune(song, notes, line) {

@@ -34,9 +34,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const harnessRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? fallback : process.argv[i + 1]; };
 const flag = (name) => process.argv.includes(`--${name}`);
+// --root <folder>: draw another checkout (e.g. main) with this harness; --digests: keep each run's fingerprints in digests.json,
+// to compare two checkouts (or two commits) pixel for pixel, which results.json (one checkout, 60 against 30 fps) does not.
+const root = path.resolve(arg('root', harnessRoot));
 const port = +arg('port', 9341);
 const profile = path.resolve(arg('profile', path.join(os.homedir(), 'work/scratch/clock/profile')));
 const out = path.resolve(arg('out', path.join(os.homedir(), 'work/scratch/clock/out')));
@@ -242,7 +245,7 @@ try {
   const all = catalogue(consts);
   if (flag('list')) { console.log(all.map((l) => l.id).join('\n')); process.exit(0); }
   const wanted = arg('looks', '') ? arg('looks').split(',') : all.map((l) => l.id);
-  const results = [];
+  const results = [], digests = {};
   for (const id of wanted) {
     const look = all.find((l) => l.id === id);
     if (!look) { console.log(`no look called ${id}`); continue; }
@@ -290,6 +293,7 @@ try {
         catch (err) { row.stats = { error: String(err.message || err) }; }
       }
     }
+    if (flag('digests')) { digests[id] = row.runs; fs.writeFileSync(path.join(out, 'digests.json'), JSON.stringify(digests)); }
     delete row.runs;
     results.push(row);
     console.log(`${row.ok ? 'MATCH   ' : row.error ? 'ERROR   ' : row.known ? 'KNOWN   ' : 'DIFFERS '}${id}${row.error ? `  ${row.error.split('\n')[0]}` : ''}${row.mismatches.length ? `  ${[...new Set(row.mismatches.flatMap((m) => [...m.canvases.map((c) => c.canvas), ...(m.code ? ['code'] : []), ...(m.text ? ['text'] : []), ...(m.overlays ? ['overlay classes'] : []), ...(m.windows ? ['windows'] : []), ...(m.animations ? ['css animations'] : [])]))].join(',')} at ${row.mismatches.map((m) => m.at).join(',')}` : ''}${row.engine ? `  [${row.engine.locked ? `locked ${Math.round(row.engine.bpm)}` : 'no lock'}${row.anim?.some(Boolean) ? `, css animations in flight: ${row.anim.join('/')}` : ''}]` : ''}${row.stats?.changedPixels !== undefined ? `  ${row.stats.canvas}@${row.stats.at}: ${row.stats.changedPixels} of ${row.stats.of} px, max ${row.stats.maxDelta}` : ''}`);

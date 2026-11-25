@@ -7,47 +7,51 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { songTitle } from '../renderer/rebuild.js';   // (app.js imports these two; the page's other imports are stand-ins here)
 import { realArtist, strudelProgram } from '../renderer/codegen.js';
+import { openedSaid } from '../renderer/tune.js';
 
 const text = fs.readFileSync(new URL('../renderer/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const slice = (from, to) => { const a = text.indexOf(from), b = text.indexOf(to, a); assert.ok(a >= 0 && b > a, `found ${from}`); return text.slice(a, b); };
 
 function page() {
   const opened = [], said = [];
-  const state = { label: 'system audio' };
-  const context = { state, song: null, opened, said, songTitle, realArtist, strudelLink: (c) => 'link:' + c, flashStatus: (s) => said.push(s), window: { nc: { openStrudel: (u) => opened.push(u) } }, currentSong: () => context.song };
-  vm.runInNewContext(slice('function songNames(s) {', '\n}\n') + '\n}\n' + slice('let lastRebuilt = null;', '// O: the code as it is now') + ';globalThis.openRebuilt = openRebuilt; globalThis.songNames = songNames; globalThis.setRebuilt = (r) => { lastRebuilt = r; };', context);
-  return { context, opened, said, state, play: (s) => { context.song = s; } };
+  const state = { label: 'system audio' }, eng = { resets: 0 };
+  const context = { state, eng, song: null, opened, said, songTitle, realArtist, openedSaid, showNotice() {}, strudelLink: (c) => 'link:' + c, flashStatus: (s) => said.push(s), window: { nc: { openStrudel: (u) => opened.push(u) } }, currentSong: () => context.song };
+  vm.runInNewContext(slice('function songNames(s) {', '\n}\n') + '\n}\n' + slice('let lastRebuilt = null;', '// O: the code as it is now') + ';globalThis.rebuiltNow = rebuiltNow; globalThis.songNames = songNames; globalThis.setRebuilt = (r) => { lastRebuilt = r; };', context);
+  return { context, opened, said, state, eng, play: (s) => { context.song = s; } };
 }
+const queenRebuilt = (resets) => ({ name: "Queen - Don't Stop Me Now", code: 'stack()', titled: true, resets });
 
-test('O opens the rebuilt song while the song it was made of is the one playing', () => {
+test('the rebuild is the playing song\'s while the song it was made of is the one playing, or the engine has not started over since', () => {
   const p = page();
   p.play({ title: "Don't Stop Me Now", artist: 'Queen' });
-  p.context.setRebuilt({ name: "Queen - Don't Stop Me Now", code: 'stack()', titled: true });
-  assert.equal(p.context.openRebuilt(), true);
-  assert.deepEqual(p.opened, ['link:stack()']);
+  p.context.setRebuilt(queenRebuilt(0));
+  assert.equal(p.context.rebuiltNow().code, 'stack()');
+  p.eng.resets = 3;   // (paused long enough that the engine started over: the same title is still the same song)
+  assert.equal(p.context.rebuiltNow().code, 'stack()');
   p.play({ title: 'Starships', artist: 'Nicki Minaj' });
-  assert.equal(p.context.openRebuilt(), false, 'another song: the live code');
-  assert.equal(p.opened.length, 1);
+  assert.equal(p.context.rebuiltNow(), null, 'another song: its own rebuild');
 });
 
-test('after X on a song with no name, O does not open that rebuild for the next song with no name', () => {
+test('after X on a song with no name, the next song with no name does not get that rebuild: nothing tells them apart but the engine starting over', () => {
   const p = page();
   p.play(null);   // (a song in a browser: not named, called by its source)
-  p.context.setRebuilt({ name: 'system audio', code: 'stack()', titled: false });
-  assert.equal(p.context.openRebuilt(), false, 'still the unnamed one: the live code, not a stale rebuild');
+  p.context.setRebuilt({ name: 'system audio', code: 'stack()', titled: false, resets: 0, at: Date.now() });
+  assert.equal(p.context.rebuiltNow().code, 'stack()', 'the same song, the same tape: pressing O twice does not rebuild twice');
+  p.eng.resets = 1;   // (a new song, a new source, a long pause: the engine started over)
+  assert.equal(p.context.rebuiltNow(), null, 'the next song with no name: not that rebuild');
   p.play({ title: 'system audio', artist: 'X' });   // (even a song titled like the source)
-  assert.equal(p.context.openRebuilt(), false);
+  assert.equal(p.context.rebuiltNow(), null);
   assert.deepEqual(p.opened, []);
 });
 
-test('a rebuilt song of a named song is not opened once the song playing has no name', () => {
+test('a rebuilt song of a named song is not the one of a song playing with no name once the engine has started over, and nothing rebuilt is nothing to open', () => {
   const p = page();
-  p.context.setRebuilt({ name: 'Queen - Don\'t Stop Me Now', code: 'stack()', titled: true });
-  p.play(null);
-  assert.equal(p.context.openRebuilt(), false);
+  p.context.setRebuilt(queenRebuilt(0));
+  p.eng.resets = 1; p.play(null);
+  assert.equal(p.context.rebuiltNow(), null);
   p.context.setRebuilt(null);
   p.play({ title: 'a', artist: 'b' });
-  assert.equal(p.context.openRebuilt(), false, 'nothing rebuilt');
+  assert.equal(p.context.rebuiltNow(), null, 'nothing rebuilt');
 });
 
 test('a file with no artist tag is saved under its title alone, not "File - ..." (its stand-in artist is no one to be "by")', () => {
