@@ -8,14 +8,14 @@ import assert from 'node:assert/strict';
 const src = fs.readFileSync(new URL('../renderer/engine.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 test('two empty bars put the kick line aside, not away', () => {
-  assert.match(src, /v\.away = v\.shown\.slice\(\);\n\s+v\.awayN = 0;\n\s+v\.shown = null;/);
+  assert.match(src, /v\.away = v\.shown\.slice\(\);\n\s+v\.awayN = 0;\n\s+v\.awayOff = 0;\n\s+v\.shown = null;/);
 });
 
-test('its second kick back on the line brings it back; one off it drops it', () => {
+test('its second kick back on the line brings it back; the kicks off it drop it once they outnumber those on it (one stray survives)', () => {
   const i = src.indexOf("if (id === 'bd' && v.away && !v.shown) {");
   assert.ok(i > 0);
   const body = src.slice(i, i + 700);
-  assert.match(body, /if \(!v\.away\[p\.step\]\) v\.away = null;/);
+  assert.match(body, /if \(!v\.away\[p\.step\]\) \{ if \(\+\+v\.awayOff >= 2 && v\.awayOff > v\.awayN\) v\.away = null; \}/);
   assert.match(body, /else if \(\+\+v\.awayN >= 2\)/);
   assert.match(body, /v\.shown = v\.away\.slice\(\);/);
 });

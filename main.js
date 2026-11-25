@@ -531,7 +531,7 @@ const plainObject = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x 
 let soundServer = null; // (a promise of the rebuilt songs' sound server, started the first time it's needed: helpers/sound-server.cjs)
 function setUpIpc() {
   // (and started now, where a rebuilt song may have been saved before: its code finds its sounds as soon as Toaster is open)
-  if (fs.existsSync(songsDir()) && fs.readdirSync(songsDir()).some((f) => f.endsWith(' rebuilt'))) soundServer ??= require('./helpers/sound-server.cjs').start(songsDir);
+  if (require('./helpers/sound-server.cjs').hasSongs(songsDir())) soundServer ??= require('./helpers/sound-server.cjs').start(songsDir);
   ipcMain.handle('sys:info', () => {
     const d = screen.getPrimaryDisplay();
     const cpus = os.cpus();
@@ -717,9 +717,10 @@ function setUpIpc() {
   ipcMain.handle('faces:stop', () => stopFaces());
   // The code, opened in the Strudel REPL in your browser (the code rides in the link's #, which
   // stays in the browser). Nothing but strudel.cc links goes through here.
-  ipcMain.handle('open:strudel', (_e, url) => {
-    if (typeof url === 'string' && url.startsWith('https://strudel.cc/#') && url.length < 60000) return shell.openExternal(url);
-  });
+  // (the rebuilt song, on a Mac, goes to Chrome or Edge when one is installed: Safari, the default, can't play its sounds; the live code opens the default browser.
+  // helpers/strudel-open.cjs answers { browser, plays } for the page's status words, and strudel:browser names the one a Mac would use for the rebuilt song)
+  ipcMain.handle('open:strudel', (_e, url, rebuilt) => require('./helpers/strudel-open.cjs').openStrudel(url, { rebuilt: rebuilt === true, openExternal: (u) => shell.openExternal(u) }));
+  ipcMain.handle('strudel:browser', () => (process.platform === 'darwin' ? require('./helpers/strudel-open.cjs').macBrowser()?.name || null : undefined));
   // A bug report's draft, or a misread report's: a GitHub new-issue link, opened in your browser. Only
   // Toaster's own new-issue page goes through here (helpers/issue-url.cjs, loaded when it's first
   // needed: the test copies of the app don't carry helpers/).
@@ -895,26 +896,27 @@ function setUpIpc() {
     return write;
   });
   ipcMain.handle('handlog:stop', async () => { const file = handLog; handLog = null; await handLogWrites; return file; });
-  // Song export (X): the song as a MIDI file and as Strudel code, side by side in Music\Toaster,
-  // named after the song and the time.
+  // Song export (X): one folder per song in Music\Toaster, named after the song and the time (helpers/save-song.cjs). The notes go in it now (the MIDI file and the
+  // sketch's Strudel code, in a subfolder, with a README): the page gets the MIDI file's path back.
   ipcMain.handle('song:save', (_e, name, midi, code) => {
     const dir = songsDir();
     fs.mkdirSync(dir, { recursive: true });
     const safe = String(name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'song';
-    const base = freeBase(path.join(dir, `${safe} ${stamp()}`), ['.mid', '.strudel.js']);
-    // (both or neither: a failed code file takes the MIDI file back out, helpers/save-pair.cjs)
-    return require('./helpers/save-pair.cjs').savePair(base, Buffer.from(midi), code);
+    const folder = freeBase(path.join(dir, `${safe} ${stamp()}`), ['']);
+    return require('./helpers/save-song.cjs').saveNotes(folder, path.basename(folder), Buffer.from(midi), code);
   });
-  // The song rebuilt from its own sounds (helpers/save-rebuilt.cjs): a folder beside the MIDI file X just saved, named after it. The
-  // page gives that file's path back; anything not a .mid file directly in the songs folder is refused.
+  // The song rebuilt from its own sounds (helpers/save-rebuilt.cjs): into the folder X just made, at its top, beside the notes. The page gives the notes' .mid path
+  // back; anything not a .mid in the notes folder of a folder directly in the songs folder is refused.
   // Its code names where its sounds are served from while Toaster is open (helpers/sound-server.cjs): the page writes {{base}} (samples('{{base}}strudel.json')).
   ipcMain.handle('song:save-rebuilt', async (_e, midiFile, code, files) => {
-    const dir = songsDir(), file = path.resolve(String(midiFile || ''));
-    if (path.dirname(file) !== path.resolve(dir) || !file.endsWith('.mid')) throw new Error('not a song X saved');
-    const folder = path.basename(file.slice(0, -4)) + ' rebuilt', server = await (soundServer ??= require('./helpers/sound-server.cjs').start(songsDir));
+    const saveSong = require('./helpers/save-song.cjs'), dir = saveSong.folderOf(songsDir(), midiFile);
+    if (!dir || !fs.existsSync(path.resolve(String(midiFile)))) throw new Error('not a song X saved');
+    const folder = path.basename(dir), server = await (soundServer ??= require('./helpers/sound-server.cjs').start(songsDir));
     const address = server ? server.base(folder) : '', saver = require('./helpers/save-rebuilt.cjs');
     const final = String(code || '').replace('{{base}}', () => address);   // (the list of sounds, strudel.json, gets it too)
-    return { file: saver.saveRebuilt(path.join(dir, folder), final, saver.withBase(plainObject(files), address)), code: final, served: !!server };
+    const file = saver.saveRebuilt(dir, final, saver.withBase(plainObject(files), address), fs, { into: true });
+    try { saveSong.markRebuilt(path.resolve(String(midiFile))); } catch { /* (the README keeps saying the notes are alone: the song is there all the same) */ }
+    return { file, code: final, served: !!server };
   });
   // The library (above): the folder in force, choosing another (the system's dialog), what the last scan kept, a scan (its progress
   // goes to the page that asked), and the bytes of one audio file of that folder, which helpers/library.cjs refuses unless it is

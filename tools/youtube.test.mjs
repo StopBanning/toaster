@@ -262,7 +262,8 @@ test('a broken or hostile feed can\'t make the parser slow: all of these togethe
     const rows = parseFeed(xml);
     assert.equal(rows.length, what === 'a very long title' ? 1 : 0, what);
   }
-  assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
+  // (a parser gone quadratic on these takes minutes; GitHub's Windows runner takes ~2 s for the honest parse, so the line is 5 s, Nov 25)
+  assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
 });
 
 // ---------------------------------------------------------------- a fake YouTube

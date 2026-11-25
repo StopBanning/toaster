@@ -19,7 +19,11 @@ contextBridge.exposeInMainWorld('nc', {
   findFaces: (w, h, pixels) => ipcRenderer.invoke('faces:find', w, h, pixels),
   stopFaces: () => ipcRenderer.invoke('faces:stop'),
   // Opens a https://strudel.cc/#... link in the default browser.
-  openStrudel: (url) => ipcRenderer.invoke('open:strudel', url),
+  // (rebuilt: the link is the rebuilt song's, which a Mac opens in Chrome or Edge; it answers { browser, plays }: where it opened, and whether that can play the
+  // rebuilt song's sounds, or null if the link was refused)
+  openStrudel: (url, rebuilt = false) => ipcRenderer.invoke('open:strudel', url, rebuilt === true),
+  // On a Mac: the browser O opens the rebuilt song in ('Chrome', 'Edge'), or null when neither is installed; undefined elsewhere.
+  strudelBrowser: () => ipcRenderer.invoke('strudel:browser'),
   // Opens a bug report's draft, or a misread report's (a github.com/StopBanning/toaster/issues/new link), the same way.
   openBugIssue: (url) => ipcRenderer.invoke('open:bug-issue', url),
   // Recording (M): a capture id for the page itself, then the video to a file, piece by piece.

@@ -45,7 +45,7 @@
   <button id="b-card" data-act="card" data-title="Now-playing ID card: off, on, big" title="Now-playing ID card: off, on, big (N)">card</button>
   <button id="b-cam" class="grp" data-act="cam" data-title="Webcam: off, on, big eyes, ASCII" title="Webcam: off, on, big eyes, ASCII (C)">cam</button>
   <button id="b-rec" class="grp" data-act="rec" data-title="Record a video of the window, with the sound" title="Record a video of the window, with the sound (M)">● rec</button>
-  <button id="b-strudel" data-act="strudel" data-title="Open this code in Strudel, in your browser" title="Open this code in Strudel, in your browser (O)">strudel ↗</button>
+  <button id="b-strudel" data-act="strudel" data-title="Hear the song rebuilt from its own sounds in Strudel (rebuilds it first if needed); with Shift, the live code" title="Hear the song rebuilt from its own sounds in Strudel (rebuilds it first if needed); with Shift, the live code (O)">strudel ↗</button>
   <button id="b-mini" class="grp" data-act="mini" data-title="Mini player: a small window in the corner, over everything else" title="Mini player: a small window in the corner, over everything else (W)">mini</button>
   <button id="b-layout" class="wide-only" data-act="layout" data-title="Vertical layout for TikTok/Shorts" title="Vertical layout for TikTok/Shorts (L)">9:16</button>
   <button id="b-help" class="grp" title="Keys and how it works">?</button>
@@ -154,8 +154,9 @@
     <tr class="sec"><th colspan="2">save &amp; share</th></tr>
     <tr data-act="rec"><td>M</td><td>record the window with sound, into <span class="os-win">Videos\Toaster</span><span class="os-mac">Movies/Toaster</span> (for TikTok or Shorts, <kbd data-k="layout">L</kbd> first)</td></tr>
     <tr data-act="clips"><td>J</td><td>save the first two drops of each song as clips</td></tr>
-    <tr data-act="export"><td>X</td><td>export the song so far as MIDI and Strudel code, into <span class="os-win">Music\Toaster</span><span class="os-mac">Music/Toaster</span></td></tr>
-    <tr data-act="strudel"><td>O</td><td>open the code in Strudel</td></tr>
+    <tr data-act="export"><td>X</td><td>export the song so far, rebuilt from its own sounds, with MIDI and Strudel notes in a subfolder, as one folder in <span class="os-win">Music\Toaster</span><span class="os-mac">Music/Toaster</span></td></tr>
+    <tr data-act="strudel"><td>O</td><td>hear the song rebuilt from its own sounds (rebuilds it first if needed)</td></tr>
+    <tr id="help-shift-o"><td>Shift+<span data-k="strudel">O</span></td><td>open the live code in Strudel</td></tr>
     <tr class="sec"><th colspan="2">window</th></tr>
     <tr data-act="layout"><td>L</td><td>vertical layout</td></tr>
     <tr data-act="mini"><td>W</td><td>mini player, over your other windows; with the handheld on, the handheld on its own on your desktop (no window round it: drag it anywhere, Esc brings Toaster back)</td></tr>

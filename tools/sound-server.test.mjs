@@ -1,5 +1,5 @@
-// The rebuilt songs' sounds served to strudel.cc (helpers/sound-server.cjs): a .wav inside a " rebuilt" folder of the songs folder,
-// with the headers a browser wants, and nothing else.
+// The rebuilt songs' sounds served to strudel.cc (helpers/sound-server.cjs): a .wav at the top of a song's folder in the songs folder
+// (marked by song.strudel.js; the older " rebuilt" folders too), with the headers a browser wants, and nothing else.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
