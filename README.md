@@ -260,6 +260,9 @@ How it works inside, and the test songs it's checked against: [docs/how-it-works
   code view, ID cards and themes. Toaster's dynamic theme and its library (G) are after golden's.
 - **Internet radio** by Jeffrey Li ([#6](../../pull/6), [#7](../../pull/7)): paste a stream's address and Toaster plays
   it and writes it out. He has also built a background of his own on top of Toaster.
+- **[Toaster for iPhone and Apple TV](https://apps.apple.com/us/app/toaster-live-music-visualizer/id6827206459)** by
+  Insula Technology: a free native port on the App Store. It listens through the microphone, audio files or an internet
+  radio stream, since an iPhone app can't hear other apps.
 - **A 3D-printed handheld** by Clemens ([@tokyo_impressions](https://www.instagram.com/tokyo_impressions)), printed from
   the game's model.
 
