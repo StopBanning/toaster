@@ -1,301 +1,241 @@
 # Toaster
 
-Toaster hears whatever is playing on your Mac or PC (Spotify, YouTube, anything) and writes it out as
-live Strudel code in front of you: named lines typed into a blank window and lighting up as they
-play. Around the code: every hit as a domino, a little world, a handheld rhythm game, or your webcam
-with effects you work with your hands. Toaster, as in Toaster Strudel.
-
-In the app, press **X** and Toaster takes the song apart on your own computer (drums, bass, voice and the rest, with Meta's open-source
-Demucs model) and saves it as code that plays the song's own sounds; **O** opens it at strudel.cc (rebuilding the song first if you haven't pressed **X**). The drums and the bass are
-written out as notes (the bass is the roughest part); the voice and the keys are the record's own pieces, replayed. Toaster also remembers a song it has heard, so the
-second play locks faster, and reads the songs in your music folder ahead.
+Toaster hears whatever is playing on your Mac or PC (Spotify, YouTube, anything) and writes it out as live
+[Strudel](https://strudel.cc) code in front of you: named lines typed into a blank window, lighting up as they play.
+Around the code, the song plays out as dominoes, little worlds, a handheld rhythm game, or your own webcam, worked with
+your hands. Toaster, as in Toaster Strudel.
 
 **[Try it in your browser](https://toaster.locust.lol)** · **[Download for Windows or Mac](../../releases/latest)**
 
 ![Toaster hearing Daft Punk's "Around the World" from a blank window: the code types itself in as it finds the beat, the kick, the bass and the chords, over a planet that changes with the song](docs/hero-worlds.webp)
 
-**How it works:** Toaster listens to whatever your computer is playing and picks the song apart by ear, the way a drummer would. It catches every hit and sorts it: a low thump is the kick, a snap is the clap, a tick is the hi-hat. From where the hits land it finds the tempo and the bar lines, and from the low notes and the harmony it works out the bass line, the chords and the key. Everything it's sure of gets typed in as a line of Strudel code that lights up as it plays, and it keeps rewriting as the song moves. No AI, just listening. It's a live sketch of the song, not a perfect copy.
+**How it works:** Toaster listens to whatever your computer is playing and picks the song apart by ear, the way a
+drummer would. It catches every hit and sorts it: a low thump is the kick, a snap is the clap, a tick is the hi-hat.
+From where the hits land it finds the tempo and the bar lines, and from the low notes and the harmony it works out the
+bass line, the chords and the key. Everything it's sure of gets typed in as a line of Strudel code that lights up as it
+plays, and it keeps rewriting as the song moves. No AI, just listening. It's a live sketch of the song, not a perfect copy.
 
 ## Start here
 
-1. **Play the demo.** Open [toaster.locust.lol](https://toaster.locust.lol) and press *hear it on a demo song*: no mic, no
-   account. The code types itself as the beat plays.
-2. **Pick a look.** Press **V** (or the background button) for the scenes, the dominoes, the handheld and the rest, or one of
+1. **Play the demo.** Open [toaster.locust.lol](https://toaster.locust.lol) and press *hear it on a demo song*: no mic,
+   no account. The code types itself as the beat plays.
+2. **Pick a look.** Press **V** (or the background button) for the scenes, the worlds, the Earth and the rest, or one of
    the presets along the picker's top for a whole look in one click.
 3. **Use your own music.** In the browser: a tab's sound, your mic, an audio file or a radio stream (**S**). In the app:
-   anything playing on your computer, Spotify, YouTube or anything else, straight away.
+   anything playing on your computer, straight away.
 
 Lost? **?** lists every key, and **Ctrl+K** finds any command by name.
 
-**Spotify, three ways.** Toaster hears Spotify playing on your computer like any other app. Connected (with your own Spotify
-Client ID, see [Search Spotify](#search-spotify)), the library's spotify tab browses and plays your playlists and albums and searches
-inside Toaster. Without a connection, its search opens Spotify's own search page. Spotify asks each listener for a free developer
-app of their own (and Premium); the spotify tab walks you through making it, one step at a time, with a picture of each page.
-
-**Does it split the song into stems?** Not while it plays: live, it listens to the whole mix and picks out the kick, snare,
-hats, bass and chords from their frequencies and timing, then writes them as code that plays back on drum-machine samples and
-synths. When you press X, yes: it takes the song apart into drums, bass, voice and the rest (Meta's open-source Demucs model,
-on your machine) and also saves the song rebuilt from its own sounds.
-
-**Will the code sound exactly like the song?** The live code doesn't: it's a sketch of the song's parts, the sounds are
-stand-ins, and a busy or sidechained bass can fool its kick ([Good to know](#good-to-know)). The rebuilt song (X) comes much
-closer on songs with a beat, because it plays the song's own drum hits, its own bass and the singer's own phrases, placed by the code.
-
 ## What it does
 
-- **Writes the song as code you can play.** A line for each part, typed the way a live coder
-  performs it ([what you'll see in the code](#what-youll-see-in-the-code)). It's real Strudel: in the app, press
-  **O** and the song rebuilt from its own sounds opens in strudel.cc, ready to play (**Shift+O** opens the live code instead); press **X** for the song so far as Strudel code
-  and as a MIDI file. Pick what plays from your own music, your Spotify playlists, or [search Spotify](#search-spotify) for any song (**G**).
-- **Your camera, worked with your hands.** **C** turns it on. Frame something with your fingers
-  and a window opens on it through one of 16 filters; make a circle with your hands and a portal
-  opens, your own skull in X-ray first; ✌️ for the next theme, 👍 to record. **K** cuts you out over
-  the visuals, or turns you to dots, voxels or glass.
-- **Visuals that move with the song.** **V** for the background: eleven little scenes, planets
-  cut on the kick, the Earth in NASA's own footage from the space station, the backrooms, liquid chrome, the cover fed through a pasta machine, the sound as a landscape and more; **P** for the dominoes, the
-  song played as a rhythm game on a little handheld, or a punchcard.
-- **Little worlds.** The scenery: eleven scenes, from a lighthouse at sea to space to an eye that
-  dives into its own pupil, every one answering the drop: hit **D** when it lands. **Z** hides the
-  code and keeps just the visuals, for a live DJ set.
+- **Writes the song as code you can play.** A line for each part, typed the way a live coder performs it
+  ([what you'll see in the code](#what-youll-see-in-the-code)). It's real Strudel: in the app, **Shift+O** opens the
+  live code in strudel.cc, ready to play and change.
+- **Rebuilds the song from its own sounds.** In the app, press **X** and Toaster takes the song apart on your own
+  computer (drums, bass, voice and the rest, with Meta's open-source Demucs model) and saves it as code that plays the
+  song's own sounds; **O** opens it in strudel.cc (rebuilding it first if you haven't pressed X). The drums and the bass
+  are written out as notes (the bass is the roughest part); the voice and the keys are the record's own pieces, replayed.
+- **Your camera, worked with your hands.** Frame something with your fingers, open a portal with a circle of them, change
+  the theme with a ✌️. [More below](#your-hands-in-the-picture).
+- **Visuals that move with the song.** Eleven little scenes that answer the drop, planets cut on the kick, the Earth in
+  NASA's own footage from the space station, liquid chrome, the backrooms, dominoes, a handheld rhythm game and more.
+- **Remembers what it has heard.** The second play of a song locks faster, and it reads the songs in your music folder
+  ahead.
+- **Plays well with Spotify.** It hears Spotify like any other app. Connect your own account (a free Spotify developer
+  app of your own, and Premium) to browse, search and play inside Toaster ([how](docs/spotify.md)).
 
 ![The scenery's eleven scenes: the lake, the sea, the campfire, the snow, the city in the rain, the garden, the sharks, the festival, the koi pond, space, and the eye, which dives into its pupil onto a galaxy](docs/scenery.webp)
+
+## Your hands, in the picture
+
+<img src="docs/finger-frame.webp" width="360" align="right" alt="Toaster's finger frame: a window held between the fingertips flips through its filters while Baby Jane's &quot;Clublights&quot; plays, the code writing itself underneath">
+
+Press **C** for the camera, and Toaster watches your hands (with Google's MediaPipe, on your machine).
+
+- **The finger frame.** Make an L with each hand and a window opens between your fingertips, showing what's inside
+  through one of 16 filters. Turn a hand over and the card twists round to its back; flick it, bunch your fingertips
+  together or wink for the next filter.
+- **Portals.** Make a circle with your hands and hold it: a round window opens on a look inside, your own skull in X-ray
+  first, then x-ray, glass, a kaleidoscope, a time tunnel and more. Pull your hands apart and it grows; spread them wide and it
+  fills the picture, with you cut out in front of it.
+- **Hand signs.** ✌️ for the next theme, 👍 to start or stop recording, ✊ to hush, 🖐 to come back.
+- **Camera effects.** **K** cuts you out over the visuals, or turns you into dots, voxels or glass.
+
+Keep your hands a little inside the edges of the picture: the tracker loses a hand that's half out of it.
+
+<br clear="right">
 
 ## Get it
 
 Windows 10 or 11, or macOS 13 or later. A webcam is optional.
 
-**Windows.** Download `Toaster-<version>-win-x64.zip` from the [Releases](../../releases) page,
-unzip it anywhere and double-click `Toaster.exe`. The first time, Windows may say "Windows
-protected your PC" (the app isn't signed): click **More info**, then **Run anyway**. It starts
-listening straight away; there's no prompt.
+**Windows.** Download `Toaster-<version>-win-x64.zip` from the [Releases](../../releases) page, unzip it anywhere and
+double-click `Toaster.exe`. The first time, Windows may say "Windows protected your PC" (the app isn't signed): click
+**More info**, then **Run anyway**. It starts listening straight away.
 
-**Mac.** Download `Toaster-<version>-mac-universal.zip` from the [Releases](../../releases) page
-(one app for Intel and Apple silicon), unzip it and drag Toaster into Applications. It isn't
-signed by Apple, so the first time the Mac won't open it: open **System Settings → Privacy &
-Security**, scroll down to Toaster and click **Open Anyway**. It asks to record system audio. Allow
-it. That's how Toaster hears what's playing; it doesn't record the screen, and the camera stays off
-until you press C.
+**Mac.** Download `Toaster-<version>-mac-universal.zip` from the [Releases](../../releases) page (one app for Intel and
+Apple silicon), unzip it and drag Toaster into Applications. It isn't signed by Apple, so the first time the Mac won't
+open it: open **System Settings → Privacy & Security**, scroll down to Toaster and click **Open Anyway**. It asks to
+record system audio: allow it. That's how Toaster hears what's playing; it doesn't record the screen, and the camera
+stays off until you press C.
 
-Play some music: within a few seconds it finds the beat and starts typing. Press **?** for the keys.
+Play some music: within a few seconds it finds the beat and starts typing.
 
-**Updates.** When a newer Toaster is out, it offers it a few seconds after it starts. Say yes and
-it downloads it, checks it against the checksum GitHub lists for it, closes, and opens again as
-the new version (your settings stay; on a Mac the old copy goes to the Trash). On a Mac, Toaster
-has to be somewhere it can replace itself: from Downloads or a disk image it says so and offers the
-release's page instead, so move it into Applications first. If an update doesn't go through, the old
-copy stays as it was and Toaster says why. You can turn the check off in the help (?). The first
-time a new version opens, it shows what's new in it, each with its key, and the help keeps the
-latest additions at its top. To hear about new versions on GitHub as well, use **Watch → Custom →
+**Updates.** When a newer Toaster is out, it offers it a few seconds after it starts. Say yes and it downloads it, checks
+it against the checksum GitHub lists for it, and opens again as the new version (your settings stay). On a Mac it has to
+be in Applications to replace itself. If an update doesn't go through, the old copy stays as it was and Toaster says
+why. You can turn the check off in the help (**?**). To hear about new versions here too, use **Watch → Custom →
 Releases** on this page.
 
 ## Keys
 
-These are the keys as they come; every one can be changed in the help (**?**): click a key, press the one you want (a key that's taken swaps over). Esc, ? and F11 stay put. The help also has **report a bug**: Toaster writes a GitHub issue for you to read, edit and send yourself.
+Every key can be changed in the help (**?**). The help also has **report a bug**: Toaster writes a GitHub issue for you
+to read, edit and send yourself. The full detail of every key and every background is in
+[docs/keys-and-looks.md](docs/keys-and-looks.md).
 
 | Key | Does |
 | --- | --- |
 | S | audio source: system audio, demo beat, file, input, radio |
-| V | background, best first: scenes (a new one each song), worlds, the Earth (NASA's footage from the space station, twenty views: auroras, city lights and moonlit clouds on the night side, deserts, oceans, mountains and a hurricane by day, the whole Earth, the sun rising as a star and a capsule arriving; A moves through them, and with all views picked it moves on by itself at a breakdown or every 8 bars), the backrooms (an endless walk through yellow rooms: the kick brightens the lights, a drop blows them out), chrome, spaghetti, spectrogram, lanes (the song's patterns flying at you down a tunnel, each part a lane, each step a tile that flashes as it plays), cuts, fire, the code rain, off (each described under [Backgrounds](#backgrounds)). The background button in the bar opens a picker with a picture of each, under six presets that set up a whole look in one click: live coding, visualizer, orb, handheld, the Japan edition and for TikTok |
-| A | the next one of whatever's showing (the footer says which). With the worlds on, their look: auto (film, and on each drop another look for 8 bars), night (as auto, but every world keeps a dark sky with its stars, so no cut lights the whole screen; with fewer flashes on, the worlds always have night skies), film, ASCII (the planet as text, each character in its own colour), thermal camera, and cells, the planet cut into cells of the worlds around it, turning over cell by cell into the next on each cut (after Days of Glitch's moving cells). A print look covers the planet, or the sky when the code sits over the planet. With chrome, A turns its collage off and on; with the spaghetti, its noodles: snakes (a card each time round, a few of its noodles dancing) or endless (the cover stuck on top, the machine never stopping, each noodle the cover again and again, spreading over the floor on the kick and dripping off it); with the spectrogram, it switches its colours between the rainbow and the theme's own; with the scenery, its scene: auto (a new one each song), the lake, the sea, the campfire, the snow, the city in the rain, the garden, the sharks, the festival, the koi pond, space, the eye, and last auto again in the theme's two colours. With the handheld game on (P), A goes round the game's screens instead: Toaster's own (in the theme's colours), neon, an old LCD, and the Japan edition (Toaster's own in Japanese, in black and white, on a cream and red handheld after the Famicom: its screens, its cartridge and its power-on in katakana). Remembered |
-| P | the code look, over whichever background is picked, in turn: dominoes (after mewtw0o's domino piano roll): every hit of the code stands as a domino that the playhead knocks over as it plays, landing on its beat and leaning on the one before when it's close, a held bass note a slab on legs that glows while the note holds and falls when it ends, a chord's notes one behind another; the handheld game (after mewtw0o's handheld rhythm game): the song played on a little two-screen handheld of our own, the kick, clap, hats and bass falling down their lanes onto their targets as they're heard, each judged by how near the real hit came (PERFECT, GREAT, GOOD), the combo and score climbing and a MISS when a part drops out; under it a 4 x 4 of pads, the drums and the twelve notes up from the song's key, lit as the bass and the chords play them, and now and then that screen turns into the code instead, its parts typing in as Toaster types them, a page at a time on the bar lines; its buttons go down with the drums, and a drop is FEVER, points doubled, for two bars (in the tall layout it fits in under the code, in place of the pitch roll). It powers on like an old handheld each time it comes on: its light, the screens flickering awake, the logo dropping in with a ding, a self-test of the song's parts, PRESS START. With no beat to play it stands by instead of going away: picked with nothing playing it says PLAY ANY SONG, with a song coming in READING while it finds the beat, and when the music stops CONTINUE? and a count, then GAME OVER; it powers on again when the music's back. On the pink theme it comes in a pink edition; then the punchcard blocks; then none. Remembered |
-| R | over the picture, in turn: the orb (a cloud of dots in 3D shapes over any background: a sphere, a crystal, orbit paths, a galaxy and more, flowing into the next every 8 bars), the glass blob (a lump of liquid glass floating over the code and bending it like a lens, swelling on the kick and spinning faster as the music gets louder; after null.mpeg's AIRGLOW visuals), both, none |
-| [ / ] | blocks sync fine-tune: ] if they land after the beat, [ if before (10 ms a press, remembered) |
-| C | webcam behind the code, tinted to the theme. Press again for big eyes: little windows over your face with your eyes and mouth blown up, swelling on the kick (after lo.fi.sci.fi's segcam effect). Again for ASCII: the camera drawn as text (dense characters where it's bright), in place of the ASCII background. Again for off. The camera is mirrored, as a selfie view is; to see it as the camera sees it (to point it at your gear, say), untick Mirror the camera in the help (**?**) or pick camera: not mirrored in Ctrl+K. Remembered |
-| (hands) | with the camera on, make a frame with your fingers (each hand an L: index out, the other fingers curled, the thumb wherever) and a window opens between your fingertips showing what's inside through a filter (16 of them: dithered blue and pink, negative, heat camera, the theme's colours and more; the first, keyframes, changes colours on every kick). It's a card with a filter on each side: turn one hand over and its end twists round to show the back; turn the whole card over and the back becomes the front. Flick it edge-on and back, bunch one hand's fingertips together, or wink, for the next filter. Pinch one hand (thumb on index) for a triangle; pinch both together, or open your hands, to close it. Keep your hands a little inside the edges of the picture: the tracker loses a hand that's half out of it |
-| (portal) | with the camera on, make a circle with your hands (the tips of your index fingers together and your thumbs' tips together, one pair above the other; a diamond or a heart works too) and hold it a moment: a round window opens in it with a look inside: first your skull (make that circle in front of your face: an X-ray, your skull in it where your face is, turning as your head turns; it stays till you pinch or swipe on), then x-ray (white edges, with echoes spreading out from the middle), lilac (pale and grainy), glass (you gone clear, the room bent through you as through liquid glass), a kaleidoscope turning with the beat, a time tunnel (each ring further out a moment further back, so moving sends ripples through time), and the finger frame's heat camera, comic, pencil, RGB split, neon edges, mosaic and more. Pull your hands apart and it grows between them; spread them wide and hold them there a moment (its outline thickens), or spread them on out past the picture's sides, and it fills the camera's picture, with you cut out in front of it as you are (the code stays on top). Pinch (thumb on index) for the next look, spreading out from that hand (pinch again while it spreads for the one after); every 8 bars brings the next one too, from the middle (but for the skull). Once it fills the picture you can swipe as well: hold one open hand up a moment, then sweep it sideways, fast, and the look slides in after it (to the left for the next, to the right for the one before). Drop your hands and the window closes; once it fills the picture it stays till you make the circle again, which can be looser than the one that opened it. Hold the circle on after a window closes and the next one opens (after cure.visual's TouchDesigner portals) |
-| (signs) | with the camera on, hold up a hand sign: ✌️ (two fingers up) for the next theme, 👍 (held a second) to start or stop recording, ✊ (one raised fist; two up, a flex, don't) to hush, 🖐 (an open hand) to come back from it. Each fires once a hold (the header shows the sign while you hold it), and none while the finger frame or a portal is open |
-| O | hear the song rebuilt from its own sounds (rebuilds it first if needed): the rebuilt song opens in strudel.cc, in Chrome (or Edge) on a Mac, with Toaster serving its sounds. If Toaster hasn't heard enough of the song yet, it says to let it play a little longer |
-| Shift+O | open the live code in Strudel: your browser opens strudel.cc with the code in its editor (in the link, after the #), ready to play with ctrl+enter and change, starting where the song is (on the bar of its four that was playing when you pressed it). The vox line becomes the same notes on a synth (Strudel has no "vox" sample), and a punchcard of the whole thing draws under the code |
-| M | record a video: what's in the window with the sound, into `Videos\Toaster` on Windows or `Movies/Toaster` on a Mac (see Saving things below). M again to stop |
-| J | drop clips: while on, the first two drops of each song are saved as videos of their own, the build-up and the drop, into that same folder (see Saving things below) |
-| X | export the song so far, decompiled, as one folder for the song in `Music\Toaster` on Windows or `Music/Toaster` on a Mac: the song rebuilt from its own sounds, and a `notes` subfolder with a MIDI file and Strudel code (see Saving things below) |
-| Space | tap the beat: from the fourth tap the tempo is yours, the beats on your taps and the first tap starting a bar. For a song it can't find the beat of (soft songs, rubato) or finds wrong. It stays until the song changes (the hits still fine-tune it), and a pause of 2 seconds starts the count over |
-| Q | hush: every part muted with a `_` in front of its name, the way Strudel's `hush()` stops everything, and the background dimmed (the sound itself keeps playing). Q again, an open hand or a new song brings it back |
-| K | camera effect: none, cut-out (just you over the visuals: where MediaPipe's selfie segmenter finds a person, the rest of the picture goes see-through, and the camera moves up over the backgrounds), slit-scan (each row a moment later than the one above, so anything moving bends down the picture), datamosh (what a video codec does when it loses its key frames: the picture melts along with whatever moves, and comes back fresh on every bar line), windows (the room gone, you only through little windows that pop open wherever you move, each keeping its moment, so moving leaves a trail of them, a burst on each kick, one on your face; after lo.fi.sci.fi's segcam), glass (you gone clear: the room, in colour, bent through your shape as through liquid glass, light glinting off its edges, the bend sharper on the kick; the room behind you is learned as you move, so step aside for a moment and it comes out clean; after ttyproj's "Transparent Distortion", made in TouchDesigner), dots (you as a neon dot matrix: each spot of the picture a round dot as big as it is bright, violet in the shadows to pink nearly white, with teal edges, the room faded to a faint grid; the kick swells the dots and each new chord slides the colours; after decayingsun's "dream machine"), voxels (the camera rebuilt as a room of cubes, each the colour of its patch of the picture: where the selfie segmenter finds you, your cubes stand out from the wall, a tiled floor runs out from its foot, and the view, from a little above, swings slowly side to side; the kick swells the cubes and lifts their light, yours most; after ntrxcam's voxel camera). The first three work on the ASCII camera too, and with it the windows show you as text. Remembered |
-| N | now-playing ID card: song, tempo, key, and your webcam as a 1-bit dithered picture (with the camera off, the song's cover from Windows if the player gives one, or the radio's from the iTunes Store, in finer dots and sharpened so its lettering survives, else the sound). N again makes it big (the cover or you in big dots, as big as fits), a third time puts it away. On by default in the vertical layout, each layout remembers its own setting. In the mini player it's the big one shrunk to fit beside the code |
-| D | the drop, now: the drop effect (it also fires when the kick returns after a 3+ second break), and the backgrounds' drop moments: the scenery's toast pops, the koi gather, the sharks charge, the fireworks go up, the fire flares. With B set to off, just the backgrounds'. With the camera on, some pop-ups close in on your face or one eye (one on a little CRT screen) |
-| B | drop effect: XP takeover, the y2k bug (the clock rolls over to 1900 on the drop, the code crashes in consoles, a debugger and a memory dump, and the PC freezes into a blue screen, whose glass shatters on the last beat), blue screen, not responding (Windows XP's hung-window smear: the cursor drags a toaster.exe window round a figure 8 for 4 bars; it hangs, leaves a copy of itself every 8th, and shows the visuals under it in a new look every beat, negative, thermal, cyanotype, a green CRT, edges, dither, x-ray; then the trail rewinds), off. Off until you pick one |
-| I | machine readout (`const machine = {...}`) |
-| L | vertical 9:16 layout for TikTok/Shorts (resizes the window) |
-| W | mini player: the window shrinks to a small panel in the corner, on top of everything else, still listening (the code, and the card if it's on); W again brings it back. With the handheld game on, the handheld goes on your desktop on its own instead: no window round it, just the device and its shadow over whatever's there, on top; drag it anywhere, and Esc, W or its x brings Toaster back |
-| T | theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (the colours of the song's cover, from your music app, the radio or a file's own, easing over to the next song's; after golden by Jon Soini), softclub (the late-90s soft club look: slate on an icy haze, a soft glow), fall2003 (a bedroom on an autumn night in 2003: cream on walnut, pumpkin orange for what's lit) |
-| G | the library, a panel over the visuals: your music from a folder you pick (its albums, their covers drawn in characters (or, Shift+C, half: the cover itself framed with its characters around it and the tracks written as code), the ones played lately on a shelf, with the player bar's next and previous; Ctrl+F finds a song as you type, Shift+R picks what repeats, Shift+S shuffles, and after a restart it opens where you left off), spotify (paste a link to play it in the Spotify app, or connect your own account for your playlists, saved albums and liked songs: a free developer app of your own and Spotify Premium), the radio stations you've played (the latest first, or paste another), and scenes: the whole setup (background, theme, code look and layout) saved by name, beside the presets. Esc or G closes it. After golden by Jon Soini |
-| Y | CRT: an old TV over everything, on any theme. It comes on from a white line opening into the picture and goes off into a dot; scanlines and phosphor stripes, a flicker and a band rolling down it, glare on the glass, the corners rounded and dark, the code fringed red and blue and glowing. The picture swells on the kick and slips into static on the drop; each background (V) is a channel, changed through static with its number in the corner, VCR green, and the theme (T) shows there as the picture setting. With fewer flashes, it stays still: no flicker, roll, static or white line. Remembered |
-| U | a look over everything: trails, dots, LED, halftone, VHS, line art, and four glass looks, ripples, rain on glass, prism and heat shimmer (after Hyprland's blur); off |
+| V | background: scenes, worlds, the Earth, the backrooms, chrome, spaghetti, spectrogram, lanes, cuts, fire, the code rain, off |
+| A | the next one of whatever's showing: the scene, the worlds' look, the Earth's view, the handheld's screen |
+| P | code look: dominoes, the handheld rhythm game, punchcard, none |
+| R | over the picture: the orb, the glass blob, both, none |
+| C | camera: behind the code, big eyes, ASCII, off |
+| K | camera effect: cut-out, slit-scan, datamosh, windows, glass, dots, voxels |
+| D | the drop, now |
+| B | drop effect: XP takeover, the y2k bug, blue screen, not responding, off |
+| T | theme: bluescreen, blackscreen, terminal, pink, whitescreen, dynamic (the cover's colours), softclub, fall2003 |
+| U | a look over everything: trails, dots, LED, halftone, VHS, line art, four glass looks |
+| Y | an old CRT TV over everything |
+| Z | hide the code, for a visualizer; again for the code without its beat |
+| G | the library: your music, Spotify, the radio, saved scenes |
+| N | now-playing ID card |
+| L | vertical 9:16 layout for TikTok, Shorts and Reels |
+| W | mini player, on top of everything else |
+| H / F | hide the header and footer / fullscreen |
+| Space | tap the beat, for a song it can't find the beat of |
+| Q | hush every part (the sound keeps playing) |
 | E | name the song yourself |
-| Z | hide the code: just the visuals, for Toaster as a visualizer. Again for the code without its beat (the drum lines and their grid), for music with no pulse, and again for all of it (it's still written underneath). The scenery opens out into the room the code kept: the sharks' float and the koi's lily pad come to the middle, the festival's stage moves to the middle, and in a tall window Halloween's moon rises into it. Remembered |
-| H / F | hide header and footer / fullscreen |
-| (bar) | the player bar along the bottom: the source and the song, only the buttons that source has (play and pause, skip, and a progress bar where it knows its place: a file, the radio, the demo, Music and Spotify on a Mac, the media keys on Windows), and the tempo, key and bar. H hides it with the footer, Z's visualizer mode shows it only at the bottom edge, and recordings leave it out unless the help says otherwise |
-| Ctrl+K | everything by name: every action, scene, background (the classics too: warp, spiral, tunnel, pitch wheel, spectrum and scope), code look, handheld screen and theme. Type a few letters, then Enter |
+| I | machine readout |
+| [ / ] | fine-tune the sync, 10 ms a press |
+| M | record a video |
+| J | drop clips: save each song's first two drops as videos |
+| X | save the song: rebuilt from its own sounds, plus a MIDI file and Strudel code |
+| O | hear the rebuilt song in strudel.cc |
+| Shift+O | open the live code in strudel.cc |
+| Ctrl+K | everything by name |
 
-The background, code look, card, theme, camera effect and drop-effect
-choices are remembered between launches, and so are the keys and the radio's address; the camera
-always starts off.
-
-### Search Spotify
-
-Open the library (**G**) and choose **spotify**. No setup is needed: type a query and choose **search in Spotify** to open Spotify’s search page in your browser, then pick a song there. Toaster does not automatically start a song or switch its audio source when opening search. With your account connected, enter a song title or artist in the search field and press Enter or click **search**. Click a result, or use Down then Enter, to play it in Spotify. Each song is listed once, keeping Spotify's first result when popularity is unavailable. A search for an artist's name lists their songs first, and the albums that match come after the songs: → opens one, Enter plays it. **More results** loads the next ten songs; **clear** restores your collections. Ctrl+F (⌘F on a Mac) focuses Spotify search while that section is open. Only results displayed inside Toaster require the optional Spotify account connection.
-
-Open the artist result, choose an artist beside a song, or press **A** on a song to see their page. You can also choose the artist in the now-playing strip or paste an artist link. Albums, singles and EPs, appearances and compilations open with **→**; Enter plays a song inside its album. Artist songs come from Spotify search, rather than its unavailable top-tracks list. **Esc** returns to your previous list and cursor. Artist pages show Spotify's original pictures; album headers show the year when supplied. **Open Spotify** keeps exploring in Spotify's app.
-
-When the system's player is Spotify, the player bar becomes a compact Spotify player: cover, title and artist, play/pause, back and next, and timing when available. Tab to a button and press Space or Enter to use it. With your account connected, it reads the current song's position and available buttons from Spotify; without a connection it keeps the native controls. Progress is read-only. The Spotify mark opens the song, or searches for it when only the system's song name is known. It follows the theme and the player bar's hide and recording settings. **W** keeps its existing small visual panel. With your account connected and the bar wide enough, it also shows what Spotify plays next (next "Jóga" , "Hunter"), read from Spotify's queue.
-
-**Q** on a Spotify song in the library (or its **+ queue**) adds it to the end of Spotify's queue instead of playing it now. This needs your account connected. Spotify lets apps add to the end of the queue, but not reorder it, take songs out or put one next.
-
-On a Spotify song, choose **▶ preview** or press **V** and Spotify's own player opens inside Toaster with a 30-second preview of the song. **open in Spotify** plays the whole song, and its music video when it has one, in the Spotify app (Spotify's full songs and videos need DRM that Toaster's app doesn't include). **Esc** closes it. It needs an internet connection; pause any other player first.
-
-## Backgrounds
-
-V steps through them, best first: the scenery, the Earth, the backrooms, worlds, chrome, the spaghetti, the spectrogram, lanes, cuts, fire, the code rain, off. A changes the scene or
-the look (see the keys above).
-
-- **The Earth** is NASA's own footage from the space station, twenty views: auroras, city lights and moonlit clouds on the
-  night side; deserts, oceans, mountains and a hurricane by day; the whole Earth, the sun rising as a star and a capsule
-  arriving. The bass brightens the auroras and the kick twinkles the cities. A picks the view, or all of them, a new one every
-  8 bars. Each view downloads the first time you pick it.
-- **The backrooms** is an endless walk through yellow rooms: the kick brightens the lights, a drop blows them out.
-- **Lanes** flies the song's patterns at you down a tunnel, each part a lane, each step a tile that flashes as it plays.
-- **Spectrogram** is what Toaster hears, as a landscape, and what it makes of it: the sound rises out of a floor in glossy hills, the frequencies across it (the bass at the right, the highs far off to the left), a bar of time rolling toward you from the back, louder taller and further up a rainbow from orange through green and blue to violet and white (after the 3D spectrum analysers); a faint line crosses it on each beat and a bright one where the chord changes, named at its end, and each time Toaster recognises something a pin rides along with the code it became, bd on a kick, cp on a clap, hh on the hats, each bass note as the code writes it (e1, a3).
-- **Cuts** gives each drum a scene of its own, cut to on its hits, each a view of the song in Toaster's look: the drum's word huge, its line of code magnified, its 16 steps as a punchcard, the spectrum falling in dots, the waveform, you or the cover in big dots, the tempo and key, the spectrum as text mirrored both ways like a kaleidoscope, a tunnel of rectangles flowing out (those two after rentalunit5's video-synth pieces).
-- **Fire** is the old Doom fire in square pixels, lit by the song: it burns steady along the bottom, a little lower where the spectrum is quiet (the bass in the middle, the highs out at the sides); the song sets how high it reaches, the kick lifts it and the hats spit sparks. It burns low under the code, and smoulders while the song is quiet. When it comes on, and on every drop, it flares, leaping to twice its height and dying back (an idea from not.axel on Threads).
-- **The code rain** is your code's own characters falling down the screen in streaks, faster as the song gets louder.
-- **Worlds** is a film of planets, after Anthropic's Claude Opus 5.5 launch film: the kick on each bar's one cuts to another world on the same horizon (every other bar with fewer flashes), an extreme close-up of something (honey, agate, lace, a leaf, bread crust, plant cells, oil on water, a circuit board, the code itself) seen as a planet from low orbit, the foreground soft, gold dust in the air; when the kick drops out the film rests on a horizon at dawn till it's back.
-
-  ![The worlds background: a planet a kick, seen from low orbit](docs/worlds.png)
-
-- **Chrome** is a pool of liquid chrome seen from above with an oil-slick film on it: every kick drops a bead where it lands in the bar (so the rings spell out the kick pattern), claps strike lightning in the sky it mirrors, the bass swells it and each chord gives the film its own colours (real thin-film interference over the visible spectrum); every two bars a collage cuts into it: mosaic, dragged rows, a barcode, the liquid's contour lines, a dither, graph paper, and a panel with the song, artist, key and tempo.
-- **Spaghetti** is the song's cover (or, without one, one of a dozen bundled public-domain pictures: Merian's banana, Seba's serpents, Brueghel's ark, Morris's Strawberry Thief and more) fed through a chrome pasta machine clamped to a kitchen table, on a tiled floor floating in the theme's colour: each time round the picture drops into the slot as a card, and from the next bar line the crank turns a beat at a time, lurching on the beat's hits, and out it comes underneath as spaghetti, each strand a column of the picture, flicked off as it leaves the rollers, falling in a low gravity, bouncing and piling up with the last two sheets', hopping on the kick, a few of them coming alive as snakes and dancing to the beat (a bounce on the beat, a dip on the kick, a pose on the snare, a roll up the body with each bass note, a jump on a drop), out among the others or in a ring round a soloist. With A, endless: the cover stuck on top and the machine never stopping, each noodle coming out without end, the cover again and again along it, the heap spreading over the floor on the kick and dripping off its edge.
-- **Scenery** is the calm one: little worlds drawn in solid colour, characters and pixel art (it began as an ASCII landscape, after Claude FM's ASCII world): snowy mountain ranges, lit on the face toward the light and shaded on the other, mist in the valleys, a shore of pines and trees in blossom, a lake that mirrors it all, a meadow of grass and flowers, and a little toaster fishing from a rowboat out on the lake. On a light theme it's day (a sun, clouds, a flock of birds); on a dark one, night: a full moon, a sky of stars by the real counts with the Milky Way across it, fireflies over the grass. It glides past a step a beat, each kick ripples the lake and dips the toaster's float, the grass sways and the fireflies blink more when the hats are busy, the toast pops up on a drop, and every 8 bars birds cross or a star falls. A picks the scene, or auto, a new one each song:
-  - The lake (the landscape above)
-  - The sea, always at night, a red and white lighthouse on a rocky headland with the keeper's cottage beside it, its two beams sweeping round every two bars and flaring at you on each bar's first beat, the Milky Way rising over the water, the moon's light broken on the waves and running up the wet sand, foam on the kicks, a crab walking the beach, the toaster fishing from a rock
-  - A campfire in a clearing in the pines, its flames leaping and roaring on the kicks and its sparks flying with the hats, a tent lit from inside, the toaster toasting bread on a stick
-  - The snow, a log cabin on a frozen lake under the aurora, its curtains drifting with the beat and flaring on the kicks, snow falling thicker when the hats are busy, the toaster ice fishing
-  - The city in the rain, a street across from a row of buildings whose windows go on and off a few each bar, a shop with a neon sign (TOAST), towers whose red lights blink on the beat, the rain heavier when the hats are busy, the puddles rippling on the kicks, a taxi going by every 8 bars, the toaster on a bench under an umbrella
-  - The garden, a koi pond in spring under a red drum bridge (its reflection closing the ring), the koi swimming their rounds and darting on the kicks, a cherry tree in blossom, its petals falling thicker when the hats are busy, stone lanterns breathing with the loudness, a pagoda on the hill, the toaster on top of the bridge dropping crumbs on each kick
-  - The sharks (after stackedlol's ascii-sharks), shallow water seen from above, a hammerhead, a blacktip reef shark and a zebra shark circling the toaster on its float, each drawn as tiles of colour with a glyph on each, its hide shimmering, schools of little fish (a stroke each, along its way) scattering from them, a bait ball of them circling the float, pulsing on each kick, which the sharks charge on a drop (and every 8 bars, when the toast pops), cutting through it over the toaster till it scatters, after which it gathers again, each kick rippling out from the float and making the fish flinch; by day the light's net drifts on the sand beside their shadows, by night their wakes light up the plankton
-  - The festival, always at night, a stage on the far shore of a lake in the mountains, the toaster DJing at its decks in headphones, a sign on the truss lit up (TOASTER), its lights' beams fanning up into the sky and sweeping round every two bars, flaring on the kicks, the screen behind the decks playing the music as bars, the speakers thumping, the show's colours changing every 8 bars; fireworks going up over the mountains every 8 bars and on a drop, bursting into streaking sparks; the crowd at the water's edge against the light, heads bobbing on the beat, glow sticks and phones up, every arm in the air when the fireworks go; the lake mirroring all of it
-  - The koi pond, seen from above, five koi (a kohaku, a showa, a sanke, a yamabuki and an orange ogon) swimming slow rounds of it, each drawn as tiles of colour with a glyph on each, their fins and tails see-through, a little faster on the kicks; lily pads in the corners, two in flower, the koi passing under them; the toaster on a lily pad of its own, a ripple spreading from it on each kick; when the toast pops (every 8 bars) the nearest koi comes for the crumbs, and on a drop they all do, gathering round the pad like the petals of a flower; click the water to drop food there and the three nearest come to it; by day the light's net drifts over the pebbles beside their shadows, by night fireflies glow over the water
-  - Space, on the moon, always at night: craters in the grey ground, a lander, an astronaut, the Earth and Saturn in the sky over the Milky Way and Andromeda, the stars twinkling with the loudness, a star falling every 8 bars, the toaster floating on its cord; on a drop, a shower of meteors
-  - The eye, a real eye drawn in characters, looking out at you, calm, blinking now and then; on a drop the window glides into its pupil, onto a galaxy and Saturn, and comes back out 8 bars later
+The looks you pick, the keys and the radio's address are remembered between launches; the camera always starts off.
 
 ## What you'll see in the code
 
 ![Toaster hearing Venjent's "Calling for You" and writing it out, from a blank window](docs/demo.webp)
 
-The code is typed the way a live coder performs it: a part that stops gets a `_` in front of its name
-(Strudel's mute) and loses it when it comes back, a part never heard yet stays a comment, and a
-change lands on the next bar line, the way ctrl+enter on the downbeat does (the line flashes, and
-the rest of the code with it). Now and then a closing bracket gets left out: a red error shows,
-then the caret goes back to fix it.
+The code is typed the way a live coder performs it: a part that stops gets a `_` in front of its name (Strudel's mute)
+and loses it when it comes back, a part never heard yet stays a comment, and a change lands on the next bar line, the way
+ctrl+enter on the downbeat does. Now and then a closing bracket gets left out: a red error shows, then the caret goes back
+to fix it.
 
-- The filters sit on sliders, `.lpf(slider(850, 100, 4000))` (Strudel draws a slider in the code
-  for that); a thin track under each shows where the value is in its range, and when the music's
-  filter moves, the number slides there instead of being retyped, like dragging the slider.
-- A bass whose filter sweeps on the 8ths, triplets or 16ths (dubstep's wobble, riddim's pulse)
-  gets Strudel's filter LFO, locked to the bar: `.lpsync(8).lpdepth(3)` for the 8ths, with some
-  resonance and grit. The export writes it the same way.
-- When the chords pump under the kick (sidechain, in most house and EDM), the kick gets
-  `.duck("2:3").duckdepth(.6)` and the bass line and chords go on orbits 2 and 3, the way you'd
-  set that up in Strudel. The depth follows how far they dip.
-- The tempo line says `// breakdown` while the kick is out for a bar or more, and `// drop` for
-  the first 4 bars after a drop.
-- A line too long for the window (often, in the vertical layout) goes on over more rows, broken
-  before a method call and indented, the way you'd break up Strudel by hand.
-- Half-time music (dubstep, much of trap: the snare on 3 alone) is written the way its producer
-  would: the bar starts two beats before the snare, the kick on 1 and the clap on 3, rather than
-  the claps read as a 4/4 backbeat a beat off. A slow song heard at double its tempo (a ballad at
-  85 counted as 170, its backbeat landing once a bar) goes back to its own tempo, the snare on 2
-  and 4.
+- The filters sit on sliders, `.lpf(slider(850, 100, 4000))`, and when the music's filter moves, the number slides
+  there instead of being retyped, like dragging the slider.
+- A bass whose filter sweeps on the 8ths, triplets or 16ths (dubstep's wobble, riddim's pulse) gets Strudel's filter
+  LFO, locked to the bar: `.lpsync(8).lpdepth(3)`.
+- When the chords pump under the kick (sidechain, in most house and EDM), the kick gets `.duck("2:3").duckdepth(.6)` and
+  the bass line and chords go on orbits 2 and 3, the way you'd set that up in Strudel.
+- The tempo line says `// breakdown` while the kick is out for a bar or more, and `// drop` for the first 4 bars after
+  a drop.
+- Half-time music (dubstep, much of trap) is written the way its producer would: the kick on 1 and the clap on 3. A slow
+  song heard at double its tempo goes back to its own tempo.
 
 ## Saving things
 
-- **M** records the window with its sound into `Videos\Toaster` on Windows, or `Movies/Toaster`
-  on a Mac, as an MP4 ready for TikTok, Shorts and Reels. Switch to the vertical layout (L) first
-  for a 1080 x 1920 video; it keeps everything clear of the edges Reels and TikTok trim on tall phones.
-- **J** turns on drop clips: the first two drops of each song are saved as their own videos (the
-  build-up and the drop) into that same folder.
-- **X** exports the song so far into `Music\Toaster` on Windows, or `Music/Toaster` on a Mac, as **one folder for the
-  song**, named after the song and the time. Open that folder's top first: `rebuilt.wav` is what the song sounds like,
-  and `song.strudel.js` is the song rebuilt from its own sounds as code, with the sounds it plays (cut from the song)
-  and `strudel.json` (the list that names them, which the code's `samples(...)` line reads). Press **O** afterwards
-  (or just **O**, which rebuilds the song first, about half a minute) and the rebuilt song opens in strudel.cc; its
-  sounds come from Toaster while Toaster is open (Chrome asks once whether strudel.cc may reach apps on your
-  computer: allow it). In the folder, a subfolder called `notes (stand-in sounds)` holds Toaster's notes: a MIDI file
-  (drums, bass, chords and lead on their own tracks) and Strudel code, each phrase written once and played in order
-  with `arrange()`, which you can paste into strudel.cc and play with ctrl+enter. They are editable, but they play on
-  stand-in drum-machine sounds, so they won't sound like the record: a `README.txt` there says so. If the song can't
-  be rebuilt (the splitter's model isn't there, or the split fails), X still saves the notes, and says it saved only
-  the notes and why. Songs saved by earlier versions stay where they are (a loose MIDI file and code, and a folder ending in `rebuilt`) and still play.
-  On a Mac, O opens the rebuilt song in Chrome (or Edge) when it is installed. The rebuilt song needs one of them: in Safari it opens but stays silent. If you answered no to Chrome's question, the tab stays silent: allow it in the site settings for strudel.cc (the icon left of the address). If the rebuilt song stays silent in another browser, open the same link in Chrome or Edge.
-  Each time it rebuilds (X, or O when the song has no rebuild yet) it makes a new folder, about 6 MB: delete the ones you don't want.
-  What it exports is an approximate musical sketch of the song you played, and the rebuilt song carries
-  pieces of the recording itself: permission to publish or distribute either depends on the source
-  music and your intended use.
+- **M** records the window with its sound into `Videos\Toaster` on Windows, or `Movies/Toaster` on a Mac, as an MP4
+  ready for TikTok, Shorts and Reels. Switch to the vertical layout (**L**) first for a 1080 x 1920 video.
+- **J** turns on drop clips: the first two drops of each song are saved as their own videos (the build-up and the drop)
+  into that same folder.
+- **X** saves the song into `Music\Toaster` on Windows, or `Music/Toaster` on a Mac, as one folder for the song. At its
+  top, `rebuilt.wav` is what the rebuilt song sounds like, and `song.strudel.js` is that song as code, with the sounds it
+  plays (cut from the song). A subfolder, `notes (stand-in sounds)`, holds Toaster's notes: a MIDI file (drums, bass,
+  chords and lead on their own tracks) and Strudel code you can paste into strudel.cc, on stand-in drum-machine sounds.
+  Each save is a new folder of about 6 MB. If the song can't be rebuilt, X still saves the notes and says why.
+- **O** opens the rebuilt song in strudel.cc, with Toaster serving its sounds while it's open. On a Mac it needs Chrome
+  or Edge (in Safari it stays silent). Chrome asks once whether strudel.cc may reach apps on your computer: allow it.
 
-More on all three in [docs/how-it-works.md](docs/how-it-works.md). Filming Toaster for a video?
-[docs/creators.md](docs/creators.md) has the setup, the take, and how to carry on in Strudel.
+What it saves is an approximate sketch of the song you played, and the rebuilt song carries pieces of the recording
+itself: whether you may publish either depends on the music and what you want to do with it.
+
+More in [docs/how-it-works.md](docs/how-it-works.md). Filming Toaster for a video? [docs/creators.md](docs/creators.md)
+has the setup, the take, and how to carry on in Strudel.
 
 ## For DJs and streamers
 
 Toaster makes live visuals for a set: it follows the beat, and the scenes answer the drop.
 
-1. **Let it hear the set.** On a Mac it hears everything the Mac plays, your DJ software too. With a mixer, pick its
-   USB or line-in as the audio input (**S**).
+1. **Let it hear the set.** On a Mac it hears everything the Mac plays, your DJ software too. With a mixer, pick its USB
+   or line-in as the audio input (**S**).
 2. **Set the look.** The *Visualizer* preset (the picker's first row, or Ctrl+K) shows the scenes with the code hidden;
-   **Z** brings the code back (all but the beat, then all). **V** picks the background, **T** the theme.
+   **Z** brings the code back. **V** picks the background, **T** the theme.
 3. **Clear the frame.** **H** hides the header, the footer and the player bar; **F** goes fullscreen.
 4. **The drop.** Toaster fires it by itself when the kick comes back after a break of three seconds or more; press **D**
    the moment it lands to fire it yourself, and **B** to pick a drop effect.
 5. **Into OBS.** Add Toaster's window as a source: on a Mac, *macOS Screen Capture* with the window method; on Windows,
    *Window Capture* with the capture method *Windows 10 (1903 and up)*. Or press **M** to record the window with its sound.
 
+## Questions
+
+**Does it split the song into stems?** Not while it plays: live, it listens to the whole mix and picks out the kick,
+snare, hats, bass and chords from their frequencies and timing, then writes them as code that plays on drum-machine
+samples and synths. When you press X, yes: it takes the song apart into drums, bass, voice and the rest, on your machine.
+
+**Will the code sound exactly like the song?** The live code doesn't: it's a sketch of the song's parts, and the sounds
+are stand-ins. The rebuilt song (X) comes much closer on songs with a beat, because it plays the song's own drum hits,
+its own bass and the singer's own phrases, placed by the code.
+
+**What does it do best?** A steady beat. A song without clear drums can take 8 to 20 seconds to find one; tap Space on
+the beat to give it the tempo. Its weak spot is the kick under a busy or sidechained bass, which is most modern dance
+and pop: it can take bass notes for kicks. If a song reads wrong, the flag at the end of the site's player bar reports
+it in one click. What it can and can't hear yet is at the end of [docs/how-it-works.md](docs/how-it-works.md).
+
+**Where does the song's name come from?** The system's media controls (Windows' media controls, or the Mac's Now
+Playing), so any player that shows up there works: Spotify, browsers and the rest.
+
+**Radio?** **S** plays an internet radio stream whose address you paste in. Toaster comes with no stations, but
+[docs/radio-stations.md](docs/radio-stations.md) lists a few that publish theirs.
+
+**On a touch screen?** ☰ in the header opens every key as a button.
+
 ## Privacy
 
-Everything Toaster hears and sees stays on your machine. The sound is worked out in the app, and the
-camera (off until you press C) is looked at by the system's own face detector (Windows' face
-detector, or the Mac's Vision framework) and by Google's MediaPipe, both running on your machine.
-Nothing is uploaded. For the tune in a saved song (X), the app keeps the last ten minutes of what it heard in memory only,
-never in a file, and it is gone when you quit; when you press X, Spotify's open-source Basic Pitch model listens to that
-stretch and Meta's open-source Demucs model takes it apart, both on your machine. While Toaster is open it serves the
-rebuilt songs' sounds to strudel.cc from your own computer (`localhost`, port 47283: only the `.wav` files and the `strudel.json` list at the top of a song's folder,
-and nothing outside your computer can reach it). It goes online only for these:
+Everything Toaster hears and sees stays on your machine. The sound is worked out in the app, and the camera (off until
+you press C) is looked at by the system's own face detector (Windows' face detector, or the Mac's Vision framework) and
+by Google's MediaPipe, both running on your machine. Nothing is uploaded. For a saved song (X), the app keeps the last
+ten minutes of what it heard in memory only, never in a file, and it is gone when you quit; when you press X, Spotify's
+open-source Basic Pitch model listens to that stretch and Meta's open-source Demucs model takes it apart, both on your
+machine. While Toaster is open it serves the rebuilt songs' sounds to strudel.cc from your own computer (`localhost`,
+port 47283: only the `.wav` files and the `strudel.json` list at the top of a song's folder, and nothing outside your
+computer can reach it). It goes online only for these:
 
-- **Updates and stars:** GitHub, when it starts, to see whether there's a newer Toaster (turn that off in the help, under
-  Updates), and for the project's star count on the header's star button (asked at most every ten minutes).
+- **Updates and stars:** GitHub, when it starts, to see whether there's a newer Toaster (turn that off in the help,
+  under Updates), and for the project's star count on the header's star button (asked at most every ten minutes).
 - **Strudel:** strudel.cc when you press O (your browser opens it with the code in the link).
 - **The radio,** while it plays: its stream (from the server at the address you typed) and, for each song, the song's
   artist and title, sent to Apple's iTunes Search to find its cover; the cover is fetched from Apple's image server.
-- **Spotify,** only if you connect your own account: the sign-in at accounts.spotify.com, then Spotify's Web API for your
-  playlists, saved albums and liked songs, the songs and artists you search for, artist pages and releases, album details, the current song and its position and allowed controls while Spotify is the system player, and playing what you pick; covers come from Spotify's
-  image servers. The sign-in's token stays in the app's main process, kept encrypted (with a key from your system's keychain) in Toaster's settings folder, and never
-  reaches the page. Without a connection, a pasted Spotify link just opens in the Spotify app or Spotify's web player.
-- **Spotify's embedded player,** when you choose **▶ preview** (or **V**): the Spotify frame connects directly to Spotify and its media services. Spotify may use cookies and its own sign-in, separately from Toaster's optional library connection. Toaster does not pass that connection's tokens to the frame. Closing the player removes it.
-- **The Earth and the backrooms:** the first time you pick one, its video (6 to 25 MB) downloads from toaster.locust.lol,
-  is checked against its checksum and kept, so it doesn't download again.
+- **Spotify,** only if you connect your own account: the sign-in at accounts.spotify.com, then Spotify's Web API for
+  your playlists, saved albums and liked songs, the songs and artists you search for, artist pages and releases, album
+  details, the current song and its position and allowed controls while Spotify is the system player, and playing what
+  you pick; covers come from Spotify's image servers. The sign-in's token stays in the app's main process, kept
+  encrypted (with a key from your system's keychain) in Toaster's settings folder, and never reaches the page. Without a
+  connection, a pasted Spotify link just opens in the Spotify app or Spotify's web player.
+- **Spotify's embedded player,** when you choose **▶ preview**: the Spotify frame connects directly to Spotify and its
+  media services. Spotify may use cookies and its own sign-in, separately from Toaster's optional library connection.
+  Toaster does not pass that connection's tokens to the frame. Closing the player removes it.
+- **The Earth and the backrooms:** the first time you pick one, its video (6 to 25 MB) downloads from
+  toaster.locust.lol, is checked against its checksum and kept, so it doesn't download again.
 
 Each of these carries what any web request carries: your IP address and the app's name and version.
 
 The site, toaster.locust.lol, works the same way: your audio never leaves your device. The site counts visits
 anonymously (Cloudflare Web Analytics, no cookies) and asks GitHub for the project's star count.
-
-## Good to know
-
-- It does best with a steady beat. A song without clear drums can take 8 to 20 seconds to find
-  one; tap Space on the beat to give it the tempo.
-- Its weak spot is the kick under a busy or sidechained bass, which is most modern dance and pop: it can
-  take bass notes for kicks and write a syncopated kick line where the song is four to the floor. If a song
-  reads wrong, the flag at the end of the site's player bar reports it in one click.
-- The song's title (and its cover, for the ID card) come from the system's media controls
-  (Windows' media controls, or the Mac's Now Playing), so any player that shows up there works:
-  Spotify, browsers and the rest.
-- The radio (S) plays an internet radio stream whose address you paste in; Toaster comes with no
-  stations, but [docs/radio-stations.md](docs/radio-stations.md) lists a few that publish theirs.
-  In the app it reads the song titles the stream carries, and finds each song's cover in the iTunes
-  Store (none if no song there matches); in a browser the radio is untitled.
-  More in [docs/how-it-works.md](docs/how-it-works.md#the-radio).
-- For the finger frame, the portals and the hand signs, keep your hands a little inside the camera's picture.
-- On a touch screen (an iPad, say), ☰ in the header opens every key as a button, each showing what it's set to.
-- What it can and can't hear yet: the end of [docs/how-it-works.md](docs/how-it-works.md).
 
 ## Build it yourself
 
@@ -308,31 +248,29 @@ npm run dev        # run it with a debugging port (9333) for tools/cdp.mjs and t
 npm run package    # build for the OS you're on: dist/Toaster-win32-x64, or dist/Toaster-darwin-universal
 ```
 
-On a Mac, `npm start` compiles the Swift helpers (now playing, and faces) the first time, with
-Xcode's command line tools. `npm run package:win` and `npm run package:mac` build the other OS's
-app; the Mac app has to be built on a Mac. Each release's Mac app is built on GitHub's Macs
-(.github/workflows/mac.yml), signed ad hoc.
+On a Mac, `npm start` compiles the Swift helpers (now playing, and faces) the first time, with Xcode's command line
+tools. `npm run package:win` and `npm run package:mac` build the other OS's app; the Mac app has to be built on a Mac.
+Each release's Mac app is built on GitHub's Macs (.github/workflows/mac.yml), signed ad hoc.
 
 How it works inside, and the test songs it's checked against: [docs/how-it-works.md](docs/how-it-works.md).
 
 ## Built with Toaster
 
-- **[golden](https://itsgolden.app)** by Jon Soini: a free iPhone player for Apple Music in Toaster's look, with its code
-  view, ID cards and themes. Toaster's dynamic theme (the colours of the song's cover) and its library (G) are after
-  golden's.
-- **Internet radio** by Jeffrey Li ([#6](../../pull/6), [#7](../../pull/7)): paste a stream's address and Toaster
-  plays it and writes it out. He has also built a background of his own on top of Toaster.
-- **A 3D-printed handheld** by Clemens ([@tokyo_impressions](https://www.instagram.com/tokyo_impressions)), printed
-  from the game's model.
+- **[golden](https://itsgolden.app)** by Jon Soini: a free iPhone player for Apple Music in Toaster's look, with its
+  code view, ID cards and themes. Toaster's dynamic theme and its library (G) are after golden's.
+- **Internet radio** by Jeffrey Li ([#6](../../pull/6), [#7](../../pull/7)): paste a stream's address and Toaster plays
+  it and writes it out. He has also built a background of his own on top of Toaster.
+- **A 3D-printed handheld** by Clemens ([@tokyo_impressions](https://www.instagram.com/tokyo_impressions)), printed from
+  the game's model.
 
-Made something with Toaster? Show it in [Discussions](../../discussions), or see [CONTRIBUTING.md](CONTRIBUTING.md)
-to build on it.
+Made something with Toaster? Show it in [Discussions](../../discussions), or see [CONTRIBUTING.md](CONTRIBUTING.md) to
+build on it.
 
 ## Credits and license
 
-Toaster is MIT licensed ([LICENSE](LICENSE)). It uses Google's MediaPipe (Apache 2.0) for the
-camera; [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) lists everything it uses and the artists
-whose looks it's after. The code it writes is [Strudel](https://strudel.cc). Toaster is an
-independent project, not made by or affiliated with the Strudel project.
+Toaster is MIT licensed ([LICENSE](LICENSE)). It uses Google's MediaPipe (Apache 2.0) for the camera;
+[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) lists everything it uses and the artists whose looks it's after. The
+code it writes is [Strudel](https://strudel.cc). Toaster is an independent project, not made by or affiliated with the
+Strudel project.
 
 If Toaster made you smile, a star helps more people find it.
