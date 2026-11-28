@@ -41,8 +41,13 @@ Lost? **?** lists every key, and **Ctrl+K** finds any command by name.
   NASA's own footage from the space station, liquid chrome, the backrooms, dominoes, a handheld rhythm game and more.
 - **Remembers what it has heard.** The second play of a song locks faster, and it reads the songs in your music folder
   ahead.
+- **A library that draws your covers.** Press **G** for your music folder, Spotify, the radio and your saved scenes.
+  Every cover is drawn in characters (**Shift+C** shows the cover itself, framed by them), and with the dynamic theme
+  the whole window takes its colours from the cover that's playing.
 - **Plays well with Spotify.** It hears Spotify like any other app. Connect your own account (a free Spotify developer
   app of your own, and Premium) to browse, search and play inside Toaster ([how](docs/spotify.md)).
+
+![Toaster's library open on The Weeknd's "After Hours": the album cover drawn in characters beside the list of albums, the whole window in the cover's colours](docs/library.webp)
 
 ![The scenery's eleven scenes: the lake, the sea, the campfire, the snow, the city in the rain, the garden, the sharks, the festival, the koi pond, space, and the eye, which dives into its pupil onto a galaxy](docs/scenery.webp)
 
